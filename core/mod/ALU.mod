@@ -79,6 +79,7 @@ VERBATIM { INFOCAST; Info* info = *ip;
 	}
 	info->ptrs_[info->np_] = hoc_pgetarg(1);
 	++info->np_;
+    //printf("I have %d values..\n", info->np_);
 }
 ENDVERBATIM
 }
@@ -88,10 +89,14 @@ VERBATIM { INFOCAST; Info* info = *ip;
 	int i;
 	double n = 0;
 	for (i=0; i < info->np_; ++i) {
+      //  printf("%f", *info->ptrs_[i]);
 		n += *info->ptrs_[i];
 	}
-	output = n/info->np_;
+    //printf("\n");
+//	output = n/info->np_;
+	if (info->np_ > 0) 
+	  output = n/info->np_;
+	else output = 0;
 }
 ENDVERBATIM
 }
-
