@@ -289,11 +289,12 @@ obfunc getTarget() { local targetIndex
     to this cpu is organized for better look up
     
     Required Inputs : $o1 Vector with gids of cells on this cpu
+                      $o2 Load balancing info (or null if using whole-cell)
     Logic           : For each target, give it the vector and have it localize itself
 *****************************************************************/
 proc localizeAll() { local targetIndex
     for targetIndex=0, targetList.count()-1 {
-        targetList.object(targetIndex).localize( $o1 )
+        targetList.object(targetIndex).localize( $o1, $o2 )
     }
 }
 
