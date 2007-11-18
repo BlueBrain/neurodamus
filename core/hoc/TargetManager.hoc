@@ -1,0 +1,300 @@
+/*****************************************************************
+    FileName    : TargetManager.hoc
+    Project     : Blue Brain Project
+    Place       : EPFL, Lausanne Switzerland.
+    Purpose     : Encapsulate the operations surrounding a the maintenece of targets (see TargetTemplate.hoc)
+                  such as reading them from file as well as organizing and retrieving them by name
+                  for stimulation, reporting, or other operations
+    Author      : 1. Jim King
+    Revision    : $Revision$ at: $Date$ by $Author$
+****************************************************************/
+
+begintemplate TargetManager
+
+{load_file("TargetTemplate.hoc")}
+
+public init, retrieveTargets, targetList, localizeAll, printTargets, getTarget
+
+objref targetList, cellVector
+
+proc init() {
+    targetList = new List()
+}
+
+/*****************************************************************
+    Private utility function for searching the list of targets and determining if any have
+    the indicated name, returning either the index or a negative value which can be used to hint
+    at where a target with that name should be inserted into the list
+    
+    Required Inputs : $s1 Name to search for
+    Logic           : Using a binary search, compare passed name with those of the targets in the list.
+                      If target with same name found, return its index; otherwise, return special negative
+                      value = -(potential_index+1) where potential_index is where a target with the passed
+                      name would go if it were to be inserted.
+*****************************************************************/
+func binary_search() { local binsrch_low, binsrch_mid, binsrch_high
+
+    //search through list, using binary search to find if this target exists
+    binsrch_low = 0
+    binsrch_high = targetList.count()
+
+    while ( binsrch_low < binsrch_high ) {
+        binsrch_mid = int(( binsrch_low+binsrch_high)*0.5 )
+        
+        if( strcmp( targetList.object(binsrch_mid).name, $s1 ) < 0 ) { //guess again, lower
+            binsrch_low = binsrch_mid+1
+        } else {
+            binsrch_high = binsrch_mid
+        }
+    }
+    
+    if( binsrch_low<targetList.count() ) {
+        if( strcmp( targetList.object(binsrch_low).name, $s1 ) == 0 ) {
+            //found it!
+            return binsrch_low
+        } else {
+            //not found, but it can go here (return inverted index minus 1 )
+            return -(binsrch_low+1)
+        }
+    }
+        
+    //not found, should be appended to list
+    return -(targetList.count()+1)
+}
+
+/*****************************************************************
+    Private function used during parsing to determine if targets already exist with a given name.
+    If they do, return a reference to that target; otherwise, add the given reference into the list
+    and return the same reference.  Perhaps a reference isn't needed, but just the name.  Then this 
+    function can create an instance if necessary.  It's not broke now, though, so fix it later
+    
+    Required Inputs : $o1 Reference to a target whose name needs to be searched for in the list
+    Logic           : Using the binary search, determine if a target exists with a particular name,
+                      if not, insert the given reference into the list at the location as derived by 
+                      the negative return value from the binary search.  Return the true reference
+*****************************************************************/
+obfunc updateTargetList() { local targetIndex
+    
+    targetIndex = binary_search( $o1.name )
+    if( targetIndex < 0 ) {  //not found, so insert it at indicated location
+        targetIndex = -(targetIndex+1)
+        if( targetIndex == targetList.count() ) {
+            targetList.append( $o1 )
+        } else {
+            targetList.insrt( targetIndex, $o1 )
+        }
+        return $o1
+    } else {
+        //update target type
+        targetList.object(targetIndex).type = $o1.type
+        return targetList.object(targetIndex)
+    }
+}
+
+/*****************************************************************
+    This function parses target files start.target and user.target
+    Required Inputs : $s1 Full path to system target file (should always be start.target)
+                      $s2 Full path to user target file
+    Logic           : For each target file, use private parse function to read and build target
+                      structures
+*****************************************************************/
+proc retrieveTargets() { localobj tFile
+    
+    parseTargetFile( $s1 )
+    parseTargetFile( $s2 )    
+
+    //printTargets()
+}
+
+/*****************************************************************
+    Helper function to aid debugging.  Print targets and info about them to stdout
+    Required Inputs : 
+    Logic           : For each target, print info about all targets to stdout
+*****************************************************************/
+proc printTargets() {
+    //print names of targets found
+    for targetIndex=0, targetList.count()-1 {
+        print "Found target ", targetList.object(targetIndex).name
+        print "\t All Cells: ", targetList.object(targetIndex).allCells.size()
+        print "\t Local Cells: ", targetList.object(targetIndex).localCells.size()
+        print "\t Targets: ", targetList.object(targetIndex).subtargets.count()
+        for subIndex=0, targetList.object(targetIndex).subtargets.count()-1 {
+            print "\t\t", targetList.object(targetIndex).subtargets.o[subIndex].name
+        }
+    }
+}
+
+/*****************************************************************
+    Parse a target file, putting the data retrived into appropriate structures and organized for
+    quick lookup
+    Required Inputs : $s1 Full path to target file
+    Logic           : Open the target files, building list of target objects declared implicitly
+                      and explicitly, and populating them with the appropriate cells and other info
+*****************************************************************/
+proc parseTargetFile() { localobj tFile, targetInstance
+    strdef tstr, tstr1
+    tFile   =   new FakeFile()
+    tFile.ropen($s1)
+    
+    if (tFile.isopen == 0) {
+        print "Error : Could not open system target spec file :[", $s1,"]"
+	    execerror("Error : Could not open system target spec file :[%s]", $s1)        
+    }else {
+        //Read till end of file
+        while(tFile.gets(tstr) >= 0){
+            sscanf(tstr, "%s",tstr1)
+            if( 0 == strcmp (tstr1, "Target")) {  //have reached a target black
+                targetInstance = new TargetTemplate()
+                sscanf(tstr, "%*s%s%s", targetInstance.type, targetInstance.name )  //extract target type and name
+                
+                //if this target was seen before, it is already in the list and needs to be updated; otherwise, add it
+                targetInstance = updateTargetList( targetInstance )
+                targetInstance.evalType()
+                
+                //target contents
+                parseTargetContents( tFile, targetInstance )
+            }            
+        }
+        tFile.close()        
+    }
+}
+
+/*****************************************************************
+    Private function for handling the inner contents of a target block from a target file since
+    Neuron targets are laid out different from Section, Compartment, and Synapse targets
+    Required Inputs : $o1 Reference to file which has just read the line with Target keyword and Name
+                      $o2 Reference to target object where parsed contents must be stored
+    Logic           : Continue reading the target file, populating the structure with cell data or subtargets.
+                      if a subtarget is encountered, a reference to the target is found/created and stored in
+                      the given target reference
+*****************************************************************/
+proc parseTargetContents() { local potential localobj tFile, targetInstance, addition, extraData, strobj
+    tFile = $o1
+    targetInstance = $o2
+    strdef tstr, tstr1, remake
+    strobj = new StringFunctions()
+
+    tFile.gets(tstr) //Grab {
+    sscanf(tstr, "%s",tstr1) 
+    if( targetInstance.isCellTarget() ) {  //only need to parse into cellnames and target names
+        //the line can have any number of entries - cells or other targets
+        tFile.scanstr(tstr1)  //goto first entry
+        
+        while(0 != strcmp(tstr1, "}")) {
+            //is this entry a cell?
+            sscanf(tstr1, "a%d", &potential )
+            sprint( remake, "a%d", potential )
+            if( strcmp( tstr1, remake ) == 0 ) { //cell detected - is this an appropriate method to verify cells?  If naming method changes, this breaks
+                targetInstance.allCells.append( potential )
+            } else { //must be new or existing target
+                addition = new TargetTemplate()
+                addition.name = tstr1
+                addition = updateTargetList( addition )  //either replaces the reference with the found target, or puts it into the list
+                targetInstance.subtargets.append( addition )
+            }
+            
+            //get next string
+            tFile.scanstr(tstr1)
+        }
+    } else {
+        //each line contains a name, then potentially a subset and potentially a list of values
+		getTrimmedLine( tFile, tstr )
+		sscanf(tstr, "%s",tstr1)
+        while(0 != strcmp(tstr1, "}")) {
+        
+            //is first item of line a cell or target name?
+            sscanf(tstr1, "a%d", &potential )
+            sprint( remake, "a%d", potential )
+			
+            if( strcmp( tstr1, remake ) == 0 ) { //cell detected - is this an appropriate method to verify cells?  If naming method changes, this breaks
+                targetInstance.allCells.append( potential )
+                
+                //put remainder of line into cellExtra field
+                extraData = new String()
+                strobj.right( tstr, strobj.len(tstr1) )
+                extraData.s = tstr
+                targetInstance.cellExtra.append( extraData )
+            } else { //must be new or existing target
+                addition = new TargetTemplate()
+                addition.name = tstr1
+                addition = updateTargetList( addition )  //either replaces the reference with the found target, or puts it into the list
+                targetInstance.subtargets.append( addition )
+                
+                //put remainder of line into targetExtra field
+                extraData = new String()
+                strobj.right( tstr, strobj.len(tstr1) )
+                extraData.s = tstr
+                targetInstance.targetExtra.append( extraData )
+            }
+            
+            //goto next line, get first string element
+			getTrimmedLine( tFile, tstr )
+            sscanf(tstr, "%s",tstr1) 
+        }
+    }
+}
+
+/*****************************************************************
+    Private helper function for handling the retrieval of a line from a file and removing leading
+    white space or trailing comments (trailing white space is not checked, but should be a problem)
+    Required Inputs : $o1 Reference to file whose next line is required
+                      $s2 String where the read line should be stored
+    Logic           : Read the next line, check if the first character is ws, removing all leading ws
+                      if it is, then check for the comment character '#' and remove it and any other
+                      characters after it.
+*****************************************************************/
+proc getTrimmedLine() { localobj ncsFile, strobj
+    strdef tstr, wscheck
+    strobj = new StringFunctions()
+    
+    ncsFile = $o1
+    ncsFile.gets(tstr)
+    
+    //check for leading whitespace
+    wscheck = tstr    
+    strobj.left( wscheck, 1 )
+    if( strcmp( wscheck, " " ) == 0 || strcmp( wscheck, "\t" ) == 0 ) {
+        ret = strobj.tail( tstr, "[ \t]+", tstr ) //strip leading white space 
+    }
+
+    //strip comments
+    if( strobj.substr(tstr, "#" ) != -1 ) {
+        ret = strobj.head(tstr, "#", tstr )
+    }
+
+	//trailing whitespace shouldn't be a problem, but 'trimmedLine' implies none at front or rear
+	// however, I don't want to have to copy the entire line yet again
+    
+    $s2 = tstr
+}
+
+/*****************************************************************
+    Public function which retrieve a target from the list and returns it to the caller
+    Required Inputs : $s1 Name of target to find and retrieve
+    Logic           : Use binary search to locate the target, throwing an error if the target
+                      is not found
+*****************************************************************/
+obfunc getTarget() { local targetIndex
+
+    targetIndex = binary_search( $s1 )
+    if( targetIndex < 0 ) { //target not found
+        execerror( "Error: target %s not found", $s1 )
+    }
+    
+    return targetList.object(targetIndex)
+}
+
+/*****************************************************************
+    After cells have been distributed to the processor, targets may be localized where cell info local
+    to this cpu is organized for better look up
+    
+    Required Inputs : $o1 Vector with gids of cells on this cpu
+    Logic           : For each target, give it the vector and have it localize itself
+*****************************************************************/
+proc localizeAll() { local targetIndex
+    for targetIndex=0, targetList.count()-1 {
+        targetList.object(targetIndex).localize( $o1 )
+    }
+}
+
+endtemplate TargetManager
