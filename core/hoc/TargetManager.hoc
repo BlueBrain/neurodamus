@@ -275,10 +275,12 @@ proc getTrimmedLine() { localobj ncsFile, strobj
                       is not found
 *****************************************************************/
 obfunc getTarget() { local targetIndex
+    strdef errorMessage
 
     targetIndex = binary_search( $s1 )
     if( targetIndex < 0 ) { //target not found
-        execerror( "Error: target %s not found", $s1 )
+        sprint( errorMessage, "Error: target %s not found", $s1 )
+        execerror( errorMessage )
     }
     
     return targetList.object(targetIndex)
