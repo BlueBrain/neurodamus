@@ -279,10 +279,11 @@ obfunc getTarget() { local targetIndex
 
     targetIndex = binary_search( $s1 )
     if( targetIndex < 0 ) { //target not found
+        print "Error: target ", $s1, " not found.  Attempting to terminate"
         sprint( errorMessage, "Error: target %s not found", $s1 )
         execerror( errorMessage )
+        quit()
     }
-    
     return targetList.object(targetIndex)
 }
 
