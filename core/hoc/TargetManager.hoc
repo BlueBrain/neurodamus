@@ -101,8 +101,10 @@ obfunc updateTargetList() { local targetIndex
 proc retrieveTargets() { localobj tFile
     
     parseTargetFile( $s1 )
-    parseTargetFile( $s2 )    
-
+    if( strcmp( $s2, "" ) != 0 ) {
+        parseTargetFile( $s2 )
+    }
+    
     //printTargets()
 }
 
