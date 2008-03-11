@@ -36,7 +36,9 @@ extern int nrnmpi_numprocs;
 extern int nrnmpi_myid;
 extern int ifarg(int iarg);
 extern double chkarg(int iarg, double low, double high);
-
+extern double* vector_vec();
+extern void* vector_arg();
+extern void* vector_resize();
 typedef struct {
 	/* hdf5 version */
 	hid_t file_;
@@ -143,8 +145,9 @@ VERBATIM {
 			//printf("Dimensions:%d\n",dimensions);
 			H5Sget_simple_extent_dims(dataspace,dims,NULL);
 			//printf("Accessing to %s , nrow:%lu,ncolumns:%lu\n",info->name_group,(unsigned long)dims[0],(unsigned long)dims[1]);
-			info->rowsize_ = dims[0];
+			info->rowsize_ = (unsigned long)dims[0];
 			info->columnsize_ = dims[1];
+			//printf("\n Size of data is row= [%d], Col = [%lu]", dims[0], (unsigned long)dims[1]);
 			if(info->datamatrix_ != NULL)
 			{
 				//printf("Freeeing memory \n ");
@@ -229,6 +232,111 @@ VERBATIM {
 }
 ENDVERBATIM
 }
+
+
+
+
+FUNCTION getColumnDataRange() {
+VERBATIM { 
+	INFOCAST; 
+	Info* info = *ip;
+	void* pdVec = NULL;
+	double* pd  = NULL;
+    int i = 0;
+    int nStart, nEnd, count;
+	if(info->file_>=0&& ifarg(1) && hoc_is_str_arg(1) && ifarg(2) )
+	{
+		char name[256];
+		strncpy(name,gargstr(1),256);
+		if(strncmp(info->name_group,name,256) == 0)
+		{
+			hsize_t column;
+			column  = (hsize_t) *getarg(2);
+			if(column<0 || column >=info->columnsize_ )
+			{
+				printf("ERROR: trying to access to a column erroneus on %s, size: %d,%d accessing to column %d\n ",name,info->rowsize_,info->columnsize_,column);
+				return 0;
+			}
+			pdVec = vector_arg(3);
+            nStart = (int)*getarg(4);
+            nEnd  = (int)*getarg(5);
+			vector_resize(pdVec, nEnd-nStart+1);
+			pd = vector_vec(pdVec);
+            count =0;
+			for( i=nStart; i<=nEnd; i++){
+				pd[count] = info->datamatrix_[i*info->columnsize_ + column];
+                count = count +1;
+				//printf("\n Filling [%f]", pd[i]);
+			}
+			//float res = info->datamatrix_[row*info->columnsize_ + column];
+			return 1;
+		}
+		printf("(Getting data)Error on the name of last loaded data: access:%s loaded:%s\n",name,info->name_group);
+		return 0;
+	}
+	else
+	{
+		//printf("ERROR:Error on number of rows of \n");
+		return 0;
+	} 
+}
+ENDVERBATIM
+}
+
+
+
+
+
+
+
+FUNCTION getColumnData() {
+VERBATIM { 
+	INFOCAST; 
+	Info* info = *ip;
+	void* pdVec = NULL;
+	double* pd  = NULL;
+	int i = 0;
+	if(info->file_>=0&& ifarg(1) && hoc_is_str_arg(1) && ifarg(2) )
+	{
+		char name[256];
+		strncpy(name,gargstr(1),256);
+		if(strncmp(info->name_group,name,256) == 0)
+		{
+			hsize_t column;
+			column  = (hsize_t) *getarg(2);
+			if(column<0 || column >=info->columnsize_ )
+			{
+				printf("ERROR: trying to access to a column erroneus on %s, size: %d,%d accessing to column %d\n ",name,info->rowsize_,info->columnsize_,column);
+				return 0;
+			}
+			pdVec = vector_arg(3);
+			vector_resize(pdVec, info->rowsize_);
+			pd = vector_vec(pdVec);
+			for( i=0; i<info->rowsize_; i++){
+				pd[i] = info->datamatrix_[i*info->columnsize_ + column];
+				//printf("\n Filling [%f]", pd[i]);
+			}
+			//float res = info->datamatrix_[row*info->columnsize_ + column];
+			return 1;
+		}
+		printf("(Getting data)Error on the name of last loaded data: access:%s loaded:%s\n",name,info->name_group);
+		return 0;
+	}
+	else
+	{
+		//printf("ERROR:Error on number of rows of \n");
+		return 0;
+	} 
+}
+ENDVERBATIM
+}
+
+
+
+
+
+
+
 
 FUNCTION closeFile() {
 VERBATIM { 
