@@ -57,6 +57,7 @@ ENDVERBATIM
 CONSTRUCTOR { : double - loc of point process ??? ,string filename
 VERBATIM {
 	char nameoffile[512];
+    
 	if(ifarg(2) && hoc_is_str_arg(2)) {
 		//printf("Trying to open\n");
 		INFOCAST;
@@ -68,7 +69,7 @@ VERBATIM {
 		//MPI_Comm comm  = MPI_COMM_WORLD;
 
 		/*
-		* Initialize MPI
+		* get MPI info
 		*/
 		//MPI_Comm_size(comm, &mpi_size);
 		//MPI_Comm_rank(comm, &mpi_rank);  
@@ -116,6 +117,42 @@ VERBATIM {
 		free(info->datamatrix_);
 		info->datamatrix_ = NULL;
 	}
+}
+ENDVERBATIM
+}
+
+FUNCTION checkVersion() {
+VERBATIM {
+    INFOCAST; 
+	Info* info = *ip;
+    int mpi_size, mpi_rank;
+
+    // get MPI info
+    MPI_Comm_size (MPI_COMM_WORLD, &mpi_size);
+    MPI_Comm_rank (MPI_COMM_WORLD, &mpi_rank);  
+    
+    int versionNumber = 0;
+    
+    //check version for synapse file; must be version 1 -> only have processor 0 do this to avoid output overload on errors
+    if( mpi_rank == 0 )
+    {
+        hid_t dataset = H5Dopen( info->file_, "version" );
+        if( dataset < 0 ) //no version info - must be version 0
+        {
+            fprintf( stderr, "Error. Incompatible synapse version file (given version 0 file, require version 1).\n" );
+            fprintf( stderr, "Terminating" );
+            MPI_Abort( MPI_COMM_WORLD, 27 );
+        }
+        
+        H5Aread( H5Aopen_name( dataset, "attr" ), H5T_NATIVE_INT, &versionNumber );
+        if( versionNumber != 1 )
+        {
+            fprintf( stderr, "Error. Incompatible synapse version file (given version %d file, require version 1).\n", versionNumber );
+            fprintf( stderr, "Terminating" );
+            MPI_Abort( MPI_COMM_WORLD, 28 );
+        }
+    }
+    return 0;
 }
 ENDVERBATIM
 }
