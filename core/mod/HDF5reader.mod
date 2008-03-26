@@ -136,21 +136,23 @@ VERBATIM {
     //check version for synapse file; must be version 1 -> only have processor 0 do this to avoid output overload on errors
     if( mpi_rank == 0 )
     {
-        hid_t dataset = H5Dopen( info->file_, "version" );
-        if( dataset < 0 ) //no version info - must be version 0
+        hid_t dataset_id = H5Dopen( info->file_, "version" );
+        if( dataset_id < 0 ) //no version info - must be version 0
         {
             fprintf( stderr, "Error. Incompatible synapse version file (given version 0 file, require version 1).\n" );
             fprintf( stderr, "Terminating" );
             MPI_Abort( MPI_COMM_WORLD, 27 );
         }
         
-        H5Aread( H5Aopen_name( dataset, "attr" ), H5T_NATIVE_INT, &versionNumber );
+        H5Aread( H5Aopen_name( dataset_id, "attr" ), H5T_NATIVE_INT, &versionNumber );
         if( versionNumber != 1 )
         {
             fprintf( stderr, "Error. Incompatible synapse version file (given version %d file, require version 1).\n", versionNumber );
             fprintf( stderr, "Terminating" );
             MPI_Abort( MPI_COMM_WORLD, 28 );
         }
+        
+        H5Dclose(dataset_id);
     }
     return 0;
 }
