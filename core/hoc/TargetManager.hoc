@@ -19,6 +19,7 @@ objref targetList, cellVector
 
 proc init() {
     targetList = new List()
+    nErrors = 0
 }
 
 /*****************************************************************
@@ -105,6 +106,11 @@ proc retrieveTargets() { localobj tFile
         parseTargetFile( $s2 )
     }
     
+    if( nErrors > 0 ) {
+        print nErrors, " detected while parsing Target file '", $s2, "'  Terminating."
+        quit()
+    }
+    
     //printTargets()
 }
 
@@ -151,10 +157,17 @@ proc parseTargetFile() { localobj tFile, targetInstance
                 
                 //if this target was seen before, it is already in the list and needs to be updated; otherwise, add it
                 targetInstance = updateTargetList( targetInstance )
+                
+                //make sure that contents for this target haven't been seen before
+                if( targetInstance.isDefined ) {
+                    print "Error.  Multiple definitions for Target ", targetInstance.name
+                    nErrors = nErrors + 1
+                }
                 targetInstance.evalType()
                 
                 //target contents
                 parseTargetContents( tFile, targetInstance )
+                targetInstance.isDefined = 1
             }            
         }
         tFile.close()        
