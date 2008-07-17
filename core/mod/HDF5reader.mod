@@ -5,7 +5,7 @@ has been instantiated.
 ENDCOMMENT
 
 NEURON {
-        POINT_PROCESS HDF5Reader
+        ARTIFICIAL_CELL HDF5Reader
         POINTER ptr
 }
 
