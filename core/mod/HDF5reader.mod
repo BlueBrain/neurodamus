@@ -212,6 +212,34 @@ VERBATIM {
 ENDVERBATIM
 }
 
+FUNCTION getNoOfColumns(){ : string cellname
+VERBATIM { 
+        INFOCAST;
+        Info* info = *ip;
+        //printf("(Inside number of Col)Number of Col %s\n",gargstr(1));
+        if(info->file_>=0 && ifarg(1) && hoc_is_str_arg(1))
+        {
+                char name[256];
+                strncpy(name,gargstr(1),256);
+                if(strncmp(info->name_group,name,256) == 0)
+                {
+                        //printf("Returning :%d\n",(int)info->rowsize_);
+                        int res = (int) info->columnsize_;
+                        //printf("Res :%d\n",res);
+                        return res;
+                }
+                //printf("NumberofCol Error on the name of last loaded data: trying to access:%s loaded:%s\n",name,info->name_group);
+                return 0;
+        }
+        else
+        {
+                return 0;
+        }
+}
+ENDVERBATIM
+}       
+
+
 FUNCTION numberofrows() { : string cellname
 VERBATIM { 
 	INFOCAST; 
