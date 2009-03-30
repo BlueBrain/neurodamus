@@ -107,6 +107,8 @@ VERBATIM { INFOCAST; Info* info = *ip;
 	info->ptrs_[info->np_] = hoc_pgetarg(1);
     if( ifarg(2)) {
         info->scalars_[info->np_] = *getarg(2);
+    } else {
+        info->scalars_[info->np_] = 1;
     }
 
 	++info->np_;
@@ -147,7 +149,7 @@ VERBATIM { INFOCAST; Info* info = *ip;
 	int i;
 	double n = 0;
 	for (i=0; i < info->np_; ++i) {
-      //  printf("%f", (*info->ptrs_[i] * info->scalars_[i]) );
+        //printf("%f = %f * %f\n", (*info->ptrs_[i] * info->scalars_[i]), *info->ptrs_[i], info->scalars_[i] );
 		n += (*info->ptrs_[i] * info->scalars_[i]);
 	}
     
