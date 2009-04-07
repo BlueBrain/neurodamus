@@ -195,7 +195,7 @@ proc parseTargetContents() { local potential localobj tFile, targetInstance, add
         //the line can have any number of entries - cells or other targets
         tFile.scanstr(tstr1)  //goto first entry
         
-        while(0 != strcmp(tstr1, "}")) {
+        while(0 != strcmp(tstr1, "}") && 0 != strcmp( tstr1, "{" ) && !tFile.eof() ) {
             //is this entry a cell?
             sscanf(tstr1, "a%d", &potential )
             sprint( remake, "a%d", potential )
@@ -215,7 +215,7 @@ proc parseTargetContents() { local potential localobj tFile, targetInstance, add
         //each line contains a name, then potentially a subset and potentially a list of values
 		getTrimmedLine( tFile, tstr )
 		sscanf(tstr, "%s",tstr1)
-        while(0 != strcmp(tstr1, "}")) {
+        while(0 != strcmp(tstr1, "}") && 0 != strcmp( tstr1, "{" ) && !tFile.eof() ) {
         
             //is first item of line a cell or target name?
             sscanf(tstr1, "a%d", &potential )
@@ -245,8 +245,14 @@ proc parseTargetContents() { local potential localobj tFile, targetInstance, add
             //goto next line, get first string element
 			getTrimmedLine( tFile, tstr )
             sscanf(tstr, "%s",tstr1) 
-        }
+        }        
     }
+    
+    //whichever the target type, we should have found a closing brace at the end (or encountered an eof or opening brace)
+    if( 0 != strcmp(tstr1, "}") ) { //failed to find closing brace
+        print "Warning: no closing brace found for Target ", targetInstance.name
+    }
+
 }
 
 /*****************************************************************
