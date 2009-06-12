@@ -1,0 +1,119 @@
+/*****************************************************************
+    FileName    : TargetManager.hoc
+    Project     : Blue Brain Project
+    Place       : EPFL, Lausanne Switzerland.
+    Purpose     : The TargetManager provides an entity to encapsulate the steps to get cell points for use in Stimulation or Reporting
+                  This should make certain features of the simulation transparent such as load balancing and target file format
+    Author      : 1. Jim King
+    Revision    : $Revision:  $ at: $Date:  $ by $Author: $
+****************************************************************/
+
+//make sure we have some basic things loaded
+{load_file( "nrngui.hoc" )}
+{load_file( "TPointList.hoc" )}
+
+
+//------------------------------------------------------------------------------------------
+// Target Manager
+//------------------------------------------------------------------------------------------
+
+/**
+ * Target Manager itself, providing the interface for the user to get cell points to use
+ */
+begintemplate TargetManager
+
+{load_file("Target.hoc")}
+
+//basics
+public init
+
+//public functions to be accessed from outside
+public setLoadBalanceInfo
+
+//private functions
+public getTarget, setTargetList
+
+objref targetList, loadBalanceInfo
+
+//------------------------------------------------------------------------------------------
+
+proc init() {
+    targetList = new List()
+    nErrors = 0
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Assign a targetList (most likely created by a TargetParser) to this TargetManager
+ *
+ * @param $o1 Existing targetList this TargetManger should make a reference to.
+ */
+proc setTargetList() {
+print "pass the torch"
+    targetList = $o1
+    
+    printTargets()
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ *  Helper function to aid debugging.  Print targets and info about them to stdout
+ *  Required Inputs : 
+ *  Logic           : For each target, print info about all targets to stdout
+ */
+proc printTargets() {
+    //print names of targets found
+    for targetIndex=0, targetList.count()-1 {
+        print "Found target ", targetList.object(targetIndex).name
+        print "\t All Cells: ", targetList.object(targetIndex).gidMembers.size()
+        print "\t Local Cells: ", targetList.object(targetIndex).gids.size()
+        print "\t Targets: ", targetList.object(targetIndex).subtargets.count()
+        for subIndex=0, targetList.object(targetIndex).subtargets.count()-1 {
+            print "\t\t", targetList.object(targetIndex).subtargets.o[subIndex].name
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ *  Public function which retrieve a target from the list and returns it to the caller
+ *  Required Inputs : $s1 Name of target to find and retrieve
+ *  Logic           : Use binary search to locate the target, throwing an error if the target
+ *                    is not found
+ */
+obfunc getTarget() { local targetIndex  localobj targetUtil
+    strdef errorMessage
+
+    targetUtil = new TargetUtility()
+    targetIndex = targetUtil.binary_search( $s1, targetList )
+    if( targetIndex < 0 ) {  //not found, error
+        print "Error: target ", $s1, " not found.  Attempting to terminate"
+        sprint( errorMessage, "Error: target %s not found", $s1 )
+        execerror( errorMessage )
+    } else {
+        return targetList.object(targetIndex)
+    }    
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ *  If the simulation is using LoadBalancing, a reference to the object handling that
+ *  component can be provided which will be used to check when cells may be local/off node
+ *  
+ *  Required Inputs : $o1 Load balancing info
+ *  Logic           : Save the reference for use during target accessing operations
+ */
+func setLoadBalanceInfo() {
+    loadBalanceInfo = $o1
+    
+    //once loadbalance info is know, can localize targets.
+    for targetIndex=0, targetList.count()-1 {
+        targetList.object(targetIndex).localize( loadBalanceInfo.getGidListForProcessor(), loadBalanceInfo )
+    }
+}
+
+endtemplate TargetManager
