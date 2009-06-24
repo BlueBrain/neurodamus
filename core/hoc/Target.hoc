@@ -11,11 +11,109 @@
 ****************************************************************/
 
 {load_file("stdlib.hoc")}
-//{load_file("fakefile.hoc")}
+{load_file( "TPointList.hoc" )}
 
+/*!
+ * TargetUtility contains a collection of functions that are useful in the creation/maintenence/usage of targets
+ * such as finding a target in a list of target objects sorted by name.  Also included is a basic binary search function 
+ * that finds an int (gid) in a vector (gidvec)
+ */
+begintemplate TargetUtility
+
+public findTarget, binary_search_contains
+
+/*!
+ *  Utility function for searching a List of targets objects and determining if any have
+ *  the indicated name, returning either the index or a negative value which can be used to hint
+ *  at where a target with such a name should be inserted into the list
+ *  
+ *  @param $s1 Name to search for
+ *  @param $o2 Reference to List of sorted Targets to be searched
+ *  @return The index of the target with the requested name, or negative value if not found.
+ *  Logic           : Using a binary search, compare passed name with those of the targets in the list.
+ *                    If target with same name found, return its index; otherwise, return special negative
+ *                    value = -(potential_index+1) where potential_index is where a target with the passed
+ *                    name would go if it were to be inserted.
+ */
+func findTarget() { local binsrch_low, binsrch_mid, binsrch_high localobj targetList
+    targetList = $o2
+
+    //search through list, using binary search to find if this target exists
+    binsrch_low = 0
+    binsrch_high = targetList.count()
+
+    while ( binsrch_low < binsrch_high ) {
+        binsrch_mid = int(( binsrch_low+binsrch_high)*0.5 )
+        
+        if( strcmp( targetList.object(binsrch_mid).name, $s1 ) < 0 ) { //guess again, lower
+            binsrch_low = binsrch_mid+1
+        } else {
+            binsrch_high = binsrch_mid
+        }
+    }
+    
+    if( binsrch_low<targetList.count() ) {
+        if( strcmp( targetList.object(binsrch_low).name, $s1 ) == 0 ) {
+            //found it!
+            return binsrch_low
+        } else {
+            //not found, but it can go here (return inverted index minus 1 )
+            return -(binsrch_low+1)
+        }
+    }
+        
+    //not found, should be appended to list
+    return -(targetList.count()+1)
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Function to search a sorted vector for a value using binary search.  Can this be put somewhere
+ * more common for general usage?
+ *
+ * @param $o1 sorted vector
+ * @param $2 value to search for
+ * @return 1 if the value is found, 0 if not found
+ */
+func binary_search_contains() { local binsrch_low, binsrch_high, binsrch_mid
+    binsrch_low = 0
+    binsrch_high = $o1.size()-1
+    
+    while ( binsrch_low <= binsrch_high ) {
+        binsrch_mid = int(( binsrch_low+binsrch_high)*0.5 )
+
+        if( $o1.x[binsrch_mid] > $2 ) { //guess again, lower
+            binsrch_high = binsrch_mid-1
+        } else if ( $o1.x[binsrch_mid] < $2 ) {  //guess again, higher
+            binsrch_low = binsrch_mid+1
+        } else {
+            return 1
+        }
+    }
+
+    return 0
+}
+
+/*!
+ * - getPoints may be called by TargetManager without a Target object
+ */
+endtemplate TargetUtility
+
+//------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * A Target is a collection of gids and potentially more information that designates points in the circuit
+ * that may be accessed for things such as stimulus injection or report collection.
+ */
 begintemplate Target
 
-// declare members
+//------------------------------------------------------------------------------------------------------------
+// Declare Members Variables
+//------------------------------------------------------------------------------------------------------------
+
 objref localCellsMap, gidMembers, subtargets, flattenedGids, completeFlattenedGids, binfo
 objref cellExtraValues, targetExtraValues, cellSubsets, targetSubsets
 
@@ -41,8 +139,8 @@ public cellExtraValues, targetExtraValues
 
 //! memberfunctions - see below for detailed information
 public evalType, isCellTarget, isSectionTarget, isCompartmentTarget, isSynapseTarget
-public localize, getgid, evaluateCompartments, gids, completegids, getCellExtra, evaluateSynapses
-public isDefined
+public update, getgid, evaluateCompartments, gids, completegids, getCellExtra, evaluateSynapses, getPointList
+public isDefined, completeContains, contains
 
 //------------------------------------------------------------------------------------------------------------
 // Member functions
@@ -147,21 +245,21 @@ proc evalType() {
                       for membership in this target.  If the cell is present, the index of the cell in the gidMembers vector
                       is kept (to maintain coordination with extra data)
 *****************************************************************/
-proc localize() { local gid, cellIndex, binsrch_low, binsrch_high, binsrch_mid  localobj allCellIndices
+proc update() { local gid, cellIndex, binsrch_low, binsrch_high, binsrch_mid  localobj allCellIndices
 
     //Get a vector with indexes that tell the sorted order of the gidMembers vector (don't actually sort gidMembers or risk mixing up 'extra' data)
     allCellIndices = gidMembers.sortindex()
-    binfo = $o2
+    //binfo = $o2
         
     //for each cell on node, determine if it exists in this target
     for cellIndex=0, $o1.size()-1 {
 
-        if (object_id($o2)) {
-            gid = $o2.base_gid( $o1.x[cellIndex] )
-        } else {
+        //if (object_id($o2)) {
+        //    gid = $o2.base_gid( $o1.x[cellIndex] )
+        //} else {
             gid = $o1.x[cellIndex]
-        }
-        
+        //}
+              
         //special binary_search - indirect vector access
         binsrch_low = 0
         binsrch_high = allCellIndices.size()
@@ -277,6 +375,114 @@ obfunc completegids() { local cellIndex targetIndex
     return completeFlattenedGids
 }
 
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Determine if a given gid is included in the gid list for this target on the local cpu
+ *
+ * @param $1 gid to attempt to find
+ * @return 1 if the gid is present, 0 if not included
+ */
+func contains() { localobj targetUtil
+    targetUtil = new TargetUtility()
+    return targetUtil.binary_search_contains( gids(), $1 )
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Determine if a given gid is included in the gid list for this target regardless of which cpu
+ *
+ * @param $1 gid to attempt to find
+ * @return 1 if the gid is present, 0 if not included
+ */
+func completeContains() { localobj targetUtil
+    targetUtil = new TargetUtility()
+    return targetUtil.binary_search_contains( completegids(), $1 )
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Retrieve a TPointList containing compartments (based on target type and contents) of any local cells on the cpu.  I.e. If this target is
+ *  a neuron target, its cells and cells from nested targets have soma(0.5) accessed.  If this target is a Section or Compartment target, 
+ *  the cells and cells from nested targets will be accessed based on subset requests and normalized offset values (empty values for either are 
+ *  interpreted as all subsets and/or all offset values)
+ *  
+ *  @param pnm Reference to ParallelNetManager (or something else in the future) where cell objects are retrieved
+ *  @return TPointList where retrieved section references are stored
+ */
+obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVector, activeTarget, pointListList, activePointList
+	strdef token, NeuronName, SecName
+    
+    pointListList = new List()
+	
+	if( isCellTarget() ) {  //get all cells, and address soma(0.5)
+		gidVec = gids()
+		
+		pointVector = new Vector()
+		pointVector.append( 0.5 )
+        for cellIndex=0, gidVec.size()-1 {
+            activePointList = new TPointList()
+			addressSectionPoints( $o1, gidVec.x[cellIndex], "soma", 0, pointVector, activePointList )
+            pointListList.append( activePointList )
+		}
+        
+        return pointListList
+        
+	} else if( isSectionTarget() ) {
+        pointVector = new Vector()
+        pointVector.append(0.5)
+        
+        //for each cell member
+        for cellIndex=0, localCellsMap.size()-1 {
+            addressSectionPoints( $o1, getgid(cellIndex), getCellExtraValues(cellIndex), pointVector, $o2 )
+        }
+        
+        //for each subtarget
+        for targetIndex=0, subtargets.count()-1 {
+            activeTarget = subtargets.object( targetIndex )
+            if( activeTarget.isCellTarget() ) {  //only do stuff if it is a cell target?  no nesting section targets in each other?
+                
+                gidVec = activeTarget.getFlatVec()  //get all gids from that target and its subtargets
+                for cellIndex=0, gidVec.size()-1 {
+                    addressSectionPoints( $o1, gidVec.x[cellIndex], targetExtraValues.object( targetIndex ), pointVector, $o2 )
+                }
+            } else if( $o1.myid == 0 ) {
+                print "Warning: detected non-cell subtarget nested in Section target.  Skipping"
+            }
+        }
+        
+	} else if( isCompartmentTarget() ) {
+    
+        //for each cell member
+        for cellIndex=0, localCellsMap.size()-1 {
+            addressCompartmentPoints( $o1, getgid(cellIndex), getCellExtraValues(cellIndex), $o2)
+        }
+        
+        //for each subtarget
+        for targetIndex=0, subtargets.count()-1 {
+            activeTarget = subtargets.object( targetIndex )
+            if( activeTarget.isCellTarget() ) {  //only do stuff if cell or section target?  no nesting cmp targets in each other?
+                
+                gidVec = activeTarget.getFlatVec()  //get all gids from that target and its subtargets
+                for cellIndex=0, gidVec.size()-1 {
+                    addressCompartmentPoints( $o1, gidVec.x[cellIndex], targetExtraValues.object(targetIndex), $o2 )
+                }
+                
+            } else if( activeTarget.isSectionTarget() ) {
+                addressCompartmentPointsInSection( $o1, activeTarget, targetExtraValues.object(targetIndex), $o2 )
+            } else if( $o1.myid == 0 ) {
+                print "Warning: detected non-cell, non-section subtarget nested in Compartment target.  Skipping"
+            }
+        }
+    
+    } else if (isSynapseTarget() ) {
+        print "Synapse Targets not supported"
+    } else {
+        print "Invalid Target type for target ", name
+    }
+}
 
 /*****************************************************************
     Retrieve a list of cells and compartment accesses appropriate for this target (affecting any nested targets).  i.e. If this target is
@@ -373,7 +579,7 @@ proc evaluateSynapses() { local val, synIndex, binsrch_low, binsrch_high, binsrc
     while ( binsrch_low < binsrch_high ) {
         binsrch_mid = int(( binsrch_low+binsrch_high)*0.5 )
 
-        if( gidMembers.x[ localCellsMap.x[binsrch_mid] ] < gid ) { //guess again, higher
+        if( gidMembers.x[ localCellsMap.x[binsrch_mid] ] < $1 ) { //guess again, higher
                 binsrch_low = binsrch_mid+1
         } else {
             binsrch_high = binsrch_mid
@@ -381,14 +587,14 @@ proc evaluateSynapses() { local val, synIndex, binsrch_low, binsrch_high, binsrc
     }
         
     if( binsrch_low < localCellsMap.size() ) {
-        if( gidMembers.x[ localCellsMap.x[binsrch_low] ] == gid ) { //present - extract the synapse ids
-            $o2.append( cellExtraValues )
+        if( gidMembers.x[ localCellsMap.x[binsrch_low] ] == $1 ) { //present - extract the synapse ids
+            $o2.append( cellExtraValues.o[localCellsMap.x[binsrch_low] ] )
             return
         }
     } 
     
     //if reaches here, cell was not in cell list; subtargets not supported (yet)
-    print "Warning: gid not found in direct gid member list (Synapse targets do not support nesting yet)\n"
+    print "Warning: gid ", $1, "not found in direct gid member list (Synapse targets do not support nesting yet)\n"
 }
 
 
@@ -464,30 +670,77 @@ proc addressCompartmentPoints(){ local ret, cnt, val  localobj strList, tVec
 }
 
 
-/*****************************************************************
-    Use the extra data of a section target to identify locations on a neuron that must be addressed
-    and apply and compartment addressing to the neuron as well
-    Required Inputs : $o1 Parallel net manager reference
-                      $2 Neuron gid                     
-                      $s3 subset
-                      $o4 Vec of compartments points
-                      $o5 (return value) reference of list object which will contain CellInfo
-    Logic           : 
-*****************************************************************/
+/*!
+ *  Use the extra data of a section target to identify locations on a neuron that must be addressed
+ *  and apply and compartment addressing to the neuron as well
+ *  
+ *  @param $o1 Parallel net manager reference
+ *  @param $2 Neuron gid                     
+ *  @param $s3 subset
+ *  @param $o4 Vec of section points
+ *  @param $o5 Vec of compartments points
+ *  @param $o6 (return value) reference to TPointList object which will be populated with section references
+ */
 proc addressSectionPoints(){ local id, count, retVal, SecSize, SecNo localobj strList, tobj, tCInfo
-/*
     strdef  SecName, NeuronName
     strList =   new List() 
     
+    /* Might need to think more about how load balancing is handled
     tCInfo  =   new CellInfo($2)
     if( object_id(binfo) ) {
         id = binfo.thishost_gid( $2 )
     } else {
         id = $2
-    }
+    }*/
+    id = $2
+    
+    print "retrieve cell object ", id
     
     tobj    =   $o1.pc.gid2obj(id)
     sprint(NeuronName, "%s", tobj)
+
+    if( 0 == strcmp( $s3, "" ) ) {  //want all sections - soma, axon, apic, dend
+        addressSoma( $o1, id, $o5, $o6 )
+        
+        SecSize = tobj.nSecAxonal
+        for count=0, SecSize-1 {
+            addressSection( $o1, id, "axon", count, $o5, $o6 )
+        }
+        
+        SecSize = tobj.nSecBasal
+        for count=0, SecSize-1 {
+            addressSection( $o1, id, "dend", count, $o5, $o6 )
+        }
+        
+        SecSize = tobj.nSecApical
+        for count=0, SecSize-1 {
+            addressSection( $o1, id, "apic", count, $o5, $o6 )
+        }
+    } else { //wanted one section type exclusively
+        if( 0 == strcmp( $s3, "soma" ) ) {
+            addressSoma( $o1, id, $o5, $o6 )
+            return
+        } else if ( 0 == strcmp( $s3, "axon" ) ) {
+            SecSize = tobj.nSecAxonal
+        } else if ( 0 == strcmp( $s3, "dend" ) ) {
+            SecSize = tobj.nSecAxonal
+        } else if ( 0 == strcmp( $s3, "apic" ) ) {
+            SecSize = tobj.nSecAxonal
+        }
+        
+        if ( $o4.size() == 0 ) {  //address all points of requested section
+            for count=0, SecSize-1 {  
+                addressSection( $o1, id, $s3, count, $o4, tCInfo)
+            }
+        } else {  //address only those section points told
+            for count=0, $o4.size()-1 {
+                SecNo   =    getSectionNo(SecSize, $o4.x[count])
+                addressSection( $o1, id, $s3, SecNo, $o5, $o6 )
+            }
+        }
+    }
+    
+/*    
     retVal  =   split($s3, strList)
 	
     if(retVal > 0) {
@@ -507,7 +760,7 @@ proc addressSectionPoints(){ local id, count, retVal, SecSize, SecNo localobj st
         }
         if(retVal > 1) {  //address only those points told
             for count=1, retVal-1 {
-                SecNo   =    GetSectionNo(SecSize, strList.o(count).s)
+                SecNo   =    getSectionNo(SecSize, strList.o(count).s)
                 addressSection( $o1, id, SecName, SecNo, $o4, tCInfo)
             }
         } else { //address all points of the section
@@ -574,46 +827,26 @@ proc addressSection(){local segcnt, SegNo localobj VecObj, tObj
 }
 
 /*****************************************************************
-    This function returns section index from normalized section ref
-    Required Inputs : $1  TotalSection
-                      $s2  NormalizedSection
-    Logic           : 
-*****************************************************************/
-func GetSectionNo(){ local SecNo, Norm
-    //print "Asked with TotalSection [", $1, "] and Norm Sec =[", $s2,"]"
-    Norm =0
-    sscanf($s2,"%f", &Norm)
-    if(Norm>=0 && Norm <=1){        
-        SecNo = Norm * ($1-1)
-    }else {
-        print "Error Normalized Section not wothin range 0 to 1"
-        execerror("Error Normalized Section not wothin range 0 to 1")
-    }
-    
-    //print "Norm = ", Norm, " Returning : ", SecNo
-    return(int(SecNo))
-}
-
-/*****************************************************************
     This function addresses into the soma of the given cell at the given location(s), or 
     for all sections (i.e. 1 @ 0.5) if no locations were given
     Required Inputs : $o1  Parallel Net manager reference
                       $2   base gid
-                      $o3  Vector with each element containing a Compartment ref.
-                      $o4  CellInfo Obj with gid and where data accesses will be stored
+                      $o3  Vector with each element containing a Compartment location (typically 0.5).
+                      $o4  TPointList for this gid  where section refs will be stored
     Logic           : Get the cell, determine which locations need addressing, put into CellInfo Obj
 *****************************************************************/
-proc addressSoma(){local segcnt, SegNo localobj VecObj, tObj
+proc addressSoma(){local segcnt, SegNo localobj VecObj, cellObj
     //get the actual cell object from the pnm
 	strdef tstr, tstr1
-    tObj = $o1.pc.gid2obj($2)
+    cellObj = $o1.pc.gid2obj($2)
     
-    //make sure it has a soma
-    if(!section_exists("soma", tObj)) {
+    //make sure it has a soma - if we are returning a complete TPointList, what do I append?  Also, how do I remember I am in 
+    // 'complete' mode?  Should I just pass a flag around these functions?
+    if(!section_exists("soma", cellObj)) {        
         return
     }
     
-    sprint(tstr, "%s.soma", tObj )
+    sprint(tstr, "%s.soma", cellObj )
     VecObj  = $o3
     
     //If no normalized section references were specified, then supply all of them (of course the soma only has one)
@@ -627,64 +860,30 @@ proc addressSoma(){local segcnt, SegNo localobj VecObj, tObj
     }
     
     //add the address string and the vector of normalized section references
-    $o4.append(new String(tstr), VecObj)
+    for segcnt=0, VecObj.size {
+        $o4.append( tstr, VecObj.x[segcnt] )
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ *  Map an actual index for a section from a normalized value
+ *
+ *  @param $1 Total section count
+ *  @param $2 Normalized section value
+ *  @return The resulting section index
+ */
+func getSectionNo(){ local SecNo
+    
+    if( $2>=0 && $2 <=1){        
+        SecNo = $2 * ($1-1)
+    }else {
+        print "Error Normalized Section not wothin range 0 to 1"
+        execerror("Error Normalized Section not wothin range 0 to 1")
+    }
+    
+    return(int(SecNo))
 }
 
 endtemplate Target
-
-// Utility functions 
-
-begintemplate TargetUtility
-
-public binary_search
-
-/*!
- *  Utility function for searching a List of targets objects and determining if any have
- *  the indicated name, returning either the index or a negative value which can be used to hint
- *  at where a target with such a name should be inserted into the list
- *  
- *  @param $s1 Name to search for
- *  @param $o2 Reference to List of sorted Targets to be searched
- *  @return The index of the target with the requested name, or negative value if not found.
- *  Logic           : Using a binary search, compare passed name with those of the targets in the list.
- *                    If target with same name found, return its index; otherwise, return special negative
- *                    value = -(potential_index+1) where potential_index is where a target with the passed
- *                    name would go if it were to be inserted.
- */
-func binary_search() { local binsrch_low, binsrch_mid, binsrch_high localobj targetList
-    targetList = $o2
-
-    //search through list, using binary search to find if this target exists
-    binsrch_low = 0
-    binsrch_high = targetList.count()
-
-    while ( binsrch_low < binsrch_high ) {
-        binsrch_mid = int(( binsrch_low+binsrch_high)*0.5 )
-        
-        if( strcmp( targetList.object(binsrch_mid).name, $s1 ) < 0 ) { //guess again, lower
-            binsrch_low = binsrch_mid+1
-        } else {
-            binsrch_high = binsrch_mid
-        }
-    }
-    
-    if( binsrch_low<targetList.count() ) {
-        if( strcmp( targetList.object(binsrch_low).name, $s1 ) == 0 ) {
-            //found it!
-            return binsrch_low
-        } else {
-            //not found, but it can go here (return inverted index minus 1 )
-            return -(binsrch_low+1)
-        }
-    }
-        
-    //not found, should be appended to list
-    return -(targetList.count()+1)
-}
-
-
-/*!
- * - getPoints may be called by TargetManager without a Target object
- */
-
-endtemplate TargetUtility

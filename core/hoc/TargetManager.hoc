@@ -10,8 +10,6 @@
 
 //make sure we have some basic things loaded
 {load_file( "nrngui.hoc" )}
-{load_file( "TPointList.hoc" )}
-
 
 //------------------------------------------------------------------------------------------
 // Target Manager
@@ -24,6 +22,8 @@ begintemplate TargetManager
 
 {load_file("Target.hoc")}
 
+objref targetList, loadBalanceInfo, pnm, cellList
+
 //basics
 public init
 
@@ -31,14 +31,20 @@ public init
 public setLoadBalanceInfo
 
 //private functions
-public getTarget, setTargetList
-
-objref targetList, loadBalanceInfo
+public getTarget, setTargetList, pnm, getPointList
 
 //------------------------------------------------------------------------------------------
 
-proc init() {
-    targetList = new List()
+proc init() { local lastgid, cellIndex  localobj cellObj, secList, pointList
+    
+    if( argtype(1) == 1 ) {
+        targetList = $o1
+        
+        if( argtype(2) == 1 ) {
+            //should have recevied pnm
+            pnm = $o2
+        }
+    }
     nErrors = 0
 }
 
@@ -50,10 +56,25 @@ proc init() {
  * @param $o1 Existing targetList this TargetManger should make a reference to.
  */
 proc setTargetList() {
-print "pass the torch"
     targetList = $o1
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * If this TargetManager is not being used for a bluebrain simulaion, the user must register
+ * any cells so that the TargetManager can find them (under a bluebrain sim, the pnm object
+ * or something wrapping it will be used)
+ *
+ * @param $o1 Reference to a cell object the user has created
+ */
+proc registerCell() {
+    if( object_id(cellList) == 0 ) {
+        cellList = new List()
+    }
     
-    printTargets()
+    //should I sort this list?  well, yes, but not now :P
+    cellList.append( $o1 )
 }
 
 //------------------------------------------------------------------------------------------
@@ -88,7 +109,7 @@ obfunc getTarget() { local targetIndex  localobj targetUtil
     strdef errorMessage
 
     targetUtil = new TargetUtility()
-    targetIndex = targetUtil.binary_search( $s1, targetList )
+    targetIndex = targetUtil.findTarget( $s1, targetList )
     if( targetIndex < 0 ) {  //not found, error
         print "Error: target ", $s1, " not found.  Attempting to terminate"
         sprint( errorMessage, "Error: target %s not found", $s1 )
@@ -96,6 +117,32 @@ obfunc getTarget() { local targetIndex  localobj targetUtil
     } else {
         return targetList.object(targetIndex)
     }    
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Retrieve TPointList for the requested item.  If a gid is passed, a TPointList is retrieved for the given gid; otherwise, 
+ * a TargetName is expected and a List of TPointLists are retrieved for members of the Target which are local to the cpu
+ *
+ * @param $1 or $s1 gid of a cell registered with the TargetManager, or name of Target parsed from a target file
+ * @return TPointList for single gid, List<TPointList> for Target
+ */
+obfunc getPointList() { localobj activeTarget
+    
+    //if cells were registered directly, use that cell list to get cell objects for addressing sections; otherwise,
+    // we will use a pnm object (for now - maybe it will be wrapped in another object?)
+    
+    if( argtype(1) == 0 && object_id(cellList) ) {
+        print "cellList implementation pending"
+    } else if( argtype(1) == 2 && object_id(pnm) ) {
+        
+        activeTarget = getTarget($s1)
+        return activeTarget.getPointList( pnm )
+        
+    } else {
+        print "no cell list?  no pnm?  where am I supposed to get cell sections from?.  I'm leaving"
+    }
 }
 
 //------------------------------------------------------------------------------------------

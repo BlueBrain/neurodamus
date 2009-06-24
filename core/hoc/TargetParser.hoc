@@ -13,18 +13,15 @@
 /*!
  * TargetParser for reading and storing initial targets from files.  This is intended for bglib simulations as opposed
  * to single cpu simulations.  bglib simulations will use this class to parse targets before cells are distributed, then come
- * back later to localize.  I don't know why this helps.  I think the intent was to remove LoadBalance info from the TargetManager,
- * but I don't see how that was ever an issue for single cell simulations since it should be hidden.  Also, I don't think this does
- * remove the need for LoadBalance information to be accessible since it will be necessary to get the PointLists anyways.
- *
- *  
+ * back later to localize (updateTargets).  The intent is to separate parsing from usage, and maybe to remove LoadBalance info from the TargetManager,
+ * ( I don't know if this does remove remove the need for LoadBalance information to be accessible since it might be necessary to get the PointLists anyways.)
  */
 begintemplate TargetParser
 
 objref targetList
 
 //public functions
-public init, open, targetList
+public init, open, targetList, getTarget, updateTargets
 
 //------------------------------------------------------------------------------------------------------------
 
@@ -109,7 +106,7 @@ proc open() { localobj tFile, targetInstance
 obfunc updateTargetList() { local targetIndex  localobj targetUtil
     targetUtil = new TargetUtility()
     
-    targetIndex = targetUtil.binary_search( $o1.name, targetList )
+    targetIndex = targetUtil.findTarget( $o1.name, targetList )
     if( targetIndex < 0 ) {  //not found, so insert it at indicated location
         targetIndex = -(targetIndex+1)
         if( targetIndex == targetList.count() ) {
@@ -120,6 +117,21 @@ obfunc updateTargetList() { local targetIndex  localobj targetUtil
         return $o1
     } else {
         return targetList.object(targetIndex)
+    }
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * For each target in the targetList, update them so that there exist abbreviated lists
+ * related to cells local to the cpu.
+ *
+ * @param $o1 Vector containing gids that are on the local cpu
+ */
+proc updateTargets() { local targetIndex localobj activeTarget
+    for targetIndex=0, targetList.count()-1 {
+        activeTarget = targetList.o(targetIndex)
+        activeTarget.update( $o1 )
     }
 }
 
@@ -283,6 +295,28 @@ func addMember() { local potentialGid  localobj targetInstance, addition
 //------------------------------------------------------------------------------------------------------------
 
 /*!
+ *  Public function which retrieve a target from the list and returns it to the caller
+ *  Required Inputs : $s1 Name of target to find and retrieve
+ *  Logic           : Use binary search to locate the target, throwing an error if the target
+ *                    is not found
+ */
+obfunc getTarget() { local targetIndex  localobj targetUtil
+    strdef errorMessage
+
+    targetUtil = new TargetUtility()
+    targetIndex = targetUtil.findTarget( $s1, targetList )
+    if( targetIndex < 0 ) {  //not found, error
+        print "Error: target ", $s1, " not found.  Attempting to terminate"
+        sprint( errorMessage, "Error: target %s not found", $s1 )
+        execerror( errorMessage )
+    } else {
+        return targetList.object(targetIndex)
+    }    
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
  * Utility function for handling the retrieval of a line from a file and removing leading
  * white space or trailing comments (trailing white space is not checked, but should not be a problem)
  *
@@ -321,6 +355,7 @@ proc getTrimmedLine() { localobj targetFile, strobj
 
 /*!
  *  Split a string across whitespace into a list of many strings, returning the number of strings found
+ *  maybe this will be moved into global shared hoc file as config file parsing uses a similar function?
  *  
  *  @param $s1 String to split
  *  @param $o1 List which will be populated by string objects
