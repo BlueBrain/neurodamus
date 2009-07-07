@@ -10,6 +10,10 @@
 
 //make sure we have some basic things loaded
 {load_file( "nrngui.hoc" )}
+<<<<<<< .mine
+{load_file( "Map.hoc" )}
+=======
+>>>>>>> .r541
 
 //------------------------------------------------------------------------------------------
 // Target Manager
@@ -22,18 +26,37 @@ begintemplate TargetManager
 
 {load_file("Target.hoc")}
 
+<<<<<<< .mine
+//-----------------------------------------------------------------------------------------------
+// Declare memeber variables
+//-----------------------------------------------------------------------------------------------
+=======
 objref targetList, loadBalanceInfo, pnm, cellList
 
 //basics
 public init
+>>>>>>> .r541
 
-//public functions to be accessed from outside
-public setLoadBalanceInfo
+objref targetList, loadBalanceInfo, pnm, cellList, sectionAccess
 
+<<<<<<< .mine
+//-----------------------------------------------------------------------------------------------
+// public memebers
+//-----------------------------------------------------------------------------------------------
+=======
 //private functions
 public getTarget, setTargetList, pnm, getPointList
+>>>>>>> .r541
 
-//------------------------------------------------------------------------------------------
+<<<<<<< .mine
+public init, setLoadBalanceInfo
+public getTarget, setTargetList, pnm, getPointList, locationToPoint
+
+=======
+>>>>>>> .r541
+//-----------------------------------------------------------------------------------------------
+// Memeber function implementations
+//-----------------------------------------------------------------------------------------------
 
 proc init() { local lastgid, cellIndex  localobj cellObj, secList, pointList
     
@@ -46,6 +69,8 @@ proc init() { local lastgid, cellIndex  localobj cellObj, secList, pointList
         }
     }
     nErrors = 0
+    
+    sectionAccess = new Map()
 }
 
 //------------------------------------------------------------------------------------------
@@ -143,6 +168,107 @@ obfunc getPointList() { localobj activeTarget
     } else {
         print "no cell list?  no pnm?  where am I supposed to get cell sections from?.  I'm leaving"
     }
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Given a location for a cell, section id, segment id, and offset into the segment, create a TPointList
+ * containing a section reference to there
+ *
+ * @param $1 gid
+ * @param $2 section index (isec)
+ * @param $3 distance to start of segment (ipt)
+ * @param $4 offset distance beyond the ipt (microns)
+ * @return TPointList with 1 item, where the synapse should go
+ */
+obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localobj resultPoint, cellSections, tmpSection, nil
+    gid = $1
+    isec = $2
+    ipt = $3
+    offset = $4
+
+    resultPoint = new TPointList( gid )
+    
+    cellSections = gid2sections( gid )
+    if( object_id(cellSections) == 0 ) {
+        print "something is not implemented here..."
+        quit()
+    }
+    
+    distance = -1
+    
+    print cellSections.count()
+    tmpSection = cellSections.o(isec)
+    
+    if (tmpSection == nil) {  //assume we are in LoadBalance mode (until we decide to verify this either here or in a higher layer)
+        resultPoint.append( tmpSection, -1 )
+    }else {
+        tmpSection.sec {
+            // when a cell is split, the path from the split point
+            // to the root gets its 3d points reversed because
+            // the section orientation is reversed.
+            if (section_orientation() == 1) {
+                ipt = n3d() - 1 - ipt
+                offset = -offset
+            }
+            if (ipt < n3d()) {
+                distance = (arc3d(ipt)+offset)/L
+                
+                if( distance > 1.0 ) {
+                    total = (arc3d(ipt)+offset)
+                    //printf( "%%diff %g absdiff %g\n", (total-L)/L, (total-L) )
+                    distance = 1.0
+                }
+            }
+            if (section_orientation() == 1) {
+                distance = 1 - distance
+            }
+        }
+                
+        resultPoint.append( tmpSection, distance )
+    }
+        
+    return resultPoint
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * For a given gid, we want SectionRefs stored in a List for random access.  This function will
+ * see if such a List already exists and return it, or build that list as needed, storing it for the future before
+ * returning the result.  Note that in split cases, the deleted sections will still have their SectionRefs.
+ * Should this function instead go in the Node object?  The LoadBalance object?
+ *
+ * @param $1 gid
+ * @return List object with SectionRefs to every section in the cell
+ */
+obfunc gid2sections() { localobj searchString, resultList, nil, cellRef
+    searchString = new String()
+    sprint( searchString.s, "%d", $1 )
+    
+    resultList = sectionAccess.get( searchString )
+    
+    if( object_id(resultList) == 0 ) {  //must build new one
+        //determine if we should use pnm or cellList based on which is actually allocated
+        if( object_id(pnm) ) {
+            cellRef = pnm.pc.gid2obj($1)
+        } else if( object_id(cellList) ) {
+            print "cellList implementation pending"
+            return nil
+        } else {
+            print "no cell list?  no pnm?  where am I supposed to get cell sections from?.  I'm leaving"
+            return nil
+        }
+        
+        resultList = new List()
+        
+        forsec cellRef.all resultList.append(new SectionRef())
+        
+        sectionAccess.put( searchString, resultList )
+    }
+    
+    return resultList
 }
 
 //------------------------------------------------------------------------------------------

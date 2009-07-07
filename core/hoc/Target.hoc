@@ -842,14 +842,16 @@ proc addressSoma(){local segcnt, SegNo localobj VecObj, cellObj
     
     //make sure it has a soma - if we are returning a complete TPointList, what do I append?  Also, how do I remember I am in 
     // 'complete' mode?  Should I just pass a flag around these functions?
-    if(!section_exists("soma", cellObj)) {        
+    if(!section_exists("soma", cellObj)) {
+        
+        //TODO: insert null reference into TPointList of requested to return 'complete'
         return
     }
     
     sprint(tstr, "%s.soma", cellObj )
     VecObj  = $o3
     
-    //If no normalized section references were specified, then supply all of them (of course the soma only has one)
+    //If no normalized section references were specified, then supply all of them (of course the soma typically only has one)
     if(VecObj.size == 0){
         VecObj  = new Vector()
         sprint(tstr1, "access %s", tstr)
