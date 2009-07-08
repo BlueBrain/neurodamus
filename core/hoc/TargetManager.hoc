@@ -229,6 +229,10 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
     isec = $2
     ipt = $3
     offset = $4
+    
+    if( offset < 0 ) { //soma connection, just zero it
+        offset = 0
+    }
 
     resultPoint = new TPointList( gid )
     
@@ -250,11 +254,14 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
             // when a cell is split, the path from the split point
             // to the root gets its 3d points reversed because
             // the section orientation is reversed.
+            print "ipt ", ipt
             if (section_orientation() == 1) {
                 ipt = n3d() - 1 - ipt
                 offset = -offset
             }
+            print "ipt ", ipt, "n3d ", n3d()
             if (ipt < n3d()) {
+                print "calc ", arc3d(ipt), "  + ", offset, " / ", L
                 distance = (arc3d(ipt)+offset)/L
                 
                 if( distance > 1.0 ) {
@@ -267,7 +274,8 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
                 distance = 1 - distance
             }
         }
-                
+        
+        print "distance = ", distance
         resultPoint.append( tmpSection, distance )
     }
         

@@ -2,8 +2,8 @@
 begintemplate Cell
 public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nseg, SetCellProperties
 public soma, dend, apic, axon, nSecAxonal
-public all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal
-objref all, apical, basal, somatic, axonal, this, CCellRef
+public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal
+objref synlist, all, apical, basal, somatic, axonal, this, CCellRef
 proc init() {
 	gid 	= 0
 	all 	= new SectionList()
@@ -16,6 +16,8 @@ proc init() {
 	if(numarg()>1){
 		AddMorphNL($s2)
     }
+    
+    synlist = new List()
 
 }
 create soma[1], dend[1], apic[1], axon[1]

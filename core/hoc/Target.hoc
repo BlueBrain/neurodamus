@@ -866,7 +866,7 @@ proc addressSoma(){local segcnt, SegNo localobj VecObj, cellObj
     
     //add the address string and the vector of normalized section references
     for segcnt=0, VecObj.size-1 {
-        print "seg index ", segcnt
+        printf( "append %s %g to %s\n", tstr, VecObj.x[segcnt], $o4 )
         $o4.append( tstr, VecObj.x[segcnt] )
     }
 }
