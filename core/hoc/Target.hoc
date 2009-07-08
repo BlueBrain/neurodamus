@@ -853,16 +853,20 @@ proc addressSoma(){local segcnt, SegNo localobj VecObj, cellObj
     
     //If no normalized section references were specified, then supply all of them (of course the soma typically only has one)
     if(VecObj.size == 0){
+        print "insert default content into VecObj"
         VecObj  = new Vector()
         sprint(tstr1, "access %s", tstr)
         execute(tstr1)
         for segcnt=1, nseg {
             VecObj.append(segcnt/(nseg+1))
         }
+    } else {
+        print "have ", VecObj.size, " items"
     }
     
     //add the address string and the vector of normalized section references
-    for segcnt=0, VecObj.size {
+    for segcnt=0, VecObj.size-1 {
+        print "seg index ", segcnt
         $o4.append( tstr, VecObj.x[segcnt] )
     }
 }

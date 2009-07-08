@@ -10,10 +10,67 @@
 
 //make sure we have some basic things loaded
 {load_file( "nrngui.hoc" )}
-<<<<<<< .mine
 {load_file( "Map.hoc" )}
-=======
->>>>>>> .r541
+
+//------------------------------------------------------------------------------------------
+// 
+//------------------------------------------------------------------------------------------
+
+/**
+ * When getting a location to a compartment by section index, the compartments must be serialized
+ * and stored for future access.  Maybe we will better encapsulate this object?
+ */
+begintemplate SerializedSections
+
+//-----------------------------------------------------------------------------------------------
+// Declare member variables
+//-----------------------------------------------------------------------------------------------
+
+objref isec2sec[1] 
+
+//-----------------------------------------------------------------------------------------------
+// public members
+//-----------------------------------------------------------------------------------------------
+
+public isec2sec, init, count
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Constructor serializes the sections of a cell for easier random access.
+ *
+ * $o1 Cell reference (basic cell, not a CCell)
+ */
+proc init() { local index
+    
+    n = $o1.nSecAll
+    print "section count ", n
+    
+    objref isec2sec[n]
+    
+    index=1
+    forsec $o1.all {
+        if( v(0.0001) >= n ) {
+            printf("%s v(1)=%d n3d()=%d\n", secname(), v(1), n3d())
+			execerror("Error: failure in mk2_isec2sec()")
+        }
+        print index, v(0.0001)
+        isec2sec[v(0.0001)] = new SectionRef()
+        index = index+1
+    }
+}
+
+/*!
+ * @return The number of sections the cell originally had
+ */
+func count() {
+    return n
+}
+
+endtemplate SerializedSections
+
 
 //------------------------------------------------------------------------------------------
 // Target Manager
@@ -26,36 +83,21 @@ begintemplate TargetManager
 
 {load_file("Target.hoc")}
 
-<<<<<<< .mine
 //-----------------------------------------------------------------------------------------------
-// Declare memeber variables
+// Declare member variables
 //-----------------------------------------------------------------------------------------------
-=======
-objref targetList, loadBalanceInfo, pnm, cellList
 
-//basics
-public init
->>>>>>> .r541
+objref targetList, loadBalanceInfo, pnm, cellList, sectionAccess, isec2sec[1]
 
-objref targetList, loadBalanceInfo, pnm, cellList, sectionAccess
-
-<<<<<<< .mine
 //-----------------------------------------------------------------------------------------------
-// public memebers
+// public members
 //-----------------------------------------------------------------------------------------------
-=======
-//private functions
-public getTarget, setTargetList, pnm, getPointList
->>>>>>> .r541
 
-<<<<<<< .mine
 public init, setLoadBalanceInfo
 public getTarget, setTargetList, pnm, getPointList, locationToPoint
 
-=======
->>>>>>> .r541
 //-----------------------------------------------------------------------------------------------
-// Memeber function implementations
+// Member function implementations
 //-----------------------------------------------------------------------------------------------
 
 proc init() { local lastgid, cellIndex  localobj cellObj, secList, pointList
@@ -198,8 +240,8 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
     
     distance = -1
     
-    print cellSections.count()
-    tmpSection = cellSections.o(isec)
+    print "total sections (original) ", cellSections.count()
+    tmpSection = cellSections.isec2sec[isec]
     
     if (tmpSection == nil) {  //assume we are in LoadBalance mode (until we decide to verify this either here or in a higher layer)
         resultPoint.append( tmpSection, -1 )
@@ -243,13 +285,13 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
  * @param $1 gid
  * @return List object with SectionRefs to every section in the cell
  */
-obfunc gid2sections() { localobj searchString, resultList, nil, cellRef
+obfunc gid2sections() { local n  localobj searchString, resultSerial, nil, cellRef
     searchString = new String()
     sprint( searchString.s, "%d", $1 )
     
-    resultList = sectionAccess.get( searchString )
+    resultSerial = sectionAccess.get( searchString )
     
-    if( object_id(resultList) == 0 ) {  //must build new one
+    if( object_id(resultSerial) == 0 ) {  //must build new one
         //determine if we should use pnm or cellList based on which is actually allocated
         if( object_id(pnm) ) {
             cellRef = pnm.pc.gid2obj($1)
@@ -261,14 +303,12 @@ obfunc gid2sections() { localobj searchString, resultList, nil, cellRef
             return nil
         }
         
-        resultList = new List()
+        resultSerial = new SerializedSections( cellRef )
         
-        forsec cellRef.all resultList.append(new SectionRef())
-        
-        sectionAccess.put( searchString, resultList )
+        sectionAccess.put( searchString, resultSerial )
     }
     
-    return resultList
+    return resultSerial
 }
 
 //------------------------------------------------------------------------------------------

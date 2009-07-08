@@ -1,0 +1,93 @@
+{load_file("import3d.hoc")}
+begintemplate Cell
+public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nseg, SetCellProperties
+public soma, dend, apic, axon, nSecAxonal
+public all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal
+objref all, apical, basal, somatic, axonal, this, CCellRef
+proc init() {
+	gid 	= 0
+	all 	= new SectionList()
+	somatic = new SectionList()
+	basal 	= new SectionList()
+	apical 	= new SectionList()
+	axonal 	= new SectionList()
+    forall delete_section()
+    if(numarg()>0) gid = $1
+	if(numarg()>1){
+		AddMorphNL($s2)
+    }
+
+}
+create soma[1], dend[1], apic[1], axon[1]
+proc AddMorphNL(){ localobj nl, import
+		forall delete_section()
+        nl = new Import3d_Neurolucida3()
+        nl.quiet = 1
+        nl.input($s1)
+        import = new Import3d_GUI(nl, 0)
+        import.instantiate(this)
+        indexSections(import)
+        geom_nseg()
+}
+
+proc SetCellProperties(){local Rm,v_init
+	Rm = $1
+	v_init = $2
+	forall {
+		insert pas
+		Ra = 80
+		g_pas=1/Rm
+		e_pas=v_init
+		cm = 1
+	}
+}
+
+external lambda_f
+proc geom_nseg() {local nSec, L1, L2, D1, D2, nSeg1, nSeg2
+  soma area(.5) // make sure diam reflects 3d points
+  nSec = 0
+  forsec all {
+  nseg = int((L/(0.1*lambda_f(100))+.9)/2)*2 + 1
+  nSec = nSec + 1
+  }
+  nSecAll = nSec
+  nSec = 0
+  forsec somatic { nSec = nSec + 1}
+  nSecSoma	= 	nSec
+  nSec = 0
+  forsec apical { nSec = nSec + 1}
+  nSecApical= 	nSec
+  nSec = 0
+  forsec basal { nSec = nSec + 1}
+  nSecBasal	= 	nSec
+  nSec = 0
+  forsec axonal { nSec = nSec + 1}
+  nSecAxonal	= 	nSec
+}
+
+obfunc getCCell(){
+	return CCellRef
+}
+proc setCCell(){
+	CCellRef = $o1
+}
+
+/*!
+ * Assign section indices to the section voltage value.  This will be useful later for serializing 
+ * the sections into an array.  Note, that once the simulation begins, the voltage values will revert to actual data again.
+ *
+ * @param $o1 Import3d_GUI object
+ */
+proc indexSections() { local index  localobj tmpString, s
+    tmpString = new String()
+
+    s = $o1.swc.sections
+    for i=0, s.count()-1 {
+        $o1.name( s.object(i), tmpString.s )
+        sprint( tmpString.s, "%s.v(0.0001) = %d", tmpString.s, i )
+        execute( tmpString.s, this )
+    }
+}
+
+create soma[1], dend[1], apic[1], axon[1]
+endtemplate Cell
