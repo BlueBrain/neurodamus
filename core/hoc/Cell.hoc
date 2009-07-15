@@ -22,7 +22,7 @@ proc init() {
 }
 create soma[1], dend[1], apic[1], axon[1]
 proc AddMorphNL(){ localobj nl, import
-		forall delete_section()
+	forall delete_section()
         nl = new Import3d_Neurolucida3()
         nl.quiet = 1
         nl.input($s1)
