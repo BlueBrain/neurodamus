@@ -409,7 +409,7 @@ func completeContains() { localobj targetUtil
  *  the cells and cells from nested targets will be accessed based on subset requests and normalized offset values (empty values for either are 
  *  interpreted as all subsets and/or all offset values)
  *  
- *  @param pnm Reference to ParallelNetManager (or something else in the future) where cell objects are retrieved
+ *  @param pnm Reference to LoadBalance where cell objects are retrieved
  *  @return TPointList where retrieved section references are stored
  */
 obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVector, activeTarget, pointListList, activePointList
@@ -448,7 +448,7 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
                 for cellIndex=0, gidVec.size()-1 {
                     addressSectionPoints( $o1, gidVec.x[cellIndex], targetExtraValues.object( targetIndex ), pointVector, $o2 )
                 }
-            } else if( $o1.myid == 0 ) {
+            } else { //if( $o1.myid == 0 ) {
                 print "Warning: detected non-cell subtarget nested in Section target.  Skipping"
             }
         }
@@ -472,7 +472,7 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
                 
             } else if( activeTarget.isSectionTarget() ) {
                 addressCompartmentPointsInSection( $o1, activeTarget, targetExtraValues.object(targetIndex), $o2 )
-            } else if( $o1.myid == 0 ) {
+            } else { //if( $o1.myid == 0 ) {
                 print "Warning: detected non-cell, non-section subtarget nested in Compartment target.  Skipping"
             }
         }
@@ -490,7 +490,7 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
     the cells and cells from nested targets will be accessed based on subset requests and normalized offset values (empty values for either are 
     interpreted as all subsets and/or all offset values)
     
-    Required Inputs : $o1 Reference to parallel net manager with simulation info
+    Required Inputs : $o1 Reference to LoadBalance with simulation info
                     : $o2 List where retrieved cell data will be stored
     Logic           : Start with the cells in this target, then traverse nested targets, applying the target type of this target down the
                       chain.  i.e. The subtargets will not recursively call this function, but rather the private function '??' will get
@@ -527,7 +527,7 @@ proc evaluateCompartments() { local cellIndex, targetIndex  localobj strobj, gid
                 for cellIndex=0, gidVec.size()-1 {
                     addressSectionPoints( $o1, gidVec.x[cellIndex], targetExtraValues.object( targetIndex ), pointVector, $o2 )
                 }
-            } else if( $o1.myid == 0 ) {
+            } else { //if( $o1.myid == 0 ) {
                 print "Warning: detected non-cell subtarget nested in Section target.  Skipping"
             }
         }
@@ -551,7 +551,7 @@ proc evaluateCompartments() { local cellIndex, targetIndex  localobj strobj, gid
                 
             } else if( activeTarget.isSectionTarget() ) {
                 addressCompartmentPointsInSection( $o1, activeTarget, targetExtraValues.object(targetIndex), $o2 )
-            } else if( $o1.myid == 0 ) {
+            } else { //if( $o1.myid == 0 ) {
                 print "Warning: detected non-cell, non-section subtarget nested in Compartment target.  Skipping"
             }
         }
@@ -694,9 +694,7 @@ proc addressSectionPoints(){ local id, count, retVal, SecSize, SecNo localobj st
     }*/
     id = $2
     
-    print "retrieve cell object ", id
-    
-    tobj    =   $o1.pc.gid2obj(id)
+    tobj    =   $o1.getCell( id ) //$o1.pc.gid2obj(id)
     sprint(NeuronName, "%s", tobj)
 
     if( 0 == strcmp( $s3, "" ) ) {  //want all sections - soma, axon, apic, dend
@@ -806,7 +804,9 @@ proc addressSectionPoints(){ local id, count, retVal, SecSize, SecNo localobj st
 proc addressSection(){local segcnt, SegNo localobj VecObj, tObj
 	strdef tstr, tstr1
     //get the actual cell object prom pnm
-    tObj = $o1.pc.gid2obj($2)
+    
+    tObj = $o1.getCell( $2 )
+    //tObj = $o1.pc.gid2obj($2)
     
     if(!section_exists($s3,$4 ,tObj)) {
 		return
@@ -838,7 +838,9 @@ proc addressSection(){local segcnt, SegNo localobj VecObj, tObj
 proc addressSoma(){local segcnt, SegNo localobj VecObj, cellObj
     //get the actual cell object from the pnm
 	strdef tstr, tstr1
-    cellObj = $o1.pc.gid2obj($2)
+    //cellObj = $o1.pc.gid2obj($2)
+    
+    cellObj = $o1.getCell( $2 )
     
     //make sure it has a soma - if we are returning a complete TPointList, what do I append?  Also, how do I remember I am in 
     // 'complete' mode?  Should I just pass a flag around these functions?

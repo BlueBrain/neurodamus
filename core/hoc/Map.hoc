@@ -56,13 +56,13 @@ obfunc get() { local mapIndex localobj nil
         searchName = $s1
     }
     
-    print "look for ", searchName
+    //print "look for ", searchName
     
     //iterate over list until we find a name that matches
     for mapIndex=0, stringList.count()-1 {
-        print mapIndex, " ", stringList.o(mapIndex).s
+        //print mapIndex, " ", stringList.o(mapIndex).s
         if( strcmp( stringList.o(mapIndex).s, searchName ) == 0 ) {
-            print "    found at index ", mapIndex, "!"
+            //print "    found at index ", mapIndex, "!"
             return valueList.o(mapIndex)
         }
     }

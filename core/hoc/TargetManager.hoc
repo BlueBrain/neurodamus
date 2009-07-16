@@ -26,7 +26,7 @@ begintemplate SerializedSections
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-objref isec2sec[1] 
+objref isec2sec[1]
 
 //-----------------------------------------------------------------------------------------------
 // public members
@@ -46,7 +46,7 @@ public isec2sec, init, count
 proc init() { local index
     
     n = $o1.nSecAll
-    print "section count ", n
+    //print "section count ", n
     
     objref isec2sec[n]
     
@@ -56,7 +56,7 @@ proc init() { local index
             printf("%s v(1)=%d n3d()=%d\n", secname(), v(1), n3d())
 			execerror("Error: failure in mk2_isec2sec()")
         }
-        print index, v(0.0001)
+        //print index, v(0.0001)
         isec2sec[v(0.0001)] = new SectionRef()
         index = index+1
     }
@@ -87,28 +87,30 @@ begintemplate TargetManager
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-objref targetList, loadBalanceInfo, pnm, cellList, sectionAccess, isec2sec[1]
+objref targetList, pnm, cellList, sectionAccess, isec2sec[1], loadBalance
 
 //-----------------------------------------------------------------------------------------------
 // public members
 //-----------------------------------------------------------------------------------------------
 
-public init, setLoadBalanceInfo
-public getTarget, setTargetList, pnm, getPointList, locationToPoint
+public init
+public getTarget, setTargetList, pnm, getPointList, locationToPoint, loadBalance
 
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
 //-----------------------------------------------------------------------------------------------
 
+/*!
+ * $o1 List with targets most likely parsed from Target files
+ * $o2 ParallelNetManager
+ * $o3 LoadBalance object for accessing sections
+ */
 proc init() { local lastgid, cellIndex  localobj cellObj, secList, pointList
     
-    if( argtype(1) == 1 ) {
+    if( argtype(1) == 1 ) {  //need to sort out additional use cases for TargetManager
         targetList = $o1
-        
-        if( argtype(2) == 1 ) {
-            //should have recevied pnm
-            pnm = $o2
-        }
+        pnm = $o2
+        loadBalance = $o3
     }
     nErrors = 0
     
@@ -205,7 +207,7 @@ obfunc getPointList() { localobj activeTarget
     } else if( argtype(1) == 2 && object_id(pnm) ) {
         
         activeTarget = getTarget($s1)
-        return activeTarget.getPointList( pnm )
+        return activeTarget.getPointList( loadBalance )
         
     } else {
         print "no cell list?  no pnm?  where am I supposed to get cell sections from?.  I'm leaving"
@@ -244,7 +246,7 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
     
     distance = -1
     
-    print "total sections (original) ", cellSections.count()
+    //print "total sections (original) ", cellSections.count()
     tmpSection = cellSections.isec2sec[isec]
     
     if (tmpSection == nil) {  //assume we are in LoadBalance mode (until we decide to verify this either here or in a higher layer)
@@ -254,14 +256,14 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
             // when a cell is split, the path from the split point
             // to the root gets its 3d points reversed because
             // the section orientation is reversed.
-            print "ipt ", ipt
+            //print "ipt ", ipt
             if (section_orientation() == 1) {
                 ipt = n3d() - 1 - ipt
                 offset = -offset
             }
-            print "ipt ", ipt, "n3d ", n3d()
+            //print "ipt ", ipt, "n3d ", n3d()
             if (ipt < n3d()) {
-                print "calc ", arc3d(ipt), "  + ", offset, " / ", L
+                //print "calc ", arc3d(ipt), "  + ", offset, " / ", L
                 distance = (arc3d(ipt)+offset)/L
                 
                 if( distance > 1.0 ) {
@@ -275,7 +277,7 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
             }
         }
         
-        print "distance = ", distance
+        //print "distance = ", distance
         resultPoint.append( tmpSection, distance )
     }
         
@@ -301,8 +303,8 @@ obfunc gid2sections() { local n  localobj searchString, resultSerial, nil, cellR
     
     if( object_id(resultSerial) == 0 ) {  //must build new one
         //determine if we should use pnm or cellList based on which is actually allocated
-        if( object_id(pnm) ) {
-            cellRef = pnm.pc.gid2obj($1)
+        if( object_id(loadBalance) ) {
+            cellRef = loadBalance.getCell($1)
         } else if( object_id(cellList) ) {
             print "cellList implementation pending"
             return nil
@@ -317,24 +319,6 @@ obfunc gid2sections() { local n  localobj searchString, resultSerial, nil, cellR
     }
     
     return resultSerial
-}
-
-//------------------------------------------------------------------------------------------
-
-/*!
- *  If the simulation is using LoadBalancing, a reference to the object handling that
- *  component can be provided which will be used to check when cells may be local/off node
- *  
- *  Required Inputs : $o1 Load balancing info
- *  Logic           : Save the reference for use during target accessing operations
- */
-func setLoadBalanceInfo() {
-    loadBalanceInfo = $o1
-    
-    //once loadbalance info is know, can localize targets.
-    for targetIndex=0, targetList.count()-1 {
-        targetList.object(targetIndex).localize( loadBalanceInfo.getGidListForProcessor(), loadBalanceInfo )
-    }
 }
 
 endtemplate TargetManager

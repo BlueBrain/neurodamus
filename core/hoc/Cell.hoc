@@ -51,6 +51,7 @@ proc geom_nseg() {local nSec, L1, L2, D1, D2, nSeg1, nSeg2
   forsec all {
   nseg = int((L/(0.1*lambda_f(100))+.9)/2)*2 + 1
   nSec = nSec + 1
+    //print nseg, " ", L
   }
   nSecAll = nSec
   nSec = 0
