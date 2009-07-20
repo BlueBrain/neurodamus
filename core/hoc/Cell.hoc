@@ -2,7 +2,7 @@
 begintemplate Cell
 public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nseg, SetCellProperties
 public soma, dend, apic, axon, nSecAxonal
-public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal
+public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear
 objref synlist, all, apical, basal, somatic, axonal, this, CCellRef
 proc init() {
 	gid 	= 0
@@ -90,6 +90,11 @@ proc indexSections() { local index  localobj tmpString, s
         sprint( tmpString.s, "%s.v(0.0001) = %d", tmpString.s, i )
         execute( tmpString.s, this )
     }
+}
+
+proc clear() { localobj nil
+    CCellRef.CellRef = nil
+    //CCellRef = nil
 }
 
 create soma[1], dend[1], apic[1], axon[1]
