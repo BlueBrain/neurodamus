@@ -25,8 +25,8 @@ NET_RECEIVE(w) {
 
 VERBATIM
 
-#include "/bglscratch/bbp/build/libraries/hdf5/include/hdf5.h"
-//#include "mpi.h"
+#include "/work/bbp/build/libraries/hdf5/include/hdf5.h"
+#include "mpi.h"
 
 extern double* hoc_pgetarg(int iarg);
 extern double* getarg(int iarg);
