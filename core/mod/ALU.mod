@@ -50,6 +50,40 @@ typedef struct {
 
 #define INFOCAST Info** ip = (Info**)(&(_p_ptr))
 
+#define dp double*
+extern void nrn_register_recalc_ptr_callback(void (*f)());
+extern Point_process* ob2pntproc(Object*);
+extern double* nrn_recalc_ptr(double*);
+
+static void recalcptr(Info* info, int cnt, double** old_vp, double* new_v) {
+        int i;
+        /*printf("recalcptr np_=%d %s\n", info->np_, info->path_);*/
+
+}
+static void recalc_ptr_callback() {
+        Symbol* sym;
+        int i;
+        hoc_List* instances;
+        hoc_Item* q;
+        /*printf("ASCIIrecord.mod recalc_ptr_callback\n");*/
+        /* hoc has a list of the ASCIIRecord instances */
+        sym = hoc_lookup("ALU");
+        instances = sym->u.template->olist;
+        ITERATE(q, instances) {
+                Info* InfoPtr;
+                Point_process* pnt;
+                Object* o = OBJ(q);
+                /*printf("callback for %s\n", hoc_object_name(o));*/
+                pnt = ob2pntproc(o);
+                _ppvar = pnt->_prop->dparam;
+                INFOCAST;
+                InfoPtr = *ip;
+                        for (i=0; i < InfoPtr->np_; ++i)
+                                InfoPtr->ptrs_[i] =  nrn_recalc_ptr(InfoPtr->ptrs_[i]);
+
+        }
+}
+
 ENDVERBATIM
 
 NET_RECEIVE(w) {
@@ -62,6 +96,12 @@ ENDVERBATIM
 
 CONSTRUCTOR {
 VERBATIM {
+        static int first = 1;
+        if (first) {
+                first = 0;
+                nrn_register_recalc_ptr_callback(recalc_ptr_callback);
+        }
+
 	INFOCAST;
 	Info* info = (Info*)hoc_Emalloc(sizeof(Info)); hoc_malchk();
 	info->psize_ = 10;
