@@ -26,7 +26,7 @@ NET_RECEIVE(w) {
 VERBATIM
 
 #define H5_USE_16_API 1
-#include "/work/bbp/build/libraries/hdf5/include/hdf5.h"
+#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"
 #include "mpi.h"
 
 extern double* hoc_pgetarg(int iarg);
