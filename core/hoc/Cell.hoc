@@ -1,6 +1,6 @@
 {load_file("import3d.hoc")}
 begintemplate Cell
-public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nseg, SetCellProperties
+public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nseg, SetCellProperties, connect2target
 public soma, dend, apic, axon, nSecAxonal
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear
 objref synlist, all, apical, basal, somatic, axonal, this, CCellRef
@@ -95,6 +95,15 @@ proc indexSections() { local index  localobj tmpString, s
 proc clear() { localobj nil
     CCellRef.CellRef = nil
     //CCellRef = nil
+}
+
+/*!
+ * @param $o1 NetCon source (can be nil)
+ * @param $o2 Variable where generated NetCon will be placed
+ */
+proc connect2target() { //$o1 target point process, $o2 returned NetCon
+  soma $o2 = new NetCon(&v(1), $o1)
+  $o2.threshold = -30
 }
 
 create soma[1], dend[1], apic[1], axon[1]

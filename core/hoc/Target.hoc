@@ -249,6 +249,7 @@ proc update() { local gid, cellIndex, binsrch_low, binsrch_high, binsrch_mid  lo
 
     //Get a vector with indexes that tell the sorted order of the gidMembers vector (don't actually sort gidMembers or risk mixing up 'extra' data)
     allCellIndices = gidMembers.sortindex()
+    localCellsMap = new Vector()
     //binfo = $o2
         
     //for each cell on node, determine if it exists in this target
