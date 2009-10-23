@@ -1,0 +1,149 @@
+/*****************************************************************
+    FileName    : StimulusManager.hoc
+    Project     : Blue Brain Project
+    Place       : EPFL, Lausanne Switzerland.
+    Purpose     : Process Synapse connections Rules of a BlueConfig (if any) and then instantiate the synapses 
+                  for a bluebrain sim
+    Author      : 1. Jim King
+                  2. Rajnish Ranjan
+    Revision    : $Revision$ at: $Date$ by $Author$
+****************************************************************/
+
+{load_file("alib/TStim.hoc")}  //note that the TStim functions are used in a way where our naming schemes don't match 100%
+
+begintemplate StimulusManager
+
+//-----------------------------------------------------------------------------------------------
+// Declare member variables
+//-----------------------------------------------------------------------------------------------
+
+objref stimList
+
+//-----------------------------------------------------------------------------------------------
+// public members
+//-----------------------------------------------------------------------------------------------
+
+public init, linear, interpret
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Typical constructor, just create empty list where stimulus are stored as they get generated
+ */
+proc init() {
+    stimList = new List()
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * FOr handling stimulus which has been parsed from a file - look at the parameters collected ans
+ * call the appropriate stimulus functions
+ *
+ * @param $o1 target - target where stimulus should be injected
+ * @param $o2 stim - map containing stimulus parameters
+ */
+proc interpret() { local tempVal, del, dur  localobj stim, target, paramValue, paramVect, nil
+    target = $o1
+    stim = $o2
+    
+    paramVect = new Vector()
+    
+    //mode should always be 'Current'
+    paramValue = stim.get( "Mode" )
+    if( strcmp( paramValue.s, "Current" ) != 0 ) {
+        print "Invalid Mode - ", paramValue.s
+        return
+    }
+    
+    //all will have Delay and Duration, so parse immediately
+    del = valueOf( stim, "Delay" )
+    duration = valueOf( stim, "Duration" )
+    
+    //more specific parameters based on pattern
+    paramValue = stim.get( "Pattern" )
+    if( strcmp( paramValue.s, "Linear" ) == 0 ) {
+        paramVect.append( valueOf( stim, "AmpStart" ) )
+        
+        //optional option - AmpEnd.  If not there, use same value as AmpStart
+        if( stim.get( "AmpEnd" ) != nil ) {
+            paramVect.append( valueOf( stim, "AmpEnd" ) )
+        } else {
+            paramVect.append( paramVect.x[paramVect.count()-1] )
+        }
+        
+        linear( target, paramVect.x[0], paramVect.x[1], del, dur )
+    } else if ( strcmp( paramValue.s, "Pulse" ) == 0 ) {
+        //looking at bglib, it expects potentially multiple delay/duration pairs (and an AmpENd)
+
+        paramVect.append( valueOf( stim, "AmpStart" ) )
+        paramVect.append( valueOf( stim, "Frequency" ) )
+        paramVect.append( valueOf( stim, "Width" ) )
+        
+        //optional argument - Offset; default = 0
+        if( stim.get( "Offset" ) != nil ) {
+            paramVect.append( valueOf( stim, "Offset" ) )
+        } else {
+            paramVect.append( 0 )
+        }
+        
+        //pulse( target, paramVect.x[0]
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Helper function to get a value from a Map associated with a given key and put it in a hoc primitive
+ *
+ * $o1 Map with parsed Stimulus data
+ * $s1 Field name - i.e. map key
+ * @return Value corresponding to the key
+ */
+func valueOf() { local tvalue  localobj tfield
+    tfield = $o1.get( $s2 )
+    sscanf( tfield.s, "%lf", &tvalue )
+    return tvalue
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Injects a linear stimulus into a cell.  Note that if the starting and ending amplitude are the same,
+ * a simple 
+ *
+ * @param $o1 Target where iclamps will be placed
+ * @param $2 ampStart Starting amplitude of the current injected (nA)
+ * @param $3 ampEnd Final amplitude of the current when done injecting (nA)
+ * @param $4 delay from start of simulation to when current is injected (ms)
+ * @param $5 duration of stimulus (ms)
+ */
+proc linear() { local listIndex, x, ampStart, ampEnd, delay, duration  localobj pts, tstim
+    
+    ampStart = $2
+    ampEnd = $3
+    delay = $4
+    duration = $5
+
+    //since there are no random elements, we can just evaluate the pointlist and proceed as normal
+    pts = $o1.getPointList()
+    
+    for listIndex=0, pts.count()-1 {
+        for pts.o(listIndex).each_point(&x) {
+            
+            tstim = new TStim(x)
+            
+            if( ampStart == ampEnd ) {
+                tstim.pulse( delay, duration, ampStart )
+            } else {
+                tstim.ramp( 0, delay, ampStart, ampEnd, duration, 0, 0 )
+            }
+            
+            stimList.append( tstim )
+        }
+    }
+}
+
+endtemplate StimulusManager

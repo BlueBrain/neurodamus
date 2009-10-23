@@ -5,7 +5,7 @@
     Purpose     : The TargetManager provides an entity to encapsulate the steps to get cell points for use in Stimulation or Reporting
                   This should make certain features of the simulation transparent such as load balancing and target file format
     Author      : 1. Jim King
-    Revision    : $Revision:  $ at: $Date:  $ by $Author: $
+    Revision    : $Revision$ at: $Date$ by $Author$
 ****************************************************************/
 
 //make sure we have some basic things loaded

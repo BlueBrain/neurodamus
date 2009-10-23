@@ -5,7 +5,7 @@
     Purpose     : The TargetParser will handle reading target files from disk so that such code is removed from the
                   TargetManager class
     Author      : 1. James King
-    Revision    : $Revision:  $ at: $Date:  $ by $Author: $
+    Revision    : $Revision$ at: $Date$ by $Author$
 ****************************************************************/
 
 {load_file("Target.hoc")}

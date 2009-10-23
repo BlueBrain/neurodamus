@@ -8,7 +8,7 @@
                   from basic implementation
     Author      : 1. James King
                   2. Rajnish Ranjan
-    Revision    : $Revision:  $ at: $Date:  $ by $Author: $
+    Revision    : $Revision$ at: $Date$ by $Author$
 ****************************************************************/
 
 {load_file("nrngui.hoc")}
@@ -43,6 +43,7 @@ public init, open, parsedRun, parsedReports, parsedStimuli, parsedInjects, parse
 
 proc init() {
     strUtil = new StringFunctions()
+    
     // note that since there should only be one Run object, we create nothing now.
     parsedReports = new Map()
     parsedStimuli = new Map()
@@ -88,7 +89,9 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
                 parseRun( configIn )
             } else if ( strcmp( sectionType.s, "Report" ) == 0 ) {
             } else if ( strcmp( sectionType.s, "Stimulus" ) == 0 ) {
+                parseStimulus( configIn, sectionName )
             } else if ( strcmp( sectionType.s, "StimulusInject" ) == 0 ) {
+                parseStimulusInject( configIn, sectionName )
             } else if ( strcmp( sectionType.s, "Connection" ) == 0 ) {
             }
         }
@@ -131,6 +134,75 @@ proc parseRun() { localobj rawline, configIn, fieldName, fieldValue
             sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
             
             parsedRun.put( fieldName, fieldValue )
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * @param $o1 File getting parsed
+ * @param $o2 Stimulus name - String containing the name
+ */
+proc parseStimulus() { localobj pendingStim, rawline, configIn, fieldName, fieldValue
+
+    rawline = new String()
+    configIn = $o1
+    
+    pendingStim = new Map()
+    
+    while( configIn.gets(rawline.s) >= 0 ) {
+    
+        //check if close brace to terminate section
+        if( isTerminated( rawline.s ) ) {
+        print "save ", $o2.s
+            parsedStimuli.put( $o2, pendingStim )
+            return
+        }
+    
+        if( !isCommented( rawline.s )) {
+            
+            //we only expect string pairs for stimulus objects, so keep it simple for now
+            fieldName = new String()
+            fieldValue = new String()
+
+            sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
+            
+            pendingStim.put( fieldName, fieldValue )
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * @param $o1 File getting parsed
+ * @param $o2 Stimulus Inject name - String containing the name
+ */
+proc parseStimulusInject() { localobj pendingInject, rawline, configIn, fieldName, fieldValue
+
+    rawline = new String()
+    configIn = $o1
+    
+    pendingInject = new Map()
+    
+    while( configIn.gets(rawline.s) >= 0 ) {
+    
+        //check if close brace to terminate section
+        if( isTerminated( rawline.s ) ) {
+            parsedInjects.put( $o2, pendingInject )
+            return
+        }
+    
+        if( !isCommented( rawline.s )) {
+            //we only expect string pairs for stimulus objects, so keep it simple for now
+            fieldName = new String()
+            fieldValue = new String()
+
+            sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
+            print "put ", fieldName.s, " <=> ", fieldValue.s
+            
+            pendingInject.put( fieldName, fieldValue )
         }
     }
 }

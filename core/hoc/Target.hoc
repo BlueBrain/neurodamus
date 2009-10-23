@@ -7,7 +7,7 @@
                   for stimulation, reporting, or other operations
     Author      : 1. Jim King
                   2. Rajnish Ranjan
-    Revision    : $Revision: 468 $ at: $Date: 2008-06-05 17:19:36 +0200 (Thu, 05 Jun 2008) $ by $Author: king $
+    Revision    : $Revision$ at: $Date$ by $Author$
 ****************************************************************/
 
 {load_file("stdlib.hoc")}
