@@ -155,7 +155,6 @@ proc parseStimulus() { localobj pendingStim, rawline, configIn, fieldName, field
     
         //check if close brace to terminate section
         if( isTerminated( rawline.s ) ) {
-        print "save ", $o2.s
             parsedStimuli.put( $o2, pendingStim )
             return
         }
@@ -200,8 +199,6 @@ proc parseStimulusInject() { localobj pendingInject, rawline, configIn, fieldNam
             fieldValue = new String()
 
             sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
-            print "put ", fieldName.s, " <=> ", fieldValue.s
-            
             pendingInject.put( fieldName, fieldValue )
         }
     }
