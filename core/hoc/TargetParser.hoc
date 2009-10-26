@@ -68,7 +68,6 @@ proc open() { localobj tFile, targetInstance
                 
                 targetInstance.type = typeString
                 
-                //print "type = ", targetInstance.type
                 targetInstance.evalType()
                 
                 //target contents
@@ -286,7 +285,7 @@ func addMember() { local potentialGid  localobj targetInstance, addition
         addition.name = tstr1
         
         //following line either replaces addition with reference to existing target, or addition is used to insert new reference into master list
-        addition = updateTargetList( addition )  
+        addition = updateTargetList( addition )
         targetInstance.subtargets.append( addition )
         return -1
     }
