@@ -39,7 +39,7 @@ proc init() {
 //-----------------------------------------------------------------------------------------------
 
 /*!
- * FOr handling stimulus which has been parsed from a file - look at the parameters collected ans
+ * For handling stimulus which has been parsed from a file - look at the parameters collected and
  * call the appropriate stimulus functions
  *
  * @param $o1 target - target where stimulus should be injected
@@ -78,9 +78,9 @@ proc interpret() { local tempVal, del, dur  localobj stim, target, paramValue, p
     } else if ( strcmp( paramValue.s, "Pulse" ) == 0 ) {
         //looking at bglib, it expects potentially multiple delay/duration pairs (and an AmpENd)
 
-        paramVect.append( valueOf( stim, "AmpStart" ) )
-        paramVect.append( valueOf( stim, "Frequency" ) )
-        paramVect.append( valueOf( stim, "Width" ) )
+        paramVect.append( stim.valueOf( "AmpStart" ) )
+        paramVect.append( stim.valueOf( "Frequency" ) )
+        paramVect.append( stim.valueOf( "Width" ) )
         
         //optional argument - Offset; default = 0
         if( stim.get( "Offset" ) != nil ) {
@@ -97,6 +97,7 @@ proc interpret() { local tempVal, del, dur  localobj stim, target, paramValue, p
 
 /*!
  * Helper function to get a value from a Map associated with a given key and put it in a hoc primitive
+ * deprecate - should use Map's built-in function now
  *
  * $o1 Map with parsed Stimulus data
  * $s1 Field name - i.e. map key

@@ -25,7 +25,7 @@ objref stringList, valueList
 // Public accessible
 //------------------------------------------------------------------------------------------------------------
 
-public init, get, put, o, object, count, getV
+public init, get, put, key, o, object, count, getV, valueOf
 
 //------------------------------------------------------------------------------------------------------------
 // Member function implementations
@@ -43,6 +43,16 @@ proc init() {
  */
 func count() {
     return stringList.count()
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * @param $1 index The index into the map from where to get a key
+ * @return The string used as a key at the specified index (no bounds checking)
+ */
+obfunc key() {
+    return stringList.o($1)
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -159,6 +169,20 @@ proc put() { localobj wrapString
     }
     
     valueList.append( $o2 )
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get a value from a Map associated with a given key and put it in a hoc primitive
+ *
+ * $s1 Field name - i.e. map key
+ * @return Value corresponding to the key
+ */
+func valueOf() { local tvalue  localobj tfield
+    tfield = get( $s1 )
+    sscanf( tfield.s, "%lf", &tvalue )
+    return tvalue
 }
 
 endtemplate Map

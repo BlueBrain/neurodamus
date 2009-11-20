@@ -94,7 +94,7 @@ objref targetList, pnm, cellList, sectionAccess, isec2sec[1], loadBalance
 //-----------------------------------------------------------------------------------------------
 
 public init
-public getTarget, setTargetList, pnm, getPointList, locationToPoint, loadBalance
+public getTarget, setTargetList, pnm, getPointList, locationToPoint, loadBalance, gids
 
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
@@ -217,6 +217,18 @@ obfunc getPointList() { localobj activeTarget
 //------------------------------------------------------------------------------------------
 
 /*!
+ * Convenience function to get the gids from a target by name
+ *
+ * @param $s1 targetName
+ * @return Vector containing gids of target members local to this cpu
+ */
+obfunc gids() {
+    return getTarget($s1).gids()
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
  * Given a location for a cell, section id, segment id, and offset into the segment, create a TPointList
  * containing a section reference to there
  *
@@ -238,7 +250,7 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
 
     resultPoint = new TPointList( gid )
     
-    cellSections = gid2sections( gid )
+    cellSections = gidToSections( gid )
     if( object_id(cellSections) == 0 ) {
         print "something is not implemented here..."
         quit()
@@ -295,7 +307,7 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
  * @param $1 gid
  * @return List object with SectionRefs to every section in the cell
  */
-obfunc gid2sections() { local n  localobj searchString, resultSerial, nil, cellRef
+obfunc gidToSections() { local n  localobj searchString, resultSerial, nil, cellRef
     searchString = new String()
     sprint( searchString.s, "%d", $1 )
     

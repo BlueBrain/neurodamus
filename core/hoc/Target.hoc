@@ -410,7 +410,7 @@ func completeContains() { localobj targetUtil
  *  the cells and cells from nested targets will be accessed based on subset requests and normalized offset values (empty values for either are 
  *  interpreted as all subsets and/or all offset values)
  *  
- *  @param pnm Reference to LoadBalance where cell objects are retrieved
+ *  @param $o1 Reference to LoadBalance where cell objects and cell info can be retrieved
  *  @return TPointList where retrieved section references are stored
  */
 obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVector, activeTarget, pointListList, activePointList
@@ -466,7 +466,7 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
             activeTarget = subtargets.object( targetIndex )
             if( activeTarget.isCellTarget() ) {  //only do stuff if cell or section target?  no nesting cmp targets in each other?
                 
-                gidVec = activeTarget.getFlatVec()  //get all gids from that target and its subtargets
+                gidVec = activeTarget.gids()  //get all gids from that target and its subtargets
                 for cellIndex=0, gidVec.size()-1 {
                     addressCompartmentPoints( $o1, gidVec.x[cellIndex], targetExtraValues.object(targetIndex), $o2 )
                 }
@@ -682,42 +682,34 @@ proc addressCompartmentPoints(){ local ret, cnt, val  localobj strList, tVec
  *  @param $o5 Vec of compartments points
  *  @param $o6 (return value) reference to TPointList object which will be populated with section references
  */
-proc addressSectionPoints(){ local id, count, retVal, SecSize, SecNo localobj strList, tobj, tCInfo
+proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj strList, tobj, tCInfo
     strdef  SecName, NeuronName
     strList =   new List() 
     
-    /* Might need to think more about how load balancing is handled
-    tCInfo  =   new CellInfo($2)
-    if( object_id(binfo) ) {
-        id = binfo.thishost_gid( $2 )
-    } else {
-        id = $2
-    }*/
-    id = $2
-    
-    tobj    =   $o1.getCell( id ) //$o1.pc.gid2obj(id)
+    gid = $2
+    tobj    =   $o1.getCell( gid )
     sprint(NeuronName, "%s", tobj)
 
     if( 0 == strcmp( $s3, "" ) ) {  //want all sections - soma, axon, apic, dend
-        addressSoma( $o1, id, $o5, $o6 )
+        addressSoma( $o1, gid, $o5, $o6 )
         
         SecSize = tobj.nSecAxonal
         for count=0, SecSize-1 {
-            addressSection( $o1, id, "axon", count, $o5, $o6 )
+            addressSection( $o1, gid, "axon", count, $o5, $o6 )
         }
         
         SecSize = tobj.nSecBasal
         for count=0, SecSize-1 {
-            addressSection( $o1, id, "dend", count, $o5, $o6 )
+            addressSection( $o1, gid, "dend", count, $o5, $o6 )
         }
         
         SecSize = tobj.nSecApical
         for count=0, SecSize-1 {
-            addressSection( $o1, id, "apic", count, $o5, $o6 )
+            addressSection( $o1, gid, "apic", count, $o5, $o6 )
         }
     } else { //wanted one section type exclusively
         if( 0 == strcmp( $s3, "soma" ) ) {
-            addressSoma( $o1, id, $o5, $o6 )
+            addressSoma( $o1, gid, $o5, $o6 )
             return
         } else if ( 0 == strcmp( $s3, "axon" ) ) {
             SecSize = tobj.nSecAxonal
@@ -729,7 +721,7 @@ proc addressSectionPoints(){ local id, count, retVal, SecSize, SecNo localobj st
         
         if ( $o4.size() == 0 ) {  //address all points of requested section
             for count=0, SecSize-1 {  
-                addressSection( $o1, id, $s3, count, $o4, tCInfo)
+                addressSection( $o1, gid, $s3, count, $o4, tCInfo)
             }
         } else {  //address only those section points told
             for count=0, $o4.size()-1 {
@@ -738,58 +730,6 @@ proc addressSectionPoints(){ local id, count, retVal, SecSize, SecNo localobj st
             }
         }
     }
-    
-/*    
-    retVal  =   split($s3, strList)
-	
-    if(retVal > 0) {
-        SecName     =   strList.o(0).s
-        if(0 == strcmp(SecName, "soma")){
-            addressSoma( $o1, id, $o4, tCInfo)
-            if( tCInfo.SecList.count() > 0 ) {
-                $o5.append(tCInfo)
-            }
-            return
-        } else if(0 == strcmp(SecName, "axon")){
-            SecSize = tobj.nSecAxonal
-        } else if(0 == strcmp(SecName, "dend")){
-            SecSize = tobj.nSecBasal
-        } else if(0 == strcmp(SecName, "apic")){
-            SecSize = tobj.nSecApical
-        }
-        if(retVal > 1) {  //address only those points told
-            for count=1, retVal-1 {
-                SecNo   =    getSectionNo(SecSize, strList.o(count).s)
-                addressSection( $o1, id, SecName, SecNo, $o4, tCInfo)
-            }
-        } else { //address all points of the section
-            for count=0, SecSize-1 {
-                addressSection( $o1, id, SecName, count, $o4, tCInfo)
-            }
-        }
-    } else {  //want all sections soma, axon, dend, apic
-        addressSoma( $o1, id, $o4, tCInfo)
-        
-        SecSize = tobj.nSecAxonal
-        for count=0, SecSize-1 {
-            addressSection( $o1, id, "axon", count, $o4, tCInfo)
-        }
-        
-        SecSize = tobj.nSecBasal
-        for count=0, SecSize-1 {
-            addressSection( $o1, id, "dend" ,count,$o4,tCInfo)
-        }
-        
-        SecSize = tobj.nSecApical
-        for count=0, SecSize-1 {
-            addressSection( $o1, id, "apic" ,count,$o4,tCInfo)
-        }
-        
-    }
-    if( tCInfo.SecList.count() > 0 ) {
-        $o5.append(tCInfo)
-    }
-    */
 }
 
 /*****************************************************************
@@ -856,20 +796,16 @@ proc addressSoma(){local segcnt, SegNo localobj VecObj, cellObj
     
     //If no normalized section references were specified, then supply all of them (of course the soma typically only has one)
     if(VecObj.size == 0){
-        print "insert default content into VecObj"
         VecObj  = new Vector()
         sprint(tstr1, "access %s", tstr)
         execute(tstr1)
         for segcnt=1, nseg {
             VecObj.append(segcnt/(nseg+1))
         }
-    } else {
-        print "have ", VecObj.size, " items"
     }
     
     //add the address string and the vector of normalized section references
     for segcnt=0, VecObj.size-1 {
-        printf( "append %s %g to %s\n", tstr, VecObj.x[segcnt], $o4 )
         $o4.append( tstr, VecObj.x[segcnt] )
     }
 }

@@ -1,0 +1,369 @@
+/*****************************************************************
+    FileName    : Report.hoc
+    Project     : Blue Brain Project
+    Place       : EPFL, Lausanne Switzerland.
+    Purpose     : Gather data references for sending information to files
+    Author      : 1. Jim King
+                  2. Rajnish Ranjan
+    Revision    : $Revision: 580 $ at: $Date: 2009-10-23 14:17:03 +0200 (Fri, 23 Oct 2009) $ by $Author: king $
+****************************************************************/
+
+objref globrec
+
+begintemplate Report
+
+//-----------------------------------------------------------------------------------------------
+// Declare member variables
+//-----------------------------------------------------------------------------------------------
+
+strdef reportName, reportType,  reportOn, unit, format, outputDir
+objref strobj, this, tempBinReport, binList, rec
+
+//-----------------------------------------------------------------------------------------------
+// public members
+//-----------------------------------------------------------------------------------------------
+
+public init, addCompartmentReport
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Constructor - creates report object with given parameters, will add targets/cells/points later
+ *
+ * @param $s1 reportName - used to either name report file or dataset within the file
+ * @param $s2 type of report - support for compartment and summation
+ * @param $s3 reportOn - which variable(s) to address in the targeted items
+ * @param $s4 unit - unit label to stamp in report header
+ * @param $s5 format - whether report is written in ASCII, HDF5, or Bin
+ * @param $6 Dt - time length between reporting intervals
+ * @param $7 startTime - when the report begins
+ * @param $8 endTime - when the report stops
+ * @param $s9 Output dir - directory where report files are to be written
+ */
+proc init() {
+    reportName = $s1
+    reportType = $s2
+    reportOn = $s3
+    unit = $s4
+    format = $s5
+    
+    reportDt = $6
+    startTime = $7
+    endTime = $8
+    
+    outputDir = $s9
+    
+    //variables to hold section counts for the active cell, to be output as extra mapping
+    nAll= 0
+    nSoma = 0
+    nAxon = 0
+    nBasal = 0
+    nApic = 0
+    
+    //share one StringFunctions obj for access to substr function
+    strobj = new StringFunctions()
+    
+    //note that any BinReports need to be kept unlike ASCII and HDF5 which are stored in the cell
+    binList = new List()
+    
+    //variable used to catch return values from functions
+    retVal = 0
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Determine the absolute index of a section within the cell
+ *
+ * @return index which can be used to map back onto the neuron
+ */
+func sectionNo() { local baseOffset, secIndex  localobj str
+    strdef subset
+    str = new String()
+    
+    if( strobj.substr( secname(), "soma" ) > 0 ) {
+        subset = "soma"
+        baseOffset = 0
+    } else if (strobj.substr( secname(), "axon") >0) {
+        subset = "axon"
+        baseOffset = $o1.nSecSoma
+    }else if (strobj.substr( secname(), "dend") >0) {
+        subset = "dend"
+        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig
+    }else if (strobj.substr( secname(), "apic") > 0) {
+        subset = "apic"
+        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal
+    }
+    
+    // parse out the index from the secname
+    strobj.tail( secname(), subset, str.s )
+    if (strobj.len(str.s) > 0) {
+        strobj.left(str.s, strobj.len(str.s)-1) // result should look like [n
+        strobj.right(str.s, 1)
+        sscanf( str.s, "%d", &secIndex )
+    } else {
+        print "should this ever happen?"
+    }
+    
+    return baseOffset + secIndex
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Utility function to get the section number for use in mapping the report, while also incrementing
+ * a count tracking how many of each section types have been evaluated so far.  Prior to calling this function,
+ * the currently accessed section should be set as when using the TPointList each_point function
+ *
+ * $o1 ptList
+ */
+proc sumSectionCounts() { local offset, x  localobj prevSection, nil
+    nAll = nSoma = nAxon = nBasal = nApical = 0
+    
+    for $o1.each_point(&x) {
+        
+        // Have we moved to a new/different section?  reset prevSection
+        if( object_id(prevSection) ) {
+            if( !prevSection.is_cas() ) {
+                prevSection = nil
+            }
+        }
+        
+        //if prevSection is unset, we need to examine the section and increment the apprpriate counter
+        if( !object_id(prevSection) ) {
+            
+            //remeber this section for upcoming iterations
+            prevSection = new SectionRef()
+            
+            // increment appropriate subset counter
+            if( strobj.substr( secname(), "soma" ) > 0 ) {
+                nSoma = nSoma+1
+            } else if (strobj.substr( secname(), "axon") >0) {
+                nAxon   = nAxon + 1
+            }else if (strobj.substr( secname(), "dend") >0) {
+                nBasal  = nBasal+ 1
+            }else if (strobj.substr( secname(), "apic") > 0) {
+                nApical = nApical + 1
+            }
+        }
+    }
+    
+    nAll = nSoma + nAxon + nBasal + nApical
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Utility function to retrieve the ASCII or HDF5 report object from a cell object, encapsulating the creation of one
+ * in the event that this is the first request for either
+ *
+ * @param $o1 cellObj
+ * @param $s2 cellName
+ * @return Reference to the appropriate report object
+ */
+obfunc accessReport() { local node  //localobj str
+    node = 0  //do we really need to know which node produced these reports?  We're trying to make this agnostic to multiple cpu
+    
+    //str = new String("")
+    
+    if(0 == strcmp( format, "HDF5")) {
+	    if(object_id($o1.HDF5rpt, 1) < 0) {
+            //  print "Creating HDF5 Record for ", gid, " Node=", $4, " OutputDir=", $s1, " Cellname=", $s2
+            //sprint(str.s,"%s.HDF5rpt = new HDF5Record(.5, %d, \"%s\", \"%s\")", $o5, $4, $s1,$s2)
+            $o1.HDF5rpt = new HDF5Record( 0.5, node, outputDir, $s2 )
+            //execute(str.s)
+            //$o6.append($o5.HDF5rpt)  //we already keep the reference in cell obj, and old bglib didn't use recorder_list for anything later (except a pretend function)
+        } 
+        return $o1.HDF5rpt
+        //$o7 = $o5.HDF5rpt	
+    }else{
+        //print "result of objectr2_id = ", object_id(ASCIIrpt)
+        if(object_id($o1.ASCIIrpt, 1) < 0){
+          //  print "Creating ASCII Record for ", gid, " Node=", $4, " OutputDir=", $s1, " Cellname=", $s2
+            //sprint(str.s,"%s.ASCIIrpt = new ASCIIRecord(.5, %d, \"%s\", \"%s\")", $o5, $4, $s1,$s2)
+            $o1.ASCIIrpt = new ASCIIRecord(.5, node, outputDir, $s2)
+            //execute(str.s)
+            //$o6.append($o5.ASCIIrpt)
+        }                
+        //$o7 = $o5.ASCIIrpt
+        return $o1.ASCIIrpt
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Generate a report for cell data -> called one cell at a time so that the manager can handle things like bgid vs vgid
+ *
+ * @param $o1 Cell The cell getting reported
+ * @param $o2 TPointList with the points for a single cell
+ * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the nromal gid (bgid)
+ */
+proc addCompartmentReport() { local x, rpt, vgid
+    strdef strCellName, tstr
+
+    //if no $3, use cell's gid
+    if( numarg() == 3 ) {
+        vgid = $3
+    } else {
+        bvgid = $o1.gid
+    }
+    
+    sprint( strCellName, "a%d", $o1.gid )
+    
+    //am I sure that Cell.gid is always the base_gid?  should be, but can double check later
+    if( 0 == strcmp( format, "Bin")) {
+        tempBinReport = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit )
+    } else {
+        
+        // the creation of reports if a cell is new.  
+        //$o1.o(k).getrpt(output_path, strCellName, $s5, Node, cellObj, recorder_list, rec)
+        rec = accessReport( $o1, strCellName )  //uses format to determine if ascii or hdf5 is needed
+        rpt = rec.newReport(strCellName, reportName, $o2.count(), startTime, endTime, reportDt, unit )
+    }
+    
+    //get section counts: nSoma, nApic, etc
+    sumSectionCounts( $o2 )
+
+    //for ascii/hdf5 reports, must give section counts now to allocate mem - can I give it to Bin reports, too?
+    if( 0 != strcmp( format, "Bin")) {
+        rec.newMapping(rpt, "compartment", nAll, nSoma, nAxon, nBasal, nApical)
+    }
+    
+    //for each point, register variable and mapping
+    for $o2.each_point(&x) {
+    
+        //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
+        if( 0 == strcmp(format, "Bin") ) {
+            sprint(tstr, "tempBinReport.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo() )
+            execute(tstr, this)
+        } else {
+            sprint(tstr,"retVal = rec.addvar(%d, &%s(%1.2f))", rpt, reportOn, x )
+            execute(tstr, this)
+            if(retVal ==0){
+                break
+            }
+            rec.addmapping( rpt, sectionNo() )
+        }
+    }
+    
+    //as mentioned above, binary reports had been outputting this extra mapping last while non-binary had already done it.  Does it matter? test later.
+    if( 0 == strcmp( format, "Bin")) {
+        tempBinReport.ExtraMapping( nAll, nSoma, nAxon, nBasal, nApical)
+        binList.append( tempBinReport )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Helper function to determine which currents are to be reported in a summation report.
+ *
+ * @param $s1 ReportOn string with raw text taken from BlueConfig
+ * @Param $o2 intrinsicList - List of intrinsic types (ions) generated in this function
+ * @Param $o2 ptProcessList - List of point processes types (ions) generated in this function
+ */
+proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrinsicLibrary, ptProcessLibrary
+    intrinsicList = new List()
+    ptProcessList = new List()
+
+    //before scanning the ReportOn field, build some libraries that can be used for lookup and comparison
+    intrinsicLibrary = new List()
+    intrinsicLibrary.append( new String( "ina" ) )
+    intrinsicLibrary.append( new String( "ica" ) )
+    intrinsicLibrary.append( new String( "ik" ) )
+    intrinsicLibrary.append( new String( "icsa" ) )
+    intrinsicLibrary.append( new String( "ihcn" ) )
+
+    ptProcessLibrary = new List()
+    ptProcessLibrary.append( new String( "tmgExSyn" ) )
+    ptProcessLibrary.append( new String( "tmgInhSyn" ) )
+    ptProcessLibrary.append( new String( "SynAMPAEx" ) )
+    ptProcessLibrary.append( new String( "SynNMDAEx" ) )
+    ptProcessLibrary.append( new String( "ExpSyn" ) )
+    ptProcessLibrary.append( new String( "ProbGABAA" ) )
+    ptProcessLibrary.append( new String( "ProbAMPA" ) )
+    ptProcessLibrary.append( new String( "ProbNMDA" ) )
+    ptProcessLibrary.append( new String( "ProbAMPANMDA" ) )
+    
+    //split 'ReportOn' field on white space and check for special keywords - AllCurrent, SynapticCurrents, IntrinsicCurrents
+    strdef token, sourceString, skipBlock
+    sourceString = $s1
+    //print "src string ", sourceString
+    while( strcmp( sourceString, "" ) != 0 )  {
+        //find block of white space characters
+        j = strobj.head( sourceString, "[ \t]+", token )
+        if( j!=-1 ) {
+            strobj.right( sourceString, j )
+            //need to get first non-whitespace char
+            j = strobj.head( sourceString, "[^ \t]+", skipBlock )
+            if( j!=-1 ) {
+                strobj.right( sourceString, j )
+            } else {
+                sourceString = ""
+            }
+        } else {
+            token = sourceString
+            sourceString = ""
+        }
+        //print "token ", token
+        
+        //check for special tokens for keywords
+        if( strcmp(token, "AllCurrents") == 0 ) {
+            //all current sources
+            for libIndex=0, intrinsicLibrary.count()-1 {
+                intrinsicList.append( intrinsicLibrary.o(libIndex) )
+            }
+            
+            //synapses + point processes
+            includeSyn = 1
+            for libIndex=0, ptProcessLibrary.count()-1 {
+                ptProcessList.append( ptProcessLibrary.o(libIndex) )
+            }
+            ptProcessList.append( new String( "IClamp" ) )
+        } else if ( strcmp(token, "SynapticCurrents") == 0 ) {
+            includeSyn = 1
+            for libIndex=0, ptProcessLibrary.count()-1 {
+                ptProcessList.append( ptProcessLibrary.o(libIndex) )
+            }
+        } else if ( strcmp(token,"IntrinsicCurrents") == 0 ) {
+            for libIndex=0, intrinsicLibrary.count()-1 {
+                intrinsicList.append( intrinsicLibrary.o(libIndex) )
+            }
+        } else {
+            // Not matched yet, start scanning the lists for specific intance names
+            matched = 0
+            for libIndex=0, intrinsicLibrary.count()-1 {
+                if( strcmp( token, intrinsicLibrary.o(libIndex).s ) == 0 ) {
+                    intrinsicList.append( intrinsicLibrary.o(libIndex) )
+                    matched = 1
+                }
+            }
+            for libIndex=0, ptProcessLibrary.count()-1 {
+                if( strcmp( token, ptProcessLibrary.o(libIndex).s ) == 0 ) {
+                    ptProcessList.append( ptProcessLibrary.o(libIndex) )
+                    matched = 1
+                    includeSyn = 1
+                }
+            }
+            if ( matched == 0 && strcmp(token,"IClamp") == 0 ) {
+                includeSyn = 1
+                matched = 1
+                ptProcessList.append( new String( "IClamp" ) )
+            }
+            if( matched == 0 ) {
+                // Note that we now check for intrinsic names individually like with synapses.  Therefore, this else no longer
+                //  needs to assume that an unmatched token is an ion.  (In the event new ions are added, we can update the lists)
+                print "Bad type given to Current Summation report: ", token
+                quit()
+            }
+        }
+    }
+    
+    $o2 = intrinsicList
+    $o3 = ptProcessList
+}
+
+endtemplate Report

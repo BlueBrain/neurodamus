@@ -88,6 +88,7 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
             if( strcmp( sectionType.s, "Run" ) == 0 ) {
                 parseRun( configIn )
             } else if ( strcmp( sectionType.s, "Report" ) == 0 ) {
+                parseReport( configIn, sectionName )
             } else if ( strcmp( sectionType.s, "Stimulus" ) == 0 ) {
                 parseStimulus( configIn, sectionName )
             } else if ( strcmp( sectionType.s, "StimulusInject" ) == 0 ) {
@@ -134,6 +135,40 @@ proc parseRun() { localobj rawline, configIn, fieldName, fieldValue
             sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
             
             parsedRun.put( fieldName, fieldValue )
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * @param $o1 File getting parsed
+ * @param $o2 Stimulus name - String containing the name
+ */
+proc parseReport() { localobj pendingReport, rawline, configIn, fieldName, fieldValue
+
+    rawline = new String()
+    configIn = $o1
+    
+    pendingReport = new Map()
+    
+    while( configIn.gets(rawline.s) >= 0 ) {
+    
+        //check if close brace to terminate section
+        if( isTerminated( rawline.s ) ) {
+            parsedReports.put( $o2, pendingReport )
+            return
+        }
+    
+        if( !isCommented( rawline.s )) {
+            
+            //we only expect string pairs for stimulus objects, so keep it simple for now
+            fieldName = new String()
+            fieldValue = new String()
+
+            sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
+            
+            pendingReport.put( fieldName, fieldValue )
         }
     }
 }
