@@ -114,7 +114,11 @@ begintemplate Target
 // Declare Members Variables
 //------------------------------------------------------------------------------------------------------------
 
-objref localCellsMap, gidMembers, subtargets, flattenedGids, completeFlattenedGids, binfo
+//! Vector containing indexes into the original parsed list of gids, but only those gids on this local cpu
+objref localCellsMap
+
+//! 
+objref gidMembers, subtargets, flattenedGids, completeFlattenedGids, binfo
 objref cellExtraValues, targetExtraValues, cellSubsets, targetSubsets
 
 strdef name, type
@@ -127,7 +131,7 @@ public init
 
 //! general information
 public name, type
-//! gids listed directly within a target definition (i.e no gids from subtargets are included)
+//! all gids listed directly within a target definition as parsed (i.e no gids from subtargets are included)
 public gidMembers
 //! list of references to other targets whose contents are to be included for certain operations
 public subtargets
@@ -139,7 +143,7 @@ public cellExtraValues, targetExtraValues
 
 //! memberfunctions - see below for detailed information
 public evalType, isCellTarget, isSectionTarget, isCompartmentTarget, isSynapseTarget
-public update, getgid, evaluateCompartments, gids, completegids, getCellExtra, evaluateSynapses, getPointList
+public update, getgid, evaluateCompartments, gids, completegids, getCellExtraValues, evaluateSynapses, getPointList
 public isDefined, completeContains, contains
 
 //------------------------------------------------------------------------------------------------------------
@@ -292,29 +296,33 @@ func localCount() {
 	return localCellsMap.size()
 }
 
-/*****************************************************************
-    Given an index of a local cell, return the corresponding gid 
-    Required Inputs : $1 Index of desired cell
-    Logic           : Since the localCellsMap vector does NOT stored gids, but actually points to entries in the gidMembers vector, this function
-                      handles the indirection to hopefully avoid errors
-*****************************************************************/
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Utility function for getting the gid of a cell.  Since the localCellsMap vector does NOT store gids, but actually
+ * points to entries in the gidMembers vector, this function handles the indirection to hopefully avoid errors.
+ *
+ * @param $1 Index of desired cell
+ * @return The gid of the cell
+ */
 func getgid() {
 	//Note that localCellsMap is just a map into all the cells of this target
 	return gidMembers.x[ localCellsMap.x[$1]]
 }
 
+//------------------------------------------------------------------------------------------------------------
 
-/*****************************************************************
-    Given an index of a local cell, return the corresponding 'extra' data.  i.e. subset and normalized 
-    point for compartment/section targets, synapse ids for synapse targets.  Neuron targets have no extra data
-    and will report an error is this function is called with one.  A similar function is not available for target
-    because they can be accessed intuitively with the targetIndex.  cellExtra must be accessed using the index in
-    localCellsMap which maps to a real index (i.e. the location in gidMembers where the gid is stored - see proc getgid() )
-    Required Inputs : $1 Index of desired cell
-    Logic           : Since the localCellsMap vector does NOT stored gids, but actually points to entries in the gidMembers vector, this function
-                      handles the indirection to hopefully avoid errors
-*****************************************************************/
-obfunc getCellExtra() {
+/*!
+ * Given an index of a local cell, return the corresponding 'extra' data.  i.e. normalized locations for compartment/section targets,
+ * synapse ids for synapse targets.  Neuron targets have no extra data and will report an error is this function is called with one.
+ * A similar function is not necessary for subtargets because they can be accessed intuitively with the targetIndex.  i.e. cellExtras
+ * must be accessed indirectly using the index in localCellsMap which maps to a real index.
+ * (i.e. the location in gidMembers where the gid is stored - see proc getgid() )
+ *
+ * @param $1 Index of cell
+ * @return Vector with extra data (normalized locations or synapse ids)
+ */
+obfunc getCellExtraValues() {
 	//localCellsMap is just a map into all the cells of this target
     if( isCellTarget() ) {
         print "Attempting to access extra positioning data (subset or normalized location info or synapse ids) for Cell target"
@@ -323,6 +331,28 @@ obfunc getCellExtra() {
 	return cellExtraValues.object( localCellsMap.x[$1] )
 }
 
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Given an index of a local cell, return the corresponding subset name.  Neuron targets have no subsets and will report an error is this
+ * function is called with one.
+ * A similar function is not necessary for subtargets because they can be accessed intuitively with the targetIndex.  i.e. cellSubset
+ * must be accessed indirectly using the index in localCellsMap which maps to a real index 
+ * (i.e. the location in gidMembers where the gid is stored - see proc getgid() )
+ *
+ * @param $1 Index of cell
+ * @return subset name
+ */
+obfunc getCellSubset() {
+	//localCellsMap is just a map into all the cells of this target
+    if( isCellTarget() ) {
+        print "Attempting to access subset data for Cell target"
+        execerror( "Attempting to access subset data for Cell target" )
+    }
+	return cellSubsets.object( localCellsMap.x[$1] )
+}
+
+//------------------------------------------------------------------------------------------------------------
 
 /*****************************************************************
     Retrieve the flattened ids for this target, i.e. all cells ids in one vector including those from subtargets
@@ -458,7 +488,9 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
     
         //for each cell member
         for cellIndex=0, localCellsMap.size()-1 {
-            addressCompartmentPoints( $o1, getgid(cellIndex), getCellExtraValues(cellIndex), $o2)
+			activePointList = new TPointList()
+            addressCompartmentPoints( $o1, getgid(cellIndex), getCellSubset(cellIndex).s, getCellExtraValues(cellIndex), activePointList )
+			pointListList.append( activePointList )
         }
         
         //for each subtarget
@@ -468,7 +500,9 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
                 
                 gidVec = activeTarget.gids()  //get all gids from that target and its subtargets
                 for cellIndex=0, gidVec.size()-1 {
-                    addressCompartmentPoints( $o1, gidVec.x[cellIndex], targetExtraValues.object(targetIndex), $o2 )
+					activePointList = new TPointList()
+                    addressCompartmentPoints( $o1, gidVec.x[cellIndex], targetSubsets.o(cellIndex).s, targetExtraValues.object(targetIndex), activePointList )
+					pointListList.append( activePointList )
                 }
                 
             } else if( activeTarget.isSectionTarget() ) {
@@ -477,85 +511,8 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
                 print "Warning: detected non-cell, non-section subtarget nested in Compartment target.  Skipping"
             }
         }
-    
-    } else if (isSynapseTarget() ) {
-        print "Synapse Targets not supported"
-    } else {
-        print "Invalid Target type for target ", name
-    }
-}
-
-/*****************************************************************
-    Retrieve a list of cells and compartment accesses appropriate for this target (affecting any nested targets).  i.e. If this target is
-    a neuron target, its cells and cells from nested targets have soma(0.5) accessed.  If this target is a Section or Compartment target, 
-    the cells and cells from nested targets will be accessed based on subset requests and normalized offset values (empty values for either are 
-    interpreted as all subsets and/or all offset values)
-    
-    Required Inputs : $o1 Reference to LoadBalance with simulation info
-                    : $o2 List where retrieved cell data will be stored
-    Logic           : Start with the cells in this target, then traverse nested targets, applying the target type of this target down the
-                      chain.  i.e. The subtargets will not recursively call this function, but rather the private function '??' will get
-                      called so the target type of this master target is applied to the cells retireved from nested levels
-*****************************************************************/
-proc evaluateCompartments() { local cellIndex, targetIndex  localobj strobj, gidVec, pointVector, activeTarget
-	strobj = new StringFunctions()
-	strdef token, NeuronName, SecName
-	
-	if( isCellTarget() ) {  //get all cells, and address soma(0.5)
-		gidVec = getFlatVec()
 		
-		pointVector = new Vector()
-		pointVector.append( 0.5 )		
-        for cellIndex=0, gidVec.size()-1 {
-			addressSectionPoints( $o1, gidVec.x[cellIndex], "soma", pointVector, $o2 )
-		}
-        
-	} else if( isSectionTarget() ) {
-        pointVector = new Vector()
-        pointVector.append(0.5)
-        
-        //for each cell member
-        for cellIndex=0, localCellsMap.size()-1 {
-            addressSectionPoints( $o1, getgid(cellIndex), getCellExtraValues(cellIndex), pointVector, $o2 )
-        }
-        
-        //for each subtarget
-        for targetIndex=0, subtargets.count()-1 {
-            activeTarget = subtargets.object( targetIndex )
-            if( activeTarget.isCellTarget() ) {  //only do stuff if it is a cell target?  no nesting section targets in each other?
-                
-                gidVec = activeTarget.getFlatVec()  //get all gids from that target and its subtargets
-                for cellIndex=0, gidVec.size()-1 {
-                    addressSectionPoints( $o1, gidVec.x[cellIndex], targetExtraValues.object( targetIndex ), pointVector, $o2 )
-                }
-            } else { //if( $o1.myid == 0 ) {
-                print "Warning: detected non-cell subtarget nested in Section target.  Skipping"
-            }
-        }
-        
-	} else if( isCompartmentTarget() ) {
-    
-        //for each cell member
-        for cellIndex=0, localCellsMap.size()-1 {
-            addressCompartmentPoints( $o1, getgid(cellIndex), getCellExtraValues(cellIndex), $o2)
-        }
-        
-        //for each subtarget
-        for targetIndex=0, subtargets.count()-1 {
-            activeTarget = subtargets.object( targetIndex )
-            if( activeTarget.isCellTarget() ) {  //only do stuff if cell or section target?  no nesting cmp targets in each other?
-                
-                gidVec = activeTarget.getFlatVec()  //get all gids from that target and its subtargets
-                for cellIndex=0, gidVec.size()-1 {
-                    addressCompartmentPoints( $o1, gidVec.x[cellIndex], targetExtraValues.object(targetIndex), $o2 )
-                }
-                
-            } else if( activeTarget.isSectionTarget() ) {
-                addressCompartmentPointsInSection( $o1, activeTarget, targetExtraValues.object(targetIndex), $o2 )
-            } else { //if( $o1.myid == 0 ) {
-                print "Warning: detected non-cell, non-section subtarget nested in Compartment target.  Skipping"
-            }
-        }
+		return pointListList
     
     } else if (isSynapseTarget() ) {
         print "Synapse Targets not supported"
@@ -563,7 +520,6 @@ proc evaluateCompartments() { local cellIndex, targetIndex  localobj strobj, gid
         print "Invalid Target type for target ", name
     }
 }
-
 
 /***************************************************************************************
     Retrive the synapse ids for a given id from this target
@@ -641,33 +597,20 @@ proc addressCompartmentPointsInSection(){local  ret, cnt, val, cellIndex, target
 
 /*****************************************************************
     Use the extra data of a compartment target to identify locations of a neuron to address, limiting to a certain
-    section subset if specified
+    section subset if specified.  Any locations given on the line are compartment locations as opposed to section locations
     
     Required Inputs : $o1 Parallel Net Manager
                       $2 Neuron gid
-                      $s3 String with possible subset & normailzed points
-                      $o4 (return value) reference of list object which will contain CellInfo
+					  $s3 String with subset name (or "" for all subsets)
+                      $o4 Vector with normalized locations
+                      $o5 (return value) reference to TPointList object which will store resulting points
     Logic           : 
 *****************************************************************/
 proc addressCompartmentPoints(){ local ret, cnt, val  localobj strList, tVec
-/*
-    strList =   new List()
-    ret     =   split( $s3, strList)  
-    if( ret>0 ) {
-        if((0==strcmp(strList.o(0).s, "soma")) ||  (0==strcmp(strList.o(0).s, "axon")) || (0==strcmp(strList.o(0).s, "dend")) ||(0==strcmp(strList.o(0).s, "apic"))){
-            tVec = new Vector()
-            for cnt=1, strList.count-1 {
-                sscanf(strList.o(cnt).s,"%f", &val)
-                tVec.append(val)
-            }
-            addressSectionPoints( $o1, $2, strList.o(0).s, tVec, $o4 )
-        }
-        
-    }else{  //all points
-        tVec = new Vector()
-        addressSectionPoints( $o1, $2, "", tVec, $o4 )
-    }
-    */
+	
+	tVec = new Vector() //pass empty vector to represent all sections
+	
+	addressSectionPoints( $o1, $2, $s3, tVec, $o4, $o5 )
 }
 
 
@@ -739,10 +682,10 @@ proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj s
                       $s3  SecName
                       $4   SecNo        
                       $o5  Vector each element containing Compartment ref.
-                      $o6  CellInfo obj
+                      $o6  TPointList
     Logic           : 
 *****************************************************************/
-proc addressSection(){local segcnt, SegNo localobj VecObj, tObj
+proc addressSection(){local segcnt, SegNo, locIndex  localobj VecObj, tObj
 	strdef tstr, tstr1
     //get the actual cell object prom pnm
     
@@ -764,7 +707,9 @@ proc addressSection(){local segcnt, SegNo localobj VecObj, tObj
         }       
     }
     
-    $o6.append(new String(tstr), VecObj)
+	for locIndex=0, VecObj.size()-1 {
+		$o6.append( tstr, VecObj.x[locIndex] )
+	}
 }
 
 /*****************************************************************

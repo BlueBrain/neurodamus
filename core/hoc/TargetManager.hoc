@@ -87,7 +87,7 @@ begintemplate TargetManager
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-objref targetList, pnm, cellList, sectionAccess, isec2sec[1], loadBalance
+objref targetList, pnm, cellList, sectionAccess, isec2sec[1], loadBalance, nilSecRef
 
 //-----------------------------------------------------------------------------------------------
 // public members
@@ -99,6 +99,8 @@ public getTarget, setTargetList, pnm, getPointList, locationToPoint, loadBalance
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
 //-----------------------------------------------------------------------------------------------
+
+create dummy
 
 /*!
  * $o1 List with targets most likely parsed from Target files
@@ -115,6 +117,12 @@ proc init() { local lastgid, cellIndex  localobj cellObj, secList, pointList
     nErrors = 0
     
     sectionAccess = new Map()
+    
+    //can I create a dummy section, reference it, then delte it to keep a null SectionRef for insertion into pointlists?
+    
+    access dummy
+    nilSecRef = new SectionRef()
+    delete_section()
 }
 
 //------------------------------------------------------------------------------------------

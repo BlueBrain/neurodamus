@@ -77,6 +77,7 @@ proc init() {
 /*!
  * Determine the absolute index of a section within the cell
  *
+ * @param $o1 Cell object who owns the currently accessed section 
  * @return index which can be used to map back onto the neuron
  */
 func sectionNo() { local baseOffset, secIndex  localobj str
@@ -237,7 +238,7 @@ proc addCompartmentReport() { local x, rpt, vgid
     
         //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
         if( 0 == strcmp(format, "Bin") ) {
-            sprint(tstr, "tempBinReport.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo() )
+            sprint(tstr, "tempBinReport.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
             execute(tstr, this)
         } else {
             sprint(tstr,"retVal = rec.addvar(%d, &%s(%1.2f))", rpt, reportOn, x )
@@ -245,7 +246,7 @@ proc addCompartmentReport() { local x, rpt, vgid
             if(retVal ==0){
                 break
             }
-            rec.addmapping( rpt, sectionNo() )
+            rec.addmapping( rpt, sectionNo( $o1 ) )
         }
     }
     
