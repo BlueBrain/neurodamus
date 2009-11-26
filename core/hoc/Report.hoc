@@ -167,28 +167,15 @@ proc sumSectionCounts() { local offset, x  localobj prevSection, nil
 obfunc accessReport() { local node  //localobj str
     node = 0  //do we really need to know which node produced these reports?  We're trying to make this agnostic to multiple cpu
     
-    //str = new String("")
-    
     if(0 == strcmp( format, "HDF5")) {
 	    if(object_id($o1.HDF5rpt, 1) < 0) {
-            //  print "Creating HDF5 Record for ", gid, " Node=", $4, " OutputDir=", $s1, " Cellname=", $s2
-            //sprint(str.s,"%s.HDF5rpt = new HDF5Record(.5, %d, \"%s\", \"%s\")", $o5, $4, $s1,$s2)
             $o1.HDF5rpt = new HDF5Record( 0.5, node, outputDir, $s2 )
-            //execute(str.s)
-            //$o6.append($o5.HDF5rpt)  //we already keep the reference in cell obj, and old bglib didn't use recorder_list for anything later (except a pretend function)
-        } 
+        }
         return $o1.HDF5rpt
-        //$o7 = $o5.HDF5rpt	
     }else{
-        //print "result of objectr2_id = ", object_id(ASCIIrpt)
         if(object_id($o1.ASCIIrpt, 1) < 0){
-          //  print "Creating ASCII Record for ", gid, " Node=", $4, " OutputDir=", $s1, " Cellname=", $s2
-            //sprint(str.s,"%s.ASCIIrpt = new ASCIIRecord(.5, %d, \"%s\", \"%s\")", $o5, $4, $s1,$s2)
-            $o1.ASCIIrpt = new ASCIIRecord(.5, node, outputDir, $s2)
-            //execute(str.s)
-            //$o6.append($o5.ASCIIrpt)
-        }                
-        //$o7 = $o5.ASCIIrpt
+            $o1.ASCIIrpt = new ASCIIRecord( 0.5, node, outputDir, $s2)
+        }
         return $o1.ASCIIrpt
     }
 }
@@ -200,7 +187,7 @@ obfunc accessReport() { local node  //localobj str
  *
  * @param $o1 Cell The cell getting reported
  * @param $o2 TPointList with the points for a single cell
- * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the nromal gid (bgid)
+ * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
  */
 proc addCompartmentReport() { local x, rpt, vgid
     strdef strCellName, tstr
@@ -209,7 +196,7 @@ proc addCompartmentReport() { local x, rpt, vgid
     if( numarg() == 3 ) {
         vgid = $3
     } else {
-        bvgid = $o1.gid
+        vgid = $o1.gid
     }
     
     sprint( strCellName, "a%d", $o1.gid )
@@ -228,9 +215,12 @@ proc addCompartmentReport() { local x, rpt, vgid
     //get section counts: nSoma, nApic, etc
     sumSectionCounts( $o2 )
 
-    //for ascii/hdf5 reports, must give section counts now to allocate mem - can I give it to Bin reports, too?
+    //for ascii/hdf5 reports, must give section counts now to allocate memory - can I give it to Bin reports, too?
     if( 0 != strcmp( format, "Bin")) {
         rec.newMapping(rpt, "compartment", nAll, nSoma, nAxon, nBasal, nApical)
+    } else {
+        tempBinReport.ExtraMapping( nAll, nSoma, nAxon, nBasal, nApical)
+        binList.append( tempBinReport )
     }
     
     //for each point, register variable and mapping
@@ -248,13 +238,7 @@ proc addCompartmentReport() { local x, rpt, vgid
             }
             rec.addmapping( rpt, sectionNo( $o1 ) )
         }
-    }
-    
-    //as mentioned above, binary reports had been outputting this extra mapping last while non-binary had already done it.  Does it matter? test later.
-    if( 0 == strcmp( format, "Bin")) {
-        tempBinReport.ExtraMapping( nAll, nSoma, nAxon, nBasal, nApical)
-        binList.append( tempBinReport )
-    }
+    }    
 }
 
 //-----------------------------------------------------------------------------------------------

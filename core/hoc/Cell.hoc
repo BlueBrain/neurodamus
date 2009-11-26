@@ -1,9 +1,9 @@
 {load_file("import3d.hoc")}
 begintemplate Cell
-public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nseg, SetCellProperties, connect2target
+public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nseg, geom_nsec, SetCellProperties, connect2target
 public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig
-public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt
-objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt
+public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
+objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts
 proc init() {
 	gid 	= 0
 	all 	= new SectionList()
@@ -29,7 +29,7 @@ proc AddMorphNL(){ localobj nl, import
         import = new Import3d_GUI(nl, 0)
         import.instantiate(this)
         indexSections(import)
-        geom_nseg()
+        geom_nsec()
 }
 
 proc SetCellProperties(){local Rm,v_init
@@ -45,27 +45,55 @@ proc SetCellProperties(){local Rm,v_init
 }
 
 external lambda_f
-proc geom_nseg() {local nSec, L1, L2, D1, D2, nSeg1, nSeg2
-  soma area(.5) // make sure diam reflects 3d points
-  nSec = 0
-  forsec all {
-  nseg = int((L/(0.1*lambda_f(100))+.9)/2)*2 + 1
-  nSec = nSec + 1
-    //print nseg, " ", L
-  }
-  nSecAll = nSec
-  nSec = 0
-  forsec somatic { nSec = nSec + 1}
-  nSecSoma	= 	nSec
-  nSec = 0
-  forsec apical { nSec = nSec + 1}
-  nSecApical= 	nSec
-  nSec = 0
-  forsec basal { nSec = nSec + 1}
-  nSecBasal	= 	nSec
-  nSec = 0
-  forsec axonal { nSec = nSec + 1}
-  nSecAxonalOrig = nSecAxonal = nSec
+
+/*!
+ * Iterate over the section and compute how many sqgments should be allocate to each.  This number
+ * is influenced by the mechanisms distributed, so this function should be called after assigning biophys
+ */
+proc geom_nseg() { local secIndex
+    soma area(.5) // make sure diam reflects 3d points
+    
+    secIndex=0
+    forsec all {
+        nseg = int((L/(0.1*lambda_f(100))+.9)/2)*2 + 1
+        
+        segCounts.x[secIndex] = nseg
+        secIndex = secIndex+1
+    }
+}
+
+/*!
+ * Count up the number of sections. Additionally, assign as estimate to the nseg var of each section, but this
+ * will most likely change after biophys are assigned and geom_nseg called
+ */
+proc geom_nsec() { local nSec
+    nSec = 0
+    forsec all {
+        nseg = int((L/(0.1*lambda_f(100))+.9)/2)*2 + 1
+        nSec = nSec + 1
+        //print nseg, " ", L
+    }
+    nSecAll = nSec
+    nSec = 0
+    forsec somatic { nSec = nSec + 1}
+    nSecSoma	= 	nSec
+    nSec = 0
+    forsec apical { nSec = nSec + 1}
+    nSecApical= 	nSec
+    nSec = 0
+    forsec basal { nSec = nSec + 1}
+    nSecBasal	= 	nSec
+    nSec = 0
+    forsec axonal { nSec = nSec + 1}
+    nSecAxonalOrig = nSecAxonal = nSec
+    
+    segCounts = new Vector()
+    segCounts.resize(nSecAll)
+    nSec=0
+    forsec all {
+        segCounts.x[nSec] = nseg
+        nSec = nSec+1
+    }
 }
 
 obfunc getCCell(){

@@ -501,7 +501,7 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
                 gidVec = activeTarget.gids()  //get all gids from that target and its subtargets
                 for cellIndex=0, gidVec.size()-1 {
 					activePointList = new TPointList()
-                    addressCompartmentPoints( $o1, gidVec.x[cellIndex], targetSubsets.o(cellIndex).s, targetExtraValues.object(targetIndex), activePointList )
+                    addressCompartmentPoints( $o1, gidVec.x[cellIndex], targetSubsets.o(targetIndex).s, targetExtraValues.object(targetIndex), activePointList )
 					pointListList.append( activePointList )
                 }
                 
@@ -595,21 +595,19 @@ proc addressCompartmentPointsInSection(){local  ret, cnt, val, cellIndex, target
 }
 
 
-/*****************************************************************
-    Use the extra data of a compartment target to identify locations of a neuron to address, limiting to a certain
-    section subset if specified.  Any locations given on the line are compartment locations as opposed to section locations
-    
-    Required Inputs : $o1 Parallel Net Manager
-                      $2 Neuron gid
-					  $s3 String with subset name (or "" for all subsets)
-                      $o4 Vector with normalized locations
-                      $o5 (return value) reference to TPointList object which will store resulting points
-    Logic           : 
-*****************************************************************/
+/*!
+ * Use the extra data of a compartment target to identify locations of a neuron to address, limiting to a certain
+ * section subset if specified.  Any locations given on the line are compartment locations as opposed to section locations
+ *  
+ * @param $o1 LoadBalanceBBP passed through to functions that need to access cell objs
+ * @param $2 Neuron gid
+ * @param $s3 String with subset name (or "" for all subsets)
+ * @param $o4 Vector with normalized locations
+ * @param $o5 (return value) reference to TPointList object which will store resulting points
+ */
 proc addressCompartmentPoints(){ local ret, cnt, val  localobj strList, tVec
 	
 	tVec = new Vector() //pass empty vector to represent all sections
-	
 	addressSectionPoints( $o1, $2, $s3, tVec, $o4, $o5 )
 }
 
@@ -692,7 +690,10 @@ proc addressSection(){local segcnt, SegNo, locIndex  localobj VecObj, tObj
     tObj = $o1.getCell( $2 )
     //tObj = $o1.pc.gid2obj($2)
     
-    if(!section_exists($s3,$4 ,tObj)) {
+    if(!section_exists($s3, $4, tObj)) {
+        //TODO: for situations where we need all points, we need to be able to insert a nil section ref
+        // which the targetManager has, but maybe I should just let every target have one?  or always pass the manager's copy as an arg?
+        // also, how many segs were in the original section?
 		return
     }
     
@@ -702,9 +703,9 @@ proc addressSection(){local segcnt, SegNo, locIndex  localobj VecObj, tObj
         VecObj  = new Vector()
         sprint(tstr1, "access %s", tstr)
         execute(tstr1)
-        for segcnt =1, nseg {
+        for segcnt=1, nseg {
             VecObj.append(segcnt/(nseg+1))
-        }       
+        }
     }
     
 	for locIndex=0, VecObj.size()-1 {
@@ -769,8 +770,8 @@ func getSectionNo(){ local SecNo
     if( $2>=0 && $2 <=1){        
         SecNo = $2 * ($1-1)
     }else {
-        print "Error Normalized Section not wothin range 0 to 1"
-        execerror("Error Normalized Section not wothin range 0 to 1")
+        print "Error Normalized Section not within range 0 to 1"
+        execerror("Error Normalized Section not within range 0 to 1")
     }
     
     return(int(SecNo))
