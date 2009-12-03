@@ -143,13 +143,19 @@ public cellExtraValues, targetExtraValues
 
 //! memberfunctions - see below for detailed information
 public evalType, isCellTarget, isSectionTarget, isCompartmentTarget, isSynapseTarget
-public update, getgid, evaluateCompartments, gids, completegids, getCellExtraValues, evaluateSynapses, getPointList
+public update, getgid, evaluateCompartments, gids, completegids, getCellExtraValues, evaluateSynapses, getPointList, getCompletePointList
 public isDefined, completeContains, contains
 
 //------------------------------------------------------------------------------------------------------------
 // Member functions
 //------------------------------------------------------------------------------------------------------------
 
+/*!
+ * Constructor
+ *
+ * $s1 Target name - optional argument
+ * $s2 Target type [Cell, Section, Compartment, Synapse] - optional
+ */
 proc init() {
     localCellsMap = new Vector()  //this is not public because it maps to indices of the gidMembers vector which might cause confusion
     gidMembers = new Vector()
@@ -158,9 +164,17 @@ proc init() {
     targetExtraValues = new List()
     cellSubsets = new List()
     targetSubsets = new List()
+    
+    if( argtype(1) == 2 ) {
+        name = $s1
+    }
 	
 	// 0=Cell, 1=Section, 2=Compartment, 3=Synapse
     typeCode = 0
+    if( argtype(2) == 2 ) {
+        type = $s2
+        evalType()
+    }
     
     flattenedGids = new Vector()
     isFlattened = 0
@@ -170,6 +184,9 @@ proc init() {
     
     //flag to indicate the target's contents are defined to prevent multiple targets with same name being *merged*
     isDefined = 0
+    
+    //flag indicating that addressing functions (address*Points) should fill in nils
+    completeMode = 0
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -435,13 +452,31 @@ func completeContains() { localobj targetUtil
 //------------------------------------------------------------------------------------------------------------
 
 /*!
+ * Convenience function?  Does the same thing as getPointList, so shouldn't copy/paste everything but just pass in
+ * additional argument
+ */
+obfunc getCompletePointList() {  localobj pts
+    //set flag indicating things are in complete mode
+    completeMode = 1
+    
+    pts = getPointList( $o1 )
+    
+    //clear flag
+    completeMode = 0
+    
+    return pts
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
  * Retrieve a TPointList containing compartments (based on target type and contents) of any local cells on the cpu.  I.e. If this target is
- *  a neuron target, its cells and cells from nested targets have soma(0.5) accessed.  If this target is a Section or Compartment target, 
- *  the cells and cells from nested targets will be accessed based on subset requests and normalized offset values (empty values for either are 
- *  interpreted as all subsets and/or all offset values)
- *  
- *  @param $o1 Reference to LoadBalance where cell objects and cell info can be retrieved
- *  @return TPointList where retrieved section references are stored
+ * a neuron target, its cells and cells from nested targets have soma(0.5) accessed.  If this target is a Section or Compartment target, 
+ * the cells and cells from nested targets will be accessed based on subset requests and normalized offset values (empty values for either are 
+ * interpreted as all subsets and/or all offset values)
+ * 
+ * @param $o1 Reference to LoadBalance where cell objects and cell info can be retrieved
+ * @return TPointList where retrieved section references are stored
  */
 obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVector, activeTarget, pointListList, activePointList
 	strdef token, NeuronName, SecName
@@ -459,15 +494,15 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
             pointListList.append( activePointList )
 		}
         
-        return pointListList
-        
 	} else if( isSectionTarget() ) {
         pointVector = new Vector()
         pointVector.append(0.5)
         
         //for each cell member
         for cellIndex=0, localCellsMap.size()-1 {
-            addressSectionPoints( $o1, getgid(cellIndex), getCellExtraValues(cellIndex), pointVector, $o2 )
+            activePointList = new TPointList()
+            addressSectionPoints( $o1, getgid(cellIndex), getCellSubset(cellIndex).s, getCellExtraValues(cellIndex), pointVector, activePointList )
+            pointListList.append( activePointList )
         }
         
         //for each subtarget
@@ -475,9 +510,11 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
             activeTarget = subtargets.object( targetIndex )
             if( activeTarget.isCellTarget() ) {  //only do stuff if it is a cell target?  no nesting section targets in each other?
                 
-                gidVec = activeTarget.getFlatVec()  //get all gids from that target and its subtargets
+                gidVec = activeTarget.gids()  //get all gids from that target and its subtargets
                 for cellIndex=0, gidVec.size()-1 {
-                    addressSectionPoints( $o1, gidVec.x[cellIndex], targetExtraValues.object( targetIndex ), pointVector, $o2 )
+                    activePointList = new TPointList()
+                    addressSectionPoints( $o1, gidVec.x[cellIndex], targetSubsets.o(targetIndex).s, targetExtraValues.o(targetIndex), pointVector, activePointList )
+                    pointListList.append( activePointList )
                 }
             } else { //if( $o1.myid == 0 ) {
                 print "Warning: detected non-cell subtarget nested in Section target.  Skipping"
@@ -506,19 +543,20 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
                 }
                 
             } else if( activeTarget.isSectionTarget() ) {
+                //TODO resolve how a Section Target wrappeed in a Compartment Target resolves in bglib1.5
                 addressCompartmentPointsInSection( $o1, activeTarget, targetExtraValues.object(targetIndex), $o2 )
             } else { //if( $o1.myid == 0 ) {
                 print "Warning: detected non-cell, non-section subtarget nested in Compartment target.  Skipping"
             }
         }
-		
-		return pointListList
     
     } else if (isSynapseTarget() ) {
         print "Synapse Targets not supported"
     } else {
         print "Invalid Target type for target ", name
     }
+    
+    return pointListList
 }
 
 /***************************************************************************************
@@ -586,7 +624,7 @@ proc addressCompartmentPointsInSection(){local  ret, cnt, val, cellIndex, target
         
         //work with flattened gids of this subtarget
         activeTarget = $o2.subtargets.object( targetIndex )
-        tgidVec = activeTarget.getFlatVec()
+        tgidVec = activeTarget.gids()
         for cellIndex=0, tgidVec.size()-1 {
             addressSectionPoints( $o1, tgidVec.x[cellIndex], $o2.targetExtra.object(targetIndex).s, tVec, $o4 )
         }
@@ -623,7 +661,7 @@ proc addressCompartmentPoints(){ local ret, cnt, val  localobj strList, tVec
  *  @param $o5 Vec of compartments points
  *  @param $o6 (return value) reference to TPointList object which will be populated with section references
  */
-proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj strList, tobj, tCInfo
+proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj strList, tobj
     strdef  SecName, NeuronName
     strList =   new List() 
     
@@ -655,14 +693,14 @@ proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj s
         } else if ( 0 == strcmp( $s3, "axon" ) ) {
             SecSize = tobj.nSecAxonal
         } else if ( 0 == strcmp( $s3, "dend" ) ) {
-            SecSize = tobj.nSecAxonal
+            SecSize = tobj.nSecBasal
         } else if ( 0 == strcmp( $s3, "apic" ) ) {
-            SecSize = tobj.nSecAxonal
+            SecSize = tobj.nSecApical
         }
-        
+                
         if ( $o4.size() == 0 ) {  //address all points of requested section
             for count=0, SecSize-1 {  
-                addressSection( $o1, gid, $s3, count, $o4, tCInfo)
+                addressSection( $o1, gid, $s3, count, $o5, $o6 )
             }
         } else {  //address only those section points told
             for count=0, $o4.size()-1 {
@@ -691,26 +729,39 @@ proc addressSection(){local segcnt, SegNo, locIndex  localobj VecObj, tObj
     //tObj = $o1.pc.gid2obj($2)
     
     if(!section_exists($s3, $4, tObj)) {
-        //TODO: for situations where we need all points, we need to be able to insert a nil section ref
-        // which the targetManager has, but maybe I should just let every target have one?  or always pass the manager's copy as an arg?
-        // also, how many segs were in the original section?
-		return
-    }
-    
-    sprint(tstr, "%s.%s[%d]", tObj, $s3, $4)
-    VecObj  = $o5
-    if(VecObj.size == 0){  //the vector was empty, so need to address all points
-        VecObj  = new Vector()
-        sprint(tstr1, "access %s", tstr)
-        execute(tstr1)
-        for segcnt=1, nseg {
-            VecObj.append(segcnt/(nseg+1))
+        if( completeMode == 1 ) {
+            //TODO: for situations where we need all points, we need to be able to insert a nil section ref
+            // which the BBPLoadBalance has, but maybe I should just let every target have one?
+            // also, how many segs were in the original section?
+            
+            VecObj = $o5
+            if( VecObj.size == 0 ) {
+                VecObj = new Vector() //the vector was empty, so need to address all points
+                for segcnt=1, tObj.segCounts.x[$4] {
+                    VecObj.append( segcnt / (tObj.segCounts.x[$4]+1) )
+                }
+            }
+            
+            for locIndex=0, VecObj.size()-1 {
+                $o6.append( $o1.nilSecRef, -1 )
+            }
+        }
+    } else {
+        sprint(tstr, "%s.%s[%d]", tObj, $s3, $4)
+        VecObj  = $o5
+        if(VecObj.size == 0){  //the vector was empty, so need to address all points
+            VecObj  = new Vector()
+            sprint(tstr1, "access %s", tstr)  //can I use the saved section counts like for the off-cpu (complete) case
+            execute(tstr1)
+            for segcnt=1, nseg {
+                VecObj.append(segcnt/(nseg+1))
+            }
+        }
+        
+        for locIndex=0, VecObj.size()-1 {
+            $o6.append( tstr, VecObj.x[locIndex] )
         }
     }
-    
-	for locIndex=0, VecObj.size()-1 {
-		$o6.append( tstr, VecObj.x[locIndex] )
-	}
 }
 
 /*****************************************************************
@@ -732,27 +783,41 @@ proc addressSoma(){local segcnt, SegNo localobj VecObj, cellObj
     //make sure it has a soma - if we are returning a complete TPointList, what do I append?  Also, how do I remember I am in 
     // 'complete' mode?  Should I just pass a flag around these functions?
     if(!section_exists("soma", cellObj)) {
+        if( completeMode == 1 ) {
+            
+            VecObj  = $o3
         
-        //TODO: insert null reference into TPointList of requested to return 'complete'
-        return
-    }
-    
-    sprint(tstr, "%s.soma", cellObj )
-    VecObj  = $o3
-    
-    //If no normalized section references were specified, then supply all of them (of course the soma typically only has one)
-    if(VecObj.size == 0){
-        VecObj  = new Vector()
-        sprint(tstr1, "access %s", tstr)
-        execute(tstr1)
-        for segcnt=1, nseg {
-            VecObj.append(segcnt/(nseg+1))
+            //If no normalized section references were specified, then supply all of them (of course the soma typically only has one)
+            if(VecObj.size == 0){
+                VecObj  = new Vector()
+                for segcnt=1, cellObj.segCounts[0] {  //note: the soma should always be in the 0th section
+                    VecObj.append(segcnt/(cellObj.segcnt[0]+1))
+                }
+            }
+            
+            //add the address string and the vector of normalized section references
+            for segcnt=0, VecObj.size-1 {
+                $o4.append( nilSecRef, -1 )
+            }
         }
-    }
-    
-    //add the address string and the vector of normalized section references
-    for segcnt=0, VecObj.size-1 {
-        $o4.append( tstr, VecObj.x[segcnt] )
+    } else {    
+        sprint(tstr, "%s.soma", cellObj )
+        VecObj  = $o3
+        
+        //If no normalized section references were specified, then supply all of them (of course the soma typically only has one)
+        if(VecObj.size == 0){
+            VecObj  = new Vector()
+            sprint(tstr1, "access %s", tstr)
+            execute(tstr1)
+            for segcnt=1, nseg {
+                VecObj.append(segcnt/(nseg+1))
+            }
+        }
+        
+        //add the address string and the vector of normalized section references
+        for segcnt=0, VecObj.size-1 {
+            $o4.append( tstr, VecObj.x[segcnt] )
+        }
     }
 }
 

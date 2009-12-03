@@ -95,12 +95,11 @@ objref targetList, pnm, cellList, sectionAccess, isec2sec[1], loadBalance, nilSe
 
 public init
 public getTarget, setTargetList, pnm, getPointList, locationToPoint, loadBalance, gids
+public getSomaticSections, getApicalSections, getBasalSections, getAxonalSections
 
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
 //-----------------------------------------------------------------------------------------------
-
-create dummy
 
 /*!
  * $o1 List with targets most likely parsed from Target files
@@ -116,13 +115,7 @@ proc init() { local lastgid, cellIndex  localobj cellObj, secList, pointList
     }
     nErrors = 0
     
-    sectionAccess = new Map()
-    
-    //can I create a dummy section, reference it, then delte it to keep a null SectionRef for insertion into pointlists?
-    
-    access dummy
-    nilSecRef = new SectionRef()
-    delete_section()
+    sectionAccess = new Map()    
 }
 
 //------------------------------------------------------------------------------------------
@@ -232,6 +225,87 @@ obfunc getPointList() { localobj activeTarget
  */
 obfunc gids() {
     return getTarget($s1).gids()
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each somatic section from a Cell target
+ *
+ * @param $s1 TargetName
+ * @return List<TPointList> where each TPointList contains a point to each somatic section of the given target
+ */
+obfunc getSomaticSections() { localobj tempTarget
+    tempTarget = sectionCast( $s1, "soma" )
+    return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each apical section from a Cell target
+ *
+ * @param $s1 TargetName
+ * @return List<TPointList> where each TPointList contains a point to each apical section of the given target
+ */
+obfunc getApicalSections() {  localobj tempTarget
+
+    tempTarget = sectionCast( $s1, "apic" )
+    return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each basal section from a Cell target
+ *
+ * @param $s1 TargetName
+ * @return List<TPointList> where each TPointList contains a point to each basal section of the given target
+ */
+obfunc getBasalSections() { localobj tempTarget
+    tempTarget = sectionCast( $s1, "dend" )
+    return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each axonal section from a Cell target
+ *
+ * @param $s1 TargetName
+ * @return List<TPointList> where each TPointList contains a point to each axonal section of the given target
+ */
+obfunc getAxonalSections() { localobj tempTarget
+    tempTarget = sectionCast( $s1, "axon" )
+    return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Utility function to take an existing Cell target and wrap it in a Section target
+ *
+ * @param $o1/$s1 Target object or Target name
+ * @param $s2 subset name [soma, apic, dend, apic, or "" for all]
+ */
+obfunc sectionCast() { localobj target, wrapper
+
+    if( argtype(1) == 2 ) {
+        target = getTarget( $s1 )
+    } else {
+        target = $s1
+    }
+    
+    if( !target.isCellTarget() ) {
+        execerror( "Attempting to apply sectionCast to non-Cell target" )
+    }
+    
+    wrapper = new Target( "temp", "Section" )
+    wrapper.subtargets.append( target )
+    wrapper.targetSubsets.append( new String($s2) )
+    wrapper.targetExtraValues.append( new Vector() )
+    
+    return wrapper
 }
 
 //------------------------------------------------------------------------------------------

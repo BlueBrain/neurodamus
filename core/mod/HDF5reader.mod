@@ -29,6 +29,7 @@ VERBATIM
 #include "/opt/hdf5/include/hdf5.h"  //-linsrv
 //#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"  //-blugene
 #include "mpi.h"
+#include <stdlib.h>
 
 extern double* hoc_pgetarg(int iarg);
 extern double* getarg(int iarg);
@@ -119,6 +120,31 @@ VERBATIM {
 		free(info->datamatrix_);
 		info->datamatrix_ = NULL;
 	}
+}
+ENDVERBATIM
+}
+
+FUNCTION redirect() {
+VERBATIM {
+    FILE *fout;
+    char fname[128];
+    
+    int mpi_size, mpi_rank;
+    
+    // get MPI info
+    MPI_Comm_size (MPI_COMM_WORLD, &mpi_size);
+    MPI_Comm_rank (MPI_COMM_WORLD, &mpi_rank);  
+    
+    sprintf( fname, "NodeFiles/%d.%dnode.out", mpi_rank, mpi_size );
+    fout = freopen( fname, "w", stdout );
+    if( !fout ) {
+        fprintf( stderr, "failed to redirect.  Terminating\n" );
+        exit(0);
+    }
+    
+    sprintf( fname, "NodeFiles/%d.%dnode.err", mpi_rank, mpi_size );
+    fout = freopen( fname, "w", stderr );
+    setbuf( fout, NULL );
 }
 ENDVERBATIM
 }

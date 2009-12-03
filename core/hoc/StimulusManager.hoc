@@ -17,23 +17,36 @@ begintemplate StimulusManager
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-objref stimList
+objref stimList, targetManager, this
+
+//! For use in poisson stims, when creating via the execute stmt, need to have class level object (not just local to function)
+objref stimHelper, poissonNetconList, handleList, poissonSynList
 
 //-----------------------------------------------------------------------------------------------
 // public members
 //-----------------------------------------------------------------------------------------------
 
-public init, linear, interpret
+public init, linear, interpret, FillSpikeTrain
 
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
 //-----------------------------------------------------------------------------------------------
 
 /*!
- * Typical constructor, just create empty list where stimulus are stored as they get generated
+ * Typical constructor, create empty list where stimulus are stored as they get generated, keep reference
+ * to TargetManager for accessing Targets
+ *
+ * @param $o1 TargetManager
  */
 proc init() {
     stimList = new List()
+    targetManager = $o1
+    
+    //keep track of how many poisson stims we create so that the seeds can be offset (otherwise we would have same syns/spike trains in a given cell)
+    poissonStimCount = 0
+    poissonNetconList = new List()
+    poissonSynList = new List()
+    handleList = new List()
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -42,11 +55,11 @@ proc init() {
  * For handling stimulus which has been parsed from a file - look at the parameters collected and
  * call the appropriate stimulus functions
  *
- * @param $o1 target - target where stimulus should be injected
+ * @param $s1 targetName - which target where stimulus should be injected
  * @param $o2 stim - map containing stimulus parameters
  */
-proc interpret() { local tempVal, del, dur  localobj stim, target, paramValue, paramVect, nil
-    target = $o1
+proc interpret() { local tempVal, del, dur  localobj stim, target, paramValue, paramVect, patternName, nil
+
     stim = $o2
     
     paramVect = new Vector()
@@ -59,24 +72,25 @@ proc interpret() { local tempVal, del, dur  localobj stim, target, paramValue, p
     }
     
     //all will have Delay and Duration, so parse immediately
-    del = valueOf( stim, "Delay" )
-    duration = valueOf( stim, "Duration" )
+    del = stim.valueOf( "Delay" )
+    dur = stim.valueOf( "Duration" )
     
     //more specific parameters based on pattern
-    paramValue = stim.get( "Pattern" )
-    if( strcmp( paramValue.s, "Linear" ) == 0 ) {
-        paramVect.append( valueOf( stim, "AmpStart" ) )
+    patternName = stim.get( "Pattern" )
+    if( strcmp( patternName.s, "Linear" ) == 0 ) {
+        paramVect.append( stim.valueOf("AmpStart") )
         
         //optional option - AmpEnd.  If not there, use same value as AmpStart
         if( stim.get( "AmpEnd" ) != nil ) {
-            paramVect.append( valueOf( stim, "AmpEnd" ) )
+            paramVect.append( stim.valueOf("AmpEnd") )
         } else {
             paramVect.append( paramVect.x[paramVect.count()-1] )
         }
         
-        linear( target, paramVect.x[0], paramVect.x[1], del, dur )
-    } else if ( strcmp( paramValue.s, "Pulse" ) == 0 ) {
+        linear( targetManager.getTarget($s1), paramVect.x[0], paramVect.x[1], del, dur )
+    } else if ( strcmp( patternName.s, "Pulse" ) == 0 ) {
         //looking at bglib, it expects potentially multiple delay/duration pairs (and an AmpENd)
+        // also, our idea of pulse differs from tstim's pulse, so who should change nomenclature?
 
         paramVect.append( stim.valueOf( "AmpStart" ) )
         paramVect.append( stim.valueOf( "Frequency" ) )
@@ -84,29 +98,23 @@ proc interpret() { local tempVal, del, dur  localobj stim, target, paramValue, p
         
         //optional argument - Offset; default = 0
         if( stim.get( "Offset" ) != nil ) {
-            paramVect.append( valueOf( stim, "Offset" ) )
+            paramVect.append( stim.valueOf( "Offset" ) )
         } else {
             paramVect.append( 0 )
         }
         
         //pulse( target, paramVect.x[0]
+    } else if( strcmp( patternName.s, "NPoisson" ) == 0 ) {
+        paramVect.append( stim.valueOf( "Lambda" ) )
+        paramVect.append( stim.valueOf( "Weight" ) )
+        paramVect.append( stim.valueOf( "NumOfSynapses" ) )
+        
+        //Note: SynapseType is optional and will return nil (handled by npoisson function)
+        //Note: requires special Target handling, so just pass targetName through
+        npoisson( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], stim.get( "SynapseType" ), del, dur )
+        
+        poissonStimCount = poissonStimCount + 1
     }
-}
-
-//-----------------------------------------------------------------------------------------------
-
-/*!
- * Helper function to get a value from a Map associated with a given key and put it in a hoc primitive
- * deprecate - should use Map's built-in function now
- *
- * $o1 Map with parsed Stimulus data
- * $s1 Field name - i.e. map key
- * @return Value corresponding to the key
- */
-func valueOf() { local tvalue  localobj tfield
-    tfield = $o1.get( $s2 )
-    sscanf( tfield.s, "%lf", &tvalue )
-    return tvalue
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -121,12 +129,12 @@ func valueOf() { local tvalue  localobj tfield
  * @param $4 delay from start of simulation to when current is injected (ms)
  * @param $5 duration of stimulus (ms)
  */
-proc linear() { local listIndex, x, ampStart, ampEnd, delay, duration  localobj pts, tstim
+proc linear() { local listIndex, x, ampStart, ampEnd, del, dur  localobj pts, tstim
     
     ampStart = $2
     ampEnd = $3
-    delay = $4
-    duration = $5
+    del = $4
+    dur = $5
 
     //since there are no random elements, we can just evaluate the pointlist and proceed as normal
     pts = $o1.getPointList()
@@ -137,13 +145,187 @@ proc linear() { local listIndex, x, ampStart, ampEnd, delay, duration  localobj 
             tstim = new TStim(x)
             
             if( ampStart == ampEnd ) {
-                tstim.pulse( delay, duration, ampStart )
+                tstim.pulse( del, dur, ampStart )
             } else {
-                tstim.ramp( 0, delay, ampStart, ampEnd, duration, 0, 0 )
+                tstim.ramp( 0, del, ampStart, ampEnd, dur, 0, 0 )
             }
             
             stimList.append( tstim )
         }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Apply a poisson stimulus over n artificial synapses distributed randomly on a cell's basal and apical sections
+ * 
+ * @param $s1 TargetName
+ * @param $2 lambda
+ * @param $3 weight
+ * @param $4 number of synapses
+ * @param $o5 synapseType as String or nil if should use default (ExpSyn)
+ * @param $6 delay from start of simulation to when stimulus starts (ms)
+ * @param $7 duration of stimulus (ms)
+ */
+proc npoisson() { local cellIndex  localobj apicalPoints, basalPoints, gids
+    
+    //The synapses generated should only go on the apical or basal sections of any target cells
+    // difficulty for doing exactly same thing as old bglib: that could operate easily on the section
+    // of a cell, but now we work with compartment points only(?)  If so, random selection won't be the same
+    // maybe the utility function of targetManager can return only the middle of all sections?
+    // e.g Target section helper
+    //     {
+    //         base_target apic  //note that base_target must be a cell target, if section target, that is fine
+    //         base_target dend
+    //     }
+    
+    // open for interpretation - should I get the target, check they type and take action based on that?
+    //  or should I send two requests to the targetManager asking for the apic & basal sections, letting
+    //  the manager do checks and balances
+    gids = targetManager.gids( $s1 )
+    apicalPoints = targetManager.getApicalSections( $s1 )
+    basalPoints = targetManager.getBasalSections( $s1 )
+    
+    //for each gid/TPointList - place synapses randomly and supply a spike train
+    for cellIndex=0, gids.size()-1 {
+        
+        //so all cells should be represented and have the same point count regardless of splitting        
+        distributePoissonSynapses( gids.x[cellIndex], $2, $3, $4, $o5, $6, $7, apicalPoints.o(cellIndex), basalPoints.o(cellIndex) )
+    }
+    
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Given some points on a targeted cell, randomly place synapses and generate their spike trains
+ *
+ * $1 gid
+ * $2 lambda
+ * $3 weight
+ * $4 number of synapses
+ * $o5 synapseType as String or nil if should use default (ExpSyn)  should this be the last arg so it can actually be dropped in default case?
+ * $6 delay from start of simulation to when simulation starts
+ * $7 duration of stimulus
+ * $o8 TPointList with apical points
+ * $o9 TPointList with basal points
+ */
+proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, lambda, weight, del, dur \
+    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, nc, fih, nil
+    strdef tstr
+    
+    apicalPoints = $o8
+    basalPoints = $o9
+    baseSeed = $1 * 10000 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
+    iteration = 0
+    nCreated = 0
+    lambda = $2
+    weight = $3
+    del = $6
+    dur = $7
+    
+    //determine now if the synapseType is given or we should use the default
+    if( object_id($o5,1) < 0 ) {
+        synapseType = new String("ExpSyn")
+    } else {
+        synapseType = $o5
+    }
+    
+    nNeeded  =  int($4)
+    while ( nCreated < nNeeded ) {
+    
+        //count the iterations and use that to offset the seed
+        iteration = iteration + 1
+        
+	    ran2 = new Random(baseSeed + iteration)
+        ran2.MCellRan4(baseSeed + iteration)
+	    ran2.discunif(0,1)
+        
+	    ran1 = new Random(baseSeed + iteration)
+        ran1.MCellRan4(baseSeed + iteration)
+        
+        //first choose to target apical of basal sections
+	    if(ran2.repick()) {
+            activeSubset = basalPoints
+        } else {
+            activeSubset = apicalPoints
+        }
+        
+        if( activeSubset.count() == 0 ) { continue }
+        
+        ran1.discunif( 0, activeSubset.count()-1 )
+        sectionIndex = ran1.repick()
+        
+        //do we have random access to TPointList SectionRef members?  how should such a utility function look/behave?
+        if( !activeSubset.sclst.o(sectionIndex).exists() ) {  //section not on this cpu
+            nCreated = nCreated + 1  //assume another split piece handles it instead
+            continue
+        }
+        
+        //the section is on this cpu, so create the synapse and fill the spike train
+        activeSubset.access_(sectionIndex)
+        sprint(tstr,"stimHelper = new %s(0.5)", synapseType.s )
+        execute1(tstr, this)
+        
+        //why do we register an init handler if we are just going to call the function anyways?
+        // do we end up with twice the events?
+        nc = new NetCon( nil, stimHelper,10,1,weight )
+        sprint(tstr,"FillSpikeTrain(%s,%f,%f,%f,%d)", nc, lambda, del, dur, baseSeed+iteration )
+        fih = new FInitializeHandler(tstr, this)
+        execute1(tstr, this)
+        
+        //keep variables so they don't get deleted
+        poissonNetconList.append(nc)
+        poissonSynList.append(stimHelper)
+        handleList.append(fih)
+        
+        nCreated = nCreated + 1
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * This function creates spike events distributed as the intervals between events in a poisson distribution.
+ * It populates a vector with randomly generated time values and assigns those to the given netcon.
+ *
+ * @param $o1 Netcon Object
+ * @param $2 mean firing rate.
+ * @param $3 Delay
+ * @param $4 TimeDuration
+ * @param $5 seed
+ */
+proc FillSpikeTrain() { local i,tmpt, time, index, SpikeNeeded, nSpikeNeeded, SpikeDiff localobj ran, tVec, ran2
+    //print "Seed = ", $5
+    tVec    =  new Vector()
+    ran     =  new Random()   
+    ran.ACG($5) 
+    //ran.MCellRan4()
+    ran.negexp(1000/$2)
+    //ran.negexp($2)
+    time    = 0    
+    SpikeNeeded = (($4 * $2)/1000)
+    nSpikeNeeded = int (SpikeNeeded)
+    if((SpikeNeeded - nSpikeNeeded) >= 0.5){
+       nSpikeNeeded = nSpikeNeeded + 1
+    }
+   
+    while (time < $4){
+	tmpt = ran.repick()
+        //time = time + ran.repick()
+        if(tmpt+time > $4){
+            break
+        }
+        time = time + tmpt
+        tVec.append(time)
+    }
+    if(SpikeNeeded < 1)	  {
+        time = 0 
+    }
+
+    for i =0, tVec.size-1 {
+        $o1.event(tVec.x[i] + $3) 
     }
 }
 

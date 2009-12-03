@@ -1,7 +1,7 @@
 {load_file("import3d.hoc")}
 begintemplate Cell
 public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nseg, geom_nsec, SetCellProperties, connect2target
-public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig
+public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
 objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts
 proc init() {
