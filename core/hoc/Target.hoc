@@ -259,18 +259,21 @@ proc evalType() {
 
 //------------------------------------------------------------------------------------------------------------
 
-/*****************************************************************
-    For each cell member in this target, determine if it exists on the local processor, and put it into localCellsMap (i.e. mapping that gid to an index).
-    Required Inputs : $o1 Vector containing the gids of cells on this cpu
-    Logic           : Since there should be fewer cells on node than in the target, actually checks each gid on node
-                      for membership in this target.  If the cell is present, the index of the cell in the gidMembers vector
-                      is kept (to maintain coordination with extra data)
-*****************************************************************/
+/*!
+ *  For each cell member in this target, determine if it exists on the local processor, and put it into localCellsMap (i.e. mapping that gid to an index).
+ *  Logic           : Since there should be fewer cells on node than in the target, actually checks each gid on node
+ *                    for membership in this target.  If the cell is present, the index of the cell in the gidMembers vector
+ *                    is kept (to maintain coordination with extra data)
+ *
+ * @param $o1 gidvec Vector containing the gids of cells on this cpu
+ */
 proc update() { local gid, cellIndex, binsrch_low, binsrch_high, binsrch_mid  localobj allCellIndices
 
     //Get a vector with indexes that tell the sorted order of the gidMembers vector (don't actually sort gidMembers or risk mixing up 'extra' data)
     allCellIndices = gidMembers.sortindex()
     localCellsMap = new Vector()
+    isFlattened = 0
+    
     //binfo = $o2
         
     //for each cell on node, determine if it exists in this target
@@ -383,6 +386,7 @@ obfunc gids() { local cellIndex targetIndex
         return flattenedGids
     }
     
+    flattenedGids = new Vector()
     for cellIndex=0, localCellsMap.size()-1 {
         flattenedGids.append( getgid(cellIndex) )
     }

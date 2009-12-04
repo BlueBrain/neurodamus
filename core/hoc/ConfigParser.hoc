@@ -58,7 +58,7 @@ proc init() {
  *
  * @param $s1 Name of file to open and parse
  */
-proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionName, sectionType
+proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionName, sectionType, tempBlock
     
     configIn = new File()
     configIn.ropen( $s1 )
@@ -88,16 +88,19 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
             if( strcmp( sectionType.s, "Run" ) == 0 ) {
                 parseRun( configIn )
             } else if ( strcmp( sectionType.s, "Report" ) == 0 ) {
-                parseReport( configIn, sectionName )
+                //print sectionName.s
+                //parseReport( configIn, sectionName )
+                tempBlock = parseBlock( configIn )
+                parsedReports.put( sectionName, tempBlock )
             } else if ( strcmp( sectionType.s, "Stimulus" ) == 0 ) {
                 parseStimulus( configIn, sectionName )
             } else if ( strcmp( sectionType.s, "StimulusInject" ) == 0 ) {
                 parseStimulusInject( configIn, sectionName )
             } else if ( strcmp( sectionType.s, "Connection" ) == 0 ) {
+                tempBlock = parseBlock( configIn )
+                parsedConnects.put( sectionName, tempBlock )
             }
         }
-        
-        //Note that there is nothing for non-Run sections.  That's okay, we'll implement them as needed
     }
     
     configIn.close
@@ -135,6 +138,55 @@ proc parseRun() { localobj rawline, configIn, fieldName, fieldValue
             sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
             
             parsedRun.put( fieldName, fieldValue )
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * @param $o1 File getting parsed
+ */
+obfunc parseBlock() { local ret  localobj pendingBlock, rawline, configIn, fieldName, fieldValue
+    strdef wscheck
+    
+    rawline = new String()
+    configIn = $o1
+    
+    pendingBlock = new Map()
+    
+    while( configIn.gets(rawline.s) >= 0 ) {
+    
+        //check if close brace to terminate section
+        if( isTerminated( rawline.s ) ) {
+            return pendingBlock
+        }
+        
+        if( !isCommented( rawline.s )) {
+            
+            //just grab the first string, then everything after that string
+            fieldName = new String()
+            fieldValue = new String()
+            
+            sscanf( rawline.s, "%s", fieldName.s )
+            
+            strUtil.tail( rawline.s, fieldName.s, fieldValue.s )
+            
+            //check for leading and trailing white space in fieldValue
+            wscheck = fieldValue.s
+            strUtil.left( wscheck, 1 )
+            if( strcmp( wscheck, " " ) == 0 || strcmp( wscheck, "\t" ) == 0 ) {
+                ret = strUtil.tail( fieldValue.s, "[ \t]+", fieldValue.s ) //strip leading white space
+            }
+            
+            wscheck = fieldValue.s
+            strUtil.right( wscheck, strUtil.len(wscheck)-1 )
+            if( strcmp( wscheck, " " ) == 0 || strcmp( wscheck, "\t" ) == 0 || strcmp( wscheck, "\n" ) == 0 ) {
+                ret = strUtil.head( fieldValue.s, "[ \t\n]+", fieldValue.s ) //strip leading white space
+            }
+            
+            //add  to the map
+            pendingBlock.put( fieldName, fieldValue )
         }
     }
 }

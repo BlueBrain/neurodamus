@@ -64,7 +64,7 @@ proc interpret() { local tempVal, del, dur  localobj stim, target, paramValue, p
     
     paramVect = new Vector()
     
-    //mode should always be 'Current'
+    //mode should always be 'Current' - do we plan to support more modes?
     paramValue = stim.get( "Mode" )
     if( strcmp( paramValue.s, "Current" ) != 0 ) {
         print "Invalid Mode - ", paramValue.s
@@ -112,8 +112,6 @@ proc interpret() { local tempVal, del, dur  localobj stim, target, paramValue, p
         //Note: SynapseType is optional and will return nil (handled by npoisson function)
         //Note: requires special Target handling, so just pass targetName through
         npoisson( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], stim.get( "SynapseType" ), del, dur )
-        
-        poissonStimCount = poissonStimCount + 1
     }
 }
 
@@ -194,6 +192,7 @@ proc npoisson() { local cellIndex  localobj apicalPoints, basalPoints, gids
         distributePoissonSynapses( gids.x[cellIndex], $2, $3, $4, $o5, $6, $7, apicalPoints.o(cellIndex), basalPoints.o(cellIndex) )
     }
     
+    poissonStimCount = poissonStimCount + 1
 }
 
 //-----------------------------------------------------------------------------------------------
