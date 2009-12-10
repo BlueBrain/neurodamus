@@ -95,7 +95,9 @@ objref targetList, pnm, cellList, sectionAccess, isec2sec[1], loadBalance, nilSe
 
 public init
 public getTarget, setTargetList, pnm, getPointList, locationToPoint, loadBalance, gids
-public getSomaticSections, getApicalSections, getBasalSections, getAxonalSections
+public getSomaticSections, getApicalSections, getBasalSections, getAxonalSections, registerCell
+public getApicalPoints, getBasalPoints
+public selectRandomPoints
 
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
@@ -198,13 +200,40 @@ obfunc getTarget() { local targetIndex  localobj targetUtil
  * @param $1 or $s1 gid of a cell registered with the TargetManager, or name of Target parsed from a target file
  * @return TPointList for single gid, List<TPointList> for Target
  */
-obfunc getPointList() { localobj activeTarget
+obfunc getPointList() { local cellIndex, cmpIndex  localobj activeTarget, ptList, activeCell
     
     //if cells were registered directly, use that cell list to get cell objects for addressing sections; otherwise,
     // we will use a pnm object (for now - maybe it will be wrapped in another object?)
-    
     if( argtype(1) == 0 && object_id(cellList) ) {
-        print "cellList implementation pending"
+        //no target object.  Just build pointlist
+        // Note: this does not allow for split cells
+        ptList = new TPointList($1)
+        
+        //find cell
+        for cellIndex=0, cellList.count()-1 {
+            activeCell = cellList.o(cellIndex)
+            
+            if( activeCell.gid == $1 ) {
+                
+                //to avoid code duplication, should probably create a temporary target containing the cell and use that for getting all compartment points
+                // does that work without a pnm or loadbalance object?  I don't think so.
+                
+                //just mimic all compartment report
+				//TODO: should put in getCompletePointList instead.  Let this function return just soma, I think
+                forsec activeCell.CellRef.all {
+                    for cmpIndex=1, nseg {
+                        ptList.append( new SectionRef(), cmpIndex/(nseg+1) )
+                    }
+                }
+                
+                return ptList
+            }
+        }
+		
+		//if reached this point of the code, the cell was not in the list
+		print "No such gid registered with TargetManager: ", $1
+		return ptList
+        
     } else if( argtype(1) == 2 && object_id(pnm) ) {
         
         activeTarget = getTarget($s1)
@@ -227,6 +256,141 @@ obfunc gids() {
     return getTarget($s1).gids()
 }
 
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to encapsulate the selection of random points on a cell.
+ *
+ * @param $o1 PointList
+ * @param $2 nPoints
+ * @param $3 seed
+ * @return resultant TPointList with selected points in no particular order
+ */
+obfunc selectRandomPoints() { local synIndex, cmpIndex, x  localobj ptList, allPoints, rng
+    
+    //first, get all points
+    allPoints = $o1
+    
+    print "got ", allPoints.count(), " points"
+	
+	rng = new Random( $3 )
+	rng.MCellRan4( $3 )
+	rng.discunif( 0, allPoints.count()-1 )
+	
+	ptList = new TPointList()
+	
+	for synIndex=0, $2-1 {
+		cmpIndex = rng.repick()
+        
+        //Do I need to check for existence?
+        if( !allPoints.sclst.o(cmpIndex).exists() ) {  //section not on this cpu
+            continue
+        }
+        
+        //allPoints.access_(cmpIndex)
+		for allPoints.point(cmpIndex, &x) {
+			ptList.append( new SectionRef(), x )
+		}
+        
+	}
+        
+    return ptList
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each apical section from a Cell target
+ *
+ * @param $1/$s1 gid or TargetName
+ * @return TPointList/List<TPointList> where each TPointList contains a point to each apical section of the given target
+ */
+obfunc getApicalPoints() { local cellIndex  localobj tempTarget, ptList, activeCell
+
+	//TODO: handle bglib cases
+	if( argtype(1) == 0 ) {  //non-bluegene
+		if( object_id(cellList, 1) == -1 ) {
+			execerror( "No cells registered with my null cellList" )
+		}
+		
+		ptList = new TPointList($1)
+        
+        //find cell
+        for cellIndex=0, cellList.count()-1 {
+            activeCell = cellList.o(cellIndex)
+            
+            if( activeCell.gid == $1 ) {
+                                
+                //just mimic all compartment report
+				//TODO: can we make this code more general and put in a single, utility function.  avoid copy/paste in other get(*subset*)Points funcs?
+                forsec activeCell.CellRef.apical {
+                    for cmpIndex=1, nseg {
+                        ptList.append( new SectionRef(), cmpIndex/(nseg+1) )
+                    }
+                }
+                
+                return ptList
+            }
+        }
+		
+		//if reached this point of the code, the cell was not in the list
+		print "No such gid registered with TargetManager: ", $1
+		return ptList
+	}
+	
+    //tempTarget = sectionCast( $s1, "apic" )
+    //return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each basal section from a Cell target
+ *
+ * @param $s1 TargetName
+ * @return List<TPointList> where each TPointList contains a point to each basal section of the given target
+ */
+obfunc getBasalPoints() { local cellIndex  localobj tempTarget, ptList, activeCell
+
+	//TODO: handle bglib cases
+	if( argtype(1) == 0 ) {  //non-bluegene
+		if( object_id(cellList, 1) == -1 ) {
+			execerror( "No cells registered with my null cellList" )
+		}
+		
+		ptList = new TPointList($1)
+        
+        //find cell
+        for cellIndex=0, cellList.count()-1 {
+            activeCell = cellList.o(cellIndex)
+            
+            if( activeCell.gid == $1 ) {
+                                
+                //just mimic all compartment report
+				//TODO: can we make this code more general and put in a single, utility function.  avoid copy/paste in other get(*subset*)Points funcs?
+                forsec activeCell.CellRef.basal {
+                    for cmpIndex=1, nseg {
+                        ptList.append( new SectionRef(), cmpIndex/(nseg+1) )
+                    }
+                }
+                
+                return ptList
+            }
+        }
+		
+		//if reached this point of the code, the cell was not in the list
+		print "No such gid registered with TargetManager: ", $1
+		return ptList
+	}
+	
+    //tempTarget = sectionCast( $s1, "apic" )
+    //return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+}
+
+//------------------------------------------------------------------------------------------
+// The following functions are supposedly temporary.  They are here to allow us to compare
+// npoisson from old bglib to new bglib.  However, they should be supplanted by the get(*subset*)Points
+// functions later
 //------------------------------------------------------------------------------------------
 
 /*!
@@ -283,7 +447,8 @@ obfunc getAxonalSections() { localobj tempTarget
 //------------------------------------------------------------------------------------------
 
 /*!
- * Utility function to take an existing Cell target and wrap it in a Section target
+ * Utility function to take an existing Cell target and wrap it in a Section target which
+ * will return 1 compartment in thecenter of each section
  *
  * @param $o1/$s1 Target object or Target name
  * @param $s2 subset name [soma, apic, dend, apic, or "" for all]
@@ -301,6 +466,35 @@ obfunc sectionCast() { localobj target, wrapper
     }
     
     wrapper = new Target( "temp", "Section" )
+    wrapper.subtargets.append( target )
+    wrapper.targetSubsets.append( new String($s2) )
+    wrapper.targetExtraValues.append( new Vector() )
+    
+    return wrapper
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Utility function to take an existing Cell target and wrap it in a Compartment target
+ * which will return a point for each compartment in each section
+ *
+ * @param $o1/$s1 Target object or Target name
+ * @param $s2 subset name [soma, apic, dend, apic, or "" for all]
+ */
+obfunc compartmentCast() { localobj target, wrapper
+
+    if( argtype(1) == 2 ) {
+        target = getTarget( $s1 )
+    } else {
+        target = $s1
+    }
+    
+    if( !target.isCellTarget() ) {
+        execerror( "Attempting to apply compartmentCast to non-Cell target" )
+    }
+    
+    wrapper = new Target( "temp", "Compartment" )
     wrapper.subtargets.append( target )
     wrapper.targetSubsets.append( new String($s2) )
     wrapper.targetExtraValues.append( new Vector() )
