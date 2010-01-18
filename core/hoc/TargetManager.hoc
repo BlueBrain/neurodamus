@@ -528,7 +528,7 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
     
     cellSections = gidToSections( gid )
     if( object_id(cellSections) == 0 ) {
-        print "something is not implemented here..."
+        print "getting locations for non-bg sims is not implemented yet..."
         quit()
     }
     
@@ -554,7 +554,7 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
                 //print "calc ", arc3d(ipt), "  + ", offset, " / ", L
                 distance = (arc3d(ipt)+offset)/L
                 
-                if( distance > 1.0 ) {
+                if( distance >= 1.0 ) {  
                     total = (arc3d(ipt)+offset)
                     //printf( "%%diff %g absdiff %g\n", (total-L)/L, (total-L) )
                     distance = 1.0

@@ -26,8 +26,8 @@ NET_RECEIVE(w) {
 VERBATIM
 
 #define H5_USE_16_API 1
-#include "/opt/hdf5/include/hdf5.h"  //-linsrv
-//#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"  //-blugene
+//#include "/opt/hdf5/include/hdf5.h"  //-linsrv
+#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"  //-blugene
 #include "mpi.h"
 #include <stdlib.h>
 
@@ -203,8 +203,8 @@ VERBATIM {
 			dataset_id = H5Dopen(info->file_, name);
 			if(dataset_id < 0)
 			{
-				printf("Error accessing to: %s, on file %s\n",info->name_group,info->file_);
-				return 0;
+				printf("Error accessing to dataset %s in synapse file\n", name);
+				return -1;
 			}
 			strncpy(info->name_group,name,256);
 			dataspace = H5Dget_space(dataset_id);
