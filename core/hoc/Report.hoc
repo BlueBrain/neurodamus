@@ -17,13 +17,13 @@ begintemplate Report
 //-----------------------------------------------------------------------------------------------
 
 strdef reportName, reportType,  reportOn, unit, format, outputDir
-objref strobj, this, tempBinReport, binList, rec
+objref strobj, this, binList, rec, ALUList, ALUhelper
 
 //-----------------------------------------------------------------------------------------------
 // public members
 //-----------------------------------------------------------------------------------------------
 
-public init, addCompartmentReport
+public init, addCompartmentReport, addSummationReport
 
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
@@ -157,27 +157,52 @@ proc sumSectionCounts() { local offset, x  localobj prevSection, nil
 //-----------------------------------------------------------------------------------------------
 
 /*!
- * Utility function to retrieve the ASCII or HDF5 report object from a cell object, encapsulating the creation of one
- * in the event that this is the first request for either
+ * Utility function to prepare a report for information about the cell such as section counts (i.e. extra mapping)
+ * In additon, retrieves the ASCII or HDF5 report object from a cell object, encapsulating the creation of one
+ * in the event provided that this is the first request for either.  
  *
  * @param $o1 cellObj
- * @param $s2 cellName
+ * @param $o2 TPointList with the points for a single cell
+ * @param $3 vgid of cell (may be same as cells nomal gid)
  * @return Reference to the appropriate report object
  */
-obfunc accessReport() { local node  //localobj str
+func prepareReportForCell() { local node, rpt, vgid
+    strdef strCellName, tstr
     node = 0  //do we really need to know which node produced these reports?  We're trying to make this agnostic to multiple cpu
+    vgid = $3
     
-    if(0 == strcmp( format, "HDF5")) {
-	    if(object_id($o1.HDF5rpt, 1) < 0) {
-            $o1.HDF5rpt = new HDF5Record( 0.5, node, outputDir, $s2 )
+    sprint( strCellName, "a%d", $o1.gid )
+    
+    if( 0 == strcmp( format, "Bin")) {
+        rpt = -1
+        rec = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit )
+        binList.append( rec )
+    } else {
+        if(0 == strcmp( format, "HDF5")) {
+            if(object_id($o1.HDF5rpt, 1) < 0) {
+                $o1.HDF5rpt = new HDF5Record( 0.5, node, outputDir, strCellName )
+            }
+            rec = $o1.HDF5rpt
+        }else{
+            if(object_id($o1.ASCIIrpt, 1) < 0){
+                $o1.ASCIIrpt = new ASCIIRecord( 0.5, node, outputDir, strCellName )
+            }
+            rec = $o1.ASCIIrpt
         }
-        return $o1.HDF5rpt
-    }else{
-        if(object_id($o1.ASCIIrpt, 1) < 0){
-            $o1.ASCIIrpt = new ASCIIRecord( 0.5, node, outputDir, $s2)
-        }
-        return $o1.ASCIIrpt
+        rpt = rec.newReport(strCellName, reportName, $o2.count(), startTime, endTime, reportDt, unit )
     }
+        
+    //get section counts: nSoma, nApic, etc
+    sumSectionCounts( $o2 )
+
+    //for ascii/hdf5 reports, must give section counts now to allocate memory - can I give it to Bin reports, too?
+    if( 0 != strcmp( format, "Bin")) {
+        rec.newMapping(rpt, "compartment", nAll, nSoma, nAxon, nBasal, nApical)
+    } else {
+        rec.ExtraMapping( nAll, nSoma, nAxon, nBasal, nApical)
+    }
+    
+    return rpt
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -190,8 +215,7 @@ obfunc accessReport() { local node  //localobj str
  * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
  */
 proc addCompartmentReport() { local x, rpt, vgid
-    strdef strCellName, tstr
-
+    
     //if no $3, use cell's gid
     if( numarg() == 3 ) {
         vgid = $3
@@ -199,36 +223,14 @@ proc addCompartmentReport() { local x, rpt, vgid
         vgid = $o1.gid
     }
     
-    sprint( strCellName, "a%d", $o1.gid )
-    
-    //am I sure that Cell.gid is always the base_gid?  should be, but can double check later
-    if( 0 == strcmp( format, "Bin")) {
-        tempBinReport = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit )
-    } else {
-        
-        // the creation of reports if a cell is new.  
-        //$o1.o(k).getrpt(output_path, strCellName, $s5, Node, cellObj, recorder_list, rec)
-        rec = accessReport( $o1, strCellName )  //uses format to determine if ascii or hdf5 is needed
-        rpt = rec.newReport(strCellName, reportName, $o2.count(), startTime, endTime, reportDt, unit )
-    }
-    
-    //get section counts: nSoma, nApic, etc
-    sumSectionCounts( $o2 )
-
-    //for ascii/hdf5 reports, must give section counts now to allocate memory - can I give it to Bin reports, too?
-    if( 0 != strcmp( format, "Bin")) {
-        rec.newMapping(rpt, "compartment", nAll, nSoma, nAxon, nBasal, nApical)
-    } else {
-        tempBinReport.ExtraMapping( nAll, nSoma, nAxon, nBasal, nApical)
-        binList.append( tempBinReport )
-    }
+    rpt = prepareReportForCell( $o1, $o2, vgid )
     
     //for each point, register variable and mapping
     for $o2.each_point(&x) {
     
         //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
         if( 0 == strcmp(format, "Bin") ) {
-            sprint(tstr, "tempBinReport.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
+            sprint(tstr, "rec.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
             execute(tstr, this)
         } else {
             sprint(tstr,"retVal = rec.addvar(%d, &%s(%1.2f))", rpt, reportOn, x )
@@ -244,10 +246,132 @@ proc addCompartmentReport() { local x, rpt, vgid
 //-----------------------------------------------------------------------------------------------
 
 /*!
+ * Generate a report for various current sources such that their current contributions are summed into a single value.  This single value
+ * is on a per compartment basis, but may be further collapsed into a single value per cell.  Note that collapsing to a single value per cell is
+ * not supported if multisplit is in use.
+ *
+ * @param $o1 Cell The cell getting reported
+ * @param $o2 TPointList with the points for a single cell
+ * @param $3 Flag indicating report is to collapse to single value for the cell (1) or run normal where each cmp gets a summed value
+ * @param $4 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
+ */
+proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID \
+    localobj intrinsicList, ptProcessList, activeProcess, mechtype
+    strdef tstr
+
+    evaluateSummationReportOn( intrinsicList, ptProcessList )
+    
+    //if no $3, use cell's gid
+    if( numarg() == 3 ) {
+        vgid = $3
+    } else {
+        vgid = $o1.gid
+    }
+    
+    rpt = prepareReportForCell( $o1, $o2, vgid )
+    
+    collapsed = $3
+        
+    //validate that we are not using multisplit and a collapsed summation report
+    if( collapsed && $o1.gid != vgid ) {
+        execerror( "Attempting to use a collapsed summation report while using mutlisplt\n" )
+    }
+    
+    if( collapsed ) {  //Since the summations will be collapsed to a single value, we will store the ptprocess in the soma
+        $o1.soma {
+            ALUhelper = new ALU( 0.5, 0.1 )
+            ALUhelper.setop( "summation" )
+        }
+    }
+    
+    for $o2.each_point(&x) {
+        mechtype = new MechanismType(1)
+        
+        if( !(collapsed) ) { //need 1 ALU per cmp
+            ALUhelper = new ALU( x, 0.1 )
+            ALUhelper.setop( "summation" )
+        }
+        
+        //intrinsic currents
+        for intrinsicIndex=0, intrinsicList.count()-1 {
+            //test if we can even access the desired current variable in this compartment 
+            sprint(tstr,"{%s.%s(%1.2f)}", secname(), intrinsicList.o(intrinsicIndex).s, x )
+            result = execute1(tstr, 0)
+            if( result != 0 ) { //success, the var exists so we can add it
+                if( area(x) != 0 ) {
+                
+                    //need to convert distributed current sources units.  NEURON stores/reports them as mA/cm^2; we want nA
+                    // to convert, multiply by the area of the cmp (micron^2) then multiply by powers of 10 so units agree
+                    scalar = area(x) / 100 // mA => nA :  * 10^6, cm^2 => micron^2 : 1/10^8
+                    sprint(tstr,"{ALUhelper.addvar(&%s.%s(%1.2f), %f)}", secname(), intrinsicList.o(intrinsicIndex).s, x, scalar)
+                    execute(tstr, this)
+                } else {
+                    print "Warning (Error?) intrinsic property exists, but located where area = 0?"
+                }
+            }
+        }
+        
+        //point processes - note that we *could* have collapsed reports add all point processes in a single section
+        // at once, but that adds complexity to the code which may or may not save time        
+        for ptProcessIndex=0, ptProcessList.count()-1 {
+            mechtype.select( ptProcessList.o(ptProcessIndex).s )
+            
+            for( activeProcess=mechtype.pp_begin(); object_id(activeProcess) != 0; activeProcess = mechtype.pp_next() ) {
+                
+                dist = activeProcess.get_loc()
+                cmpID = int(dist*nseg)
+                if( cmpID == int(x*nseg) ) {
+                    ALUhelper.addvar( &activeProcess.i )  //no scalar needed
+                }
+                pop_section()
+            }
+        }
+        
+        if( !(collapsed) ) {  //we commit one new ALU object per point
+            addSummationVarAndCommitALU( sectionNo($o1), rpt )
+        }
+    }
+    
+    if( collapsed ) {  //otherwise, we commit one new ALU object per cell
+        addSummationVarAndCommitALU( 0, rpt )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Helper function for adding a var for Summation reports where the only distinction is how the mapping
+ * is computed.  The caller knows if the absolute index is needed (non-collapsed report) or just 0 for 
+ * the soma (collapsed report)
+ *
+ * @param mapping index, i.e. the absolute index used to find this section in the morphology
+ * @param rpt A handle to a report object, only used by HDF5/ASCII reports.  Bin reports should just give -1 which won't be used
+ */
+proc addSummationVarAndCommitALU() { local rpt
+    rpt = $2
+
+    //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
+    if( 0 == strcmp(format, "Bin") ) {
+        sprint(tstr, "rec.AddVar( &ALUhelper.output, %d )", $1 )  //note that we force report on soma, so index=0
+        execute(tstr, this)
+    } else {
+        sprint(tstr,"retVal = rec.addvar(%d, &ALUhelper.output)", rpt )
+        execute(tstr, this)
+        if(retVal ==0){
+            break
+        }
+        rec.addmapping( rpt, $1 )
+    }
+    
+    ALUList.append( ALUhelper )
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
  * Helper function to determine which currents are to be reported in a summation report.
  *
- * @param $s1 ReportOn string with raw text taken from BlueConfig
- * @Param $o2 intrinsicList - List of intrinsic types (ions) generated in this function
+ * @Param $o1 intrinsicList - List of intrinsic types (ions) generated in this function
  * @Param $o2 ptProcessList - List of point processes types (ions) generated in this function
  */
 proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrinsicLibrary, ptProcessLibrary
@@ -275,7 +399,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrin
     
     //split 'ReportOn' field on white space and check for special keywords - AllCurrent, SynapticCurrents, IntrinsicCurrents
     strdef token, sourceString, skipBlock
-    sourceString = $s1
+    sourceString = reportOn
     //print "src string ", sourceString
     while( strcmp( sourceString, "" ) != 0 )  {
         //find block of white space characters
@@ -347,8 +471,8 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrin
         }
     }
     
-    $o2 = intrinsicList
-    $o3 = ptProcessList
+    $o1 = intrinsicList
+    $o2 = ptProcessList
 }
 
 endtemplate Report
