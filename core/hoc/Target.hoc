@@ -493,7 +493,7 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
 		pointVector = new Vector()
 		pointVector.append( 0.5 )
         for cellIndex=0, gidVec.size()-1 {
-            activePointList = new TPointList()
+            activePointList = new TPointList( gidVec.x[cellIndex] )
 			addressSectionPoints( $o1, gidVec.x[cellIndex], "soma", 0, pointVector, activePointList )
             pointListList.append( activePointList )
 		}
@@ -504,7 +504,7 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
         
         //for each cell member
         for cellIndex=0, localCellsMap.size()-1 {
-            activePointList = new TPointList()
+            activePointList = new TPointList( gidVec.x[cellIndex] )
             addressSectionPoints( $o1, getgid(cellIndex), getCellSubset(cellIndex).s, getCellExtraValues(cellIndex), pointVector, activePointList )
             pointListList.append( activePointList )
         }
@@ -516,7 +516,7 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
                 
                 gidVec = activeTarget.gids()  //get all gids from that target and its subtargets
                 for cellIndex=0, gidVec.size()-1 {
-                    activePointList = new TPointList()
+                    activePointList = new TPointList( gidVec.x[cellIndex] )
                     addressSectionPoints( $o1, gidVec.x[cellIndex], targetSubsets.o(targetIndex).s, targetExtraValues.o(targetIndex), pointVector, activePointList )
                     pointListList.append( activePointList )
                 }
@@ -529,7 +529,7 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
     
         //for each cell member
         for cellIndex=0, localCellsMap.size()-1 {
-			activePointList = new TPointList()
+			activePointList = new TPointList( gidVec.x[cellIndex] )
             addressCompartmentPoints( $o1, getgid(cellIndex), getCellSubset(cellIndex).s, getCellExtraValues(cellIndex), activePointList )
 			pointListList.append( activePointList )
         }
@@ -541,7 +541,7 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
                 
                 gidVec = activeTarget.gids()  //get all gids from that target and its subtargets
                 for cellIndex=0, gidVec.size()-1 {
-					activePointList = new TPointList()
+					activePointList = new TPointList( gidVec.x[cellIndex] )
                     addressCompartmentPoints( $o1, gidVec.x[cellIndex], targetSubsets.o(targetIndex).s, targetExtraValues.object(targetIndex), activePointList )
 					pointListList.append( activePointList )
                 }

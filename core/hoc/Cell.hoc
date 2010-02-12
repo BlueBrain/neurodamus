@@ -1,6 +1,6 @@
 {load_file("import3d.hoc")}
 begintemplate Cell
-public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, SetCellProperties, connect2target
+public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg, geom_nseg_etay, SetCellProperties, connect2target
 public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
 objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts
@@ -50,7 +50,7 @@ proc SetCellProperties(){local Rm,v_init
 	}
 	
 	//whenever the Cell properties (resistance esp.) change, recalculate how a section divides into segments
-	geom_nseg()
+	//geom_nseg()  //for now, let the CCell do this after biophys is executed
 }
 
 /*!
@@ -70,13 +70,29 @@ proc geom_nseg() { local secIndex
 }
 
 /*!
+ * Iterate over the section and compute how many sqgments should be allocate to each.  This number
+ * is influenced by the mechanisms distributed, so this function should be called after assigning biophys
+ */
+proc geom_nseg_etay() { local secIndex
+    soma area(.5) // make sure diam reflects 3d points
+    
+    secIndex=0
+    forsec all {
+        nseg = 1 + 2*int(L/40)
+        
+        segCounts.x[secIndex] = nseg
+        secIndex = secIndex+1
+    }
+}
+
+/*!
  * Count up the number of sections. Additionally, assign as estimate to the nseg var of each section, but this
  * will most likely change after biophys are assigned and geom_nseg called
  */
 proc geom_nsec() { local nSec
     nSec = 0
     forsec all {
-        nseg = int((L/(0.1*lambda_f(100))+.9)/2)*2 + 1
+        //nseg = int((L/(0.1*lambda_f(100))+.9)/2)*2 + 1
         nSec = nSec + 1
         //print nseg, " ", L
     }

@@ -216,13 +216,18 @@ func prepareReportForCell() { local node, rpt, vgid
  */
 proc addCompartmentReport() { local x, rpt, vgid
     
+    // Don't attempt to put a cell with 0 points in a BinReport; bad things happen
+    if( $o2.count() == 0 ) {
+        return
+    }
+
     //if no $3, use cell's gid
     if( numarg() == 3 ) {
         vgid = $3
     } else {
         vgid = $o1.gid
     }
-    
+        
     rpt = prepareReportForCell( $o1, $o2, vgid )
     
     //for each point, register variable and mapping
