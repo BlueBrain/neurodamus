@@ -138,9 +138,10 @@ proc linear() { local listIndex, x, ampStart, ampEnd, del, dur, ii  localobj pts
     pts = targetManager.getPointList( $s1 )
     
     for listIndex=0, pts.count()-1 {
-        print "inject gid ", pts.o(listIndex).gid, " params: ", del, dur, ampStart, ampEnd
+        //print "inject gid ", pts.o(listIndex).gid, " params: ", del, dur, ampStart, ampEnd
         for pts.o(listIndex).each_point(&x) {
             //print secname(), " inject"
+            
             tstim = new IClamp(x)
             tstim.amp = ampStart
             tstim.del = del
@@ -149,15 +150,10 @@ proc linear() { local listIndex, x, ampStart, ampEnd, del, dur, ii  localobj pts
             tstim = new TStim(x)
             
             if( ampStart == ampEnd ) {
-                tstim.linear( del, dur, ampStart )
-                if( pts.o(listIndex).gid == 6491 ) {
-                    tstim.tvec.printf( "%8.4f\n" )
-                    tstim.stim.printf( "%8.4f\n" )
-                }
+                tstim.pulse( del, dur, ampStart )
             } else {
                 tstim.ramp( 0, del, ampStart, ampEnd, dur, 0, 0 )
-            }
-            */
+            }*/
             
             stimList.append( tstim )
         }
