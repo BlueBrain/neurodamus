@@ -1,9 +1,9 @@
 {load_file("import3d.hoc")}
 begintemplate Cell
 public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target
-public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts
+public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts, rnglist
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
-objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts
+objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts, rnglist
 
 //! Used when computing nseg per section
 external lambda_f
@@ -22,7 +22,7 @@ proc init() {
     }
     
     synlist = new List()
-
+    rnglist = new List()
 }
 create soma[1], dend[1], apic[1], axon[1]
 
