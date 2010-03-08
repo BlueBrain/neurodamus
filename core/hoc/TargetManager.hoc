@@ -99,6 +99,9 @@ public getSomaticSections, getApicalSections, getBasalSections, getAxonalSection
 public getApicalPoints, getBasalPoints
 public selectRandomPoints
 
+// Ruben's PFE
+public getApicalAtDistance, getSomaPoint, getCell
+
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
 //-----------------------------------------------------------------------------------------------
@@ -147,6 +150,27 @@ proc registerCell() {
     
     //should I sort this list?  well, yes, but not now :P
     cellList.append( $o1 )
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Cell registered with the function registerCell can be obtained by gid
+ *
+ * @param $1 gid
+ */
+obfunc getCell() {
+    if( object_id(cellList) == 0 ) {
+        print "getCell: No cell in list."
+    }
+    
+    for listindex=0, cellList.count()-1 {
+        if( cellList.object(listindex).gid == $1 ) {
+            return cellList.object(listindex)
+        }
+    }
+    // not found
+    print "getCell: cell not in list."
 }
 
 //------------------------------------------------------------------------------------------
@@ -605,4 +629,74 @@ obfunc gidToSections() { local n  localobj searchString, resultSerial, nil, cell
     return resultSerial
 }
 
+//------------------------------------------------------------------------------------------
+//
+// for Ruben's PFE
+//
+
+/*!
+ * Given cell object find all Points within the given distance to the soma.
+ * Return the one where the diameter is maximal.
+ *
+ * @param $o1 cell object
+ * @param $2 distance to soma in micrometers
+ * @return PointList object
+ */
+obfunc getApicalAtDistance() { local radius, max_diam, location, i, secnum, d0, d1, stimdist, dd  localobj cell, ptList, sl
+    cell = $o1
+    cell.CellRef.soma distance()
+    radius = $2
+    i = 0
+    max_diam = 0.
+    forsec cell.CellRef.apical {
+        d0 = distance(0)
+        d1 = distance(1)
+        if(d0 <= radius && d1 >= radius) {
+            location = (radius - d0) / (d1 - d0)
+            if(diam > max_diam) {
+                location = (radius - distance(0)) / (distance(1) - distance(0))
+                secnum = i
+                max_diam = diam
+            }
+        }
+        i = i + 1
+    }
+
+    ptList = new TPointList()
+    if(max_diam > 0) {
+        access cell.CellRef.apic[secnum]
+        ptList.append( location )
+        // debug output
+        //printf("Found apical with diam %f.\n", max_diam)
+    }
+
+    // compare to Etay's code:
+    /*
+    stimdist = 620/cell.getLongestBranch(cell.CellRef.apical)
+    printf("stimdist: %f\n",  stimdist)
+    sl = cell.locateSites(cell.CellRef.apical, stimdist)
+    for(i1=0;i1<sl.count();i1+=1) {
+        dd = cell.CellRef.apic[sl.o[i1].x[0]].diam
+        printf("diam: %f\n", dd)
+    }
+    */
+    return ptList
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Get the soma section and return in as TPointList object
+ *
+ * @param $o1 cell object 
+ */
+obfunc getSomaPoint() { localobj cell, ptlist
+    cell = $o1
+    ptlist = new TPointList()
+    access cell.CellRef.soma[0]
+    ptlist.append( 0.5 )
+    return ptlist
+}
+
+//------------------------------------------------------------------------------------------
 endtemplate TargetManager

@@ -17,13 +17,13 @@ begintemplate Report
 //-----------------------------------------------------------------------------------------------
 
 strdef reportName, reportType,  reportOn, unit, format, outputDir
-objref strobj, this, binList, rec, ALUList, ALUhelper
+objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, cvode
 
 //-----------------------------------------------------------------------------------------------
 // public members
 //-----------------------------------------------------------------------------------------------
 
-public init, addCompartmentReport, addSummationReport
+public init, addCompartmentReport, addSummationReport, getyvec, gettvec
 
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
@@ -183,11 +183,13 @@ func prepareReportForCell() { local node, rpt, vgid
                 $o1.HDF5rpt = new HDF5Record( 0.5, node, outputDir, strCellName )
             }
             rec = $o1.HDF5rpt
-        }else{
+        } else if( 0 == strcmp( format, "ASCII") ) {
             if(object_id($o1.ASCIIrpt, 1) < 0){
                 $o1.ASCIIrpt = new ASCIIRecord( 0.5, node, outputDir, strCellName )
             }
             rec = $o1.ASCIIrpt
+        } else {
+            return 0
         }
         rpt = rec.newReport(strCellName, reportName, $o2.count(), startTime, endTime, reportDt, unit )
     }
@@ -237,6 +239,14 @@ proc addCompartmentReport() { local x, rpt, vgid
         if( 0 == strcmp(format, "Bin") ) {
             sprint(tstr, "rec.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
             execute(tstr, this)
+        } else if( 0 == strcmp(format, "Memory") ) {
+            // in-memory report
+            cvode = new CVode()
+            cvode.active(1)
+            yvec = new Vector()
+            tvec = new Vector()
+            sprint(tstr, "cvode.record(&%s(%1.2f), yvec, tvec)", reportOn, x)
+            execute(tstr, this)
         } else {
             sprint(tstr,"retVal = rec.addvar(%d, &%s(%1.2f))", rpt, reportOn, x )
             execute(tstr, this)
@@ -250,6 +260,18 @@ proc addCompartmentReport() { local x, rpt, vgid
 
 //-----------------------------------------------------------------------------------------------
 
+/*!
+ * getter for reported variable yvec, and tvec
+ *
+ */
+obfunc getyvec() {
+    return yvec
+}
+obfunc gettvec() {
+    return tvec
+}
+
+//-----------------------------------------------------------------------------------------------
 /*!
  * Generate a report for various current sources such that their current contributions are summed into a single value.  This single value
  * is on a per compartment basis, but may be further collapsed into a single value per cell.  Note that collapsing to a single value per cell is
