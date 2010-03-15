@@ -241,11 +241,16 @@ proc addCompartmentReport() { local x, rpt, vgid
             execute(tstr, this)
         } else if( 0 == strcmp(format, "Memory") ) {
             // in-memory report
-            cvode = new CVode()
-            cvode.active(1)
             yvec = new Vector()
             tvec = new Vector()
+            tvec.indgen(startTime, endTime, reportDt)
+            /* cvode only for variable time-step
+            cvode = new CVode()
+            cvode.active(1, reportDt)
             sprint(tstr, "cvode.record(&%s(%1.2f), yvec, tvec)", reportOn, x)
+            execute(tstr, this)
+            */
+            sprint(tstr, "yvec.record(&%s(%1.2f), tvec)", reportOn, x)
             execute(tstr, this)
         } else {
             sprint(tstr,"retVal = rec.addvar(%d, &%s(%1.2f))", rpt, reportOn, x )
