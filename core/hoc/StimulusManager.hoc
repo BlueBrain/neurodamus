@@ -107,23 +107,25 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
                 paramVect.append( paramVect.x[paramVect.count()-1] )
             }
             
-            linear( targetManager.getTarget($s1), paramVect.x[0], paramVect.x[1], del, dur )
+            linear( $s1, paramVect.x[0], paramVect.x[1], del, dur )
         } else if ( strcmp( patternName.s, "Pulse" ) == 0 ) {
-            //looking at bglib, it expects potentially multiple delay/duration pairs (and an AmpENd)
-            // also, our idea of pulse differs from tstim's pulse, so who should change nomenclature?
-
+            //looking at bglib, it expects potentially multiple delay/duration pairs (and an AmpEnd)
+            // TODO: rename bglib's stimulus pattern names to be inline with TStim, creating 'train' as replacement for bglib's 'pulse'
+            
             paramVect.append( stim.valueOf( "AmpStart" ) )
             paramVect.append( stim.valueOf( "Frequency" ) )
             paramVect.append( stim.valueOf( "Width" ) )
             
-            //optional argument - Offset; default = 0
+            //optional argument - Offset; default = 0.
+            // TODO: re-evaluate offset for Pulse stimulus and debug because it looks like it might not be multisplit safe
             if( stim.get( "Offset" ) != nil ) {
                 paramVect.append( stim.valueOf( "Offset" ) )
             } else {
                 paramVect.append( 0 )
             }
             
-            //pulse( target, paramVect.x[0]
+            train( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], paramVect.x[3], del, dur )
+            //linear( $s1, paramVect.x[0], paramVect.x[0], del, dur )
         } else if( strcmp( patternName.s, "NPoisson" ) == 0 ) {
             paramVect.append( stim.valueOf( "Lambda" ) )
             paramVect.append( stim.valueOf( "Weight" ) )
@@ -167,44 +169,38 @@ proc squarepulse() { local listIndex, x, amp, del, dur  localobj pts, tstim
 //-----------------------------------------------------------------------------------------------
 
 /*!
- * Injects a linear stimulus into a cell.  Note that if the starting and ending amplitude are the same,
- * a simple 
+ * Injects a train stimulus into cells wih regular frequency.
  *
- * @param $s1 Target name where iclamps will be placed
- * @param $2 ampStart Starting amplitude of the current injected (nA)
- * @param $3 ampEnd Final amplitude of the current when done injecting (nA)
- * @param $4 delay from start of simulation to when current is injected (ms)
- * @param $5 duration of stimulus (ms)
+ * @param $s1 Name of Target where stims will be placed
+ * @param $2 amp
+ * @param $3 frequency
+ * @param $4 width
+ * @param $5 offset std dev
+ * @param $6 del
+ * @param $7 dur
  */
-proc linear() { local listIndex, x, ampStart, ampEnd, del, dur, ii  localobj pts, tstim
-    
-    ampStart = $2
-    ampEnd = $3
-    del = $4
-    dur = $5
+proc train() { local listIndex, x, offset  localobj pts, tstim, jitter
 
-    //since there are no random elements, we can just evaluate the pointlist and proceed as normal
-    pts = targetManager.getPointList( $s1 )
+    pts = targetManager.getPointList($s1)
     
-    for listIndex=0, pts.count()-1 {
-        //print "inject gid ", pts.o(listIndex).gid, " params: ", del, dur, ampStart, ampEnd
+    offset = 0
+    for listIndex=0, pts.count()-1 {        
+        if( $5 != 0 ) {
+            jitter = new Random( pts.o(listIndex).gid )
+            jitter.normal(0,$5)
+        }
+        
         for pts.o(listIndex).each_point(&x) {
-            //print secname(), " inject"
-            
-            tstim = new IClamp(x)
-            tstim.amp = ampStart
-            tstim.del = del
-            tstim.dur = dur
-            /*
             tstim = new TStim(x)
             
-            if( ampStart == ampEnd ) {
-                tstim.pulse( del, dur, ampStart )
-            } else {
-                tstim.ramp( 0, del, ampStart, ampEnd, dur, 0, 0 )
-            }*/
+            if( $5 != 0 ) {
+                offset = jitter.repick()
+                print "offset of ", offset
+            }
             
-            stimList.append( tstim )
+            tstim.train( $6+offset, $7+offset, $2, $3, $4 )
+            
+            stimList.append(tstim)
         }
     }
 }
@@ -215,7 +211,7 @@ proc linear() { local listIndex, x, ampStart, ampEnd, del, dur, ii  localobj pts
  * Injects a square pulse into a cell.  Note that if the starting and ending amplitude are the same,
  * a simple 
  *
- * @param $o1 Target where iclamps will be placed
+ * @param $s1 Name of Target where iclamps will be placed
  * @param $2 ampStart Starting amplitude of the current injected (nA)
  * @param $3 ampEnd Final amplitude of the current when done injecting (nA)
  * @param $4 delay from start of simulation to when current is injected (ms)
@@ -229,7 +225,7 @@ proc linear() { local listIndex, x, ampStart, ampEnd, del, dur  localobj pts, ts
     dur = $5
 
     //since there are no random elements, we can just evaluate the pointlist and proceed as normal
-    pts = $o1.getPointList()
+    pts = targetManager.getPointList($s1)
     
     for listIndex=0, pts.count()-1 {
         for pts.o(listIndex).each_point(&x) {

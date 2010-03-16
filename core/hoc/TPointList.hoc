@@ -5,7 +5,7 @@ D__TPOINTLISTTHOC = 1
 
 
 begintemplate TPointList
-	public append,each_point,count,sclst,point,access_
+	public append,each_point,count,sclst,point,access_,gid
 	objref sclst,x,null,this,rtti
 	strdef classname,tmp
 	public classname,loc, x

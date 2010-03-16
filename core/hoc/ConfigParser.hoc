@@ -80,6 +80,7 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
         } else if( isCommented( rawline.s ) ) {
         } else {
             //non-comment line, there should be a name along with the yet to be determined section type
+            sectionType.s = ""
             sscanf( rawline.s, "%s%s", sectionType.s, sectionName.s )
             
             //next line is open brace, so grab it now

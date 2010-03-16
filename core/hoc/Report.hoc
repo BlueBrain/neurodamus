@@ -70,6 +70,11 @@ proc init() {
     
     //variable used to catch return values from functions
     retVal = 0
+    
+    //For summation reports, we will need to store the ALU objects that are performing operations on the various current sources
+    if( strcmp( reportType, "Summation" ) == 0 ) {
+        ALUList = new List()
+    }
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -290,19 +295,18 @@ obfunc gettvec() {
 proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID \
     localobj intrinsicList, ptProcessList, activeProcess, mechtype
     strdef tstr
-
-    evaluateSummationReportOn( intrinsicList, ptProcessList )
     
-    //if no $3, use cell's gid
-    if( numarg() == 3 ) {
-        vgid = $3
+    evaluateSummationReportOn( intrinsicList, ptProcessList )
+    collapsed = $3
+        
+    //if no $4, use cell's gid
+    if( numarg() == 4 ) {
+        vgid = $4
     } else {
         vgid = $o1.gid
     }
     
     rpt = prepareReportForCell( $o1, $o2, vgid )
-    
-    collapsed = $3
         
     //validate that we are not using multisplit and a collapsed summation report
     if( collapsed && $o1.gid != vgid ) {
@@ -335,7 +339,7 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
                     //need to convert distributed current sources units.  NEURON stores/reports them as mA/cm^2; we want nA
                     // to convert, multiply by the area of the cmp (micron^2) then multiply by powers of 10 so units agree
                     scalar = area(x) / 100 // mA => nA :  * 10^6, cm^2 => micron^2 : 1/10^8
-                    sprint(tstr,"{ALUhelper.addvar(&%s.%s(%1.2f), %f)}", secname(), intrinsicList.o(intrinsicIndex).s, x, scalar)
+                    sprint(tstr,"{ALUhelper.addvar(&%s(%1.2f), %f)}", intrinsicList.o(intrinsicIndex).s, x, scalar)
                     execute(tstr, this)
                 } else {
                     print "Warning (Error?) intrinsic property exists, but located where area = 0?"
@@ -377,16 +381,15 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
  * the soma (collapsed report)
  *
  * @param mapping index, i.e. the absolute index used to find this section in the morphology
- * @param rpt A handle to a report object, only used by HDF5/ASCII reports.  Bin reports should just give -1 which won't be used
+ * @param rpt A handle to a report object, only used by HDF5/ASCII reports.  Ignored with Bin reports
  */
 proc addSummationVarAndCommitALU() { local rpt
-    rpt = $2
-
     //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
     if( 0 == strcmp(format, "Bin") ) {
         sprint(tstr, "rec.AddVar( &ALUhelper.output, %d )", $1 )  //note that we force report on soma, so index=0
         execute(tstr, this)
     } else {
+        rpt = $2
         sprint(tstr,"retVal = rec.addvar(%d, &ALUhelper.output)", rpt )
         execute(tstr, this)
         if(retVal ==0){
@@ -428,6 +431,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrin
     ptProcessLibrary.append( new String( "ProbAMPA" ) )
     ptProcessLibrary.append( new String( "ProbNMDA" ) )
     ptProcessLibrary.append( new String( "ProbAMPANMDA" ) )
+    //Note - only synapse types are put in ptProcessLibrary, with IClamp getting checked separately.  Should we change that behavior?
     
     //split 'ReportOn' field on white space and check for special keywords - AllCurrent, SynapticCurrents, IntrinsicCurrents
     strdef token, sourceString, skipBlock
