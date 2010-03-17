@@ -81,7 +81,7 @@ endtemplate SerializedSections
  */
 begintemplate TargetManager
 
-{load_file("Target.hoc")}
+//{load_file("Target.hoc")}
 
 //-----------------------------------------------------------------------------------------------
 // Declare member variables
@@ -638,12 +638,12 @@ obfunc gidToSections() { local n  localobj searchString, resultSerial, nil, cell
  * Given cell object find all Points within the given distance to the soma.
  * Return the one where the diameter is maximal.
  *
- * @param $o1 cell object
+ * @param $1 cell gid 
  * @param $2 distance to soma in micrometers
  * @return PointList object
  */
 obfunc getApicalAtDistance() { local radius, max_diam, location, i, secnum, d0, d1, stimdist, dd  localobj cell, ptList, sl
-    cell = $o1
+    cell = getCell($1)
     cell.CellRef.soma distance()
     radius = $2
     i = 0
@@ -688,10 +688,10 @@ obfunc getApicalAtDistance() { local radius, max_diam, location, i, secnum, d0, 
 /*!
  * Get the soma section and return in as TPointList object
  *
- * @param $o1 cell object 
+ * @param $1 cell gid 
  */
 obfunc getSomaPoint() { localobj cell, ptlist
-    cell = $o1
+    cell = getCell($1)
     ptlist = new TPointList()
     access cell.CellRef.soma[0]
     ptlist.append( 0.5 )

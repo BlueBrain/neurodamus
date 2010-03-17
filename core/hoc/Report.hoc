@@ -17,13 +17,13 @@ begintemplate Report
 //-----------------------------------------------------------------------------------------------
 
 strdef reportName, reportType,  reportOn, unit, format, outputDir
-objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, cvode
+objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, memory_report, cvode
 
 //-----------------------------------------------------------------------------------------------
 // public members
 //-----------------------------------------------------------------------------------------------
 
-public init, addCompartmentReport, addSummationReport, getyvec, gettvec
+public init, addCompartmentReport, addSummationReport, get_memory_report
 
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
@@ -237,6 +237,12 @@ proc addCompartmentReport() { local x, rpt, vgid
         
     rpt = prepareReportForCell( $o1, $o2, vgid )
     
+    // for the in memory report:
+    tvec = new Vector()
+    tvec.indgen(startTime, endTime, reportDt)
+    memory_report = new List()
+    memory_report.append(tvec)
+
     //for each point, register variable and mapping
     for $o2.each_point(&x) {
     
@@ -247,16 +253,17 @@ proc addCompartmentReport() { local x, rpt, vgid
         } else if( 0 == strcmp(format, "Memory") ) {
             // in-memory report
             yvec = new Vector()
-            tvec = new Vector()
-            tvec.indgen(startTime, endTime, reportDt)
-            /* cvode only for variable time-step
+            /* cvode only for variable time-step, but vector.record does not work
+             */
             cvode = new CVode()
-            cvode.active(1, reportDt)
+            cvode.active(0)
             sprint(tstr, "cvode.record(&%s(%1.2f), yvec, tvec)", reportOn, x)
             execute(tstr, this)
+            /*
             */
-            sprint(tstr, "yvec.record(&%s(%1.2f), tvec)", reportOn, x)
+            //sprint(tstr, "yvec.record(&%s(%1.2f), tvec)", reportOn, x)
             execute(tstr, this)
+            memory_report.append(yvec)
         } else {
             sprint(tstr,"retVal = rec.addvar(%d, &%s(%1.2f))", rpt, reportOn, x )
             execute(tstr, this)
@@ -271,14 +278,11 @@ proc addCompartmentReport() { local x, rpt, vgid
 //-----------------------------------------------------------------------------------------------
 
 /*!
- * getter for reported variable yvec, and tvec
+ * getter for the in-memory report list object
  *
  */
-obfunc getyvec() {
-    return yvec
-}
-obfunc gettvec() {
-    return tvec
+obfunc get_memory_report() {
+    return memory_report 
 }
 
 //-----------------------------------------------------------------------------------------------
