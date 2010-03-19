@@ -134,6 +134,8 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             //Note: SynapseType is optional and will return nil (handled by npoisson function)
             //Note: requires special Target handling, so just pass targetName through
             npoisson( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], stim.get( "SynapseType" ), del, dur )
+        } else if( strcmp( patternName.s, "SubThreshold" ) == 0 ) {
+            subthreshold( $s1, stim.valueOf( "PercentLess" ), del, dur )
         }
     }
 }
@@ -148,7 +150,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
  * @param $3 delay from start of simulation to when current is injected (ms)
  * @param $4 duration of stimulus (ms)
  */
-proc squarepulse() { local listIndex, x, amp, del, dur  localobj pts, tstim
+proc squarepulse() { local cellIndex, x, amp, del, dur  localobj pts, tstim
     
     amp = $2
     del = $3
@@ -168,6 +170,32 @@ proc squarepulse() { local listIndex, x, amp, del, dur  localobj pts, tstim
 
 //-----------------------------------------------------------------------------------------------
 
+/**
+ * Injects a pulse stimulus into the targeted locations scaled to some percentage of that cell's threshold
+ * current (the current needed to cause 1 AP)
+ *
+ * @param $s1 Target name which should receive the stimulus
+ * @param $2 Percent less than full threshold current (e.g. val of 5 indicates that 95% of threshold is to be injected
+ * @param $3 del
+ * @param $4 dur
+ */
+proc subthreshold() { local cellIndex, x  localobj pts, cellList, tstim
+
+    pts = targetManager.getPointList($s1)
+    cellList = targetManager.getCells($s1)
+    
+    for cellIndex=0, pts.count()-1 {
+        for pts.o(cellIndex).each_point(&x) {
+            tstim = new TStim(x)
+            
+            tstim.pulse( $3, $4, cellList.o(cellIndex).getCCell().getThreshold()*(100-$2) )
+            stimList.append(tstim)
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
 /*!
  * Injects a train stimulus into cells wih regular frequency.
  *
@@ -179,18 +207,18 @@ proc squarepulse() { local listIndex, x, amp, del, dur  localobj pts, tstim
  * @param $6 del
  * @param $7 dur
  */
-proc train() { local listIndex, x, offset  localobj pts, tstim, jitter
+proc train() { local cellIndex, x, offset  localobj pts, tstim, jitter
 
     pts = targetManager.getPointList($s1)
     
     offset = 0
-    for listIndex=0, pts.count()-1 {        
+    for cellIndex=0, pts.count()-1 {        
         if( $5 != 0 ) {
-            jitter = new Random( pts.o(listIndex).gid )
+            jitter = new Random( pts.o(cellIndex).gid )
             jitter.normal(0,$5)
         }
         
-        for pts.o(listIndex).each_point(&x) {
+        for pts.o(cellIndex).each_point(&x) {
             tstim = new TStim(x)
             
             if( $5 != 0 ) {
@@ -217,7 +245,7 @@ proc train() { local listIndex, x, offset  localobj pts, tstim, jitter
  * @param $4 delay from start of simulation to when current is injected (ms)
  * @param $5 duration of stimulus (ms)
  */
-proc linear() { local listIndex, x, ampStart, ampEnd, del, dur  localobj pts, tstim
+proc linear() { local cellIndex, x, ampStart, ampEnd, del, dur  localobj pts, tstim
     
     ampStart = $2
     ampEnd = $3
@@ -227,8 +255,8 @@ proc linear() { local listIndex, x, ampStart, ampEnd, del, dur  localobj pts, ts
     //since there are no random elements, we can just evaluate the pointlist and proceed as normal
     pts = targetManager.getPointList($s1)
     
-    for listIndex=0, pts.count()-1 {
-        for pts.o(listIndex).each_point(&x) {
+    for cellIndex=0, pts.count()-1 {
+        for pts.o(cellIndex).each_point(&x) {
             
             tstim = new TStim(x)
             

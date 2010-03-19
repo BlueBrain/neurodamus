@@ -460,7 +460,7 @@ func completeContains() { localobj targetUtil
  * additional argument
  */
 obfunc getCompletePointList() {  localobj pts
-    //set flag indicating things are in complete mode
+    //set flag indicating things are in complete mode in lieu of passing additional argument around
     completeMode = 1
     
     pts = getPointList( $o1 )
@@ -547,8 +547,9 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
                 }
                 
             } else if( activeTarget.isSectionTarget() ) {
-                //TODO resolve how a Section Target wrappeed in a Compartment Target resolves in bglib1.5
-                addressCompartmentPointsInSection( $o1, activeTarget, targetExtraValues.object(targetIndex), $o2 )
+                //Note, if the user supplied a subset label in the Compartment target, this is ignored in favor of the subset label of the Section target
+                // should I issue warning?
+                addressCompartmentPointsInSection( $o1, activeTarget, targetExtraValues.object(targetIndex), pointListList )
             } else { //if( $o1.myid == 0 ) {
                 print "Warning: detected non-cell, non-section subtarget nested in Compartment target.  Skipping"
             }
@@ -562,6 +563,8 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
     
     return pointListList
 }
+
+//------------------------------------------------------------------------------------------------------------
 
 /***************************************************************************************
     Retrive the synapse ids for a given id from this target
@@ -596,31 +599,27 @@ proc evaluateSynapses() { local val, synIndex, binsrch_low, binsrch_high, binsrc
     print "Warning: gid ", $1, "not found in direct gid member list (Synapse targets do not support nesting yet)\n"
 }
 
+//------------------------------------------------------------------------------------------------------------
 
-
-/*****************************************************************
-    For Section targets nested in Compartment targets, apply both compartment location address and section
-    location address to neurons to hone in on particular points
+/**
+ * For a Section target nested in Compartment targets, apply section options such as subset and section indices as indicated
+ * by the base Section target, while using the Compartment locations of the Compartment target to find locations the resultant
+ * sections.  Note that if the user had tried to supply a subset to the Compartment target, this would have been ignored by the
+ * calling function above (getPointList).
+ *  
+ * @param $o1 Parallel Net manager for accessing cell objects
+ * @param $o2 Section Target which was nested in some compartment target above
+ * @param $o3 Vector with Compartment points (normalized values)
+ * @param $o4 (return value) reference to List object which will contain the TPointLists generated
+ */
+proc addressCompartmentPointsInSection(){local  ret, cnt, val, cellIndex, targetIndex  localobj cmpLocations, tgidVec, activeTarget, activePointList
+    cmpLocations = $o3
     
-    Required Inputs : $o1  Parallel Net manager
-                      $o2  Section Target
-                      $s3  Compartment nos in string (no subsets allowed?)
-                      $o4 (return value) reference of list object which will contain the CellInfo List
-    Logic           : 
-*****************************************************************/
-proc addressCompartmentPointsInSection(){local  ret, cnt, val, cellIndex, targetIndex  localobj strList, tVec, tgidVec, activeTarget
-/*
-    strList =   new List()
-    tVec    =   new Vector()
-    ret     =   split($s3, strList)          
-    for cnt =0, strList.count-1 {
-        sscanf(strList.o(cnt).s, "%f", &val)
-        tVec.append(val)
-    }
-    
-    //get the cells from the passed target
+    //handle the cells from the passed target
     for cellIndex=0, $o2.localCount()-1 {
-        addressSectionPoints( $o1, $o2.getgid(cellIndex), $o2.getCellExtra(cellIndex).s, tVec, $o4 )
+        activePointList = new TPointList( $o2.getgid(cellIndex) )
+        addressSectionPoints( $o1, $o2.getgid(cellIndex), $o2.getCellSubset(cellIndex).s, $o2.getCellExtra(cellIndex).s, cmpLocations, activePointList )
+        $o4.append( activePointList )
     }
     
     //for all subtargets of the given section target
@@ -630,12 +629,14 @@ proc addressCompartmentPointsInSection(){local  ret, cnt, val, cellIndex, target
         activeTarget = $o2.subtargets.object( targetIndex )
         tgidVec = activeTarget.gids()
         for cellIndex=0, tgidVec.size()-1 {
-            addressSectionPoints( $o1, tgidVec.x[cellIndex], $o2.targetExtra.object(targetIndex).s, tVec, $o4 )
+            activePointList = new TPointList( tgidVec.x[cellIndex] )
+            addressSectionPoints( $o1, tgidVec.x[cellIndex], $o2.targetSubset.o(targetIndex).s, $o2.targetExtra.o(targetIndex).s, cmpLocations, activePointList )
+            $o4.append( activePointList )
         }
-    }    
-    */
+    }
 }
 
+//------------------------------------------------------------------------------------------------------------
 
 /*!
  * Use the extra data of a compartment target to identify locations of a neuron to address, limiting to a certain
@@ -659,13 +660,13 @@ proc addressCompartmentPoints(){ local ret, cnt, val  localobj strList, tVec
  *  and apply and compartment addressing to the neuron as well
  *  
  *  @param $o1 Parallel net manager reference
- *  @param $2 Neuron gid                     
+ *  @param $2 Neuron gid
  *  @param $s3 subset
  *  @param $o4 Vec of section points
  *  @param $o5 Vec of compartments points
  *  @param $o6 (return value) reference to TPointList object which will be populated with section references
  */
-proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj strList, tobj
+proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj strList, tobj, errorMsg
     strdef  SecName, NeuronName
     strList =   new List() 
     
@@ -701,15 +702,23 @@ proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj s
         } else if ( 0 == strcmp( $s3, "apic" ) ) {
             SecSize = tobj.nSecApical
         }
-                
-        if ( $o4.size() == 0 ) {  //address all points of requested section
+        
+        if ( $o4.size() == 0 ) {  //address all points within each section of requested subset
             for count=0, SecSize-1 {  
                 addressSection( $o1, gid, $s3, count, $o5, $o6 )
             }
-        } else {  //address only those section points told
+        } else {  //address points only within specified sections of subset
             for count=0, $o4.size()-1 {
-                SecNo   =    getSectionNo(SecSize, $o4.x[count])
-                addressSection( $o1, id, $s3, SecNo, $o5, $o6 )
+                //SecNo   =    getSectionNo(SecSize, $o4.x[count])
+                //addressSection( $o1, gid, $s3, SecNo, $o5, $o6 )
+                
+                // switch target specification to have user supply actual section index instead of normalized value
+                if( $o4.x[count] > SecSize ) {
+                    errorMsg = new String()
+                    sprint( errorMsg.s, "Invalid section access for target %s: requested section %s[%d] (%d) available", name, $s3, $o4.x[count], SecSize )
+                    execerror( errorMsg.s )
+                }
+                addressSection( $o1, gid, $s3, $o4.x[count], $o5, $o6 )
             }
         }
     }

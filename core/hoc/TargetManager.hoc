@@ -97,7 +97,7 @@ public init
 public getTarget, setTargetList, pnm, getPointList, locationToPoint, loadBalance, gids
 public getSomaticSections, getApicalSections, getBasalSections, getAxonalSections, registerCell
 public getApicalPoints, getBasalPoints
-public selectRandomPoints
+public selectRandomPoints, getCells
 
 // Ruben's PFE
 public getApicalAtDistance, getSomaPoint, getCell
@@ -171,6 +171,30 @@ obfunc getCell() {
     }
     // not found
     print "getCell: cell not in list."
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience functin for objects like StimuluManager to get access to cell objects without
+ * having a direct line to the LoadBalanceBBP object.  Subject to debate, but there must be some way
+ * for the StimulusManager to access the threshold value for the cells to execute a subThreshols stim (for example).
+ *
+ * @param $s1 Target Name to get the gids and collect references to cell objects
+ * @return List containing cell object references
+ */
+obfunc getCells() { local cellIndex  localobj target, gids, resultList
+    
+    resultList = new List()
+    
+    target = getTarget( $s1 )
+    gids = target.gids()
+    
+    for cellIndex=0, gids.size()-1 {
+        resultList.append( loadBalance.getCell(gids.x[cellIndex]) )
+    }
+    
+    return resultList
 }
 
 //------------------------------------------------------------------------------------------
