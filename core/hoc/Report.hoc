@@ -258,8 +258,9 @@ proc addCompartmentReport() { local x, rpt, vgid
             cvode = new CVode()
             cvode.active(0)
             sprint(tstr, "cvode.record(&%s(%1.2f), yvec, tvec)", reportOn, x)
-            execute(tstr, this)
+            //execute(tstr, this)
             /*
+             * having an issue with vector.record here: no reasonable output recorded, thus cvode is used
             */
             //sprint(tstr, "yvec.record(&%s(%1.2f), tvec)", reportOn, x)
             execute(tstr, this)

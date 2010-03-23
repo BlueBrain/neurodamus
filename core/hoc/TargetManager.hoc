@@ -81,7 +81,7 @@ endtemplate SerializedSections
  */
 begintemplate TargetManager
 
-//{load_file("Target.hoc")}
+{load_file("Target.hoc")}
 
 //-----------------------------------------------------------------------------------------------
 // Declare member variables
