@@ -143,8 +143,8 @@ public cellExtraValues, targetExtraValues
 
 //! memberfunctions - see below for detailed information
 public evalType, isCellTarget, isSectionTarget, isCompartmentTarget, isSynapseTarget
-public update, getgid, evaluateCompartments, gids, completegids, getCellExtraValues, evaluateSynapses, getPointList, getCompletePointList
-public isDefined, completeContains, contains
+public update, getgid, gids, completegids, getCellExtraValues, evaluateSynapses, getPointList, getCompletePointList
+public isDefined, completeContains, contains, localCount
 
 //------------------------------------------------------------------------------------------------------------
 // Member functions
@@ -278,13 +278,8 @@ proc update() { local gid, cellIndex, binsrch_low, binsrch_high, binsrch_mid  lo
         
     //for each cell on node, determine if it exists in this target
     for cellIndex=0, $o1.size()-1 {
-
-        //if (object_id($o2)) {
-        //    gid = $o2.base_gid( $o1.x[cellIndex] )
-        //} else {
-            gid = $o1.x[cellIndex]
-        //}
-              
+        gid = $o1.x[cellIndex]
+        
         //special binary_search - indirect vector access
         binsrch_low = 0
         binsrch_high = allCellIndices.size()
@@ -486,10 +481,9 @@ obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVect
 	strdef token, NeuronName, SecName
     
     pointListList = new List()
+    gidVec = gids()
 	
 	if( isCellTarget() ) {  //get all cells, and address soma(0.5)
-		gidVec = gids()
-		
 		pointVector = new Vector()
 		pointVector.append( 0.5 )
         for cellIndex=0, gidVec.size()-1 {
@@ -630,7 +624,7 @@ proc addressCompartmentPointsInSection(){local  ret, cnt, val, cellIndex, target
         tgidVec = activeTarget.gids()
         for cellIndex=0, tgidVec.size()-1 {
             activePointList = new TPointList( tgidVec.x[cellIndex] )
-            addressSectionPoints( $o1, tgidVec.x[cellIndex], $o2.targetSubset.o(targetIndex).s, $o2.targetExtra.o(targetIndex).s, cmpLocations, activePointList )
+            addressSectionPoints( $o1, tgidVec.x[cellIndex], $o2.targetSubsets.o(targetIndex).s, $o2.targetExtraValues.o(targetIndex), cmpLocations, activePointList )
             $o4.append( activePointList )
         }
     }
@@ -657,7 +651,7 @@ proc addressCompartmentPoints(){ local ret, cnt, val  localobj strList, tVec
 
 /*!
  *  Use the extra data of a section target to identify locations on a neuron that must be addressed
- *  and apply and compartment addressing to the neuron as well
+ *  and apply any compartment addressing to the neuron as well
  *  
  *  @param $o1 Parallel net manager reference
  *  @param $2 Neuron gid

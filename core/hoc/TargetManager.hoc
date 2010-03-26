@@ -87,14 +87,14 @@ begintemplate TargetManager
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-objref targetList, pnm, cellList, sectionAccess, isec2sec[1], loadBalance, nilSecRef
+objref targetList, cellList, sectionAccess, isec2sec[1], loadBalance, nilSecRef
 
 //-----------------------------------------------------------------------------------------------
 // public members
 //-----------------------------------------------------------------------------------------------
 
 public init
-public getTarget, setTargetList, pnm, getPointList, locationToPoint, loadBalance, gids
+public getTarget, setTargetList, getPointList, locationToPoint, loadBalance, gids
 public getSomaticSections, getApicalSections, getBasalSections, getAxonalSections, registerCell
 public getApicalPoints, getBasalPoints
 public selectRandomPoints, getCells
@@ -108,15 +108,13 @@ public getApicalAtDistance, getSomaPoint, getCell
 
 /*!
  * $o1 List with targets most likely parsed from Target files
- * $o2 ParallelNetManager
- * $o3 LoadBalance object for accessing sections
+ * $o2 LoadBalance object for accessing sections
  */
 proc init() { local lastgid, cellIndex  localobj cellObj, secList, pointList
     
     if( argtype(1) == 1 ) {  //need to sort out additional use cases for TargetManager
         targetList = $o1
-        pnm = $o2
-        loadBalance = $o3
+        loadBalance = $o2
     }
     nErrors = 0
     
@@ -282,13 +280,13 @@ obfunc getPointList() { local cellIndex, cmpIndex  localobj activeTarget, ptList
 		print "No such gid registered with TargetManager: ", $1
 		return ptList
         
-    } else if( argtype(1) == 2 && object_id(pnm) ) {
+    } else if( argtype(1) == 2 && object_id(loadBalance) ) {
         
         activeTarget = getTarget($s1)
         return activeTarget.getPointList( loadBalance )
         
     } else {
-        print "no cell list?  no pnm?  where am I supposed to get cell sections from?.  I'm leaving"
+        print "no cell list?  no loadBalance?  where am I supposed to get cell sections from?.  I'm leaving"
     }
 }
 
@@ -562,7 +560,7 @@ obfunc compartmentCast() { localobj target, wrapper
  * @param $4 offset distance beyond the ipt (microns)
  * @return TPointList with 1 item, where the synapse should go
  */
-obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localobj resultPoint, cellSections, tmpSection, nil
+obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localobj resultPoint, cellSections, tmpSection, nil, helpCell
     gid = $1
     isec = $2
     ipt = $3
@@ -581,7 +579,6 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
     }
     
     distance = -1
-    
     tmpSection = cellSections.isec2sec[isec]
     
     if (tmpSection == nil) {  //assume we are in LoadBalance mode (until we decide to verify this either here or in a higher layer)
@@ -641,7 +638,7 @@ obfunc gidToSections() { local n  localobj searchString, resultSerial, nil, cell
             print "cellList implementation pending"
             return nil
         } else {
-            print "no cell list?  no pnm?  where am I supposed to get cell sections from?.  I'm leaving"
+            print "no cell list?  no loadBalance?  where am I supposed to get cell sections from?.  I'm leaving"
             return nil
         }
         
