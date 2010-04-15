@@ -223,10 +223,8 @@ proc train() { local cellIndex, x, offset  localobj pts, tstim, jitter
             
             if( $5 != 0 ) {
                 offset = jitter.repick()
-                print "offset of ", offset
             }
-            
-            tstim.train( $6+offset, $7+offset, $2, $3, $4 )
+            tstim.train( $6+offset, $7, $2, $3, $4 )
             
             stimList.append(tstim)
         }
@@ -355,15 +353,15 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
         //count the iterations and use that to offset the seed
         iteration = iteration + 1
         
-	    ran2 = new Random(baseSeed + iteration)
+        ran2 = new Random(baseSeed + iteration)
         ran2.MCellRan4(baseSeed + iteration)
-	    ran2.discunif(0,1)
+        ran2.discunif(0,1)
         
-	    ran1 = new Random(baseSeed + iteration)
+        ran1 = new Random(baseSeed + iteration)
         ran1.MCellRan4(baseSeed + iteration)
         
         //first choose to target apical of basal sections
-	    if(ran2.repick()) {
+        if(ran2.repick()) {
             activeSubset = basalPoints
         } else {
             activeSubset = apicalPoints
