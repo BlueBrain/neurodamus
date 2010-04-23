@@ -87,14 +87,14 @@ begintemplate TargetManager
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-objref targetList, cellList, sectionAccess, isec2sec[1], loadBalance, nilSecRef
+objref targetList, cellList, sectionAccess, isec2sec[1], cellDistributor, nilSecRef
 
 //-----------------------------------------------------------------------------------------------
 // public members
 //-----------------------------------------------------------------------------------------------
 
 public init
-public getTarget, setTargetList, getPointList, locationToPoint, loadBalance, gids
+public getTarget, setTargetList, getPointList, locationToPoint, cellDistributor, gids
 public getSomaticSections, getApicalSections, getBasalSections, getAxonalSections, registerCell
 public getApicalPoints, getBasalPoints
 public selectRandomPoints, getCells
@@ -108,13 +108,13 @@ public getApicalAtDistance, getSomaPoint, getCell
 
 /*!
  * $o1 List with targets most likely parsed from Target files
- * $o2 LoadBalance object for accessing sections
+ * $o2 CellDistributor object for accessing sections
  */
 proc init() { local lastgid, cellIndex  localobj cellObj, secList, pointList
     
     if( argtype(1) == 1 ) {  //need to sort out additional use cases for TargetManager
         targetList = $o1
-        loadBalance = $o2
+        cellDistributor = $o2
     }
     nErrors = 0
     
@@ -175,7 +175,7 @@ obfunc getCell() {
 
 /*!
  * Convenience functin for objects like StimuluManager to get access to cell objects without
- * having a direct line to the LoadBalanceBBP object.  Subject to debate, but there must be some way
+ * having a direct line to the CellDistributor object.  Subject to debate, but there must be some way
  * for the StimulusManager to access the threshold value for the cells to execute a subThreshols stim (for example).
  *
  * @param $s1 Target Name to get the gids and collect references to cell objects
@@ -189,7 +189,7 @@ obfunc getCells() { local cellIndex  localobj target, gids, resultList
     gids = target.gids()
     
     for cellIndex=0, gids.size()-1 {
-        resultList.append( loadBalance.getCell(gids.x[cellIndex]) )
+        resultList.append( cellDistributor.getCell(gids.x[cellIndex]) )
     }
     
     return resultList
@@ -262,7 +262,7 @@ obfunc getPointList() { local cellIndex, cmpIndex  localobj activeTarget, ptList
             if( activeCell.gid == $1 ) {
                 
                 //to avoid code duplication, should probably create a temporary target containing the cell and use that for getting all compartment points
-                // does that work without a pnm or loadbalance object?  I don't think so.
+                // does that work without a pnm or CellDistributor object?  I don't think so.
                 
                 //just mimic all compartment report
 				//TODO: should put in getCompletePointList instead.  Let this function return just soma, I think
@@ -280,13 +280,13 @@ obfunc getPointList() { local cellIndex, cmpIndex  localobj activeTarget, ptList
 		print "No such gid registered with TargetManager: ", $1
 		return ptList
         
-    } else if( argtype(1) == 2 && object_id(loadBalance) ) {
+    } else if( argtype(1) == 2 && object_id(cellDistributor) ) {
         
         activeTarget = getTarget($s1)
-        return activeTarget.getPointList( loadBalance )
+        return activeTarget.getPointList( cellDistributor )
         
     } else {
-        print "no cell list?  no loadBalance?  where am I supposed to get cell sections from?.  I'm leaving"
+        print "no cell list?  no CellDistributor?  where am I supposed to get cell sections from?.  I'm leaving"
     }
 }
 
@@ -385,7 +385,7 @@ obfunc getApicalPoints() { local cellIndex  localobj tempTarget, ptList, activeC
 	}
 	
     //tempTarget = sectionCast( $s1, "apic" )
-    //return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+    //return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
 }
 
 //------------------------------------------------------------------------------------------
@@ -430,7 +430,7 @@ obfunc getBasalPoints() { local cellIndex  localobj tempTarget, ptList, activeCe
 	}
 	
     //tempTarget = sectionCast( $s1, "apic" )
-    //return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+    //return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
 }
 
 //------------------------------------------------------------------------------------------
@@ -447,7 +447,7 @@ obfunc getBasalPoints() { local cellIndex  localobj tempTarget, ptList, activeCe
  */
 obfunc getSomaticSections() { localobj tempTarget
     tempTarget = sectionCast( $s1, "soma" )
-    return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+    return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
 }
 
 //------------------------------------------------------------------------------------------
@@ -461,7 +461,7 @@ obfunc getSomaticSections() { localobj tempTarget
 obfunc getApicalSections() {  localobj tempTarget
 
     tempTarget = sectionCast( $s1, "apic" )
-    return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+    return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
 }
 
 //------------------------------------------------------------------------------------------
@@ -474,7 +474,7 @@ obfunc getApicalSections() {  localobj tempTarget
  */
 obfunc getBasalSections() { localobj tempTarget
     tempTarget = sectionCast( $s1, "dend" )
-    return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+    return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
 }
 
 //------------------------------------------------------------------------------------------
@@ -487,7 +487,7 @@ obfunc getBasalSections() { localobj tempTarget
  */
 obfunc getAxonalSections() { localobj tempTarget
     tempTarget = sectionCast( $s1, "axon" )
-    return tempTarget.getCompletePointList( loadBalance, nilSecRef )
+    return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
 }
 
 //------------------------------------------------------------------------------------------
@@ -619,7 +619,7 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
  * For a given gid, we want SectionRefs stored in a List for random access.  This function will
  * see if such a List already exists and return it, or build that list as needed, storing it for the future before
  * returning the result.  Note that in split cases, the deleted sections will still have their SectionRefs.
- * Should this function instead go in the Node object?  The LoadBalance object?
+ * Should this function instead go in the Node object?  The CellDistributor object?
  *
  * @param $1 gid
  * @return List object with SectionRefs to every section in the cell
@@ -632,13 +632,13 @@ obfunc gidToSections() { local n  localobj searchString, resultSerial, nil, cell
     
     if( object_id(resultSerial) == 0 ) {  //must build new one
         //determine if we should use pnm or cellList based on which is actually allocated
-        if( object_id(loadBalance) ) {
-            cellRef = loadBalance.getCell($1)
+        if( object_id(cellDistributor) ) {
+            cellRef = cellDistributor.getCell($1)
         } else if( object_id(cellList) ) {
             print "cellList implementation pending"
             return nil
         } else {
-            print "no cell list?  no loadBalance?  where am I supposed to get cell sections from?.  I'm leaving"
+            print "no cell list?  no CellDistributor?  where am I supposed to get cell sections from?.  I'm leaving"
             return nil
         }
         

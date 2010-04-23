@@ -474,7 +474,7 @@ obfunc getCompletePointList() {  localobj pts
  * the cells and cells from nested targets will be accessed based on subset requests and normalized offset values (empty values for either are 
  * interpreted as all subsets and/or all offset values)
  * 
- * @param $o1 Reference to LoadBalance where cell objects and cell info can be retrieved
+ * @param $o1 Reference to CellDistibutor where cell objects and cell info can be retrieved
  * @return TPointList where retrieved section references are stored
  */
 obfunc getPointList() { local cellIndex, targetIndex  localobj gidVec, pointVector, activeTarget, pointListList, activePointList
@@ -636,7 +636,7 @@ proc addressCompartmentPointsInSection(){local  ret, cnt, val, cellIndex, target
  * Use the extra data of a compartment target to identify locations of a neuron to address, limiting to a certain
  * section subset if specified.  Any locations given on the line are compartment locations as opposed to section locations
  *  
- * @param $o1 LoadBalanceBBP passed through to functions that need to access cell objs
+ * @param $o1 CellDistibutor passed through to functions that need to access cell objs
  * @param $2 Neuron gid
  * @param $s3 String with subset name (or "" for all subsets)
  * @param $o4 Vector with normalized locations
@@ -738,7 +738,7 @@ proc addressSection(){local segcnt, SegNo, locIndex  localobj VecObj, tObj
     if(!section_exists($s3, $4, tObj)) {
         if( completeMode == 1 ) {
             //TODO: for situations where we need all points, we need to be able to insert a nil section ref
-            // which the BBPLoadBalance has, but maybe I should just let every target have one?
+            // which the CellDistibutor has, but maybe I should just let every target have one?
             // also, how many segs were in the original section?
             
             VecObj = $o5
