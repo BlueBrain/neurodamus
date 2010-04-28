@@ -87,17 +87,21 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
     //
     // check for TPointList argument
     if( argtype(1) == 1 ) {
+        // SquarePulse for TPointList arg
         if( strcmp( patternName.s, "SquarePulse" ) == 0 ) {
             relamp = stim.valueOf( "relAmp" )
-            threshold = targetManager.getCell($3).getThreshold()
-            //linear( target, relamp * threshold, relamp * threshold, del, dur )
+            threshold = targetManager.getCell($3).getCCell().getThreshold()
             squarepulse( $o1, relamp * threshold, del, dur )
         }
-    // end of Ruben's pfe chunk
     //
     // check for target name argument
     } else if( argtype(1) == 2 ) {
-        if( strcmp( patternName.s, "Linear" ) == 0 ) {
+        // SquarePulse for target name arg
+        if( strcmp( patternName.s, "SquarePulse" ) == 0 ) {
+            relamp = stim.valueOf( "relAmp" )
+            threshold = targetManager.getCells($s1).o(0).getCCell().getThreshold()
+            linear( $s1, relamp * threshold, relamp * threshold, del, dur )
+        } else if( strcmp( patternName.s, "Linear" ) == 0 ) {
             paramVect.append( stim.valueOf("AmpStart") )
             
             //optional option - AmpEnd.  If not there, use same value as AmpStart

@@ -17,7 +17,9 @@ begintemplate Report
 //-----------------------------------------------------------------------------------------------
 
 strdef reportName, reportType,  reportOn, unit, format, outputDir
-objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, memory_report, cvode
+objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, memory_report
+
+external cvode
 
 //-----------------------------------------------------------------------------------------------
 // public members
@@ -237,9 +239,13 @@ proc addCompartmentReport() { local x, rpt, vgid
         
     rpt = prepareReportForCell( $o1, $o2, vgid )
     
+    /*
+     * define timesteps in tvec does not work, maybe a neuron issue
     // for the in memory report:
     tvec = new Vector()
     tvec.indgen(startTime, endTime, reportDt)
+    */
+    tvec = new Vector()
     memory_report = new List()
     memory_report.append(tvec)
 
@@ -253,16 +259,10 @@ proc addCompartmentReport() { local x, rpt, vgid
         } else if( 0 == strcmp(format, "Memory") ) {
             // in-memory report
             yvec = new Vector()
-            /* cvode only for variable time-step, but vector.record does not work
-             */
             cvode = new CVode()
-            cvode.active(0)
+            //cvode_active(0)
+            cvode.active(1)
             sprint(tstr, "cvode.record(&%s(%1.2f), yvec, tvec)", reportOn, x)
-            //execute(tstr, this)
-            /*
-             * having an issue with vector.record here: no reasonable output recorded, thus cvode is used
-            */
-            //sprint(tstr, "yvec.record(&%s(%1.2f), tvec)", reportOn, x)
             execute(tstr, this)
             memory_report.append(yvec)
         } else {
