@@ -192,7 +192,7 @@ proc subthreshold() { local cellIndex, x  localobj pts, cellList, tstim
         for pts.o(cellIndex).each_point(&x) {
             tstim = new TStim(x)
             
-            tstim.pulse( $3, $4, cellList.o(cellIndex).getCCell().getThreshold()*(100-$2) )
+            tstim.pulse( $3, $4, cellList.o(cellIndex).getCCell().getThreshold()*(100-$2)/100 )
             stimList.append(tstim)
         }
     }

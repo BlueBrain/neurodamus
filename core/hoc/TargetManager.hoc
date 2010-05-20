@@ -582,7 +582,8 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
     tmpSection = cellSections.isec2sec[isec]
     
     if (tmpSection == nil) {  //assume we are in LoadBalance mode (until we decide to verify this either here or in a higher layer)
-        resultPoint.append( tmpSection, -1 )
+        //resultPoint.append( tmpSection, -1 )
+        resultPoint.append( cellDistributor.nilSecRef, -1 )
     }else {
         tmpSection.sec {
             // when a cell is split, the path from the split point
