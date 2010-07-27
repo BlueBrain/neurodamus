@@ -674,7 +674,6 @@ obfunc getApicalAtDistance() { local radius, max_diam, location, i, secnum, d0, 
         d0 = distance(0)
         d1 = distance(1)
         if(d0 <= radius && d1 >= radius) {
-            location = (radius - d0) / (d1 - d0)
             if(diam > max_diam) {
                 location = (radius - distance(0)) / (distance(1) - distance(0))
                 secnum = i

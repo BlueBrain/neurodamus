@@ -90,7 +90,8 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
         // SquarePulse for TPointList arg
         if( strcmp( patternName.s, "SquarePulse" ) == 0 ) {
             relamp = stim.valueOf( "relAmp" )
-            threshold = targetManager.getCell($3).getCCell().getThreshold()
+            //threshold = targetManager.getCell($3).getCCell().getThreshold()
+            threshold = targetManager.getCell($3).getThreshold()
             squarepulse( $o1, relamp * threshold, del, dur )
         }
     //
@@ -156,7 +157,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
  */
 proc squarepulse() { local cellIndex, x, amp, del, dur  localobj pts, tstim
     
-    amp = $2
+    //amp = $2
     del = $3
     dur = $4
 
