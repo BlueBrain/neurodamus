@@ -157,7 +157,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
  */
 proc squarepulse() { local cellIndex, x, amp, del, dur  localobj pts, tstim
     
-    //amp = $2
+    amp = $2
     del = $3
     dur = $4
 
