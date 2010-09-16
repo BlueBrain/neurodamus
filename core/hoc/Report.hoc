@@ -425,6 +425,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrin
     intrinsicLibrary.append( new String( "ik" ) )
     intrinsicLibrary.append( new String( "icsa" ) )
     intrinsicLibrary.append( new String( "ihcn" ) )
+    intrinsicLibrary.append( new String( "i_pas" ) )
 
     ptProcessLibrary = new List()
     ptProcessLibrary.append( new String( "tmgExSyn" ) )
