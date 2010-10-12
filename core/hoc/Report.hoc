@@ -418,14 +418,16 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrin
     intrinsicList = new List()
     ptProcessList = new List()
 
-    //before scanning the ReportOn field, build some libraries that can be used for lookup and comparison
+    //before scanning the ReportOn field, build some libraries that can be used for lookup and comparison    
     intrinsicLibrary = new List()
     intrinsicLibrary.append( new String( "ina" ) )
     intrinsicLibrary.append( new String( "ica" ) )
     intrinsicLibrary.append( new String( "ik" ) )
-    intrinsicLibrary.append( new String( "icsa" ) )
-    intrinsicLibrary.append( new String( "ihcn" ) )
     intrinsicLibrary.append( new String( "i_pas" ) )
+    intrinsicLibrary.append( new String( "i_cap" ) )
+    intrinsicLibrary.append( new String( "ihcn_Ih" ) )     // \\
+    intrinsicLibrary.append( new String( "ihcn_hcn3" ) )   //  ||- nonspecific currents are handled on an individual mod basis
+    intrinsicLibrary.append( new String( "icsa__CSA" ) )   // //
 
     ptProcessLibrary = new List()
     ptProcessLibrary.append( new String( "tmgExSyn" ) )
@@ -507,8 +509,8 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrin
             if( matched == 0 ) {
                 // Note that we now check for intrinsic names individually like with synapses.  Therefore, this else no longer
                 //  needs to assume that an unmatched token is an ion.  (In the event new ions are added, we can update the lists)
-                print "Bad type given to Current Summation report: ", token
-                quit()
+                execerror( "Bad type given to Current Summation report: %s", token )
+                
             }
         }
     }
