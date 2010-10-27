@@ -1,4 +1,5 @@
 {load_file("import3d.hoc")}
+
 begintemplate Cell
 public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target
 public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts, rnglist
@@ -8,6 +9,12 @@ objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, H
 //! Used when computing nseg per section
 external lambda_f
 
+/*!
+ * Constructor to create a Cell object usable in the bbp toolchain
+ *
+ * @param $1 gid [optional] Unique identifier for this cell if it to be used in a network
+ * @param $s2 full path to morphology [optional] file to load in cell's geometric information
+ */
 proc init() {
 	gid 	= 0
 	all 	= new SectionList()
