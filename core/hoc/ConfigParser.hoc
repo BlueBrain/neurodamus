@@ -182,8 +182,10 @@ obfunc parseBlock() { local ret  localobj pendingBlock, rawline, configIn, field
             
             wscheck = fieldValue.s
             strUtil.right( wscheck, strUtil.len(wscheck)-1 )
-            if( strcmp( wscheck, " " ) == 0 || strcmp( wscheck, "\t" ) == 0 || strcmp( wscheck, "\n" ) == 0 ) {
-                ret = strUtil.head( fieldValue.s, "[ \t\n]+", fieldValue.s ) //strip leading white space
+            while( strcmp( wscheck, " " ) == 0 || strcmp( wscheck, "\t" ) == 0 || strcmp( wscheck, "\n" ) == 0 ) {
+                strUtil.left( fieldValue.s, strUtil.len(fieldValue.s)-1 )
+                wscheck = fieldValue.s
+                strUtil.right( wscheck, strUtil.len(wscheck)-1 )
             }
             
             //add  to the map
