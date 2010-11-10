@@ -31,10 +31,9 @@ begintemplate TPointList
 			x.append($1)
 			sclst.append(new SectionRef())
 		}else if(at==rtti.STRDEF){
-			//python style address. 	
+			//python style address - wraps NEURON style 
 			sprint(tmp,"%s %s.append(%g)",$s1,this,$2)
 			execute(tmp)
-			x.append($2)
 		}else if(at==rtti.OBJREF){
 			if(rtti.equal($o1,"SectionRef")){
 				sclst.append($o1) //add the section ref as is
