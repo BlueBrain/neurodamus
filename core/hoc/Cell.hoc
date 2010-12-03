@@ -1,7 +1,7 @@
 {load_file("import3d.hoc")}
 
 begintemplate Cell
-public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
+public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target
 public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts, rnglist
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
 objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts, rnglist
@@ -16,16 +16,16 @@ external lambda_f
  * @param $s2 full path to morphology [optional] file to load in cell's geometric information
  */
 proc init() {
-    gid     = 0
-    all     = new SectionList()
-    somatic = new SectionList()
-    basal   = new SectionList()
-    apical  = new SectionList()
-    axonal  = new SectionList()
+	gid 	= 0
+	all 	= new SectionList()
+	somatic = new SectionList()
+	basal 	= new SectionList()
+	apical 	= new SectionList()
+	axonal 	= new SectionList()
     forall delete_section()
     if(numarg()>0) gid = $1
-    if(numarg()>1){
-        AddMorphNL($s2)
+	if(numarg()>1){
+		AddMorphNL($s2)
     }
     
     synlist = new List()
@@ -34,7 +34,8 @@ proc init() {
 create soma[1], dend[1], apic[1], axon[1]
 
 proc AddMorphNL(){ localobj nl, import
-    forall delete_section()    
+    forall delete_section()
+    
     nl = new Import3d_Neurolucida3()
     nl.quiet = 1
     nl.input($s1)
@@ -44,77 +45,20 @@ proc AddMorphNL(){ localobj nl, import
     geom_nsec()
 }
 
-
-proc delete_axon(){local nSec, L1, L2, D1, D2,i1, i2, nSeg1, nSeg2 localobj sTmp    
-    sTmp = new String()
-    nSec=0
-    forsec axonal {nSec = nSec + 1}
-    nSec=0    
-    forsec axonal {
-        if(nSec == 0){
-            L1      = L
-            D1      = diam
-            if(L<5) {
-        nSeg1 = nseg
-        } else {
-                nSeg1   = int(L/5)
-        }
-            i1      = v(0.0001)
-        }
-        if(nSec == 1){
-            L2      = L
-            D2      = diam
-            if(L<5) {
-        nSeg2 = nseg
-            } else {
-                nSeg2   = int(L/5)
-            }
-            i2      = v(0.0001)
-        }
-        nSec = nSec + 1
-    }
-    forsec axonal{delete_section()}    
-    execute1("create axon[2]\n", this)
-    
-    access axon[0]{
-        L= 10
-        diam = 0.5
-        nseg =1
-        v(0.0001) = i1
-    }
-    access axon[1]{
-        L= 10
-        diam = 0.5
-        nseg =1
-        v(0.0001) = i1
-    }
-    if(nSec >0)  {
-        access axon[0]{
-            L       = L1
-            diam    = D1
-            nseg    = nSeg1
-            axonal.append()
-            all.append()
-        }
-    }
-    if(nSec >1)  {
-        access axon[1]{
-            L       = L2
-            diam    = D2
-            nseg    = nSeg2
-            v(0.0001) = i2
-            axonal.append()
-            all.append()
-        }
-    }else {
-        print "Error in Morphology: No axon section[1] found"
-        //execerror("failure in delete_axon()")
-    }
-    nSecAxonal = 2
-    soma[0] connect axon[0](0), 1
-    axon[0] connect axon[1](0), 1
+proc SetCellProperties(){local Rm,v_init
+	Rm = $1
+	v_init = $2
+	forall {
+		insert pas
+		Ra = 80
+		g_pas=1/Rm
+		e_pas=v_init
+		cm = 1
+	}
+	
+	//whenever the Cell properties (resistance esp.) change, recalculate how a section divides into segments
+	//geom_nseg()  //for now, let the CCell do this after biophys is executed
 }
-
 
 /*!
  * Iterate over the section and compute how many sqgments should be allocate to each.  This number
@@ -154,19 +98,21 @@ proc geom_nseg_fixed() { local secIndex
  */
 proc geom_nsec() { local nSec
     nSec = 0
-    forsec all {        
-        nSec = nSec + 1        
+    forsec all {
+        //nseg = int((L/(0.1*lambda_f(100))+.9)/2)*2 + 1
+        nSec = nSec + 1
+        //print nseg, " ", L
     }
     nSecAll = nSec
     nSec = 0
     forsec somatic { nSec = nSec + 1}
-    nSecSoma    =   nSec
+    nSecSoma	= 	nSec
     nSec = 0
     forsec apical { nSec = nSec + 1}
-    nSecApical=     nSec
+    nSecApical= 	nSec
     nSec = 0
     forsec basal { nSec = nSec + 1}
-    nSecBasal   =   nSec
+    nSecBasal	= 	nSec
     nSec = 0
     forsec axonal { nSec = nSec + 1}
     nSecAxonalOrig = nSecAxonal = nSec
@@ -181,10 +127,10 @@ proc geom_nsec() { local nSec
 }
 
 obfunc getCCell(){
-    return CCellRef
+	return CCellRef
 }
 proc setCCell(){
-    CCellRef = $o1
+	CCellRef = $o1
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -228,10 +174,5 @@ proc connect2target() { //$o1 target point process, $o2 returned NetCon
   $o2.threshold = -30
 }
 
-proc insertChannel(){ localobj tmpString
-    tmpString = new String()
-    sprint(tmpString.s, "forsec %s  insert %s", $s1, $s2)
-    execute(tmpString.s, this)
-}
-
+create soma[1], dend[1], apic[1], axon[1]
 endtemplate Cell
