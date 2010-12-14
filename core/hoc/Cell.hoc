@@ -235,3 +235,4 @@ proc insertChannel(){ localobj tmpString
 }
 
 endtemplate Cell
+//This cell template will change
