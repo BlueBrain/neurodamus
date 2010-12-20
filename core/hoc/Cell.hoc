@@ -45,20 +45,58 @@ proc AddMorphNL(){ localobj nl, import
     geom_nsec()
 }
 
-proc SetCellProperties(){local Rm,v_init
-	Rm = $1
-	v_init = $2
-	forall {
-		insert pas
-		Ra = 80
-		g_pas=1/Rm
-		e_pas=v_init
-		cm = 1
-	}
-	
-	//whenever the Cell properties (resistance esp.) change, recalculate how a section divides into segments
-	//geom_nseg()  //for now, let the CCell do this after biophys is executed
+proc delete_axon(){local nSec, D1, D2, dist, i1, i2, count
+    count = 0
+    nSec  = 0
+    forsec axonal{nSec = nSec + 1}
+    if(nSec ==0){ //No axon section present
+        D1 = 1
+        D2 = 1
+    }else{
+        access axon[0]
+        i1 = v(0.0001) //hack needed for bglib 
+        D1 = diam
+        D2 = diam
+        if(nSec >1){ //Only one axon section present
+            access soma distance() //to calculate distance from soma
+            forsec axonal{   // loop through all axon sections and check for 60um distance 
+                if(count == 1){
+                    i2 = v(0.0001) //hack needed for bglib
+                }
+                count = count + 1
+                dist = distance(0.5)
+                if(dist > 60){ //if section is longer than 60um then store diam and exit from look
+                    D2 = diam
+                    break
+                }
+
+            }
+        }
+    }
+    forsec axonal{delete_section()}    
+    execute1("create axon[2]\n", this)
+    access axon[0] {
+        L = 30
+        diam = D1
+        nseg = 1 + 2*int(L/40)
+        all.append()
+        axonal.append()
+        v(0.0001) = i1
+    }
+    access axon[1] {
+        L = 30
+        diam = D2
+        nseg = 1 + 2*int(L/40)
+        all.append()
+        axonal.append()
+        v(0.0001) = i2   // !!!if this cell does not contain 2 sections then this is source of bug
+    } 
+    nSecAxonal = 2
+    soma[0] connect axon[0](0), 1
+    axon[0] connect axon[1](0), 1
 }
+
+
 
 /*!
  * Iterate over the section and compute how many sqgments should be allocate to each.  This number
@@ -79,14 +117,13 @@ proc geom_nseg_lambda() { local secIndex
 /*!
  * Iterate over the section and compute how many sqgments should be allocate to each.  This number
  * is influenced by the mechanisms distributed, so this function should be called after assigning biophys
+ * @param $1 nseg length
  */
 proc geom_nseg_fixed() { local secIndex
     soma area(.5) // make sure diam reflects 3d points
-    
     secIndex=0
     forsec all {
-        nseg = 1 + 2*int(L/40)
-        
+        nseg = 1 + 2*int(L/$1)
         segCounts.x[secIndex] = nseg
         secIndex = secIndex+1
     }
