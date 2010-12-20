@@ -8,9 +8,9 @@ begintemplate TDistFunc
         sl = $o1
         mech = $s2
         distfunc = $s3                
-        sprint(distfunc,"%%s %s(%%f) = %s",mech, distfunc)
+        sprint(distfunc,"%%s %s(%%d) = %s",mech, distfunc)
         //print distfunc
-        forsec sl for(x) {
+        forsec sl for(x,0) {
             sprint (stmp,distfunc,secname(),x,distance(x))
             //print stmp
             execute(stmp)
@@ -23,40 +23,14 @@ begintemplate TDistFunc
             mech = $s2
             distfunc = $s3
             norm_factor = 1
-            if(numarg()>3) norm_factor = getLongestBranch(sl)
-            sprint(distfunc,"%%s %s(%%f) = %s",mech, distfunc)
+            if(numarg()>3) norm_factor = $4
+            sprint(distfunc,"%%s %s(%%d) = %s",mech, distfunc)
             //print distfunc
-            forsec sl for(x) {
+            forsec sl for(x,0) {
                 sprint (stmp,distfunc,secname(),x,distance(x)/norm_factor)
             //    print stmp
                 execute(stmp)
             }
-    }
-
-
-    func getLongestBranch(){local maxL,d localobj distallist,sref
-        forsec $o1 {
-             distance()
-             break
-        }
-        maxL = 0
-        d = 0
-        distallist = new SectionList()
-        forsec $o1 {
-            sref = new SectionRef()
-            if (sref.nchild==0) distallist.append()
-        }
-        forsec distallist{
-            d = distance(1)
-            if(maxL<d) maxL = d
-        }
-        // for the soma case
-        if (maxL == 0) {
-            $o1 {
-                maxL = L
-            }
-        }
-        return maxL
     }
 endtemplate TDistFunc
 
