@@ -10,6 +10,7 @@
 ****************************************************************/
 
 {load_file("alib/TStim.hoc")}  //note that the TStim functions are used in a way where our naming schemes don't match 100%
+{load_file("alib/EStim.hoc")}
 
 begintemplate StimulusManager
 
@@ -17,7 +18,7 @@ begintemplate StimulusManager
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-objref stimList, targetManager, this
+objref stimList, elecManager, targetManager, this
 
 //! For use in poisson stims, when creating via the execute stmt, need to have class level object (not just local to function)
 objref stimHelper, poissonNetconList, handleList, poissonSynList
@@ -26,7 +27,7 @@ objref stimHelper, poissonNetconList, handleList, poissonSynList
 // public members
 //-----------------------------------------------------------------------------------------------
 
-public init, linear, interpret, FillSpikeTrain
+public init, linear, interpret, FillSpikeTrain, interpretExtracellulars
 
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
@@ -41,7 +42,7 @@ public init, linear, interpret, FillSpikeTrain
 proc init() {
     stimList = new List()
     targetManager = $o1
-    
+    elecManager = $o2
     //keep track of how many poisson stims we create so that the seeds can be offset (otherwise we would have same syns/spike trains in a given cell)
     poissonStimCount = 0
     poissonNetconList = new List()
@@ -50,6 +51,109 @@ proc init() {
 }
 
 //-----------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------------------
+/*!
+ * Helper function to get an overview over the requested extracellular stimuli. interpretExtracellulars() needs 
+ * them in the following format: A map(String,List), where the key is the target name and the object is 
+ * a List of Maps containing Stimulus parameters. Because it is a rather complicated structure to set up, I do
+ * it in a separate function.
+ * 
+ * @param $o1 injRequests - the list of maps containing info on requested StimulusInjects
+ * @param $o2 parsedStimuli - Maps containing the information on defined stimuli
+ * 
+ */
+
+obfunc getExtracellularParams() { local injIndex localobj listForTarget, newListObj, injRequests, stimName, targetName, stim, paramValue, extraList, nil
+	if($o1 == nil){
+		print "injRequests are NULL!"
+	}
+	if($o2 == nil){
+		print "parsedStimuli are NULL!"
+	}
+	injRequests = $o1
+	extraList = new Map()
+	for injIndex=0, injRequests.count()-1 {
+	    	stimName = injRequests.o(injIndex).get( "Stimulus" )
+			targetName = injRequests.o(injIndex).get( "Target" )
+			stim = $o2.get( stimName )
+			paramValue = stim.get( "Mode" )
+			if( strcmp( paramValue.s, "Extracellular" ) == 0 ) {
+				listForTarget = extraList.get(targetName)
+				if( listForTarget == nil ){
+					newListObj = new List()
+					newListObj.append(stim)
+					extraList.put( targetName, newListObj )
+				} else {
+					listForTarget.append(stim)
+				}				
+			}
+	}
+	return extraList
+}
+
+
+//-----------------------------------------------------------------------------------------------
+/*!
+ * This function handles all the requested extracellular stimuli. It uses helper function getExtracellularParams 
+ * to get an overview over requested extracellular stimuli
+ * 
+ *
+ * @param $o1 injRequests - the list of maps containing info on requested StimulusInjects
+ * @param $o2 parsedStimuli - Maps containing the information on defined stimuli
+ * 
+ */
+proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIndex, scaleFac, secType, secNum, offset, tx, ty, tz, x localobj stimlist, eName, pts, gidObj, stim, estim, paramValue, activeElectrode, nil	
+	stimlist = getExtracellularParams($o1,$o2)	
+	for targetIndex=0, stimlist.count()-1{ //over all unique targets
+		//print "Treating extracellulars for target: ", stimlist.key(targetIndex).s
+		pts = targetManager.getPointList(stimlist.key(targetIndex).s) //get that target
+		gidObj = targetManager.gids(stimlist.key(targetIndex).s)
+		
+		for elecIndex = 0, elecManager.count()-1{ //over all electrodes
+			//Now we have every combination of electrode and target. We collect all Stimuli using a given combination,
+			//Fill them into one EStim object and do the frequency dependent conversion. Then we Vector.play() it into
+			//Every compartment of the target			
+			eName = elecManager.getName(elecIndex)			
+			activeElectrode = elecManager.getElectrode(elecIndex)			
+			estim = new EStim() //Create one EStim per electrode!
+			for stimIndex=0, stimlist.o(targetIndex).count()-1 { //Now gather every stimulus using this electrode
+				stim = stimlist.o(targetIndex).o(stimIndex)
+				// No longer checking for type of stimulus at this stage!
+				paramValue = stim.get( "Electrode" )
+				//Compare Electrode name. TODO: Need to find a solution for lookup by location.
+				//Also: Maybe do this with a Map object?
+				if( paramValue != nil && (strcmp(paramValue.s,eName.s)==0) ){
+					estim.train( stim.valueOf( "Delay" ), stim.valueOf( "Duration" ), stim.valueOf( "AmpStart" ), stim.valueOf( "Frequency" ), stim.valueOf( "Width" ) )					
+				}								
+			}
+			estim.initElec() //now that we treated all stimuli using this electrode we can initiate it
+			for cellIndex=0, pts.count()-1 { //Now over all compartments in the target
+				scaleFac = 0
+				for pts.o(cellIndex).each_point(&x) {
+					if(!ismembrane("extracellular")){
+						insert extracellular
+					}
+					if(!getSecTypeAndIndex(&secType,&secNum)){	//Now get the scale factor based on distance
+						if(activeElectrode.vInfo()>4){ //version 4 has one value per compartment, <4 only one per Section							
+							scaleFac = activeElectrode.getValueForSection(gidObj.x[cellIndex],secType,secNum,x)
+						} else {
+							scaleFac = activeElectrode.getValueForSection(gidObj.x[cellIndex],secType,secNum)
+						}
+						if(scaleFac == 0){	//No need to inject anything. 0 is default value for e_extracellular					
+							continue
+						}
+					} else {
+						print "Problem identifying section type and number for", secname()
+						quit()
+					}					
+					estim.inject(x,scaleFac)
+				}				
+			}
+			stimList.append(estim)
+		}
+	}
+}
 
 /*!
  * For handling stimulus which has been parsed from a file - look at the parameters collected and
@@ -68,13 +172,14 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
     stim = $o2
     
     paramVect = new Vector()
-    
-    //mode should always be 'Current' - do we plan to support more modes?
-    paramValue = stim.get( "Mode" )
-    if( strcmp( paramValue.s, "Current" ) != 0 ) {
-        print "Invalid Mode - ", paramValue.s
-        return
-    }
+	paramValue = stim.get( "Mode" )
+	if( strcmp( paramValue.s, "Extracellular" ) == 0 ) { 
+		//Extracellular stimuli handled separately
+		return
+	}else if( strcmp( paramValue.s, "Current" ) != 0 ) {
+		print "Invalid Mode - ", paramValue.s
+		return
+	}    
     
     //all will have Delay and Duration, so parse immediately
     del = stim.valueOf( "Delay" )
@@ -131,6 +236,15 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             
             train( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], paramVect.x[3], del, dur )
             //linear( $s1, paramVect.x[0], paramVect.x[0], del, dur )
+        } else if(strcmp(patternName.s, "Sinusoidal")==0){        	
+        	paramVect.append( stim.valueOf("AmpStart"))
+			paramVect.append( stim.valueOf("Frequency"))
+			if( stim.get( "Offset" ) != nil ) {
+				paramVect.append( stim.valueOf( "Offset" ) )
+			} else {
+				paramVect.append( 0 )
+			}
+        	sinusoid($s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], del, dur)
         } else if( strcmp( patternName.s, "NPoisson" ) == 0 ) {
             paramVect.append( stim.valueOf( "Lambda" ) )
             paramVect.append( stim.valueOf( "Weight" ) )
@@ -212,25 +326,61 @@ proc subthreshold() { local cellIndex, x  localobj pts, cellList, tstim
  * @param $6 del
  * @param $7 dur
  */
-proc train() { local cellIndex, x, offset  localobj pts, tstim, jitter
+proc train() { local cellIndex, x, offset, secIndex, foo  localobj pts, tstim, jitter
 
     pts = targetManager.getPointList($s1)
-    
-    offset = 0
-    for cellIndex=0, pts.count()-1 {        
+        
+    for cellIndex=0, pts.count()-1 {
+    	offset = 0
         if( $5 != 0 ) {
             jitter = new Random( pts.o(cellIndex).gid )
             jitter.normal(0,$5)
-        }
-        
+        }               
         for pts.o(cellIndex).each_point(&x) {
-            tstim = new TStim(x)
-            
+            tstim = new TStim(x)            
             if( $5 != 0 ) {
+            	if($5<0){            		            	
+            		offset = offset-$5            			
+            	} else {
                 offset = jitter.repick()
+            	}
             }
             tstim.train( $6+offset, $7, $2, $3, $4 )
             
+            stimList.append(tstim)
+        }
+    }
+}
+
+/*!
+ * Injects a sinusoidal stimulus into cells wih regular frequency.
+ *
+ * @param $s1 Name of Target where stims will be placed
+ * @param $2 amp
+ * @param $3 frequency
+ * @param $4 offset std dev
+ * @param $5 del
+ * @param $6 dur
+ */
+proc sinusoid() { local cellIndex, x, offset, secIndex, foo  localobj pts, tstim, jitter	
+    pts = targetManager.getPointList($s1)    
+    offset = 0
+    for cellIndex=0, pts.count()-1 {
+    	offset = 0
+        if( $4 != 0 ) {
+            jitter = new Random( pts.o(cellIndex).gid )
+            jitter.normal(0,$4)
+        }        
+        for pts.o(cellIndex).each_point(&x) {
+            tstim = new TStim(x)            
+            if( $4 != 0 ) {
+            	if($4<0){
+            		offset = offset-$4            		
+            	} else {
+                offset = jitter.repick()
+            	}
+            }            
+            tstim.sin($2,$5+offset,$6,$3)            
             stimList.append(tstim)
         }
     }
@@ -317,6 +467,40 @@ proc npoisson() { local cellIndex  localobj apicalPoints, basalPoints, gids
 }
 
 //-----------------------------------------------------------------------------------------------
+
+func getSecTypeAndIndex() { local baseOffset, secIndex  localobj str, strobj
+	strdef subset
+	str = new String()
+strobj = new StringFunctions()
+if( strobj.substr( secname(), "soma" ) > 0 ) {
+	subset = "soma"
+			$&1 = 1
+} else if (strobj.substr( secname(), "axon") >0) {
+	subset = "axon"
+			$&1 = 2
+}else if (strobj.substr( secname(), "dend") >0) {
+	subset = "dend"
+			$&1=3
+}else if (strobj.substr( secname(), "apic") > 0) {
+	subset = "apic"
+			$&1=4
+} else {
+	return 1
+}
+// parse out the index from the secname
+strobj.tail( secname(), subset, str.s )
+		if (strobj.len(str.s) > 0) {
+			strobj.left(str.s, strobj.len(str.s)-1) // result should look like [n
+        		strobj.right(str.s, 1)
+        		sscanf( str.s, "%d", &secIndex )
+        		$&2 = secIndex
+		} else {
+			return 1
+		}
+$&2=secIndex
+		return 0
+}
+
 
 /*!
  * Given some points on a targeted cell, randomly place synapses and generate their spike trains

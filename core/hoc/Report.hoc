@@ -506,6 +506,10 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrin
                 matched = 1
                 ptProcessList.append( new String( "IClamp" ) )
             }
+            if ( matched == 0 && strcmp(token,"i_membrane") == 0 ) {
+                matched = 1
+                intrinsicList.append( new String( "i_membrane" ) )
+            }
             if( matched == 0 ) {
                 // Note that we now check for intrinsic names individually like with synapses.  Therefore, this else no longer
                 //  needs to assume that an unmatched token is an ion.  (In the event new ions are added, we can update the lists)
