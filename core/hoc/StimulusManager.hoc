@@ -38,11 +38,14 @@ public init, linear, interpret, FillSpikeTrain, interpretExtracellulars
  * to TargetManager for accessing Targets
  *
  * @param $o1 TargetManager
+ * @param $o2 Electrode Manager for extracellular stimulation (optional)
  */
 proc init() {
     stimList = new List()
     targetManager = $o1
-    elecManager = $o2
+    if( numarg() == 2 ) {
+        elecManager = $o2
+    }
     //keep track of how many poisson stims we create so that the seeds can be offset (otherwise we would have same syns/spike trains in a given cell)
     poissonStimCount = 0
     poissonNetconList = new List()
@@ -103,7 +106,13 @@ obfunc getExtracellularParams() { local injIndex localobj listForTarget, newList
  * @param $o2 parsedStimuli - Maps containing the information on defined stimuli
  * 
  */
-proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIndex, scaleFac, secType, secNum, offset, tx, ty, tz, x localobj stimlist, eName, pts, gidObj, stim, estim, paramValue, activeElectrode, nil	
+proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIndex, scaleFac, secType, secNum, offset, tx, ty, tz, x localobj stimlist, eName, pts, gidObj, stim, estim, paramValue, activeElectrode, nil
+    
+    //verify that electrode manager was passed to StimulusManager
+    if( elecManager == nil ) {
+        execerror("Error: attempting to use extracellular stimulation without ElectrodeManager" )
+    }
+	
 	stimlist = getExtracellularParams($o1,$o2)	
 	for targetIndex=0, stimlist.count()-1{ //over all unique targets
 		//print "Treating extracellulars for target: ", stimlist.key(targetIndex).s
