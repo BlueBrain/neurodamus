@@ -320,7 +320,7 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
     
     if( collapsed ) {  //Since the summations will be collapsed to a single value, we will store the ptprocess in the soma
         $o1.soma {
-            ALUhelper = new ALU( 0.5, 0.1 )
+            ALUhelper = new ALU( 0.5, reportDt )
             ALUhelper.setop( "summation" )
         }
     }
@@ -329,7 +329,7 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
         mechtype = new MechanismType(1)
         
         if( !(collapsed) ) { //need 1 ALU per cmp
-            ALUhelper = new ALU( x, 0.1 )
+            ALUhelper = new ALU( x, reportDt )
             ALUhelper.setop( "summation" )
         }
         
