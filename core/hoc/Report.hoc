@@ -297,11 +297,11 @@ obfunc get_memory_report() {
  * @param $3 Flag indicating report is to collapse to single value for the cell (1) or run normal where each cmp gets a summed value
  * @param $4 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
  */
-proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID \
+proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, condFlag \
     localobj intrinsicList, ptProcessList, activeProcess, mechtype
-    strdef tstr
+    strdef tstr        
     
-    evaluateSummationReportOn( intrinsicList, ptProcessList )
+    evaluateSummationReportOn( intrinsicList, ptProcessList, &condFlag )
     collapsed = $3
         
     //if no $4, use cell's gid
@@ -362,7 +362,11 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
                 dist = activeProcess.get_loc()
                 cmpID = int(dist*nseg)
                 if( cmpID == int(x*nseg) ) {
-                    ALUhelper.addvar( &activeProcess.i )  //no scalar needed
+                	if( condFlag == 1){
+                		ALUhelper.addvar( &activeProcess.g )  //no scalar needed
+                	} else {
+                		ALUhelper.addvar( &activeProcess.i )  //no scalar needed
+                	}
                 }
                 pop_section()
             }
@@ -413,12 +417,45 @@ proc addSummationVarAndCommitALU() { local rpt
  *
  * @Param $o1 intrinsicList - List of intrinsic types (ions) generated in this function
  * @Param $o2 ptProcessList - List of point processes types (ions) generated in this function
+ * @Param $&3 (optional) conductanceFlag - reference to a double. Will be set to 1, if the report refers to synaptic conductances, 0 else 
  */
-proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrinsicLibrary, ptProcessLibrary
+proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLibrary, intrinsicLibrary, ptProcessLibrary
     intrinsicList = new List()
     ptProcessList = new List()
 
+	if(numarg() > 2){
+		$&3 = 0 //Set to 0 as the default case
+	}
+
     //before scanning the ReportOn field, build some libraries that can be used for lookup and comparison    
+	//Conductances must be dealt with on an individual mod-file basis. Here I include only mod-files that were used in the
+	// circuit of 27.10.10. Some mod-file in modlib are therefore NOT included! --Michael (Wolf)
+	condLibrary = new List()
+	condLibrary.append( new String( "g_pas" ))
+	condLibrary.append( new String( "gBK_BK" ))
+	condLibrary.append( new String( "gCa_Ca" ))
+	condLibrary.append( new String( "gCa_LVA_Ca_LVA" ))
+	condLibrary.append( new String( "gCa_LVAs_Ca_LVAs" ))
+	condLibrary.append( new String( "gCa_LVAst_Ca_LVAst" ))
+	condLibrary.append( new String( "gIh_Ih" ))
+	condLibrary.append( new String( "gIm_Im" ))
+	condLibrary.append( new String( "gK_P_K_P" ))
+	condLibrary.append( new String( "gK_Ps_K_Ps" ))
+	condLibrary.append( new String( "gK_Pst_K_Pst" ))
+	condLibrary.append( new String( "gK_Ts_K_Ts" ))
+	condLibrary.append( new String( "gK_Tst_K_Tst" ))
+	condLibrary.append( new String( "gKd_Kd" ))
+	condLibrary.append( new String( "gNaTa_t_NaTa_t" ))
+	condLibrary.append( new String( "gNaTaxon_NaTaxon" ))
+	condLibrary.append( new String( "gNaTs2_t_NaTs2_t" ))
+	condLibrary.append( new String( "gNa_S_Na_S" ))
+	condLibrary.append( new String( "gNap_E_Nap_E" ))
+	condLibrary.append( new String( "gNap_Et2_Nap_Et2" ))
+	condLibrary.append( new String( "gSK_E_SK_E" ))
+	condLibrary.append( new String( "gSK_E2_SK_E2" ))
+	condLibrary.append( new String( "gSKv3_1_SKv3_1" ))
+	condLibrary.append( new String( "gkm1_km1" ))
+
     intrinsicLibrary = new List()
     intrinsicLibrary.append( new String( "ina" ) )
     intrinsicLibrary.append( new String( "ica" ) )
@@ -485,6 +522,33 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrin
             for libIndex=0, intrinsicLibrary.count()-1 {
                 intrinsicList.append( intrinsicLibrary.o(libIndex) )
             }
+        } else if( strcmp(token,"IntrinsicConductances") == 0 ){
+        	for libIndex=0, condLibrary.count()-1 {
+        	    intrinsicList.append( condLibrary.o(libIndex) )
+        	}
+        } else if( strcmp(token,"SynapticConductances") == 0 ){
+        	includeSyn = 1
+        	for libIndex=0, ptProcessLibrary.count()-1 {
+        	     ptProcessList.append( ptProcessLibrary.o(libIndex) )
+        	}
+        	if( numarg() > 2){
+        		$&3 = 1
+        	} else {
+        		execerror("Conductance report demanded but function call to evaluateSummationReport with only 2 arguments!")
+        	}
+        } else if( strcmp(token, "AllConductances") == 0 ){
+        	for libIndex=0, condLibrary.count()-1 {
+        	    intrinsicList.append( condLibrary.o(libIndex) )
+        	}
+        	includeSyn = 1
+        	for libIndex=0, ptProcessLibrary.count()-1 {
+        	   ptProcessList.append( ptProcessLibrary.o(libIndex) )
+        	}
+        	if( numarg() > 2){
+        	   $&3 = 1
+        	} else {
+        	   execerror("Conductance report demanded but function call to evaluateSummationReport with only 2 arguments!")
+        	}
         } else {
             // Not matched yet, start scanning the lists for specific intance names
             matched = 0
@@ -492,6 +556,12 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, intrin
                 if( strcmp( token, intrinsicLibrary.o(libIndex).s ) == 0 ) {
                     intrinsicList.append( intrinsicLibrary.o(libIndex) )
                     matched = 1
+                }
+            }
+            for libIndex=0, condLibrary.count()-1 {
+                if( strcmp( token, condLibrary.o(libIndex).s ) == 0 ) {
+                   intrinsicList.append( condLibrary.o(libIndex) )
+                   matched = 1
                 }
             }
             for libIndex=0, ptProcessLibrary.count()-1 {
