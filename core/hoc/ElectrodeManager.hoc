@@ -20,7 +20,7 @@ proc init() { local i, vNum, pX, pY, pZ localobj parsedElectrodes, pathString, t
 	parsedElectrodes = $o2
 	
 	if(electrodePath == nil || parsedElectrodes == nil){
-		print "No ElectrodesPath or no Electrodes specified. Extracellular class of stimuli will be unavailable!"
+		//print "No ElectrodesPath or no Electrodes specified. Extracellular class of stimuli will be unavailable!"
 		return
 	}
 	
