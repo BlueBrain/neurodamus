@@ -25,7 +25,7 @@ objref stringList, valueList
 // Public accessible
 //------------------------------------------------------------------------------------------------------------
 
-public init, get, put, key, o, object, count, getV, valueOf
+public init, get, put, key, o, object, count, getV, valueOf, exists
 
 //------------------------------------------------------------------------------------------------------------
 // Member function implementations
@@ -183,6 +183,22 @@ func valueOf() { local tvalue  localobj tfield
     tfield = get( $s1 )
     sscanf( tfield.s, "%lf", &tvalue )
     return tvalue
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to determine if the map contains the given key.  Useful for testing if optional config
+ * parameters are present rather than testing if the result of the get operation is nil, albeit slower since it does
+ * two linear searches
+ *
+ * @param $s1 Field name - e.e. map key
+ * @return 1 if the key is present, 0 if the key is not present
+ */
+func exists() {  localobj tfield
+    tfield = get( $s1 )
+    if( object_id(tfield,1) < 0 ) return 0
+    return 1
 }
 
 endtemplate Map
