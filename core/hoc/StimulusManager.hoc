@@ -227,6 +227,17 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             }
             
             linear( $s1, paramVect.x[0], paramVect.x[1], del, dur )
+        } else if( strcmp( patternName.s, "RelativeLinear" ) == 0 ) {
+            paramVect.append( stim.valueOf("PercentStart") )
+            
+            //optional option - PercentEnd.  If not there, use same value as PercentStart
+            if( stim.get( "PercentEnd" ) != nil ) {
+                paramVect.append( stim.valueOf("PercentEnd") )
+            } else {
+                paramVect.append( paramVect.x[paramVect.count()-1] )
+            }
+            
+            relativeLinear( $s1, paramVect.x[0], paramVect.x[1], del, dur )
         } else if ( strcmp( patternName.s, "Pulse" ) == 0 ) {
             //looking at bglib, it expects potentially multiple delay/duration pairs (and an AmpEnd)
             // TODO: rename bglib's stimulus pattern names to be inline with TStim, creating 'train' as replacement for bglib's 'pulse'
@@ -325,6 +336,45 @@ proc subthreshold() { local cellIndex, x  localobj pts, cellList, tstim
 //-----------------------------------------------------------------------------------------------
 
 /*!
+ * A modified version of the liner stimulus where the injected current is relative to a cell's threshold
+ * current.  Note, unlike the subthreshold stimulus, this uses the percent value directly rather than
+ * subtracting from 100%.
+ *
+ * @param $s1 Name of Target where iclamps will be placed
+ * @param $2 percentStart Starting scalar of the cell's threshold current when starting injection
+ * @param $3 ampEnd Final scalar of the cell's thrshold current when done injecting
+ * @param $4 delay from start of simulation to when current is injected (ms)
+ * @param $5 duration of stimulus (ms)
+ */
+proc relativeLinear() { local cellIndex, x, percentStart, percentEnd, cellThresh, del, dur  localobj pts, tstim, cellList
+    
+    percentStart = $2
+    percentEnd = $3
+    del = $4
+    dur = $5
+    
+    pts = targetManager.getPointList($s1)
+    cellList = targetManager.getCells($s1)
+    
+    for cellIndex=0, pts.count()-1 {
+        for pts.o(cellIndex).each_point(&x) {
+            cellThresh = cellList.o(cellIndex).getCCell().getThreshold()
+            tstim = new TStim(x)
+            
+            if( percentStart == percentEnd ) {
+                tstim.pulse( del, dur, cellThresh*(percentStart/100) )
+            } else {
+                tstim.ramp( 0, del, cellThresh*(percentStart/100), cellThresh*(percentEnd/100), dur, 0, 0 )
+            }
+            
+            stimList.append( tstim )
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
  * Injects a train stimulus into cells wih regular frequency.
  *
  * @param $s1 Name of Target where stims will be placed
@@ -360,6 +410,8 @@ proc train() { local cellIndex, x, offset, secIndex, foo  localobj pts, tstim, j
         }
     }
 }
+
+//-----------------------------------------------------------------------------------------------
 
 /*!
  * Injects a sinusoidal stimulus into cells wih regular frequency.
