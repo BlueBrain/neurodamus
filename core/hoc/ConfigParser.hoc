@@ -76,6 +76,7 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
     sectionName = new String()
     
     while( configIn.gets(rawline.s) >= 0 ) {
+        trimFront( rawline.s )
         if( strcmp( rawline.s, "\n" ) == 0 ) {
         
         } else if( isCommented( rawline.s ) ) {
@@ -295,6 +296,24 @@ proc parseStimulusInject() { localobj pendingInject, rawline, configIn, fieldNam
             sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
             pendingInject.put( fieldName, fieldValue )
         }
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/**
+ * Remove white space from start and end of a string
+ * @param $s1 string to get trimmed
+ */
+proc trimFront() { local index
+    strdef peek
+    
+    //confirm that first character is ws
+    peek = $s1
+    strUtil.left(peek, 1)
+    index = strUtil.head( peek, "[ \t\n]", peek )
+    if( index != -1 ) {
+        strUtil.tail( $s1, "[ \t\n]", $s1 )
     }
 }
 
