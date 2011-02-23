@@ -311,9 +311,13 @@ proc trimFront() { local index
     //confirm that first character is ws
     peek = $s1
     strUtil.left(peek, 1)
-    index = strUtil.head( peek, "[ \t\n]", peek )
-    if( index != -1 ) {
-        strUtil.tail( $s1, "[ \t\n]", $s1 )
+    index = strUtil.head( peek, "[ \t]", peek )
+    while( index != -1 ) {
+        strUtil.tail( $s1, "[ \t]", $s1 )
+        
+        peek = $s1
+        strUtil.left(peek, 1)
+        index = strUtil.head( peek, "[ \t]", peek )
     }
 }
 
