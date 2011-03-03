@@ -29,6 +29,9 @@ objref stimHelper, poissonNetconList, handleList, poissonSynList
 
 public init, linear, interpret, FillSpikeTrain, interpretExtracellulars
 
+//note: for some reason, if we do not make 'noise' function public, we get a syntax error.
+public noise
+
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
 //-----------------------------------------------------------------------------------------------
@@ -46,8 +49,9 @@ proc init() {
     if( numarg() == 2 ) {
         elecManager = $o2
     }
-    //keep track of how many poisson stims we create so that the seeds can be offset (otherwise we would have same syns/spike trains in a given cell)
+    //keep track of how many poisson and noise stims we create so that the seeds can be offset (otherwise we would have same injections or syns/spike trains in a given cell)
     poissonStimCount = 0
+    noiseStimCount = 0
     poissonNetconList = new List()
     poissonSynList = new List()
     handleList = new List()
@@ -55,7 +59,6 @@ proc init() {
 
 //-----------------------------------------------------------------------------------------------
 
-//----------------------------------------------------------------------------------------------
 /*!
  * Helper function to get an overview over the requested extracellular stimuli. interpretExtracellulars() needs 
  * them in the following format: A map(String,List), where the key is the target name and the object is 
@@ -66,7 +69,6 @@ proc init() {
  * @param $o2 parsedStimuli - Maps containing the information on defined stimuli
  * 
  */
-
 obfunc getExtracellularParams() { local injIndex localobj listForTarget, newListObj, injRequests, stimName, targetName, stim, paramValue, extraList, nil
 	if($o1 == nil){
 		print "injRequests are NULL!"
@@ -95,8 +97,8 @@ obfunc getExtracellularParams() { local injIndex localobj listForTarget, newList
 	return extraList
 }
 
-
 //-----------------------------------------------------------------------------------------------
+
 /*!
  * This function handles all the requested extracellular stimuli. It uses helper function getExtracellularParams 
  * to get an overview over requested extracellular stimuli
@@ -163,6 +165,8 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 		}
 	}
 }
+
+//-----------------------------------------------------------------------------------------------
 
 /*!
  * For handling stimulus which has been parsed from a file - look at the parameters collected and
@@ -275,6 +279,8 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             npoisson( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], stim.get( "SynapseType" ), del, dur )
         } else if( strcmp( patternName.s, "SubThreshold" ) == 0 ) {
             subthreshold( $s1, stim.valueOf( "PercentLess" ), del, dur )
+        } else if( strcmp( patternName.s, "Noise" ) == 0 ) {
+            noise( $s1, stim.valueOf( "Mean" ), stim.valueOf( "Variance" ), del, dur )
         }
     }
 }
@@ -305,6 +311,34 @@ proc squarepulse() { local cellIndex, x, amp, del, dur  localobj pts, tstim
         tstim.pulse( del, dur, amp)
         stimList.append( tstim )
     }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Uses TStim noise functionality to give each TPoint a random current injection.  Only tested for Cell targets
+ * TODO: Threre seems to be an issue where it continues to inject some stimulus after the duration should expire.
+ * For now, we use it for background stimulation over the whole runtime, so it is low priority to investigate
+ *
+ * @param $s1 targetName whose points will receive the stimulation
+ * @param $2 mean current where the noise should be centered
+ * @param $3 variance of current
+ * @param $4 delay from start of simulation to when current is injected (ms)
+ * @param $5 duration of stimulus (ms)
+ */
+proc noise() { local x  localobj pts, rand, tstim
+    pts = targetManager.getPointList($s1)
+    for cellIndex=0, pts.count()-1 {
+        for pts.o(cellIndex).each_point(&x) {
+            rand = new Random( pts.o(cellIndex).gid )
+            tstim = new TStim(x, rand)
+            
+            tstim.noise( $3, $4, $2, $3 )
+            stimList.append(tstim)
+        }
+    }
+    
+    noiseStimCount = noiseStimCount+1
 }
 
 //-----------------------------------------------------------------------------------------------
