@@ -330,10 +330,10 @@ proc noise() { local x  localobj pts, rand, tstim
     pts = targetManager.getPointList($s1)
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
-            rand = new Random( pts.o(cellIndex).gid )
+            rand = new Random( pts.o(cellIndex).gid + noiseStimCount )
             tstim = new TStim(x, rand)
             
-            tstim.noise( $3, $4, $2, $3 )
+            tstim.noise( $4, $5, $2, $3 )
             stimList.append(tstim)
         }
     }
