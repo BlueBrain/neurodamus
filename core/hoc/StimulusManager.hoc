@@ -616,7 +616,7 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
     
     apicalPoints = $o8
     basalPoints = $o9
-    baseSeed = $1 * 10000 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
+    baseSeed = $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
     iteration = 0
     nCreated = 0
     lambda = $2
