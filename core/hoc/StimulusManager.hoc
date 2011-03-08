@@ -274,9 +274,10 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             paramVect.append( stim.valueOf( "Weight" ) )
             paramVect.append( stim.valueOf( "NumOfSynapses" ) )
             
-            //Note: SynapseType is optional and will return nil (handled by npoisson function)
+            //Note: SynapseType is optional and may return nil (handled by npoisson function)
+            //Note: SynapseConfigure is optional and may return nil (handled by npoisson function)
             //Note: requires special Target handling, so just pass targetName through
-            npoisson( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], stim.get( "SynapseType" ), del, dur )
+            npoisson( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], stim.get( "SynapseType" ), stim.get( "SynapseConfigure" ), del, dur )
         } else if( strcmp( patternName.s, "SubThreshold" ) == 0 ) {
             subthreshold( $s1, stim.valueOf( "PercentLess" ), del, dur )
         } else if( strcmp( patternName.s, "Noise" ) == 0 ) {
@@ -529,10 +530,14 @@ proc linear() { local cellIndex, x, ampStart, ampEnd, del, dur  localobj pts, ts
  * @param $3 weight
  * @param $4 number of synapses
  * @param $o5 synapseType as String or nil if should use default (ExpSyn)
- * @param $6 delay from start of simulation to when stimulus starts (ms)
- * @param $7 duration of stimulus (ms)
+ * @param $o6 synapseConfigure as String or nil if nothing to execute on synapse (such as setting variables)
+ * @param $7 delay from start of simulation to when stimulus starts (ms)
+ * @param $8 duration of stimulus (ms)
  */
-proc npoisson() { local cellIndex  localobj apicalPoints, basalPoints, gids
+proc npoisson() { local cellIndex, del, dur  localobj apicalPoints, basalPoints, gids
+    
+    del = $7
+    dur = $8
     
     //The synapses generated should only go on the apical or basal sections of any target cells
     // difficulty for doing exactly same thing as old bglib: that could operate easily on the section
@@ -555,7 +560,7 @@ proc npoisson() { local cellIndex  localobj apicalPoints, basalPoints, gids
     for cellIndex=0, gids.size()-1 {
         
         //so all cells should be represented and have the same point count regardless of splitting        
-        distributePoissonSynapses( gids.x[cellIndex], $2, $3, $4, $o5, $6, $7, apicalPoints.o(cellIndex), basalPoints.o(cellIndex) )
+        distributePoissonSynapses( gids.x[cellIndex], $2, $3, $4, $o5, $o6, del, dur, apicalPoints.o(cellIndex), basalPoints.o(cellIndex) )
     }
     
     poissonStimCount = poissonStimCount + 1
@@ -596,6 +601,7 @@ $&2=secIndex
 		return 0
 }
 
+//-----------------------------------------------------------------------------------------------
 
 /*!
  * Given some points on a targeted cell, randomly place synapses and generate their spike trains
@@ -605,24 +611,26 @@ $&2=secIndex
  * $3 weight
  * $4 number of synapses
  * $o5 synapseType as String or nil if should use default (ExpSyn)  should this be the last arg so it can actually be dropped in default case?
- * $6 delay from start of simulation to when simulation starts
- * $7 duration of stimulus
- * $o8 TPointList with apical points
- * $o9 TPointList with basal points
+ * $o6 synapseConfigure as String or nil if nothing to execute on created synapse
+ * $7 delay from start of simulation to when simulation starts
+ * $8 duration of stimulus
+ * $o9 TPointList with apical points
+ * $o10 TPointList with basal points
  */
-proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, lambda, weight, del, dur \
-    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, nc, fih, nil
-    strdef tstr
+proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, lambda, weight, del, dur, substituteCount \
+    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, fih, sf, nil
+    strdef tstr, tstr1
     
-    apicalPoints = $o8
-    basalPoints = $o9
+    synapseConfigure = $o6
+    apicalPoints = $o9
+    basalPoints = $o10
     baseSeed = $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
     iteration = 0
     nCreated = 0
     lambda = $2
     weight = $3
-    del = $6
-    dur = $7
+    del = $7
+    dur = $8
     
     //determine now if the synapseType is given or we should use the default
     if( object_id($o5,1) < 0 ) {
@@ -638,11 +646,11 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
         iteration = iteration + 1
         
         ran2 = new Random(baseSeed + iteration)
-        ran2.MCellRan4(baseSeed + iteration)
+        ran2.MCellRan4(baseSeed + iteration, $1+100 )
         ran2.discunif(0,1)
         
         ran1 = new Random(baseSeed + iteration)
-        ran1.MCellRan4(baseSeed + iteration)
+        ran1.MCellRan4(baseSeed + iteration, $1+110 )
         
         //first choose to target apical of basal sections
         if(ran2.repick()) {
@@ -666,6 +674,30 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
         activeSubset.access_(sectionIndex)
         sprint(tstr,"stimHelper = new %s(0.5)", synapseType.s )
         execute1(tstr, this)
+        
+        //do we need to execute some statements on the synapse?
+        if( object_id( synapseConfigure, 1 ) != -1 ) {
+            sf = new StringFunctions()
+            
+            //need to replace all '%s' with stimHelper object
+            substituteCount = 0
+            tstr = synapseConfigure.s
+            
+            // keep checking the string for '%s'; as long as one is there, rebuild the string around it
+            while( sf.substr( tstr, "%s" ) != -1 ) {
+                sf.head( tstr, "%s", tstr1 )
+                sf.tail( tstr, "%s", tstr )
+                sprint( tstr, "%s%s%s", tstr1, stimHelper, tstr )
+            }
+            
+            //surround with curly braces then execute
+            sprint(tstr, "{%s}", tstr )
+            //print "execute ", tstr
+            execute1(tstr,this)
+            
+            //debug - only works for ExpSyn
+            //print stimHelper.e, " ", stimHelper.tau
+        }
         
         //why do we register an init handler if we are just going to call the function anyways?
         // do we end up with twice the events?

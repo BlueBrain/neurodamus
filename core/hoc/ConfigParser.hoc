@@ -96,9 +96,13 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
                 tempBlock = parseBlock( configIn )
                 parsedReports.put( sectionName, tempBlock )
             } else if ( strcmp( sectionType.s, "Stimulus" ) == 0 ) {
-                parseStimulus( configIn, sectionName )
+                tempBlock = parseBlock( configIn )
+                parsedStimuli.put( sectionName, tempBlock )
+                //parseStimulus( configIn, sectionName )
             } else if ( strcmp( sectionType.s, "StimulusInject" ) == 0 ) {
-                parseStimulusInject( configIn, sectionName )
+                tempBlock = parseBlock( configIn )
+                parsedInjects.put( sectionName, tempBlock )
+                //parseStimulusInject( configIn, sectionName )
             } else if ( strcmp( sectionType.s, "Connection" ) == 0 ) {
                 tempBlock = parseBlock( configIn )
                 parsedConnects.put( sectionName, tempBlock )
@@ -151,6 +155,8 @@ proc parseRun() { localobj rawline, configIn, fieldName, fieldValue
 //------------------------------------------------------------------------------------------------------------
 
 /*!
+ * Generic method for parsing the field/value pairs bwteen the opening/closing braces in the config file
+ *
  * @param $o1 File getting parsed
  */
 obfunc parseBlock() { local ret  localobj pendingBlock, rawline, configIn, fieldName, fieldValue
@@ -202,6 +208,7 @@ obfunc parseBlock() { local ret  localobj pendingBlock, rawline, configIn, field
 //------------------------------------------------------------------------------------------------------------
 
 /*!
+ * deprecated - used to get report info, now should use parseBlock
  * @param $o1 File getting parsed
  * @param $o2 Stimulus name - String containing the name
  */
@@ -236,6 +243,7 @@ proc parseReport() { localobj pendingReport, rawline, configIn, fieldName, field
 //------------------------------------------------------------------------------------------------------------
 
 /*!
+ * deprecated - used to get stimulus info, now should use parseBlock
  * @param $o1 File getting parsed
  * @param $o2 Stimulus name - String containing the name
  */
@@ -270,6 +278,7 @@ proc parseStimulus() { localobj pendingStim, rawline, configIn, fieldName, field
 //------------------------------------------------------------------------------------------------------------
 
 /*!
+ * deprecated - used to get inject info, now should use parseBlock
  * @param $o1 File getting parsed
  * @param $o2 Stimulus Inject name - String containing the name
  */
