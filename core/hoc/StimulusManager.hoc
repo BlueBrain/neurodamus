@@ -281,7 +281,11 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
         } else if( strcmp( patternName.s, "SubThreshold" ) == 0 ) {
             subthreshold( $s1, stim.valueOf( "PercentLess" ), del, dur )
         } else if( strcmp( patternName.s, "Noise" ) == 0 ) {
-            noise( $s1, stim.valueOf( "Mean" ), stim.valueOf( "Variance" ), del, dur )
+            if( stim.exists( "Mean" ) ) {
+                noise( $s1, stim.valueOf( "Mean" ), stim.valueOf( "Variance" ), del, dur )
+            } else {
+                relativeNoise( $s1, stim.valueOf( "MeanPercent" ), stim.valueOf( "Variance" ), del, dur )
+            }
         }
     }
 }
@@ -317,8 +321,40 @@ proc squarepulse() { local cellIndex, x, amp, del, dur  localobj pts, tstim
 //-----------------------------------------------------------------------------------------------
 
 /**
+ * Uses TStim noise functionality to give each TPoint a random current injection.  Like noise stimulus, but uses each cell's
+ * threshold firing current and scales it according to a percentage.  Only tested for Cell targets
+ * TODO: There seems to be an issue where it continues to inject some stimulus after the duration should expire.
+ * For now, we use it for background stimulation over the whole runtime, so it is low priority to investigate
+ *
+ * @param $s1 targetName whose points will receive the stimulation
+ * @param $2 mean percentage of a cell's threshold current - the noise injection will center around this value
+ * @param $3 variance of current
+ * @param $4 delay from start of simulation to when current is injected (ms)
+ * @param $5 duration of stimulus (ms)
+ */
+proc relativeNoise() { local x, threshold  localobj pts, cellList, rand, tstim
+    pts = targetManager.getPointList($s1)
+    cellList = targetManager.getCells($s1)
+    
+    for cellIndex=0, pts.count()-1 {
+        for pts.o(cellIndex).each_point(&x) {
+            threshold = cellList.o(cellIndex).getCCell().getThreshold()
+            rand = new Random( pts.o(cellIndex).gid + noiseStimCount )
+            tstim = new TStim(x, rand)
+            
+            tstim.noise( $4, $5, threshold*$2, threshold*$3 )
+            stimList.append(tstim)
+        }
+    }
+    
+    noiseStimCount = noiseStimCount+1
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
  * Uses TStim noise functionality to give each TPoint a random current injection.  Only tested for Cell targets
- * TODO: Threre seems to be an issue where it continues to inject some stimulus after the duration should expire.
+ * TODO: There seems to be an issue where it continues to inject some stimulus after the duration should expire.
  * For now, we use it for background stimulation over the whole runtime, so it is low priority to investigate
  *
  * @param $s1 targetName whose points will receive the stimulation
