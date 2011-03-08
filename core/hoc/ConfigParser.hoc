@@ -168,6 +168,11 @@ obfunc parseBlock() { local ret  localobj pendingBlock, rawline, configIn, field
     pendingBlock = new Map()
     
     while( configIn.gets(rawline.s) >= 0 ) {
+        //ignore empty lines
+        trimFront(rawline.s)
+        if( strcmp(rawline.s, "\n") == 0 ) {
+            continue
+        }
     
         //check if close brace to terminate section
         if( isTerminated( rawline.s ) ) {
