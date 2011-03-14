@@ -276,8 +276,10 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             
             //Note: SynapseType is optional and may return nil (handled by npoisson function)
             //Note: SynapseConfigure is optional and may return nil (handled by npoisson function)
+            //Note: FillFunctionOverride is optional and under development, may return nil (handled by npoisson function)
             //Note: requires special Target handling, so just pass targetName through
-            npoisson( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], stim.get( "SynapseType" ), stim.get( "SynapseConfigure" ), del, dur )
+            npoisson( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], stim.get( "SynapseType" ), \
+                stim.get( "SynapseConfigure" ), stim.get( "FillFunctionOverride" ), del, dur )
         } else if( strcmp( patternName.s, "SubThreshold" ) == 0 ) {
             subthreshold( $s1, stim.valueOf( "PercentLess" ), del, dur )
         } else if( strcmp( patternName.s, "Noise" ) == 0 ) {
@@ -565,15 +567,16 @@ proc linear() { local cellIndex, x, ampStart, ampEnd, del, dur  localobj pts, ts
  * @param $2 lambda
  * @param $3 weight
  * @param $4 number of synapses
- * @param $o5 synapseType as String or nil if should use default (ExpSyn)
- * @param $o6 synapseConfigure as String or nil if nothing to execute on synapse (such as setting variables)
- * @param $7 delay from start of simulation to when stimulus starts (ms)
- * @param $8 duration of stimulus (ms)
+ * @param $o5 synapseType as String Name of object to be instantiated for Synapses (nil for default of ExpSyn)
+ * @param $o6 synapseConfigure as String: executes code to modify synapse parameters (nil for default values)
+ * @param $o7 fillFunctionOverride as String: determines method used to generate the npoison spike timings (nil for default)
+ * @param $8 delay from start of simulation to when stimulus starts (ms)
+ * @param $9 duration of stimulus (ms)
  */
 proc npoisson() { local cellIndex, del, dur  localobj apicalPoints, basalPoints, gids
     
-    del = $7
-    dur = $8
+    del = $8
+    dur = $9
     
     //The synapses generated should only go on the apical or basal sections of any target cells
     // difficulty for doing exactly same thing as old bglib: that could operate easily on the section
@@ -596,7 +599,7 @@ proc npoisson() { local cellIndex, del, dur  localobj apicalPoints, basalPoints,
     for cellIndex=0, gids.size()-1 {
         
         //so all cells should be represented and have the same point count regardless of splitting        
-        distributePoissonSynapses( gids.x[cellIndex], $2, $3, $4, $o5, $o6, del, dur, apicalPoints.o(cellIndex), basalPoints.o(cellIndex) )
+        distributePoissonSynapses( gids.x[cellIndex], $2, $3, $4, $o5, $o6, $o7, del, dur, apicalPoints.o(cellIndex), basalPoints.o(cellIndex) )
     }
     
     poissonStimCount = poissonStimCount + 1
@@ -646,27 +649,31 @@ $&2=secIndex
  * $2 lambda
  * $3 weight
  * $4 number of synapses
- * $o5 synapseType as String or nil if should use default (ExpSyn)  should this be the last arg so it can actually be dropped in default case?
- * $o6 synapseConfigure as String or nil if nothing to execute on created synapse
- * $7 delay from start of simulation to when simulation starts
- * $8 duration of stimulus
- * $o9 TPointList with apical points
- * $o10 TPointList with basal points
+ * @param $o5 synapseType as String Name of object to be instantiated for Synapses (nil for default of ExpSyn)
+ * @param $o6 synapseConfigure as String: executes code to modify synapse parameters (nil for default values)
+ * @param $o7 fillFunctionOverride as String: determines method used to generate the npoison spike timings (nil for default)
+ * $8 delay from start of simulation to when simulation starts
+ * $9 duration of stimulus
+ * $o10 TPointList with apical points
+ * $o11 TPointList with basal points
  */
 proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, lambda, weight, del, dur, substituteCount \
-    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, fih, sf, nil
+    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, fih, sf, fillFunctionOverride, nil
     strdef tstr, tstr1
     
-    synapseConfigure = $o6
-    apicalPoints = $o9
-    basalPoints = $o10
-    baseSeed = $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
     iteration = 0
     nCreated = 0
+
+    baseSeed = $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
     lambda = $2
     weight = $3
-    del = $7
-    dur = $8
+    nNeeded  =  int($4)
+    synapseConfigure = $o6
+    fillFunctionOverride = $o7
+    del = $8
+    dur = $9
+    apicalPoints = $o10
+    basalPoints = $o11
     
     //determine now if the synapseType is given or we should use the default
     if( object_id($o5,1) < 0 ) {
@@ -675,7 +682,6 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
         synapseType = $o5
     }
     
-    nNeeded  =  int($4)
     while ( nCreated < nNeeded ) {
     
         //count the iterations and use that to offset the seed
@@ -738,7 +744,13 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
         //why do we register an init handler if we are just going to call the function anyways?
         // do we end up with twice the events?
         nc = new NetCon( nil, stimHelper,10,1,weight )
-        sprint(tstr,"FillSpikeTrain(%s,%f,%f,%f,%d)", nc, lambda, del, dur, baseSeed+iteration )
+        
+        if( object_id( fillFunctionOverride, 1 ) == -1 ) {  //no override - so use default spike timing fill method
+            sprint(tstr,"FillSpikeTrain(%s,%f,%f,%f,%d)", nc, lambda, del, dur, baseSeed+iteration )
+        } else {
+            tstr = "print \"Eilif's code goes here\""
+        }
+        
         fih = new FInitializeHandler(tstr, this)
         execute1(tstr, this)
         
