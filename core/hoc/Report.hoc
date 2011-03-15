@@ -17,7 +17,7 @@ begintemplate Report
 //-----------------------------------------------------------------------------------------------
 
 strdef reportName, reportType,  reportOn, unit, format, outputDir
-objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, memory_report
+objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, memory_report, activeProcess
 
 external cvode
 
@@ -291,17 +291,20 @@ obfunc get_memory_report() {
  * Generate a report for various current sources such that their current contributions are summed into a single value.  This single value
  * is on a per compartment basis, but may be further collapsed into a single value per cell.  Note that collapsing to a single value per cell is
  * not supported if multisplit is in use.
+ * Has been updated to also enable reporting of conductances and any internal variable of a point process that is visible on the neuron level (mentioned in the NEURON block)
+ * of the .mod file). Note that this is still a summation report, therefore if several point processes are located on a compartment the values will be summed up to a single value.
+ * 
  *
  * @param $o1 Cell The cell getting reported
  * @param $o2 TPointList with the points for a single cell
  * @param $3 Flag indicating report is to collapse to single value for the cell (1) or run normal where each cmp gets a summed value
  * @param $4 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
  */
-proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, condFlag \
-    localobj intrinsicList, ptProcessList, activeProcess, mechtype
+proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID \
+    localobj intrinsicList, ptProcessList, mechtype, internalVar
     strdef tstr        
     
-    evaluateSummationReportOn( intrinsicList, ptProcessList, &condFlag )
+    evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
     collapsed = $3
         
     //if no $4, use cell's gid
@@ -343,7 +346,8 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
                 
                     //need to convert distributed current sources units.  NEURON stores/reports them as mA/cm^2; we want nA
                     // to convert, multiply by the area of the cmp (micron^2) then multiply by powers of 10 so units agree
-                    scalar = area(x) / 100 // mA => nA :  * 10^6, cm^2 => micron^2 : 1/10^8
+                	//for conductances NEURON reports them as S/cm^2. so the final report is uS
+                    scalar = area(x) / 100 // mA => nA (or S => uS):  * 10^6, cm^2 => micron^2 : 1/10^8
                     sprint(tstr,"{ALUhelper.addvar(&%s(%1.2f), %f)}", intrinsicList.o(intrinsicIndex).s, x, scalar)
                     execute(tstr, this)
                 } else {
@@ -361,12 +365,17 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
                 
                 dist = activeProcess.get_loc()
                 cmpID = int(dist*nseg)
-                if( cmpID == int(x*nseg) ) {
-                	if( condFlag == 1){
-                		ALUhelper.addvar( &activeProcess.g )  //no scalar needed
-                	} else {
-                		ALUhelper.addvar( &activeProcess.i )  //no scalar needed
+                if( cmpID == int(x*nseg) ) {                  	                	                
+                	sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
+                	result = execute(tstr, this)
+                	if( result == 0 ) {
+                		//Error message here?!
                 	}
+                	//if( condFlag == 1){
+                	//	ALUhelper.addvar( &activeProcess.g )  //As mentioned above, the final report will be in uS. This is exactly what the point process synapses typically deliver.
+                	//} else {
+                	//	ALUhelper.addvar( &activeProcess.i )  //no scalar needed
+                	//}
                 }
                 pop_section()
             }
@@ -417,15 +426,11 @@ proc addSummationVarAndCommitALU() { local rpt
  *
  * @Param $o1 intrinsicList - List of intrinsic types (ions) generated in this function
  * @Param $o2 ptProcessList - List of point processes types (ions) generated in this function
- * @Param $&3 (optional) conductanceFlag - reference to a double. Will be set to 1, if the report refers to synaptic conductances, 0 else 
+ * @Param $o3 (optional) internalVar - In this String the internal variable to report on will be returned, in the case of point processes 
  */
 proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLibrary, intrinsicLibrary, ptProcessLibrary
     intrinsicList = new List()
     ptProcessList = new List()
-
-	if(numarg() > 2){
-		$&3 = 0 //Set to 0 as the default case
-	}
 
     //before scanning the ReportOn field, build some libraries that can be used for lookup and comparison    
 	//Conductances must be dealt with on an individual mod-file basis. Here I include only mod-files that were used in the
@@ -479,12 +484,12 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
     //Note - only synapse types are put in ptProcessLibrary, with IClamp getting checked separately.  Should we change that behavior?
     
     //split 'ReportOn' field on white space and check for special keywords - AllCurrent, SynapticCurrents, IntrinsicCurrents
-    strdef token, sourceString, skipBlock
+    strdef fullToken, token, sourceString, skipBlock, internalVar
     sourceString = reportOn
     //print "src string ", sourceString
     while( strcmp( sourceString, "" ) != 0 )  {
         //find block of white space characters
-        j = strobj.head( sourceString, "[ \t]+", token )
+        j = strobj.head( sourceString, "[ \t]+", fullToken )
         if( j!=-1 ) {
             strobj.right( sourceString, j )
             //need to get first non-whitespace char
@@ -495,8 +500,29 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
                 sourceString = ""
             }
         } else {
-            token = sourceString
+        	fullToken = sourceString
             sourceString = ""
+        }
+        //If the fullToken is of the form 'herp.derp' we need to split the string, return herp in ptProcessList and derp in $o3 
+        j = strobj.head( fullToken,"[.]",token )
+        if( j!=-1 ){
+        	strobj.right( fullToken, j+1 )
+        	internalVar = fullToken
+        } else {
+        	token = fullToken
+        	internalVar = ""
+        }
+        //default case: Report on i, to maintain backwards compatibility
+        if(strcmp( internalVar, "" ) == 0){
+        	if(numarg() > 2){
+        		$o3 = new String( "i" )
+        	}
+        } else {
+        	if(numarg() > 2){
+        		$o3 = new String( internalVar )
+        	} else {
+        		execerror("Internal variable to report on specified but evaluateSummationReport called with 2 args!")
+        	}
         }
         //print "token ", token
         
@@ -532,7 +558,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
         	     ptProcessList.append( ptProcessLibrary.o(libIndex) )
         	}
         	if( numarg() > 2){
-        		$&3 = 1
+        		$o3 = new String( "g" ) //assumes that total conductance is available as 'g' in evere synapse model file!
         	} else {
         		execerror("Conductance report demanded but function call to evaluateSummationReport with only 2 arguments!")
         	}
@@ -545,7 +571,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
         	   ptProcessList.append( ptProcessLibrary.o(libIndex) )
         	}
         	if( numarg() > 2){
-        	   $&3 = 1
+        		$o3 = new String( "g" )
         	} else {
         	   execerror("Conductance report demanded but function call to evaluateSummationReport with only 2 arguments!")
         	}
