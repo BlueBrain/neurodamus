@@ -96,7 +96,7 @@ objref targetList, cellList, sectionAccess, isec2sec[1], cellDistributor, nilSec
 public init
 public getTarget, setTargetList, getPointList, locationToPoint, cellDistributor, gids
 public getSomaticSections, getApicalSections, getBasalSections, getAxonalSections, registerCell
-public getApicalPoints, getBasalPoints
+public getApicalPoints, getBasalPoints, compartmentCast
 public selectRandomPoints, getCells
 
 // Ruben's PFE
@@ -533,7 +533,7 @@ obfunc compartmentCast() { localobj target, wrapper
     if( argtype(1) == 2 ) {
         target = getTarget( $s1 )
     } else {
-        target = $s1
+        target = $o1
     }
     
     if( !target.isCellTarget() ) {
