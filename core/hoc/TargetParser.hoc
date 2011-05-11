@@ -213,7 +213,7 @@ proc parseOtherTargetContents() { local offset, extraIndex, potentialGid, val lo
                 }
                 
                 for extraIndex=offset, extraStrings.count()-1 {
-                    sscanf(extraStrings.o(extraIndex).s, "%d", &val)
+                    sscanf(extraStrings.o(extraIndex).s, "%f", &val)
                     extraValues.append(val)
                 }
             } else {
