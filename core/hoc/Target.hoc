@@ -143,7 +143,7 @@ public cellExtraValues, targetExtraValues
 
 //! memberfunctions - see below for detailed information
 public evalType, isCellTarget, isSectionTarget, isCompartmentTarget, isSynapseTarget
-public update, getgid, gids, completegids, getCellExtraValues, evaluateSynapses, getPointList, getCompletePointList
+public update, getgid, gids, completegids, getCellExtraValues, getCellSubset, evaluateSynapses, getPointList, getCompletePointList
 public isDefined, completeContains, contains, localCount
 
 //------------------------------------------------------------------------------------------------------------
@@ -612,7 +612,7 @@ proc addressCompartmentPointsInSection(){local  ret, cnt, val, cellIndex, target
     //handle the cells from the passed target
     for cellIndex=0, $o2.localCount()-1 {
         activePointList = new TPointList( $o2.getgid(cellIndex) )
-        addressSectionPoints( $o1, $o2.getgid(cellIndex), $o2.getCellSubset(cellIndex).s, $o2.getCellExtra(cellIndex).s, cmpLocations, activePointList )
+        addressSectionPoints( $o1, $o2.getgid(cellIndex), $o2.getCellSubset(cellIndex).s, $o2.getCellExtraValues(cellIndex), cmpLocations, activePointList )
         $o4.append( activePointList )
     }
     
@@ -712,6 +712,7 @@ proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj s
                     sprint( errorMsg.s, "Invalid section access for target %s: requested section %s[%d] (%d) available", name, $s3, $o4.x[count], SecSize )
                     execerror( errorMsg.s )
                 }
+                
                 addressSection( $o1, gid, $s3, $o4.x[count], $o5, $o6 )
             }
         }
