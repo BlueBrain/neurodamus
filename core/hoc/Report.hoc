@@ -338,6 +338,16 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
         
         //intrinsic currents
         for intrinsicIndex=0, intrinsicList.count()-1 {
+
+	    // Insert extracellular mechanism if reporting on i_membrane
+
+	    /*if (0 == strcmp(intrinsicList.o(intrinsicIndex).s, "i_membrane")) {
+	        // prevents inserting twice
+	    	if(!ismembrane("extracellular")){
+	  	    insert extracellular
+		}
+	    }*/
+
             //test if we can even access the desired current variable in this compartment 
             sprint(tstr,"{%s.%s(%1.2f)}", secname(), intrinsicList.o(intrinsicIndex).s, x )
             result = execute1(tstr, 0)
@@ -606,6 +616,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
             if ( matched == 0 && strcmp(token,"i_membrane") == 0 ) {
                 matched = 1
                 intrinsicList.append( new String( "i_membrane" ) )
+		// forall insert extracellular
             }
             if( matched == 0 ) {
                 // Note that we now check for intrinsic names individually like with synapses.  Therefore, this else no longer

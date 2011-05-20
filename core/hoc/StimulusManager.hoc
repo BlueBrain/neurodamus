@@ -21,7 +21,7 @@ begintemplate StimulusManager
 objref stimList, elecManager, targetManager, this
 
 //! For use in poisson stims, when creating via the execute stmt, need to have class level object (not just local to function)
-objref stimHelper, poissonNetconList, handleList, poissonSynList
+objref stimHelper, poissonNetconList, handleList, poissonSynList, vecStimList
 
 //-----------------------------------------------------------------------------------------------
 // public members
@@ -55,6 +55,7 @@ proc init() {
     poissonNetconList = new List()
     poissonSynList = new List()
     handleList = new List()
+    vecStimList = new List()
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -280,6 +281,14 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             //Note: requires special Target handling, so just pass targetName through
             npoisson( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], stim.get( "SynapseType" ), \
                 stim.get( "SynapseConfigure" ), stim.get( "FillFunctionOverride" ), del, dur )
+        } else if( strcmp( patternName.s, "NPoissonInhomogeneous" ) == 0 ) {
+            //Note: SynapseType is optional and may return nil (handled by npoisson function)
+            //Note: SynapseConfigure is optional and may return nil (handled by npoisson function)
+            
+            //Note: even though we dont use delay/duration, they must still be present in the BlueConfig until I can refactor the code better
+            //Note: requires special Target handling, so just pass targetName through
+            npoissonInhomogeneous( $s1, stim.valueOf( "Weight" ), stim.valueOf( "NumOfSynapses" ), stim.get( "SynapseType" ), \
+                stim.get( "SynapseConfigure" ), stim.get( "H5File" ), stim.get( "TBins" ), stim.get( "Rate" )  )
         } else if( strcmp( patternName.s, "SubThreshold" ) == 0 ) {
             subthreshold( $s1, stim.valueOf( "PercentLess" ), del, dur )
         } else if( strcmp( patternName.s, "Noise" ) == 0 ) {
@@ -288,6 +297,8 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             } else {
                 relativeNoise( $s1, stim.valueOf( "MeanPercent" ), stim.valueOf( "Variance" ), del, dur )
             }
+        } else {
+	  execerror("Unknown stimulus type", patternName.s)
         }
     }
 }
@@ -607,6 +618,51 @@ proc npoisson() { local cellIndex, del, dur  localobj apicalPoints, basalPoints,
 
 //-----------------------------------------------------------------------------------------------
 
+/*!
+ * Apply a poisson stimulus over n artificial synapses distributed randomly on a cell's basal and apical sections
+ * 
+ * @param $s1 TargetName
+ * @param $2 weight
+ * @param $3 number of synapses
+ * @param $o4 synapseType as String Name of object to be instantiated for Synapses (nil for default of ExpSyn)
+ * @param $o5 synapseConfigure as String: executes code to modify synapse parameters (nil for default values)
+ * @param $o6 h5file
+ * @param $o7 tbins
+ * @param $o8 rate
+ */
+proc npoissonInhomogeneous() { local cellIndex, del, dur  localobj apicalPoints, basalPoints, gids
+    
+    //TODO: refactor with npoisson
+        
+    //The synapses generated should only go on the apical or basal sections of any target cells
+    // difficulty for doing exactly same thing as old bglib: that could operate easily on the section
+    // of a cell, but now we work with compartment points only(?)  If so, random selection won't be the same
+    // maybe the utility function of targetManager can return only the middle of all sections?
+    // e.g Target section helper
+    //     {
+    //         base_target apic  //note that base_target must be a cell target, if section target, that is fine
+    //         base_target dend
+    //     }
+    
+    // open for interpretation - should I get the target, check they type and take action based on that?
+    //  or should I send two requests to the targetManager asking for the apic & basal sections, letting
+    //  the manager do checks and balances
+    gids = targetManager.gids( $s1 )
+    apicalPoints = targetManager.getApicalSections( $s1 )
+    basalPoints = targetManager.getBasalSections( $s1 )
+    
+    //for each gid/TPointList - place synapses randomly and supply a spike train
+    for cellIndex=0, gids.size()-1 {
+
+        //so all cells should be represented and have the same point count regardless of splitting        
+        distributePoissonSynapsesInhomogeneous( gids.x[cellIndex], $2, $3, $o4, $o5, $o6, $o7, $o8, apicalPoints.o(cellIndex), basalPoints.o(cellIndex) )
+    }
+    
+    poissonStimCount = poissonStimCount + 1
+}
+
+//-----------------------------------------------------------------------------------------------
+
 func getSecTypeAndIndex() { local baseOffset, secIndex  localobj str, strobj
 	strdef subset
 	str = new String()
@@ -657,8 +713,8 @@ $&2=secIndex
  * $o10 TPointList with apical points
  * $o11 TPointList with basal points
  */
-proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, lambda, weight, del, dur, substituteCount \
-    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, fih, sf, fillFunctionOverride, nil
+proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, lambda, weight, del, dur, substituteCount, vIndex \
+    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, fih, sf, fillFunctionOverride, vecstim, myvec, nil
     strdef tstr, tstr1
     
     iteration = 0
@@ -741,23 +797,185 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
             //print stimHelper.e, " ", stimHelper.tau
         }
         
-        //why do we register an init handler if we are just going to call the function anyways?
-        // do we end up with twice the events?
-        nc = new NetCon( nil, stimHelper,10,1,weight )
-        
         if( object_id( fillFunctionOverride, 1 ) == -1 ) {  //no override - so use default spike timing fill method
+            
+            nc = new NetCon( nil, stimHelper,10,1,weight )  //has nil source
+            
+            //why do we register an init handler if we are just going to call the function anyways?
+            // do we end up with twice the events?
             sprint(tstr,"FillSpikeTrain(%s,%f,%f,%f,%d)", nc, lambda, del, dur, baseSeed+iteration )
+            fih = new FInitializeHandler(tstr, this)
+            execute1(tstr, this)
         } else {
-            tstr = "print \"Eilif's code goes here\""
+            tstr = "print \"Jim broke this!\""
         }
-        
-        fih = new FInitializeHandler(tstr, this)
-        execute1(tstr, this)
         
         //keep variables so they don't get deleted
         poissonNetconList.append(nc)
         poissonSynList.append(stimHelper)
         handleList.append(fih)
+        
+        nCreated = nCreated + 1
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Given some points on a targeted cell, randomly place synapses and generate their spike trains
+ *
+ * $1 gid
+ * $2 weight
+ * $3 number of synapses
+ * @param $o4 synapseType as String Name of object to be instantiated for Synapses (nil for default of ExpSyn)
+ * @param $o5 synapseConfigure as String: executes code to modify synapse parameters (nil for default values)
+ * $o6 h5file
+ * $o7 tbins
+ * $o8 rate
+ * $o9 apical points
+ * $o10 basal points
+ */
+proc distributePoissonSynapsesInhomogeneous() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, weight, substituteCount, tIndex \
+    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, sf, h5file, tbins, rate, h5reader, vecstim, tbins_vec, rate_vec, inhpoiss, exprng, uniformrng, nil
+    strdef tstr, tstr1
+    
+    //TODO: refactor this code with distributePoissonSynapses
+
+    iteration = 0
+    nCreated = 0
+
+    baseSeed = $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
+    weight = $2
+    nNeeded  =  int($3)
+    synapseConfigure = $o5
+    h5file = $o6
+    tbins = $o7
+    rate = $o8
+    apicalPoints = $o9
+    basalPoints = $o10
+    
+    //determine now if the synapseType is given or we should use the default
+    if( object_id($o4,1) < 0 ) {
+        synapseType = new String("ExpSyn")
+    } else {
+        synapseType = $o4
+    }
+
+
+    //open h5file ... only need to read it once for all synapses
+    // they all share the same tbins_vec and rate_vec object
+    h5reader = new HDF5Reader( h5file.s )
+        
+    //get tbins from file - put in vector for InhPoissonStim
+    h5reader.loadData( tbins.s )
+    nrows = h5reader.numberofrows( tbins.s )
+        
+    tbins_vec = new Vector()
+    for tIndex=0,nrows-1 { 
+        //print h5reader.getData( tbins.s, tIndex, 0 )
+        tbins_vec.append( h5reader.getData( tbins.s, tIndex, 0 ) )
+    }
+
+    //get rate from file - put in vector for InhPoissonStim
+    h5reader.loadData( rate.s )
+    nrows = h5reader.numberofrows( rate.s )
+        
+    rate_vec = new Vector()
+    for tIndex=0,nrows-1 { 
+        //print h5reader.getData( rate.s, tIndex, 0 )
+        rate_vec.append( h5reader.getData( rate.s, tIndex, 0 ) )
+    }
+    
+    vecStimList.append( tbins_vec )
+    vecStimList.append( rate_vec )
+
+
+    while ( nCreated < nNeeded ) {
+    
+        //count the iterations and use that to offset the seed
+        iteration = iteration + 1
+        
+        ran2 = new Random(baseSeed + iteration)
+        ran2.MCellRan4(baseSeed + iteration, $1+100 )
+        ran2.discunif(0,1)
+        
+        ran1 = new Random(baseSeed + iteration)
+        ran1.MCellRan4(baseSeed + iteration, $1+110 )
+        
+        //first choose to target apical of basal sections
+        if(ran2.repick()) {
+            activeSubset = basalPoints
+        } else {
+            activeSubset = apicalPoints
+        }
+        
+        if( activeSubset.count() == 0 ) { continue }
+        
+        ran1.discunif( 0, activeSubset.count()-1 )
+        sectionIndex = ran1.repick()
+        
+        //do we have random access to TPointList SectionRef members?  how should such a utility function look/behave?
+        if( !activeSubset.sclst.o(sectionIndex).exists() ) {  //section not on this cpu
+            nCreated = nCreated + 1  //assume another split piece handles it instead
+            continue
+        }
+        
+        //the section is on this cpu, so create the synapse and fill the spike train
+        activeSubset.access_(sectionIndex)
+        sprint(tstr,"stimHelper = new %s(0.5)", synapseType.s )
+        execute1(tstr, this)
+        
+        //do we need to execute some statements on the synapse?
+        if( object_id( synapseConfigure, 1 ) != -1 ) {
+            sf = new StringFunctions()
+            
+            //need to replace all '%s' with stimHelper object
+            substituteCount = 0
+            tstr = synapseConfigure.s
+            
+            // keep checking the string for '%s'; as long as one is there, rebuild the string around it
+            while( sf.substr( tstr, "%s" ) != -1 ) {
+                sf.head( tstr, "%s", tstr1 )
+                sf.tail( tstr, "%s", tstr )
+                sprint( tstr, "%s%s%s", tstr1, stimHelper, tstr )
+            }
+            
+            //surround with curly braces then execute
+            sprint(tstr, "{%s}", tstr )
+            //print "execute ", tstr
+            execute1(tstr,this)
+            
+            //debug - only works for ExpSyn
+            //print stimHelper.e, " ", stimHelper.tau
+        }
+        
+        
+        //ignore rate dataset for now
+        //h5reader.loadData( rate.s )
+        //nrows = h5reader.numberofrows( rate.s )
+        
+        inhpoiss = new InhPoissonStim(0.5)
+        nc = new NetCon(inhpoiss, stimHelper)
+	nc.weight[0] = weight
+	nc.delay = 0.1
+        inhpoiss.setTbins( tbins_vec )
+        inhpoiss.setRate( rate_vec )
+
+	// The InhPoissonStim needs random #s
+	exprng = new Random()
+	exprng.ACG(baseSeed+iteration)
+	exprng.negexp(1)
+	uniformrng = new Random()
+	uniformrng.ACG(baseSeed+iteration)
+	uniformrng.uniform(0.0,1.0)
+        inhpoiss.setRNGs(exprng, uniformrng)
+
+        //keep variables so they don't get deleted
+        poissonNetconList.append(nc)
+        poissonSynList.append(stimHelper)
+        vecStimList.append( inhpoiss )
+        vecStimList.append( exprng )
+        vecStimList.append( uniformrng )
         
         nCreated = nCreated + 1
     }
