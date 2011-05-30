@@ -197,7 +197,7 @@ VERBATIM {
 		strncpy(name,gargstr(1),256);
 		if(strncmp(info->name_group,name,256))
 		{
-			hsize_t dims[2],offset[2];
+			hsize_t dims[2] = {},offset[2] = {};
 			offset[0] = 0 ; offset [1] = 0;
 			hid_t dataset_id, dataspace;
 			dataset_id = H5Dopen(info->file_, name);
@@ -213,8 +213,11 @@ VERBATIM {
 			H5Sget_simple_extent_dims(dataspace,dims,NULL);
 			//printf("Accessing to %s , nrow:%lu,ncolumns:%lu\n",info->name_group,(unsigned long)dims[0],(unsigned long)dims[1]);
 			info->rowsize_ = (unsigned long)dims[0];
-			info->columnsize_ = dims[1];
-			//printf("\n Size of data is row= [%d], Col = [%lu]", dims[0], (unsigned long)dims[1]);
+            if( dimensions > 1 )
+                info->columnsize_ = dims[1];
+            else
+                info->columnsize_ = 1;
+			//printf("\n Size of data is row= [%d], Col = [%lu]\n", dims[0], (unsigned long)dims[1]);
 			if(info->datamatrix_ != NULL)
 			{
 				//printf("Freeeing memory \n ");
@@ -224,7 +227,7 @@ VERBATIM {
 			//info->datamatrix_ = (float *) hoc_Emalloc(sizeof(float) *(info->rowsize_*info->columnsize_)); hoc_malchk();
 			// Last line fails, corrupt memory of argument 1 and  probably more
 			H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, NULL, dims, NULL);
-			hid_t dataspacetogetdata=H5Screate_simple(2,dims,NULL);
+			hid_t dataspacetogetdata=H5Screate_simple(dimensions,dims,NULL);
 			H5Dread(dataset_id,H5T_NATIVE_FLOAT,dataspacetogetdata,H5S_ALL,H5P_DEFAULT,info->datamatrix_);
 			H5Sclose(dataspace);
 			H5Sclose(dataspacetogetdata);
