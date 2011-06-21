@@ -164,7 +164,7 @@ proc parseCellTargetContents() { local potentialGid  localobj tFile, targetInsta
 
 /*!
  * For non-Cell targets, any member (cell or subtarget) must be on separate line.  The rest of the line can potentially
- * contain section names, normalized distances (float), or synapse ids (int)
+ * contain section names, section ids (int, but treated as float), normalized distances (float), or synapse ids (int)
  *
  * @param $o1 Reference to file where data is coming from
  * @param $o2 Reference to Target object where data is stored
