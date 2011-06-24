@@ -23,6 +23,9 @@ objref targetList
 //public functions
 public init, open, targetList, getTarget, updateTargets
 
+//allow some nodes (i.e. node 1) to output messages to the console
+public isVerbose
+
 //------------------------------------------------------------------------------------------------------------
 
 /*!
@@ -30,6 +33,7 @@ public init, open, targetList, getTarget, updateTargets
  */
 proc init() {
     targetList = new List()
+    isVerbose = 0
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -46,8 +50,11 @@ proc open() { localobj tFile, targetInstance
     tFile.ropen($s1)
     
     if (tFile.isopen == 0) {
-        print "Error : Could not open target file :[", $s1,"]"
-	    execerror("Error : Could not open target file :[%s]", $s1)        
+        if( isVerbose != 0 ) {
+            //limit how many error messages are printed since people have difficulty not lying about having a user target :P
+            print "Error : Could not open target file :[", $s1,"]"
+        }
+        quit()
     }else {
         //Read till end of file
         while(tFile.gets(tstr) >= 0){
@@ -300,14 +307,13 @@ func addMember() { local potentialGid  localobj targetInstance, addition
  *                    is not found
  */
 obfunc getTarget() { local targetIndex  localobj targetUtil
-    strdef errorMessage
-
     targetUtil = new TargetUtility()
     targetIndex = targetUtil.findTarget( $s1, targetList )
     if( targetIndex < 0 ) {  //not found, error
-        print "Error: target ", $s1, " not found.  Attempting to terminate"
-        sprint( errorMessage, "Error: target %s not found", $s1 )
-        execerror( errorMessage )
+        if( isVerbose ) {
+            print "Error: target ", $s1, " not found.  Attempting to terminate"
+        }
+        quit()
     } else {
         return targetList.object(targetIndex)
     }    
