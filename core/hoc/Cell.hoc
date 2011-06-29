@@ -96,7 +96,20 @@ proc delete_axon(){local nSec, D1, D2, dist, i1, i2, count
 }
 
 
-
+proc SetCellProperties(){local Rm,v_init
+        Rm = $1
+        v_init = $2
+        forall {
+                insert pas
+                Ra = 80
+                g_pas=1/Rm
+                e_pas=v_init
+                cm = 1
+        }
+        
+        //whenever the Cell properties (resistance esp.) change, recalculate how a section divides into segments
+        //geom_nseg()  //for now, let the CCell do this after biophys is executed
+}
 
 /*!
  * Iterate over the section and compute how many sqgments should be allocate to each.  This number
