@@ -488,7 +488,7 @@ proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProce
 proc addSummationVarAndCommitALU() { local rpt
     //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
     if( 0 == strcmp(format, "Bin") ) {
-        sprint(tstr, "rec.AddVar( &ALUhelper.output, %d )", $1 )  //note that we force report on soma, so index=0
+        sprint(tstr, "rec.AddVar( &ALUhelper.output, %d )", $1 )  //note that when we force report on soma, index=0
         execute(tstr, this)
     } else {
         rpt = $2
