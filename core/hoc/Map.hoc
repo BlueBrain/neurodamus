@@ -1,20 +1,10 @@
 /**
- * @file ConfigParser.hoc
- * @brief 
+ * @file Map.hoc
+ * @brief Generic associative container 
  * @author king
- * @date 2009-06-24
+ * @date 2009-07-07
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
-
-/*****************************************************************
-    FileName    : Map.hoc
-    Project     : Blue Brain Project
-    Place       : EPFL, Lausanne Switzerland.
-    Purpose     : Generic associative container
-    Author      : 1. James King
-                  2. Rajnish Ranjan
-    Revision    : $Revision$ at: $Date$ by $Author$
-****************************************************************/
 
 /*!
  * Generic associative container to allow field names to be mapped to values (stored in objects)

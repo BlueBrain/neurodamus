@@ -1,20 +1,10 @@
 /**
- * @file ConfigParser.hoc
- * @brief 
+ * @file TargetParser.hoc
+ * @brief Handles reading target files from disk so that such code is removed from the TargetManager class 
  * @author king
- * @date 2009-06-24
+ * @date 2009-06-12
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
-
-/**
-*
-* @file    TargetParser.hoc 
-* @brief   The TargetParser will handle reading target files from disk so that such code is removed from the 
-* @brief   TargetManager class 
-*
-* @author  Jim King, Rajnish Ranjan, Fabien Delalondre
-*
-*/
 
 {load_file("Target.hoc")}
 

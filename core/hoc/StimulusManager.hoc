@@ -1,19 +1,10 @@
 /**
- * @file ConfigParser.hoc
- * @brief 
+ * @file StimulusManager.hoc
+ * @brief Process Synapse connections Rules of a BlueConfig (if any) and then instantiate the synapses for a bluebrain sim 
  * @author king
- * @date 2009-06-24
+ * @date 2009-10-23
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
-
-/**
-*
-* @file    StimulusManager.hoc 
-* @brief   Process Synapse connections Rules of a BlueConfig (if any) and then instantiate the synapses for a bluebrain sim 
-*
-* @author  Jim King, Rajnish Ranjan, Fabien Delalondre
-*
-*/
 
 {load_file("alib/TStim.hoc")}  //note that the TStim functions are used in a way where our naming schemes don't match 100%
 {load_file("alib/EStim.hoc")}

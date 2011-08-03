@@ -1,10 +1,11 @@
 /**
- * @file ConfigParser.hoc
+ * @file TType.hoc
  * @brief 
- * @author king
- * @date 2009-06-24
+ * @author moor
+ * @date 2010-03-08
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
+
 
 D__TTYPEHOC = 1
 //see help file in neuron extention help pages (wiki)

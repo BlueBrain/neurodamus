@@ -1,19 +1,10 @@
 /**
- * @file ConfigParser.hoc
- * @brief 
+ * @file Report.hoc
+ * @brief Gather data references for sending information to files 
  * @author king
- * @date 2009-06-24
+ * @date 2009-11-20
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
-
-/**
-*
-* @file    Report.hoc 
-* @brief   Gather data references for sending information to files 
-*
-* @author  Jim King, Rajnish Ranjan, Fabien Delalondre
-*
-*/
 
 objref globrec
 

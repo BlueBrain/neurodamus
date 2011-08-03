@@ -1,20 +1,11 @@
 /**
- * @file ConfigParser.hoc
- * @brief 
+ * @file TargetManager.hoc
+ * @brief Provides an entity to encapsulate the steps to get cell points for use in Stimulation or Reporting 
+ * @brief This should make certain features of the simulation transparent such as load balancing and target file format
  * @author king
- * @date 2009-06-24
+ * @date 2009-06-12
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
-
-/**
-*
-* @file    TargetManager.hoc 
-* @brief   The TargetManager provides an entity to encapsulate the steps to get cell points for use in Stimulation or Reporting 
-* @brief   This should make certain features of the simulation transparent such as load balancing and target file format 
-*
-* @author  Jim King, Rajnish Ranjan, Fabien Delalondre
-*
-*/
 
 //make sure we have some basic things loaded
 {load_file( "nrngui.hoc" )}
