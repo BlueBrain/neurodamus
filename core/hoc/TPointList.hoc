@@ -1,3 +1,11 @@
+/**
+ * @file ConfigParser.hoc
+ * @brief 
+ * @author king
+ * @date 2009-06-24
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
 D__TPOINTLISTTHOC = 1
 {load_file("TType.hoc","D__TTYPEHOC")}
 //see help file in neuron extention help pages (wiki)

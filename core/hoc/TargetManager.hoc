@@ -1,12 +1,20 @@
-/*****************************************************************
-    FileName    : TargetManager.hoc
-    Project     : Blue Brain Project
-    Place       : EPFL, Lausanne Switzerland.
-    Purpose     : The TargetManager provides an entity to encapsulate the steps to get cell points for use in Stimulation or Reporting
-                  This should make certain features of the simulation transparent such as load balancing and target file format
-    Author      : 1. Jim King
-    Revision    : $Revision$ at: $Date$ by $Author$
-****************************************************************/
+/**
+ * @file ConfigParser.hoc
+ * @brief 
+ * @author king
+ * @date 2009-06-24
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+/**
+*
+* @file    TargetManager.hoc 
+* @brief   The TargetManager provides an entity to encapsulate the steps to get cell points for use in Stimulation or Reporting 
+* @brief   This should make certain features of the simulation transparent such as load balancing and target file format 
+*
+* @author  Jim King, Rajnish Ranjan, Fabien Delalondre
+*
+*/
 
 //make sure we have some basic things loaded
 {load_file( "nrngui.hoc" )}

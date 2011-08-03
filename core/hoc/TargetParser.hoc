@@ -1,12 +1,20 @@
-/*****************************************************************
-    FileName    : TargetParser.hoc
-    Project     : Blue Brain Project
-    Place       : EPFL, Lausanne Switzerland.
-    Purpose     : The TargetParser will handle reading target files from disk so that such code is removed from the
-                  TargetManager class
-    Author      : 1. James King
-    Revision    : $Revision$ at: $Date$ by $Author$
-****************************************************************/
+/**
+ * @file ConfigParser.hoc
+ * @brief 
+ * @author king
+ * @date 2009-06-24
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+/**
+*
+* @file    TargetParser.hoc 
+* @brief   The TargetParser will handle reading target files from disk so that such code is removed from the 
+* @brief   TargetManager class 
+*
+* @author  Jim King, Rajnish Ranjan, Fabien Delalondre
+*
+*/
 
 {load_file("Target.hoc")}
 

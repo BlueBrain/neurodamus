@@ -1,13 +1,19 @@
-/*****************************************************************
-    FileName    : StimulusManager.hoc
-    Project     : Blue Brain Project
-    Place       : EPFL, Lausanne Switzerland.
-    Purpose     : Process Synapse connections Rules of a BlueConfig (if any) and then instantiate the synapses 
-                  for a bluebrain sim
-    Author      : 1. Jim King
-                  2. Rajnish Ranjan
-    Revision    : $Revision$ at: $Date$ by $Author$
-****************************************************************/
+/**
+ * @file ConfigParser.hoc
+ * @brief 
+ * @author king
+ * @date 2009-06-24
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+/**
+*
+* @file    StimulusManager.hoc 
+* @brief   Process Synapse connections Rules of a BlueConfig (if any) and then instantiate the synapses for a bluebrain sim 
+*
+* @author  Jim King, Rajnish Ranjan, Fabien Delalondre
+*
+*/
 
 {load_file("alib/TStim.hoc")}  //note that the TStim functions are used in a way where our naming schemes don't match 100%
 {load_file("alib/EStim.hoc")}

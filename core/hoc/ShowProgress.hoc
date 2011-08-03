@@ -1,12 +1,19 @@
-/*****************************************************************
-    FileName    : ShowProgress.hoc
-    Project     : Blue Brain Project
-    Place       : EPFL, Lausanne Switzerland.
-    Purpose     : Inplements a function which will cause the percentage complete of the simulation to periodically be printed to the console
-    Author      : 1. Rajnish Ranjan
-                  2. Jim King
-    Revision    : $Revision: $ at: $Date: $ by $Author: $
-****************************************************************/
+/**
+ * @file ConfigParser.hoc
+ * @brief 
+ * @author king
+ * @date 2009-06-24
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+/**
+*
+* @file    ShowProgress.hoc 
+* @brief   Implements a function which will cause the percentage complete of the simulation to periodically be printed to the console 
+*
+* @author  Jim King, Rajnish Ranjan, Fabien Delalondre
+*
+*/
 
 begintemplate ShowProgress
 

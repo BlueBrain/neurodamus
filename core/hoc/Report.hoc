@@ -1,12 +1,19 @@
-/*****************************************************************
-    FileName    : Report.hoc
-    Project     : Blue Brain Project
-    Place       : EPFL, Lausanne Switzerland.
-    Purpose     : Gather data references for sending information to files
-    Author      : 1. Jim King
-                  2. Rajnish Ranjan
-    Revision    : $Revision: 580 $ at: $Date: 2009-10-23 14:17:03 +0200 (Fri, 23 Oct 2009) $ by $Author: king $
-****************************************************************/
+/**
+ * @file ConfigParser.hoc
+ * @brief 
+ * @author king
+ * @date 2009-06-24
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+/**
+*
+* @file    Report.hoc 
+* @brief   Gather data references for sending information to files 
+*
+* @author  Jim King, Rajnish Ranjan, Fabien Delalondre
+*
+*/
 
 objref globrec
 

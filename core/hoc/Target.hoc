@@ -1,14 +1,20 @@
-/*****************************************************************
-    FileName    : TargetTemplate.hoc
-    Project     : Blue Brain Project
-    Place       : EPFL, Lausanne Switzerland.
-    Purpose     : Encapsulate the operations surrounding a conceptual target used
-                  by the Blue Brain Project to identify neurons or components of neurons
-                  for stimulation, reporting, or other operations
-    Author      : 1. Jim King
-                  2. Rajnish Ranjan
-    Revision    : $Revision$ at: $Date$ by $Author$
-****************************************************************/
+/**
+ * @file ConfigParser.hoc
+ * @brief 
+ * @author king
+ * @date 2009-06-24
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+/**
+*
+* @file    TargetTemplate.hoc 
+* @brief   Encapsulate the operations surrounding a conceptual target used by the Blue Brain Project to identify neurons or components of neurons
+* @brief   for stimulation, reporting, or other operations 
+*
+* @author  Jim King, Rajnish Ranjan, Fabien Delalondre
+*
+*/
 
 {load_file("stdlib.hoc")}
 {load_file( "TPointList.hoc" )}
