@@ -53,7 +53,8 @@ proc delete_axon(){local nSec, D1, D2, dist, i1, i2, count
         D2 = 1
     }else{
         access axon[0]
-        i1 = v(0.0001) //hack needed for bglib 
+        i1 = v(0.0001) //hack needed for bglib
+        i2 = v(0.0001) //hack needed for bglib 
         D1 = diam
         D2 = diam
         if(nSec >1){ //Only one axon section present
@@ -88,7 +89,7 @@ proc delete_axon(){local nSec, D1, D2, dist, i1, i2, count
         nseg = 1 + 2*int(L/40)
         all.append()
         axonal.append()
-        v(0.0001) = i2   // !!!if this cell does not contain 2 sections then this is source of bug
+        v(0.0001) = i2
     } 
     nSecAxonal = 2
     soma[0] connect axon[0](0), 1
@@ -222,6 +223,10 @@ proc connect2target() { //$o1 target point process, $o2 returned NetCon
   $o2.threshold = -30
 }
 
+/**
+ * @param $s1 Name of the section - soma, dend, apic, axon, or all
+ * $param $s2 Name of the channel
+ */
 proc insertChannel(){ localobj tmpString
     tmpString = new String()
     sprint(tmpString.s, "forsec %s  insert %s", $s1, $s2)
