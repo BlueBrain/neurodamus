@@ -1,3 +1,11 @@
+/**
+ * @file HDF5reader.mod
+ * @brief 
+ * @author king
+ * @date 2009-10-23
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
 COMMENT
 If the local variable step method is used then the only variables that should
 be added are variables of the cell in which this FileRecord

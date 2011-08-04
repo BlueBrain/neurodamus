@@ -1,3 +1,11 @@
+/**
+ * @file lookupTableV2.mod
+ * @brief 
+ * @author reimann
+ * @date 2010-12-30
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
 VERBATIM
 #include <stdio.h>
 #include <stdlib.h>

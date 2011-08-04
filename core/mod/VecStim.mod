@@ -1,3 +1,11 @@
+/**
+ * @file VecStim.mod
+ * @brief 
+ * @author king
+ * @date 2011-03-16
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
 : Vector stream of events	
 NEURON {
     ARTIFICIAL_CELL VecStim
