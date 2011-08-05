@@ -1,3 +1,4 @@
+VERBATIM
 /**
  * @file HDF5reader.mod
  * @brief 
@@ -5,6 +6,7 @@
  * @date 2009-10-23
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
+ENDVERBATIM
 
 COMMENT
 If the local variable step method is used then the only variables that should
