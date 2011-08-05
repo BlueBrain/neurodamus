@@ -37,8 +37,7 @@ VERBATIM
 
 #define H5_USE_16_API 1
 //#include "/opt/hdf5/include/hdf5.h"  //-linsrv
-//#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"  //-blugene
-#include "/home/delalond/Dev/HDF5/hdf5-1.6.9-install/include/hdf5.h" // FD
+#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"  //-blugene
 #include "mpi.h"
 #include <stdlib.h>
 
