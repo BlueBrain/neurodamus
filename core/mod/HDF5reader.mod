@@ -1,4 +1,4 @@
-VERBATIM
+COMMENT
 /**
  * @file HDF5reader.mod
  * @brief 
@@ -6,7 +6,7 @@ VERBATIM
  * @date 2009-10-23
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
-ENDVERBATIM
+ENDCOMMENT
 
 COMMENT
 If the local variable step method is used then the only variables that should
@@ -37,7 +37,8 @@ VERBATIM
 
 #define H5_USE_16_API 1
 //#include "/opt/hdf5/include/hdf5.h"  //-linsrv
-#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"  //-blugene
+//#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"  //-blugene
+#include "/home/delalond/Dev/HDF5/hdf5-1.6.9-install/include/hdf5.h" // FD
 #include "mpi.h"
 #include <stdlib.h>
 
