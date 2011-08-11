@@ -18,7 +18,7 @@ begintemplate StimulusManager
 objref stimList, elecManager, targetManager, this
 
 //! For use in poisson stims, when creating via the execute stmt, need to have class level object (not just local to function)
-objref stimHelper, poissonNetconList, handleList, poissonSynList, vecStimList
+objref stimHelper, poissonNetconList, handleList, poissonSynList, vecStimList, voltageReplayList, timeReplayList
 
 //-----------------------------------------------------------------------------------------------
 // public members
@@ -53,6 +53,8 @@ proc init() {
     poissonSynList = new List()
     handleList = new List()
     vecStimList = new List()
+    voltageReplayList = new List()
+    timeReplayList = new List()
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -294,8 +296,15 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             } else {
                 relativeNoise( $s1, stim.valueOf( "MeanPercent" ), stim.valueOf( "Variance" ), del, dur )
             }
+        } else if ( strcmp( patternName.s, "ReplayVoltageTrace" ) == 0 ) {
+            //will replay a voltage trace into a cell's soma via SEClamp
+            if( stim.exists( "File" ) ) {
+                //expecting path to hdf5 files
+                // TODO: add suport for other file formats
+                replayVoltageTrace( $s1, stim.get( "File" ).s, stim.get( "DataSetLabel" ).s, del, dur )
+            }
         } else {
-	  execerror("Unknown stimulus type", patternName.s)
+            execerror("Unknown stimulus type", patternName.s)
         }
     }
 }
@@ -1017,10 +1026,79 @@ proc FillSpikeTrain() { local i,tmpt, time, index, SpikeNeeded, nSpikeNeeded, Sp
     if(SpikeNeeded < 1)	  {
         time = 0 
     }
-
+    
     for i =0, tVec.size-1 {
         $o1.event(tVec.x[i] + $3) 
     }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Take voltage values from a file source and play to an SEClamp on a cell's soma.  This assumes that the files are
+ * HDF5 reports produced by previous runs of the simulator using the fixed time step method.  TODO: support other file
+ * layouts.  Difficult to say if the Bin report bbp format will be among those since it is laid out more appropriately
+ * for accessing a single timestep of the circuit at once rather than a single cell's states all at one
+ *
+ * @param $s1 Target name to receive the SEClamp
+ * @param $s2 path where data files can be found
+ * @param $s3 label of dataset to use from h5 files
+ * @param $4  Stim delay
+ * @param $5  Stim duration
+ */
+proc replayVoltageTrace() { local gidIndex, x, dtReport, del, dur \
+    localobj gids, pts, dataset, filename, voltageReader, vvec, dvec, tvec, stim, pc
+    
+    del = $4
+    dur = $5
+    
+    dataset = new String()
+    filename = new String()
+    gids = targetManager.gids( $s1 )
+    pts = targetManager.getPointList( $s1 )
+    
+    for gidIndex=0, gids.size()-1 {
+        
+        gid = gids.x[gidIndex]
+        sprint( filename.s, "%s/a%d.h5", $s2, gid )        
+        voltageReader = new HDF5Reader( filename.s )
+        
+        sprint( dataset.s, "/a%d/%s/data", gid, $s3 )        
+        voltageReader.loadData( dataset.s )
+        
+        dtReport = voltageReader.getAttributeValue( dataset.s, "Dt" )
+        
+        vvec = new Vector()        
+        voltageReader.getColumnData( dataset.s, 0, vvec )
+                
+        // we need to give a tvec to SEClamp, use the stimulation timing values to generate
+        tvec = new Vector()
+        tvec = tvec.indgen( del, del+dur, dtReport )
+        
+        // if we have more voltage data than time or the reverse, balance the vectors
+        if( vvec.size() > tvec.size() ) {
+            vvec.resize( tvec.size() )
+        } else if ( tvec.size() < vvec.size() ) {
+            tvec.resize( vvec.size() )
+        }
+                
+        for pts.o(gidIndex).each_point(&x) {
+            stim = new SEClamp(x)
+            stim.rs = 0.01
+            stim.dur1 = dur
+            
+            dvec = vvec.c
+            dvec.play_remove()
+            dvec.play( &stim.amp1, tvec )
+            voltageReplayList.append( dvec )
+            
+            stimList.append(stim)
+        }
+        
+        timeReplayList.append( tvec )
+        
+    }
+    
 }
 
 endtemplate StimulusManager
