@@ -10,7 +10,7 @@
 
 begintemplate Cell
 public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target
-public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts, rnglist
+public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts, rnglist, insertChannel, delete_axon
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
 objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts, rnglist
 
@@ -83,6 +83,59 @@ proc geom_nseg_lambda() { local secIndex
         secIndex = secIndex+1
     }
 }
+
+proc delete_axon(){local nSec, D1, D2, dist, i1, i2, count
+    count = 0
+    nSec  = 0
+    forsec axonal{nSec = nSec + 1}
+    if(nSec ==0){ //No axon section present
+        D1 = 1
+        D2 = 1
+    }else{
+        access axon[0]
+        i1 = v(0.0001) //hack needed for bglib
+        i2 = v(0.0001) //hack needed for bglib
+        D1 = diam
+        D2 = diam
+        if(nSec >1){ //Only one axon section present
+            access soma distance() //to calculate distance from soma
+            forsec axonal{   // loop through all axon sections and check for 60um distance
+                if(count == 1){
+                    i2 = v(0.0001) //hack needed for bglib
+                }
+                count = count + 1
+                dist = distance(0.5)
+                if(dist > 60){ //if section is longer than 60um then store diam and exit from look
+                    D2 = diam
+                    break
+                }
+            
+            }
+        }
+    }
+    forsec axonal{delete_section()}   
+    execute1("create axon[2]\n", this)
+    access axon[0] {
+        L = 30 
+        diam = D1
+        nseg = 1 + 2*int(L/40)
+        all.append()
+        axonal.append()
+        v(0.0001) = i1
+    }
+    access axon[1] {
+        L = 30 
+        diam = D2
+        nseg = 1 + 2*int(L/40)
+        all.append()
+        axonal.append()  
+        v(0.0001) = i2
+    } 
+    nSecAxonal = 2
+    soma[0] connect axon[0](0), 1
+    axon[0] connect axon[1](0), 1
+}
+
 
 /*!
  * Iterate over the section and compute how many sqgments should be allocate to each.  This number
@@ -181,6 +234,17 @@ proc connect2target() { //$o1 target point process, $o2 returned NetCon
   soma $o2 = new NetCon(&v(1), $o1)
   $o2.threshold = -30
 }
+
+/**
+ * @param $s1 Name of the section - soma, dend, apic, axon, or all
+ * $param $s2 Name of the channel
+ */
+proc insertChannel(){ localobj tmpString
+    tmpString = new String()
+    sprint(tmpString.s, "forsec %s  insert %s", $s1, $s2)
+    execute(tmpString.s, this)
+}
+
 
 create soma[1], dend[1], apic[1], axon[1]
 endtemplate Cell
