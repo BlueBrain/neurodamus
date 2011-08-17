@@ -39,13 +39,13 @@ public noise
  *
  * @param $o1 TargetManager
  * @param $o2 Electrode Manager for extracellular stimulation (optional)
+ * @param $3 optional globalBaseSeed to apply to random numbers (default 0)
  */
-proc init() {
+proc init() { local argIndex
+    
     stimList = new List()
     targetManager = $o1
-    if( numarg() == 2 ) {
-        elecManager = $o2
-    }
+    
     //keep track of how many poisson and noise stims we create so that the seeds can be offset (otherwise we would have same injections or syns/spike trains in a given cell)
     poissonStimCount = 0
     noiseStimCount = 0
@@ -55,6 +55,25 @@ proc init() {
     vecStimList = new List()
     voltageReplayList = new List()
     timeReplayList = new List()
+    
+    globalBaseSeed = 0
+    
+    // if we have been passed an elec manager or base seed argument, need to determine now by arg type.  May want to clean this up in the future to
+    // remove excess freedom for the users
+    if( numarg() > 1 ) {
+        if( argtype(2) == 0 ) { // 0 indicates value type arg, which goes to baseSeed 
+            globalBaseSeed = $2
+        } else if ( argtype(2) == 1 ) { // 1 indicates objref, which goes to elecManager
+            elecManager = $o2
+        }
+    }
+    if( numarg() > 2 ) {
+        if( argtype(3) == 0 ) { // 0 indicates value type arg, which goes to baseSeed 
+            globalBaseSeed = $3
+        } else if ( argtype(3) == 1 ) { // 1 indicates objref, which goes to elecManager
+            elecManager = $o3
+        }
+    }
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -707,17 +726,17 @@ $&2=secIndex
 /*!
  * Given some points on a targeted cell, randomly place synapses and generate their spike trains
  *
- * $1 gid
- * $2 lambda
- * $3 weight
- * $4 number of synapses
+ * @param $1 gid
+ * @param $2 lambda
+ * @param $3 weight
+ * @param $4 number of synapses
  * @param $o5 synapseType as String Name of object to be instantiated for Synapses (nil for default of ExpSyn)
  * @param $o6 synapseConfigure as String: executes code to modify synapse parameters (nil for default values)
  * @param $o7 fillFunctionOverride as String: determines method used to generate the npoison spike timings (nil for default)
- * $8 delay from start of simulation to when simulation starts
- * $9 duration of stimulus
- * $o10 TPointList with apical points
- * $o11 TPointList with basal points
+ * @param $8 delay from start of simulation to when simulation starts
+ * @param $9 duration of stimulus
+ * @param $o10 TPointList with apical points
+ * @param $o11 TPointList with basal points
  */
 proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, lambda, weight, del, dur, substituteCount, vIndex \
     localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, fih, sf, fillFunctionOverride, vecstim, myvec, nil
@@ -726,7 +745,7 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
     iteration = 0
     nCreated = 0
 
-    baseSeed = $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
+    baseSeed = globalBaseSeed + $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
     lambda = $2
     weight = $3
     nNeeded  =  int($4)
@@ -830,27 +849,27 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
 /*!
  * Given some points on a targeted cell, randomly place synapses and generate their spike trains
  *
- * $1 gid
- * $2 weight
- * $3 number of synapses
+ * @param $1 gid
+ * @param $2 weight
+ * @param $3 number of synapses
  * @param $o4 synapseType as String Name of object to be instantiated for Synapses (nil for default of ExpSyn)
  * @param $o5 synapseConfigure as String: executes code to modify synapse parameters (nil for default values)
- * $o6 h5file
- * $o7 tbins
- * $o8 rate
- * $o9 apical points
- * $o10 basal points
+ * @param $o6 h5file
+ * @param $o7 tbins
+ * @param $o8 rate
+ * @param $o9 apical points
+ * @param $o10 basal points
  */
 proc distributePoissonSynapsesInhomogeneous() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, weight, substituteCount, tIndex \
     localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, sf, h5file, tbins, rate, h5reader, vecstim, tbins_vec, rate_vec, inhpoiss, exprng, uniformrng, nil
     strdef tstr, tstr1
     
     //TODO: refactor this code with distributePoissonSynapses
-
+    
     iteration = 0
     nCreated = 0
 
-    baseSeed = $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
+    baseSeed = globalBaseSeed + $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
     weight = $2
     nNeeded  =  int($3)
     synapseConfigure = $o5

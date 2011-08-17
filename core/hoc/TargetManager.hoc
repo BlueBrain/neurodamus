@@ -624,11 +624,9 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
  * @param $1 gid
  * @return List object with SectionRefs to every section in the cell
  */
-obfunc gidToSections() { local n  localobj searchString, resultSerial, nil, cellRef
-    searchString = new String()
-    sprint( searchString.s, "%d", $1 )
+obfunc gidToSections() { local n  localobj resultSerial, nil, cellRef
     
-    resultSerial = sectionAccess.get( searchString )
+    resultSerial = sectionAccess.get( $1 )
     
     if( object_id(resultSerial) == 0 ) {  //must build new one
         //determine if we should use pnm or cellList based on which is actually allocated
@@ -644,7 +642,7 @@ obfunc gidToSections() { local n  localobj searchString, resultSerial, nil, cell
         
         resultSerial = new SerializedSections( cellRef )
         
-        sectionAccess.put( searchString, resultSerial )
+        sectionAccess.put( $1, resultSerial )
     }
     
     return resultSerial

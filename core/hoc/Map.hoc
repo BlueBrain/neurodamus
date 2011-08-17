@@ -17,7 +17,8 @@ begintemplate Map
 // Member fields
 //------------------------------------------------------------------------------------------------------------
 
-objref stringList, valueList
+objref stringList, valueList, numericKeys, sortedLookup, prevItem
+strdef prevKey
 
 //------------------------------------------------------------------------------------------------------------
 // Public accessible
@@ -29,9 +30,14 @@ public init, get, put, key, o, object, count, getV, valueOf, exists
 // Member function implementations
 //------------------------------------------------------------------------------------------------------------
 
-proc init() {
+proc init() { localobj nil
     stringList = new List()
     valueList = new List()
+    isSorted = 0
+    hasOnlyNumericKeys = 1
+    numericKeys = new Vector()
+    prevItem = nil
+    isCacheValid = 0
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -87,26 +93,40 @@ obfunc getV() { local mapIndex localobj nil
     //TODO: if we upgrade: objects should be stored sorted and then find via binary search
     
     strdef searchName
-    if( argtype(1) == 0 ) {
-        sprint( searchName, "%d", $1 )
+    if( argtype(1) == 0 ) {  // given numeric key, check if we can use pure numeric search operations
+        if( hasOnlyNumericKeys ) {
+            return binaryGet( $1 )
+        } else {
+            sprint( searchName, "%d", $1 )
+        }
     } else if( argtype(1) == 1 ) { //extract string
         searchName = $o1.s
     } else {
         searchName = $s1
     }
     
-    print "look for ", searchName
+    print "look for ", searchName, " prev search was for ", prevKey
+    if( isCacheValid ) if( strcmp( prevKey, searchName ) == 0 ) {
+        return prevItem
+    }
+    
+    //print "look for ", searchName
+    prevKey = searchName
+    prevItem = nil
     
     //iterate over list until we find a name that matches
     for mapIndex=0, stringList.count()-1 {
         print stringList.o(mapIndex).s, " vs ", searchName
         //print mapIndex, " ", stringList.o(mapIndex).s
         if( strcmp( stringList.o(mapIndex).s, searchName ) == 0 ) {
-            //print "    found at index ", mapIndex, "!"
-            return valueList.o(mapIndex)
+            print "    found at index ", mapIndex, "!"
+            prevItem = valueList.o(mapIndex)
+            isCacheValid = 1
+            return prevItem
         }
     }
-    
+
+    isCacheValid = 0
     return nil
 }
 
@@ -122,25 +142,82 @@ obfunc get() { local mapIndex localobj nil
     //TODO: if we upgrade: objects should be stored sorted and then find via binary search
     
     strdef searchName
-    if( argtype(1) == 0 ) {
-        sprint( searchName, "%d", $1 )
+    if( argtype(1) == 0 ) {  // given numeric key, check if we can use pure numeric search operations
+        if( hasOnlyNumericKeys ) {
+            return binaryGet( $1 )
+        } else {
+            sprint( searchName, "%d", $1 )
+        }
     } else if( argtype(1) == 1 ) { //extract string
         searchName = $o1.s
     } else {
         searchName = $s1
     }
     
+    if( isCacheValid ) if( strcmp( prevKey, searchName ) == 0 ) {
+        return prevItem
+    }
+
     //print "look for ", searchName
+    prevKey = searchName
+    prevItem = nil
     
     //iterate over list until we find a name that matches
     for mapIndex=0, stringList.count()-1 {
         //print mapIndex, " ", stringList.o(mapIndex).s
         if( strcmp( stringList.o(mapIndex).s, searchName ) == 0 ) {
             //print "    found at index ", mapIndex, "!"
-            return valueList.o(mapIndex)
+            prevItem = valueList.o(mapIndex)
+            isCacheValid = 1
+            return prevItem
         }
     }
     
+    isCacheValid = 0
+    return nil
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/**
+ * If our map has only been using numeric keys, then we can use a binary search to find the associate item.
+ * If we can have duplicate numeric keys in a map, then this will break.
+ *
+ * @param $1 key we are looking for in the map
+ * @return found object or nil if not found
+ */
+obfunc binaryGet() { local low, high, mid, key  localobj nil
+    if( !isSorted ) {
+        sortedLookup = numericKeys.sortindex()
+        isSorted = 1
+    }
+    
+    low = 0
+    high = sortedLookup.size()
+    key = $1
+    
+    while ( low < high ) {
+        mid = int(( low+high)*0.5 )
+        
+        //print key, " vs ", numericKeys.x[ sortedLookup.x[mid] ]
+        if( key > numericKeys.x[ sortedLookup.x[mid] ] ) { // must guess again, lower
+            low = mid+1
+        } else {
+            high = mid
+        }
+        //print "range ", low, " .. ", high
+    }
+    
+    //did we stop somewhere?
+    //print low
+    if( high < sortedLookup.size() ) {
+        //print sortedLookup.x[low], numericKeys.x[ sortedLookup.x[low] ]
+        if( numericKeys.x[ sortedLookup.x[low] ] == key ) {  //found
+            return valueList.o( sortedLookup.x[low] )
+        }
+    }
+    
+    //print "nil"
     return nil
 }
 
@@ -155,17 +232,25 @@ obfunc get() { local mapIndex localobj nil
 proc put() { localobj wrapString
     //TODO: if we upgrade: check for duplicates and store new objects in lexographical order
     
-    if( argtype(1) == 0 ) {
+    if( argtype(1) == 0 ) {  //given number.  As long as only numeric keys are given, we can maintain info for binary searching
         wrapString = new String()
         sprint( wrapString.s, "%d", $1 )
         stringList.append( wrapString )
+        
+        if( hasOnlyNumericKeys ) {
+            numericKeys.append($1)
+            isSorted = 0
+        }
     } else if( argtype(1) == 2 ) {  //must wrap string in object
         wrapString = new String($s1)
         stringList.append( wrapString )
+        hasOnlyNumericKeys = 0
     } else {  
         stringList.append( new String($o1.s) ) //so as not to store a reference which might change
+        hasOnlyNumericKeys = 0
     }
     
+    isCacheValid = 0
     valueList.append( $o2 )
 }
 
