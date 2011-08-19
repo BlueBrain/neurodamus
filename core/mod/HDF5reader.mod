@@ -669,7 +669,7 @@ VERBATIM {
                 return 0;
             }
             pdVec = vector_arg(3);
-            vector_resize(pdVec, info->rowsize_);
+            vector_resize(pdVec, (int) info->rowsize_);
             pd = vector_vec(pdVec);
             for( i=0; i<info->rowsize_; i++){
                 pd[i] = info->datamatrix_[i*info->columnsize_ + column];
