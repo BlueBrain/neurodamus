@@ -561,9 +561,11 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
     ptProcessLibrary.append( new String( "ExpSyn" ) )
     ptProcessLibrary.append( new String( "Exp2Syn" ) )
     ptProcessLibrary.append( new String( "ProbGABAA" ) )
+    ptProcessLibrary.append( new String( "ProbGABAA_EMS" ) )
     ptProcessLibrary.append( new String( "ProbAMPA" ) )
     ptProcessLibrary.append( new String( "ProbNMDA" ) )
     ptProcessLibrary.append( new String( "ProbAMPANMDA" ) )
+    ptProcessLibrary.append( new String( "ProbAMPANMDA_EMS" ) )
     ptProcessLibrary.append( new String( "StdpWADoublet" ) )
     ptProcessLibrary.append( new String( "StdpWATriplet" ) )
 
