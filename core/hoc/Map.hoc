@@ -24,7 +24,7 @@ strdef prevKey
 // Public accessible
 //------------------------------------------------------------------------------------------------------------
 
-public init, get, put, key, o, object, count, getV, valueOf, exists
+public init, get, put, key, keyValue, o, object, count, getV, valueOf, exists
 
 //------------------------------------------------------------------------------------------------------------
 // Member function implementations
@@ -57,6 +57,23 @@ func count() {
  */
 obfunc key() {
     return stringList.o($1)
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Special version where the key is expected to be a value
+ *
+ * @param $1 index The index into the map from where to get a key
+ * @return The string used as a key at the specified index (no bounds checking)
+ */
+func keyValue() {
+    if( hasOnlyNumericKeys ) {
+        return numericKeys.x[$1]
+    }
+
+    print "cannot return a numeric key from map unless it contains only numeric keys"
+    return -1
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -188,6 +205,7 @@ obfunc get() { local mapIndex localobj nil
  */
 obfunc binaryGet() { local low, high, mid, key  localobj nil
     if( !isSorted ) {
+        //print "resort ", numericKeys.size(), " items"
         sortedLookup = numericKeys.sortindex()
         isSorted = 1
     }
