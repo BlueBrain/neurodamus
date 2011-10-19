@@ -41,6 +41,7 @@ public init, addCompartmentReport, addSummationReport, addSynapseReport, get_mem
  * @param $7 startTime - when the report begins
  * @param $8 endTime - when the report stops
  * @param $s9 Output dir - directory where report files are to be written
+ * @param $o10 Scaling option to apply to Summation reports: 'None' disables all scaling, 'Area' (or nil) converts density to area, electrodeName - TBD
  */
 proc init() {
     reportName = $s1
@@ -74,6 +75,23 @@ proc init() {
     //For some reports, we will need to store the ALU objects that are performing operations on the various properties (e.g. current sources)
     if( strcmp( reportType, "Summation" ) == 0 ||  strcmp( reportType, "Synapse" ) == 0 ) {
         ALUList = new List()
+    }
+    
+    // Constants for scaling
+    SCALING_NONE = 0
+    SCALING_AREA = 1
+    SCALING_ELECTRODE = 2
+    
+    scalingMode = SCALING_AREA
+    if( object_id($o10) != 0 ) {
+        if( strcmp( $o10.s, "None" ) == 0 ) {
+            scalingMode = SCALING_NONE
+        } else if( strcmp( $o10.s, "Area" ) == 0 ) {
+            scalingMode = SCALING_AREA
+        } else {
+            scalingMode = SCALING_ELECTRODE
+            // need to do something with the electrode name -> see LFP branch
+        }
     }
 }
 
@@ -355,7 +373,13 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
                     //need to convert distributed current sources units.  NEURON stores/reports them as mA/cm^2; we want nA
                     // to convert, multiply by the area of the cmp (micron^2) then multiply by powers of 10 so units agree
                 	//for conductances NEURON reports them as S/cm^2. so the final report is uS
-                    scalar = area(x) / 100 // mA => nA (or S => uS):  * 10^6, cm^2 => micron^2 : 1/10^8
+                    if( scalingMode == SCALING_AREA ) {
+                        scalar = area(x) / 100 // mA => nA (or S => uS):  * 10^6, cm^2 => micron^2 : 1/10^8
+                    } else if( scalingMode == SCALING_NONE ) {
+                        scalar = 1
+                    } else {
+                        scalar = 1 //should use electrode -> pending merge with LFP branch
+                    }
                     sprint(tstr,"{ALUhelper.addvar(&%s(%1.2f), %f)}", intrinsicList.o(intrinsicIndex).s, x, scalar)
                     execute(tstr, this)
                 } else {
