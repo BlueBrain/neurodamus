@@ -83,14 +83,16 @@ proc init() {
     SCALING_ELECTRODE = 2
     
     scalingMode = SCALING_AREA
-    if( object_id($o10) != 0 ) {
-        if( strcmp( $o10.s, "None" ) == 0 ) {
-            scalingMode = SCALING_NONE
-        } else if( strcmp( $o10.s, "Area" ) == 0 ) {
-            scalingMode = SCALING_AREA
-        } else {
-            scalingMode = SCALING_ELECTRODE
-            // need to do something with the electrode name -> see LFP branch
+    if( numarg() > 9 ) {
+        if( object_id($o10) != 0 ) {
+            if( strcmp( $o10.s, "None" ) == 0 ) {
+                scalingMode = SCALING_NONE
+            } else if( strcmp( $o10.s, "Area" ) == 0 ) {
+                scalingMode = SCALING_AREA
+            } else {
+                scalingMode = SCALING_ELECTRODE
+                // need to do something with the electrode name -> see LFP branch
+            }
         }
     }
 }
