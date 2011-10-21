@@ -38,7 +38,8 @@ VERBATIM
 
 #define H5_USE_16_API 1
 //#include "/opt/hdf5/include/hdf5.h"  //-linsrv
-#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"  //-blugene
+//#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"  //-blugene
+#include "/users/delalond/Dev/bglib1.5/dep-install/include/hdf5.h" // Cray XT5
 #include "mpi.h"
 #include <stdlib.h>
 
@@ -126,7 +127,7 @@ herr_t loadShareData( hid_t loc_id, const char *name, void *opdata )
         return 0;
     }
     
-    hsize_t dims[2] = {}, offset[2] = {0,0};
+    hsize_t dims[2] = {0,0}, offset[2] = {0,0};
     hid_t dataset_id, dataspace;
     dataset_id = H5Dopen(info->file_, name);
     if(dataset_id < 0)
@@ -436,7 +437,7 @@ VERBATIM {
         strncpy(name,gargstr(1),256);
         if(strncmp(info->name_group,name,256))
         {
-            hsize_t dims[2] = {},offset[2] = {};
+            hsize_t dims[2] = {0,0},offset[2] = {0,0};
             offset[0] = 0 ; offset [1] = 0;
             hid_t dataset_id, dataspace;
             dataset_id = H5Dopen(info->file_, name);
