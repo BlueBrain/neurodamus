@@ -38,8 +38,8 @@ VERBATIM
 
 #define H5_USE_16_API 1
 //#include "/opt/hdf5/include/hdf5.h"  //-linsrv
-//#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"  //-blugene
-#include "/users/delalond/Dev/bglib1.5/dep-install/include/hdf5.h" // Cray XT5
+#include "/bgscratch/bbptmp/build/libraries/hdf5/include/hdf5.h"  //-blugene
+//#include "/users/delalond/Dev/bglib1.5/dep-install/include/hdf5.h" // Cray XT5
 #include "mpi.h"
 #include <stdlib.h>
 
