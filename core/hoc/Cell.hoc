@@ -94,7 +94,7 @@ proc delete_axon(){local nSec, D1, D2, dist, i1, i2, count
     }else{
         access axon[0]
         i1 = v(0.0001) //hack needed for bglib
-        i2 = v(0.0001) //hack needed for bglib
+        i2 = v(0.0001)
         D1 = diam
         D2 = diam
         if(nSec >1){ //Only one axon section present

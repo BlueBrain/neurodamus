@@ -38,7 +38,7 @@ proc init() { local i, vNum, pX, pY, pZ localobj parsedElectrodes, pathString, t
 		//currName = parsedElectrodes.key(i)
 		//currMap = parsedElectrodes.o(i)
 		if(parsedElectrodes.o(i).get("File") == nil){
-			print "No filename given for Electrode ", parsedElectrodes.key(i), "cannot parse anything!"
+			print "No filename given for Electrode ", parsedElectrodes.key(i).s, "cannot parse anything!"
 			continue
 		}
 		sprint(pathString.s,"%s/%s",electrodePath.s,parsedElectrodes.o(i).get("File").s)
