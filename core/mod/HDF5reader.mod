@@ -10,14 +10,14 @@ ENDCOMMENT
 
 COMMENT
 This is intended to serve two purposes.  One as a general purpose reader for HDF5 files with a basic set of
-accessor functions.  In addition, it will have special handling for our synapse 
-data files such that they can be handled
-more efficiently in a  massively parallel manner.
+accessor functions.  In addition, it will have special handling for our synapse data files such that they can be handled
+more efficiently in a  massively parallel manner.  I feel inclined to spin this functionality out into a c++ class where
+I can access more advanced coding structures, especially STL.
 ENDCOMMENT
 
 NEURON {
-        ARTIFICIAL_CELL HDF5Reader
-        POINTER ptr
+    ARTIFICIAL_CELL HDF5Reader
+    POINTER ptr
 }
 
 PARAMETER {
@@ -58,7 +58,58 @@ extern void* vector_arg(int);
 extern void* vector_resize();
 
 /**
- * Hold persistenet HDF5 data such as file handle and info about latest dataset loaded
+ * During synapse loading initialization, the h5 files with synapse data are catalogged
+ * such that each cpu looks at a subset of what's available and gets ready to report to
+ * other cpus where to find postsynaptic cells
+ */
+struct SynapseCatalog
+{
+    /// The base filename for synapse data.  The fileID is applied as a suffix (%s.%d)
+    char* rootName;
+    
+    /// When working with multiple files, track the id of the active file open
+    int fileID;
+    
+    /// The number of files this cpu has catalogged
+    int nFiles;
+    
+    /// The IDs for the files this cpu has catalogged
+    int *fileIDs;
+    
+    /// For each file, the number of gids catalogged
+    int *availablegidCount;
+    
+    /// For each file, an array of the gids catalogged
+    int **availablegids;
+    
+    /// The index of the gid being handled in the catalog
+    int gidIndex;
+};
+
+typedef struct SynapseCatalog SynapseCatalog;
+
+
+
+/**
+ * After loading, the cpus will exchange requests for info about which files contain synapse
+ * data for their local gids.  This is used to store the received info provided those gids receive
+ */
+struct ConfirmedCells
+{
+    /// The number of files and gids that are confirmed as loadable for this cpu
+    int count;
+    
+    /// The gids that can be loaded by this cpu
+    int *gids;
+    
+    /// The files to be opened for this cpu's gids
+    int *fileIDs;
+};
+
+typedef struct ConfirmedCells ConfirmedCells;
+
+/**
+ * Hold persistent HDF5 data such as file handle and info about latest dataset loaded
  */
 struct Info {
     
@@ -69,14 +120,11 @@ struct Info {
     hsize_t rowsize_;
     hsize_t columnsize_;
     
-    /// For coordinated synapse loading (may not be needed for smaller circuits) 
-    int gid_;
-    int dataCount;
-    int dataIndex;
-    float** dataCollection;
-    int *rowCollection;
-    int *colCollection;
-    int *gidCollection;
+    /// Used to catalog contents of some h5 files tracked by this cpu
+    SynapseCatalog synapseCatalog;
+    
+    /// Receive info on which files contain data for gids local to this cpu
+    ConfirmedCells confirmedCells;
 };
 
 typedef struct Info Info;
@@ -91,23 +139,34 @@ typedef struct Info Info;
  */
 void initInfo( Info *info )
 {
+    // These fields are used when data is being accessed from a dataset
     info->file_ = -1;
     info->datamatrix_ = NULL;
     info->name_group[0] = '\0';
     info->rowsize_ = 0;
     info->columnsize_ = 0;
-    info->gid_ = 0;
-    info->dataCount = 0;
-    info->dataIndex = 0;
-    info->dataCollection = NULL;
-    info->rowCollection = NULL;
-    info->colCollection = NULL;
-    info->gidCollection = NULL;
+    
+    // These fields are used exclusively for catalogging which h5 files contain which postsynaptic gids
+    info->synapseCatalog.fileID = -1;
+    info->synapseCatalog.fileIDs = NULL;
+    info->synapseCatalog.nFiles = 0;
+    info->synapseCatalog.availablegidCount = NULL;
+    info->synapseCatalog.availablegids = NULL;
+    info->synapseCatalog.gidIndex = 0;
+    info->confirmedCells.count = 0;
+    info->confirmedCells.gids = NULL;
+    info->confirmedCells.fileIDs = NULL;
 }
 
+
+
 /**
- * Callback function for H5Giterate - this will load data for a dataset into memory.  It will be
- * kept in a buffer until explicitly freed.  This will be after all exchanges have completed.
+ * Callback function for H5Giterate - if the dataset opened corresponds to a gid, it is catalogged so the
+ * local cpu can inform other cpus the whereabouts of that gid
+ *
+ * @param loc_id hdf5 handle to the open file
+ * @param name name of the dataset to be accessed during this iteration step
+ * @param opdata not used since we have global Info object
  */
 herr_t loadShareData( hid_t loc_id, const char *name, void *opdata )
 {
@@ -118,64 +177,50 @@ herr_t loadShareData( hid_t loc_id, const char *name, void *opdata )
     //fprintf( stderr, "open dataset %s\n", name );
     
     //make sure we are using a dataset that corresponds to a gid
-    info->gid_ = atoi( name+1 );
-    char rebuild[128];
-    sprintf( rebuild, "a%d", info->gid_ );
+    int gid = atoi( name+1 );
+    char rebuild[32];
+    snprintf( rebuild, 32, "a%d", gid );
     if( strcmp( rebuild, name ) != 0 ) {
         //non-synapse dataset, but not an error (could just be the version info)
         //fprintf( stderr, "ignore non-gid dataset\n" );
         return 0;
     }
     
-    hsize_t dims[2] = {0,0}, offset[2] = {0,0};
-    hid_t dataset_id, dataspace;
-    dataset_id = H5Dopen(info->file_, name);
-    if(dataset_id < 0)
-    {
-        printf("Error accessing to dataset %s in synapse file\n", name);
-        return -1;
-    }
-    
-    dataspace = H5Dget_space( dataset_id );
-    int dimensions = H5Sget_simple_extent_ndims(dataspace);
-    
-    H5Sget_simple_extent_dims( dataspace, dims, NULL );
-    info->rowsize_ = (unsigned long) dims[0];
-    if( dimensions > 1 )
-        info->columnsize_ = dims[1];
-    else
-        info->columnsize_ = 1;        
-    
-    info->datamatrix_ = (float *) malloc( sizeof(float) * (info->rowsize_*info->columnsize_) ); 
-    H5Sselect_hyperslab( dataspace, H5S_SELECT_SET, offset, NULL, dims, NULL );
-    hid_t dataspacetogetdata = H5Screate_simple(dimensions,dims,NULL);
-    H5Dread( dataset_id, H5T_NATIVE_FLOAT, dataspacetogetdata, H5S_ALL, H5P_DEFAULT, info->datamatrix_ );
-    H5Sclose( dataspace );
-    H5Sclose( dataspacetogetdata );
-    H5Dclose( dataset_id );
+    // we have confirmed that this dataset corresponds to a gid.  The active file should make it part of its data
+    int fileIndex = info->synapseCatalog.nFiles-1;
+    info->synapseCatalog.availablegids[ fileIndex ][ info->synapseCatalog.gidIndex++ ] = gid;
     
     return 1;
 }
 
+
+
 /**
- * Open an HDF5 file for reading.  In the case of synapse data, the data may be loaded immediately to improve read performance.
- * Some or all of the synapse data will be loaded with the intent to exchange that data across nodes in order to ship required
- * synapse data to the appropriate cpu.
- * 
+ * Open an HDF5 file for reading.  In the event of synapse data, the datasets of the file may be iterated in order to
+ * build a catalog of available gids and their file locations.
+ *
+ * @param info Structure that manages hdf5 info 
  * @param filename File to open
- * @param nNodesPerFile 0: open file, but don't load data; 1: open file and read entire contents; N: read protion of file
+ * @param fileID Integer to identify this file (attached as suffix to filename)
+ * @param nNodesPerFile 0: open file, but don't load data; 1: open file for catalogging; N: read portion of file for catalogging
  * @param startRank used to help calculate data range to load when file subportion is loaded
  * @param myRank used to help calculate data range to load when file subportion is loaded
  */
-int openFile( Info* info, const char *filename, int nRanksPerFile, int startRank, int myRank )
+int openFile( Info* info, const char *filename, int fileID, int nRanksPerFile, int startRank, int myRank )
 {
     if( info->file_ != -1 ) {
         H5Fclose(info->file_);
     }
     
+    char nameoffile[512];
     //fprintf( stderr, "arg check: %s %d %d %d\n", filename, nRanksPerFile, startRank, myRank );
-
-    info->file_ = H5Fopen( filename, H5F_ACC_RDONLY, H5P_DEFAULT );
+    if( fileID != -1 ) {
+        snprintf( nameoffile, 512, "%s.%d", filename, fileID );
+    } else {
+        strncpy( nameoffile, filename, 512 );
+    }
+    
+    info->file_ = H5Fopen( nameoffile, H5F_ACC_RDONLY, H5P_DEFAULT );
     info->name_group[0]='\0';
     if( info->file_ < 0 ) {
         info->file_ = -1;
@@ -183,24 +228,21 @@ int openFile( Info* info, const char *filename, int nRanksPerFile, int startRank
         return -1;
     }
     
-    //fprintf( stderr, "file opened\n" );
-    
     if( nRanksPerFile == 0 ) {
-        //fprintf( stderr, "normal case - return now\n" );
-        // don't need to load data yet, return now
+        // don't need to load data yet, so we return
         return 0;
     }
+    
+    // will catalog synapse data
+    info->synapseCatalog.fileID = fileID;
     
     int nDatasetsToImport=0, startIndex=0;
     hsize_t nObjects;
     H5Gget_num_objs( info->file_, &nObjects );
     
-    // get some stats on how big the file is    
-    fprintf( stderr, "nObjects %d\n", (int) nObjects );
-    
     if( nRanksPerFile == 1 ) {
         nDatasetsToImport = (int) nObjects;
-    }    
+    }
     else {
         // need to determine which indices to read
         nDatasetsToImport = (int) nObjects / nRanksPerFile;
@@ -214,14 +256,18 @@ int openFile( Info* info, const char *filename, int nRanksPerFile, int startRank
                 //fprintf( stderr, "No need to import any data on rank %d since all %d are claimed\n", myRank, (int) nObjects );
                 return 0;
             }
-        }        
+        }
     }
     
-    info->dataCount += nDatasetsToImport;
-    info->dataCollection = (float**) realloc ( info->dataCollection, sizeof(float*)*info->dataCount );
-    info->rowCollection = (int*) realloc ( info->rowCollection, sizeof(int)*info->dataCount );
-    info->colCollection = (int*) realloc ( info->colCollection, sizeof(int)*info->dataCount );
-    info->gidCollection = (int*) realloc ( info->gidCollection, sizeof(int)*info->dataCount );
+    int nFiles = ++info->synapseCatalog.nFiles;
+    info->synapseCatalog.fileIDs = (int*) realloc ( info->synapseCatalog.fileIDs, sizeof(int)*nFiles );
+    info->synapseCatalog.fileIDs[nFiles-1] = fileID;
+    info->synapseCatalog.availablegidCount = (int*) realloc ( info->synapseCatalog.availablegidCount, sizeof(int)*nFiles );
+    info->synapseCatalog.availablegids = (int**) realloc ( info->synapseCatalog.availablegids, sizeof(int*)*nFiles );
+    
+    info->synapseCatalog.availablegidCount[nFiles-1] = nDatasetsToImport;
+    info->synapseCatalog.availablegids[nFiles-1] = (int*) calloc ( nDatasetsToImport, sizeof(int) );
+    info->synapseCatalog.gidIndex=0;
     
     //fprintf( stderr, "load datasets %d through %d (max %d)\n", startIndex, startIndex+nDatasetsToImport, (int) nObjects );
     
@@ -231,36 +277,78 @@ int openFile( Info* info, const char *filename, int nRanksPerFile, int startRank
         result = H5Giterate( info->file_, "/", &verify, loadShareData, NULL );
         if( result != 1 )
             continue;
+    }
             
-        info->dataCollection[info->dataIndex] = info->datamatrix_;
-        info->rowCollection[info->dataIndex] = (int) info->rowsize_;
-        info->colCollection[info->dataIndex] = (int) info->columnsize_;
-        info->gidCollection[info->dataIndex] = info->gid_;
-        info->dataIndex++;
+    return 0;
+}
+
+
+
+/**
+ * Given the name of a dataset, load it from the current hdf5 file into the matrix pointer
+ *
+ * @param info Structure that manages hdf5 info, its datamatrix_ variable is populated with hdf5 data on success
+ * @param name The name of the dataset to access and load in the hdf5 file
+ */
+int loadDataMatrix( Info *info, char* name )
+{
+    int isCurrentlyLoaded = strncmp( info->name_group, name, 256 ) == 0;
+    if( isCurrentlyLoaded )
+        return 0;
+    
+    hsize_t dims[2] = {0}, offset[2] = {0};
+    hid_t dataset_id, dataspace;
+    dataset_id = H5Dopen(info->file_, name);
+    if( dataset_id < 0)
+    {
+        printf("Error accessing to dataset %s in synapse file\n", name);
+        return -1;
     }
     
-    info->datamatrix_ = NULL;
-    info->rowsize_ = 0;
-    info->columnsize_ = 0;
-    info->gid_ = 0;
-        
+    strncpy(info->name_group, name, 256);
+    
+    dataspace = H5Dget_space(dataset_id);
+    
+    int dimensions = H5Sget_simple_extent_ndims(dataspace);
+    //printf("Dimensions:%d\n",dimensions);
+    H5Sget_simple_extent_dims(dataspace,dims,NULL);
+    //printf("Accessing to %s , nrow:%lu,ncolumns:%lu\n",info->name_group,(unsigned long)dims[0],(unsigned long)dims[1]);
+    info->rowsize_ = (unsigned long)dims[0];
+    if( dimensions > 1 )
+        info->columnsize_ = dims[1];
+    else
+        info->columnsize_ = 1;
+    //printf("\n Size of data is row= [%d], Col = [%lu]\n", dims[0], (unsigned long)dims[1]);
+    if(info->datamatrix_ != NULL)
+    {
+        //printf("Freeeing memory \n ");
+        free(info->datamatrix_);
+    }
+    info->datamatrix_ = (float *) malloc(sizeof(float) *(info->rowsize_*info->columnsize_)); 
+    //info->datamatrix_ = (float *) hoc_Emalloc(sizeof(float) *(info->rowsize_*info->columnsize_)); hoc_malchk();
+    // Last line fails, corrupt memory of argument 1 and  probably more
+    H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, NULL, dims, NULL);
+    hid_t dataspacetogetdata=H5Screate_simple(dimensions,dims,NULL);
+    H5Dread(dataset_id,H5T_NATIVE_FLOAT,dataspacetogetdata,H5S_ALL,H5P_DEFAULT,info->datamatrix_);
+    H5Sclose(dataspace);
+    H5Sclose(dataspacetogetdata);
+    H5Dclose(dataset_id);
+    //printf("Working , accessed %s , on argstr1 %s\n",info->name_group,gargstr(1));
     return 0;
 }
 
 ENDVERBATIM
+
+
 
 CONSTRUCTOR { : double - loc of point process ??? ,string filename
 VERBATIM {
     char nameoffile[512];
     int nFiles = 1;
     
-    //redirect();
-    
     if( ifarg(2) ) {
         nFiles = *getarg(2);
     }
-    
-    //fprintf( stderr, "continue? %d %d %d\n", nFiles, ifarg(1), hoc_is_str_arg(1) );
     
     if(ifarg(1) && hoc_is_str_arg(1)) {
         INFOCAST;
@@ -271,16 +359,14 @@ VERBATIM {
         initInfo( info );
         *ip = info;
         
-        //fprintf( stderr, "%s\n", nameoffile );
-        
         if( nFiles == 1 ) {
             // normal case - open a file and be ready to load data as needed
-            openFile( info, nameoffile, 0, 0, 0 );
+            openFile( info, nameoffile, -1, 0, 0, 0 );
         }
         else
         {
-            // testing - can we read from a single nrn.h5.X file, take a subset of the datasets and then be ready to communicate
-            //  the available local data to the other cpus in the network
+            // Each cpu is reponsible for a portion of the data
+            info->synapseCatalog.rootName = strdup( nameoffile );
             
             int mpi_size, mpi_rank;
             MPI_Comm_size( MPI_COMM_WORLD, &mpi_size );
@@ -304,10 +390,10 @@ VERBATIM {
                 int fileIndex = (int) mpi_rank / nRanksPerFile;  //this should be truncated
                 int startRank = fileIndex * nRanksPerFile;
                 
-                sprintf( nameoffile, "%s.%d", gargstr(1), fileIndex );
+                //sprintf( nameoffile, "%s.%d", gargstr(1), fileIndex );
                 //fprintf( stderr, "I should open file %s\n", nameoffile );
                 
-                openFile( info, nameoffile, nRanksPerFile, startRank, mpi_rank );
+                openFile( info, nameoffile, fileIndex, nRanksPerFile, startRank, mpi_rank );
                 
             } else {
                 // one or more files per cpu - any file opened should load all the data.
@@ -328,8 +414,8 @@ VERBATIM {
                 
                 int fileIndex=0;
                 for( fileIndex=0; fileIndex<nFilesPerRank; fileIndex++ ) {
-                    sprintf( nameoffile, "%s.%d", gargstr(1), startFile+fileIndex );
-                    openFile( info, nameoffile, 1, 0, 0 );
+                    //sprintf( nameoffile, "%s.%d", gargstr(1), startFile+fileIndex );
+                    openFile( info, nameoffile, startFile+fileIndex, 1, 0, 0 );
                 }
             }
         }
@@ -337,6 +423,8 @@ VERBATIM {
 }
 ENDVERBATIM
 }
+
+
 
 DESTRUCTOR {
 VERBATIM { 
@@ -356,6 +444,8 @@ VERBATIM {
 }
 ENDVERBATIM
 }
+
+
 
 FUNCTION redirect() {
 VERBATIM {
@@ -432,73 +522,34 @@ VERBATIM {
     
     if(info->file_>=0 && ifarg(1) && hoc_is_str_arg(1))
     {
-        //fprintf( stderr, "loadData old style\n" );
-        char name[256];
-        strncpy(name,gargstr(1),256);
-        if(strncmp(info->name_group,name,256))
-        {
-            hsize_t dims[2] = {0,0},offset[2] = {0,0};
-            offset[0] = 0 ; offset [1] = 0;
-            hid_t dataset_id, dataspace;
-            dataset_id = H5Dopen(info->file_, name);
-            if(dataset_id < 0)
-            {
-                printf("Error accessing to dataset %s in synapse file\n", name);
-                return -1;
-            }
-            strncpy(info->name_group,name,256);
-            dataspace = H5Dget_space(dataset_id);
-            int dimensions = H5Sget_simple_extent_ndims(dataspace);
-            //printf("Dimensions:%d\n",dimensions);
-            H5Sget_simple_extent_dims(dataspace,dims,NULL);
-            //printf("Accessing to %s , nrow:%lu,ncolumns:%lu\n",info->name_group,(unsigned long)dims[0],(unsigned long)dims[1]);
-            info->rowsize_ = (unsigned long)dims[0];
-            if( dimensions > 1 )
-                info->columnsize_ = dims[1];
-            else
-                info->columnsize_ = 1;
-            //printf("\n Size of data is row= [%d], Col = [%lu]\n", dims[0], (unsigned long)dims[1]);
-            if(info->datamatrix_ != NULL)
-            {
-                //printf("Freeeing memory \n ");
-                free(info->datamatrix_);
-            }
-            info->datamatrix_ = (float *) malloc(sizeof(float) *(info->rowsize_*info->columnsize_)); 
-            //info->datamatrix_ = (float *) hoc_Emalloc(sizeof(float) *(info->rowsize_*info->columnsize_)); hoc_malchk();
-            // Last line fails, corrupt memory of argument 1 and  probably more
-            H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, NULL, dims, NULL);
-            hid_t dataspacetogetdata=H5Screate_simple(dimensions,dims,NULL);
-            H5Dread(dataset_id,H5T_NATIVE_FLOAT,dataspacetogetdata,H5S_ALL,H5P_DEFAULT,info->datamatrix_);
-            H5Sclose(dataspace);
-            H5Sclose(dataspacetogetdata);
-            H5Dclose(dataset_id);
-            //printf("Working , accessed %s , on argstr1 %s\n",info->name_group,gargstr(1));
-            return 0;
-        }
-        return 0;
-    } else if( ifarg(1) ) {
+        return loadDataMatrix( info, gargstr(1) );
+    }
+    else if( ifarg(1) )
+    {
         int gid = *getarg(1);
         int gidIndex=0;
         
-        for( gidIndex=0; gidIndex<info->dataCount; gidIndex++ ) {
-            if( info->gidCollection[gidIndex] == gid ) {
-                info->datamatrix_ = info->dataCollection[gidIndex];
-                info->rowsize_ = info->rowCollection[gidIndex];
-                info->columnsize_ = info->colCollection[gidIndex];
+        for( gidIndex=0; gidIndex<info->confirmedCells.count; gidIndex++ ) {
+            if( info->confirmedCells.gids[gidIndex] == gid ) {
+                openFile( info, info->synapseCatalog.rootName, info->confirmedCells.fileIDs[gidIndex], 0, 0, 0 );
                 
-                sprintf( info->name_group, "a%d", gid );
-                return 0;
+                char cellname[256];
+                sprintf( cellname, "a%d", gid );
+                
+                return loadDataMatrix( info, cellname );
             }
         }
         
         //if we reach here, did not find data
-        fprintf( stderr, "Error: failed to find data for gid %d\n", gid );
+        fprintf( stderr, "Warning: failed to find data for gid %d\n", gid );
     }
     
     return 0;
 }
 ENDVERBATIM
 }
+
+
 
 FUNCTION getNoOfColumns(){ : string cellname
 VERBATIM { 
@@ -528,6 +579,7 @@ ENDVERBATIM
 }       
 
 
+
 FUNCTION numberofrows() { : string cellname
 VERBATIM { 
     INFOCAST; 
@@ -554,6 +606,8 @@ VERBATIM {
 }
 ENDVERBATIM
 }
+
+
 
 FUNCTION getData() {
 VERBATIM { 
@@ -587,7 +641,6 @@ VERBATIM {
 }
 ENDVERBATIM
 }
-
 
 
 
@@ -731,141 +784,6 @@ ENDVERBATIM
 }
 
 
-FUNCTION exchangeSynapses() {
-VERBATIM
-/**
- * @param gidvec hoc vector containing list of gids on local cpu
- */
-if( ifarg(1) ) {
-    INFOCAST; 
-    Info* info = *ip;
-    
-    void* vv = vector_arg(1);
-    int gidCount = vector_capacity(vv);
-    double *gidList = vector_vec(vv);
-    
-    //fprintf( stderr, "will be getting data for %d gids, sharing %d\n", gidCount, info->dataIndex ); 
-    
-    int mpi_size, mpi_rank;
-    MPI_Comm_size (MPI_COMM_WORLD, &mpi_size);
-    MPI_Comm_rank (MPI_COMM_WORLD, &mpi_rank);
-        
-    int *gidTransmissionCounts = (int*) malloc (sizeof(int)*mpi_size);
-    
-    if( info->dataIndex != info->dataCount ) {
-        // expected since version datasets throw off dataCount
-        //fprintf( stderr, "Warning - why shouldn't data index and data count be the same.  Over estimated the count?\n" );
-    }
-    MPI_Allgather( &info->dataIndex, 1, MPI_INT, gidTransmissionCounts, 1, MPI_INT, MPI_COMM_WORLD );
-    
-    float **keepData = (float**) malloc ( sizeof(float*)*gidCount );
-    int *keepRows = (int*) malloc ( sizeof(int)*gidCount );
-    int *keepCols = (int*) malloc ( sizeof(int)*gidCount );
-    int *keepGids = (int*) malloc ( sizeof(int)*gidCount );
-    float *activeData = NULL;
-    int maxCount = 0;
-    int maxDataBlock = 0;
-    
-    int nodeIndex=0, keepIndex=0;
-    int *gatherRows=NULL, *gatherCols=NULL, *gatherGids=NULL;
-int blab = 1000;
-double kstart = MPI_Wtime();
-    for( ; nodeIndex < mpi_size; nodeIndex++ ) {
-        // don't bother with data exchange if no gids
-        if( gidTransmissionCounts[nodeIndex] == 0 )
-            continue;
-        
-double jstart = MPI_Wtime();
-        if( maxCount < gidTransmissionCounts[nodeIndex] ) {
-            maxCount = gidTransmissionCounts[nodeIndex];
-            gatherRows = (int*) realloc ( gatherRows, sizeof(int)*3*maxCount );
-        }
-        gatherCols = &(gatherRows[gidTransmissionCounts[nodeIndex]]);
-        gatherGids = &(gatherRows[gidTransmissionCounts[nodeIndex]*2]);
-
-        if( nodeIndex == mpi_rank ) {
-            memcpy( gatherRows, info->rowCollection, sizeof(int)*gidTransmissionCounts[nodeIndex] );
-            memcpy( gatherCols, info->colCollection, sizeof(int)*gidTransmissionCounts[nodeIndex] );
-            memcpy( gatherGids, info->gidCollection, sizeof(int)*gidTransmissionCounts[nodeIndex] );
-        }
-        
-if( blab == 1000 && mpi_rank == 0 )
- fprintf( stderr, "expecting %d synapse elements from cpu %d %lf\n", gidTransmissionCounts[nodeIndex], nodeIndex, MPI_Wtime()-kstart );
-if( blab == 1000 && mpi_rank == 0 )
- fprintf( stderr, "0 elapsed %lf s\n", MPI_Wtime()-jstart );
-        MPI_Bcast( gatherRows, 3*gidTransmissionCounts[nodeIndex], MPI_INT, nodeIndex, MPI_COMM_WORLD );
-if( blab == 1000 && mpi_rank == 0 )
- fprintf( stderr, "1 elapsed %lf s\n", MPI_Wtime()-jstart );
-        
-        int sendIndex=0, searchIndex=0;
-        for( sendIndex=0; sendIndex<gidTransmissionCounts[nodeIndex]; sendIndex++ ) {
-            if( nodeIndex == mpi_rank ) {
-                if( activeData ) {
-                    free(activeData);
-                }
-                //fprintf( stderr, "xmit gid %d (%d)\n", gatherGids[sendIndex], info->gidCollection[sendIndex] );
-                activeData = info->dataCollection[sendIndex];
-                maxDataBlock = sizeof(float)*gatherRows[sendIndex]*gatherCols[sendIndex];
-            } else {
-                if( maxDataBlock < sizeof(float)*gatherRows[sendIndex]*gatherCols[sendIndex] ) {
-                    maxDataBlock = sizeof(float)*gatherRows[sendIndex]*gatherCols[sendIndex];
-                    activeData = (float*) realloc ( activeData, maxDataBlock );
-                }
-                //fprintf( stderr, "recv gid %d from %d\n", gatherGids[sendIndex], nodeIndex );
-                //activeData = (float*) malloc ( sizeof(float)*gatherRows[sendIndex]*gatherCols[sendIndex] );
-            }
-            
-            MPI_Bcast( activeData, gatherRows[sendIndex]*gatherCols[sendIndex], MPI_FLOAT, nodeIndex, MPI_COMM_WORLD );
-            
-            // if we need this data, store the pointer.  Otherwise free the memory
-            int found = 0;
-            for( searchIndex=0; searchIndex<gidCount; searchIndex++ ) {
-                if( gidList[searchIndex] == gatherGids[sendIndex] ) {
-if( mpi_rank == 0 )
-                    fprintf( stderr, "found gid %lf which I need (recv from node %d)\n", gidList[searchIndex], nodeIndex );
-                    keepData[keepIndex] = activeData;
-                    keepGids[keepIndex] = gatherGids[sendIndex];
-                    keepRows[keepIndex] = gatherRows[sendIndex];
-                    keepCols[keepIndex] = gatherCols[sendIndex];
-                    keepIndex++;
-                    found = 1;
-                    activeData = NULL;
-                    maxDataBlock = 0;
-                }
-            }
-            
-            //if( !found ) {
-            //    free(activeData);
-            //}
-        }
-if( blab == 1000 && mpi_rank == 0 )
- fprintf( stderr, "2 elapsed %lf s\n", MPI_Wtime()-jstart );
-
-blab++;
-if( blab > 1000 ) {
-    blab-=1000;
-}
-    }
-
-    free( gatherRows );
-    if( activeData ) {
-        free(activeData);
-    }
-    
-    // TODO: stop leaking memory here
-    info->dataCollection = keepData;
-    info->rowCollection = keepRows;
-    info->colCollection = keepCols;
-    info->gidCollection = keepGids;
-    info->dataCount = gidCount;
-}
-
-ENDVERBATIM
-}
-
-
-
-
 
 FUNCTION closeFile() {
 VERBATIM { 
@@ -884,5 +802,106 @@ VERBATIM {
         info->datamatrix_ = NULL;
     }
 }
+ENDVERBATIM
+}
+
+
+
+COMMENT
+/**
+ * This function will have each cpu learn from the other cpus which nrn.h5 file contains the data it needs.  It can then load
+ * the data as needed using the older functions.  Hopefully this will be better since it avoids loading data that is not needed and then
+ * transmitting it across the network.  My concern is that there will still be some contention on the various nrn.h5 files with multiple cpus
+ * accessing it at once, but we will see how that unfolds.
+ *
+ * @param gidvec hoc vector containing list of gids on local cpu
+ */
+ENDCOMMENT
+FUNCTION exchangeSynapseLocations() {
+VERBATIM
+    INFOCAST; 
+    Info* info = *ip;
+    
+    int mpi_size, mpi_rank;
+    MPI_Comm_size (MPI_COMM_WORLD, &mpi_size);
+    MPI_Comm_rank (MPI_COMM_WORLD, &mpi_rank);
+    
+    void* vv = vector_arg(1);
+    int gidCount = vector_capacity(vv);
+    double *gidList = vector_vec(vv);
+    
+    // used to store the number of gids found per cpu
+    int *foundCountsAcrossCPUs = (int*) malloc( sizeof(int)*mpi_size );
+    int *foundDispls = (int*) malloc( sizeof(int)*mpi_size );
+    
+    int bufferSize;
+    
+    // have every cpu allocate a buffer capable of holding the data for the cpu with the most cells
+    MPI_Allreduce( &gidCount, &bufferSize, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD );
+    double* gidsRequested = (double*) malloc ( sizeof(double)*bufferSize );
+    int* gidsFound = (int*) malloc( sizeof(int)*bufferSize );
+    int* fileIDsFound = (int*) malloc( sizeof(int)*bufferSize );
+    
+    double *tempRequest;  //used to hold the gidsRequested buffer when this cpu is broadcasting its gidList
+    
+    // each cpu in turn will bcast its local gids.  It should then get back the file indices where the data can be found.
+    int activeRank, requestCount;
+    for( activeRank=0; activeRank<mpi_size; activeRank++ ) {
+        if( activeRank == mpi_rank ) {
+            requestCount = gidCount;
+            tempRequest = gidsRequested;
+            gidsRequested = gidList;
+        }
+        
+        MPI_Bcast( &requestCount, 1, MPI_INT, activeRank, MPI_COMM_WORLD );
+        MPI_Bcast( gidsRequested, requestCount, MPI_DOUBLE, activeRank, MPI_COMM_WORLD );
+                
+        // each cpu will check if the requested gids exist in its list
+        int nFiles = 0;
+        
+        // TODO: linear searches at the moment.  Maybe a more efficient ln(n) search.  Although, I would prefer to implement that
+        //  with access to STL or the like data structures.
+        int fileIndex, gidIndex, requestIndex;
+        for( fileIndex=0; fileIndex < info->synapseCatalog.nFiles; fileIndex++ ) {
+            for( gidIndex=0; gidIndex < info->synapseCatalog.availablegidCount[fileIndex]; gidIndex++ ) {
+                for( requestIndex=0; requestIndex < requestCount; requestIndex++ ) {
+                    if( info->synapseCatalog.availablegids[fileIndex][gidIndex] == gidsRequested[requestIndex] ) {
+                        gidsFound[nFiles] = gidsRequested[requestIndex];
+                        fileIDsFound[nFiles++] = info->synapseCatalog.fileIDs[fileIndex];
+                    }
+                }
+            }
+        }
+        
+        MPI_Gather( &nFiles, 1, MPI_INT, foundCountsAcrossCPUs, 1, MPI_INT, activeRank, MPI_COMM_WORLD );
+        
+        if( activeRank == mpi_rank ) {
+            info->confirmedCells.count = 0;
+            
+            int nodeIndex;
+            for( nodeIndex=0; nodeIndex<mpi_size; nodeIndex++ ) {
+                foundDispls[nodeIndex] = info->confirmedCells.count;
+                info->confirmedCells.count += foundCountsAcrossCPUs[nodeIndex];
+            }
+            info->confirmedCells.gids = (int*) malloc ( sizeof(int)*info->confirmedCells.count );
+            info->confirmedCells.fileIDs = (int*) malloc ( sizeof(int)*info->confirmedCells.count );
+        }
+        
+        MPI_Gatherv( gidsFound, nFiles, MPI_INT, info->confirmedCells.gids, foundCountsAcrossCPUs, foundDispls, MPI_INT, activeRank, MPI_COMM_WORLD );
+        MPI_Gatherv( fileIDsFound, nFiles, MPI_INT, info->confirmedCells.fileIDs, foundCountsAcrossCPUs, foundDispls, MPI_INT, activeRank, MPI_COMM_WORLD );
+        
+        // put back the original gid request buffer so as to not destroy this cpu's gidList
+        if( activeRank == mpi_rank ) {
+            gidsRequested = tempRequest;
+        }
+
+    }
+
+    free(gidsRequested);
+    free(gidsFound);
+    free(fileIDsFound);
+    free(foundCountsAcrossCPUs);
+    free(foundDispls);
+    
 ENDVERBATIM
 }
