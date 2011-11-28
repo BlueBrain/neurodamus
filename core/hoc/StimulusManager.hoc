@@ -128,7 +128,7 @@ obfunc getExtracellularParams() { local injIndex localobj listForTarget, newList
  * 
  */
 proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIndex, scaleFac, secType, secNum, offset, tx, ty, tz, x localobj stimlist, eName, pts, gidObj, stim, estim, paramValue, activeElectrode, nil
-    
+    strdef tstr 
     //verify that electrode manager was passed to StimulusManager
     if( elecManager == nil ) {
         execerror("Error: attempting to use extracellular stimulation without ElectrodeManager" )
@@ -136,7 +136,7 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 	
 	stimlist = getExtracellularParams($o1,$o2)	
 	for targetIndex=0, stimlist.count()-1{ //over all unique targets
-		//print "Treating extracellulars for target: ", stimlist.key(targetIndex).s
+		print "Treating extracellulars for target: ", stimlist.key(targetIndex).s
 		pts = targetManager.getPointList(stimlist.key(targetIndex).s) //get that target
 		gidObj = targetManager.gids(stimlist.key(targetIndex).s)
 		
@@ -154,16 +154,15 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 				//Compare Electrode name. TODO: Need to find a solution for lookup by location.
 				//Also: Maybe do this with a Map object?
 				if( paramValue != nil && (strcmp(paramValue.s,eName.s)==0) ){
-					estim.train( stim.valueOf( "Delay" ), stim.valueOf( "Duration" ), stim.valueOf( "AmpStart" ), stim.valueOf( "Frequency" ), stim.valueOf( "Width" ) )					
+					estim.train( stim.valueOf( "Delay" ), stim.valueOf( "Duration" ), stim.valueOf( "AmpStart" ), stim.valueOf( "Frequency" ), stim.valueOf( "Width" ) )
 				}								
 			}
-			estim.initElec() //now that we treated all stimuli using this electrode we can initiate it
+			estim.initRawElec() //now that we treated all stimuli using this electrode we can initiate it
 			for cellIndex=0, pts.count()-1 { //Now over all compartments in the target
 				scaleFac = 0
 				for pts.o(cellIndex).each_point(&x) {
-					if(!ismembrane("extracellular")){
-						insert extracellular
-					}
+					sprint(tstr,"{%s insert extracellular}",secname())
+			                execute1(tstr,0)
 					if(!getSecTypeAndIndex(&secType,&secNum)){	//Now get the scale factor based on distance
 						if(activeElectrode.vInfo()>4){ //version 4 has one value per compartment, <4 only one per Section							
 							scaleFac = activeElectrode.getValueForSection(gidObj.x[cellIndex],secType,secNum,x)
