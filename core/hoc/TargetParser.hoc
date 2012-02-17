@@ -79,13 +79,16 @@ proc open() { localobj tFile, targetInstance
                 tFile.gets(tstr) //Grab '{'
                 sscanf(tstr, "%s",tstr1) 
                 if( targetInstance.isCellTarget() ) {  //only need to parse into cellnames and target names
-                    parseCellTargetContents( tFile, targetInstance )
+                    targetInstance.isEmpty = parseCellTargetContents( tFile, targetInstance )
                 } else {
-                    parseOtherTargetContents( tFile, targetInstance )
+                    targetInstance.isEmpty = parseOtherTargetContents( tFile, targetInstance )
                 }
                 
                 //note that the closing '}' was grabbed during whichever parse*Contents function call
                 targetInstance.isDefined = 1
+
+                //Display msg to default output if target instance is empty
+                if (targetInstance.isEmpty) print "Warning: Following target is empty: ", targetInstance.name
             }            
         }
         tFile.close()
@@ -146,8 +149,9 @@ proc updateTargets() { local targetIndex localobj activeTarget
  *
  * @param $o1 Reference to file where data is coming from
  * @param $o2 Reference to Target object where data is stored
+ * @return Returns error code (1 if target is empty, 0 otherwise)
  */
-proc parseCellTargetContents() { local potentialGid  localobj tFile, targetInstance, addition
+func parseCellTargetContents() { local potentialGid, numberToken localobj tFile, targetInstance, addition
     tFile = $o1
     targetInstance = $o2
     strdef tstr1
@@ -157,12 +161,18 @@ proc parseCellTargetContents() { local potentialGid  localobj tFile, targetInsta
     
     while(0 != strcmp(tstr1, "}") && 0 != strcmp( tstr1, "{" ) && !tFile.eof() ) {
         potentialGid = addMember(tstr1, targetInstance )
-        
+
+        //count the number of parsed token 
+        numberToken = numberToken + 1       
+      
         //get next string
         tFile.scanstr(tstr1)
     }
     
     validateTargetTermination(targetInstance.name, tstr1)
+
+    //Return error code: 1 if target is empty, 0 if 
+    if (numberToken == 0) return 1 else return 0
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -173,8 +183,9 @@ proc parseCellTargetContents() { local potentialGid  localobj tFile, targetInsta
  *
  * @param $o1 Reference to file where data is coming from
  * @param $o2 Reference to Target object where data is stored
+ * @return Returns error code (1 if target is empty, 0 otherwise)
  */
-proc parseOtherTargetContents() { local offset, extraIndex, potentialGid, val localobj tFile, targetInstance, addition, extraData, strobj, extraStrings, extraValues, pendingSubset
+func parseOtherTargetContents() { local offset, extraIndex, potentialGid, val, numberToken localobj tFile, targetInstance, addition, extraData, strobj, extraStrings, extraValues, pendingSubset
     tFile = $o1
     targetInstance = $o2
     strdef tstr, tstr1, remake
@@ -185,7 +196,10 @@ proc parseOtherTargetContents() { local offset, extraIndex, potentialGid, val lo
     
     sscanf(tstr, "%s",tstr1)
     while(0 != strcmp(tstr1, "}") && 0 != strcmp( tstr1, "{" ) && !tFile.eof() ) {
-    
+   
+        //count the number of parsed token
+        numberToken = numberToken + 1
+ 
         potentialGid = addMember(tstr1, targetInstance )
         
         //look at remainder of line for [cell|target]Extra field
@@ -242,6 +256,9 @@ proc parseOtherTargetContents() { local offset, extraIndex, potentialGid, val lo
     }
     
     validateTargetTermination(targetInstance.name, tstr1)
+
+    //Return error code: 1 if target is empty, 0 if
+    if (numberToken == 0) return 1 else return 0
 }
  
 //------------------------------------------------------------------------------------------------------------
