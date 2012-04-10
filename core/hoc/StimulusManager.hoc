@@ -234,10 +234,15 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
     // check for target name argument
     } else if( argtype(1) == 2 ) {
         // SquarePulse for target name arg
-        if( strcmp( patternName.s, "SquarePulse" ) == 0 ) {
+        if( strcmp( patternName.s, "Hyperpolarizing" ) == 0 ) {
+            hypamp( $s1, del, dur )
+        } else if( strcmp( patternName.s, "SquarePulse" ) == 0 ) {
+            /*
             relamp = stim.valueOf( "relAmp" )
             threshold = targetManager.getCells($s1).o(0).getCCell().getThreshold()
             linear( $s1, relamp * threshold, relamp * threshold, del, dur )
+            targetManager.getCells($s1)
+            */
         } else if( strcmp( patternName.s, "Linear" ) == 0 ) {
             paramVect.append( stim.valueOf("AmpStart") )
             
@@ -245,7 +250,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             if( stim.get( "AmpEnd" ) != nil ) {
                 paramVect.append( stim.valueOf("AmpEnd") )
             } else {
-                paramVect.append( paramVect.x[paramVect.count()-1] )
+                paramVect.append( paramVect.x[paramVect.size()-1] )
             }
             
             linear( $s1, paramVect.x[0], paramVect.x[1], del, dur )
@@ -256,7 +261,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             if( stim.get( "PercentEnd" ) != nil ) {
                 paramVect.append( stim.valueOf("PercentEnd") )
             } else {
-                paramVect.append( paramVect.x[paramVect.count()-1] )
+                paramVect.append( paramVect.x[paramVect.size()-1] )
             }
             
             relativeLinear( $s1, paramVect.x[0], paramVect.x[1], del, dur )
@@ -352,6 +357,38 @@ proc squarepulse() { local cellIndex, x, amp, del, dur  localobj pts, tstim
         
         tstim.pulse( del, dur, amp)
         stimList.append( tstim )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Apply a cell's hyperpolarizing current for the given time span.  The current value (I) to apple is 
+ * part of the CCell template (provided it has been calculated)
+ *
+ * @param $s1 Target name
+ * @param $2 delay 
+ * @param $3 duration
+ */
+proc hypamp() { local hypampI, ret, x, del, dur  localobj pts, cellList, tstim
+    pts = targetManager.getPointList($s1)
+    cellList = targetManager.getCells($s1)
+    del = $2
+    dur = $3
+    
+    for cellIndex=0, pts.count()-1 {
+        for pts.o(cellIndex).each_point(&x) {
+            ret = execute1( "{getHypAmp()}", cellList.o(cellIndex).getCCell(), 0 )
+            if( ret == 0 ) {
+                print cellList.o(cellIndex).getCCell()
+                print "Warning: gid ", pts.o(cellIndex).gid, " request for hyperpolarizing current injection where CCell template has no getHypAmp function"
+            } else {
+                hypampI = cellList.o(cellIndex).getCCell().getHypAmp()
+                tstim = new TStim(x)
+                tstim.pulse( del, dur, hypampI )
+                stimList.append(tstim)
+            }
+        }
     }
 }
 
