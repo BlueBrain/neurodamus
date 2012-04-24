@@ -2,6 +2,7 @@
 
 begintemplate Cell
 public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
+public locateBAPSite, getLongestBranch, locateSites2
 public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts, rnglist
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
 objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts, rnglist
@@ -231,6 +232,123 @@ proc insertChannel(){ localobj tmpString
     tmpString = new String()
     sprint(tmpString.s, "forsec %s  insert %s", $s1, $s2)
     execute(tmpString.s, this)
+}
+
+/*!
+ * Calculates the length of the longest branch in a section array
+ *
+ * @param $s1 Name of the section array - soma, dend, apic, axon, or all
+ */
+func getLongestBranch(){local maxL,d localobj distallist,sref
+    strdef tstr
+    sprint(tstr,"%s distance()",$s1)
+    execute(tstr,this)
+
+    if (0 == strcmp($s1,"axon")) {
+        sprint(tstr,"%s[0] distance(1)",$s1)
+        execute(tstr,this)
+    }
+
+    maxL = 0
+    d = 0
+    distallist = new SectionList()
+    forsec $s1 {
+        sref = new SectionRef()
+        if (sref.nchild==0) distallist.append()
+    }
+    forsec distallist{
+        d = distance(1)
+        if(maxL<d) maxL = d
+    }
+    // for the soma case
+    if (maxL == 0) {
+        $s1 {
+            maxL = L
+        }
+    }
+
+    return maxL
+}
+
+/*!
+ * Locates the compartments at a certain distance in a section array
+ *
+ * @param $s1 Name of the section array - soma, dend, apic, axon, or all
+ * @param $2 Distance value
+ *
+ * returns a list of vectors with two values. Every vector in the list [value1, value2]
+ * represents one point at the specified distance. 
+ * value1 is the index of the section in the section array
+ * value2 is the x of the compartment in the section
+ */
+obfunc locateSites2() {local site,d0,d1,siteX,i localobj vv,ll
+    strdef tstr
+    ll = new List()
+
+    sprint(tstr,"%s distance()", $s1)
+    execute(tstr, this)
+
+    if (0 == strcmp($s1,"axon")) {
+        sprint(tstr,"%s[0] distance(1)",$s1)
+        execute(tstr,this)
+    }
+
+    site = $2
+    i = 0
+
+    forsec $s1 {
+        if (distance(0) < distance(1)) {
+            d0 = distance(0)
+            d1 = distance(1)
+        } else {
+            d1 = distance(0)
+            d0 = distance(1)
+        }
+
+        if (site <= d1 && site >= d0) {
+            siteX = (site-d0)/(d1-d0)
+            secNum = i
+            vv = new Vector()
+            ll.append(vv.append(secNum,siteX))
+        }
+
+        i = i+1
+    }
+    return ll
+}
+
+/*!
+ * Locates a compartment at a certain distance in a section array. If there is more than one compartment is found
+ * at this distance, the thickest compartment is chosen
+ *
+ * @param $s1 Name of the section array - soma, dend, apic, axon, or all
+ * @param $2 Distance value
+ *
+ * returns a vector [value1, value2] that represents one point at the specified distance. 
+ * value1 is the index of the section in the section array
+ * value2 is the x of the segment in the section
+ * If no compartment is found at the specified distance, and an empty vector is returned 
+ */
+obfunc locateBAPSite() {local thisdiam, iSite, thickSite localobj sitesList, returnList, thickSection
+    strdef locName
+    sitesList = locateSites2($s1, $2)
+    maxdiam = 0
+    for (iSite = 0; iSite < sitesList.count(); iSite += 1) {
+        thisdiam = apic[sitesList.o[iSite].x[0]].diam
+        if (thisdiam > maxdiam) {
+          thickSite = iSite
+          maxdiam = thisdiam
+        }
+    }
+    returnList = new Vector()
+   
+    if (sitesList.count() == 0) {
+        print "*** Unable to find compartment at BAP site ***"
+    } else {
+        returnList.append(sitesList.o(thickSite).x[0], sitesList.o(thickSite).x[1])
+    }
+    
+    return returnList
 }
 
 endtemplate Cell
