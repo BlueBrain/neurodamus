@@ -1,9 +1,17 @@
+{load_file("TDistFunc.hoc")}
+/**
+ * @file Cell.hoc
+ * @brief 
+ * @author king
+ * @date 2009-07-08
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
 {load_file("import3d.hoc")}
 
 begintemplate Cell
-public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
-public locateBAPSite, getLongestBranch, locateSites2
-public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts, rnglist
+public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target
+public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts, rnglist, insertChannel, delete_axon
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
 objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts, rnglist
 
@@ -17,16 +25,16 @@ external lambda_f
  * @param $s2 full path to morphology [optional] file to load in cell's geometric information
  */
 proc init() {
-    gid     = 0
-    all     = new SectionList()
-    somatic = new SectionList()
-    basal   = new SectionList()
-    apical  = new SectionList()
-    axonal  = new SectionList()
+	gid 	= 0
+	all 	= new SectionList()
+	somatic = new SectionList()
+	basal 	= new SectionList()
+	apical 	= new SectionList()
+	axonal 	= new SectionList()
     forall delete_section()
     if(numarg()>0) gid = $1
-    if(numarg()>1){
-        AddMorphNL($s2)
+	if(numarg()>1){
+		AddMorphNL($s2)
     }
     
     synlist = new List()
@@ -35,7 +43,8 @@ proc init() {
 create soma[1], dend[1], apic[1], axon[1]
 
 proc AddMorphNL(){ localobj nl, import
-    forall delete_section()    
+    forall delete_section()
+    
     nl = new Import3d_Neurolucida3()
     nl.quiet = 1
     nl.input($s1)
@@ -45,72 +54,19 @@ proc AddMorphNL(){ localobj nl, import
     geom_nsec()
 }
 
-proc delete_axon(){local nSec, D1, D2, dist, i1, i2, count
-    count = 0
-    nSec  = 0
-    forsec axonal{nSec = nSec + 1}
-    if(nSec ==0){ //No axon section present
-        D1 = 1
-        D2 = 1
-    }else{
-        access axon[0]
-        i1 = v(0.0001) //hack needed for bglib
-        i2 = v(0.0001) //hack needed for bglib 
-        D1 = diam
-        D2 = diam
-        if(nSec >1){ //Only one axon section present
-            access soma distance() //to calculate distance from soma
-            forsec axonal{   // loop through all axon sections and check for 60um distance 
-                if(count == 1){
-                    i2 = v(0.0001) //hack needed for bglib
-                }
-                count = count + 1
-                dist = distance(0.5)
-                if(dist > 60){ //if section is longer than 60um then store diam and exit from look
-                    D2 = diam
-                    break
-                }
-
-            }
-        }
-    }
-    forsec axonal{delete_section()}    
-    execute1("create axon[2]\n", this)
-    access axon[0] {
-        L = 30
-        diam = D1
-        nseg = 1 + 2*int(L/40)
-        all.append()
-        axonal.append()
-        v(0.0001) = i1
-    }
-    access axon[1] {
-        L = 30
-        diam = D2
-        nseg = 1 + 2*int(L/40)
-        all.append()
-        axonal.append()
-        v(0.0001) = i2
-    } 
-    nSecAxonal = 2
-    soma[0] connect axon[0](0), 1
-    axon[0] connect axon[1](0), 1
-}
-
-
 proc SetCellProperties(){local Rm,v_init
-        Rm = $1
-        v_init = $2
-        forall {
-                insert pas
-                Ra = 80
-                g_pas=1/Rm
-                e_pas=v_init
-                cm = 1
-        }
-        
-        //whenever the Cell properties (resistance esp.) change, recalculate how a section divides into segments
-        //geom_nseg()  //for now, let the CCell do this after biophys is executed
+	Rm = $1
+	v_init = $2
+	forall {
+		insert pas
+		Ra = 80
+		g_pas=1/Rm
+		e_pas=v_init
+		cm = 1
+	}
+	
+	//whenever the Cell properties (resistance esp.) change, recalculate how a section divides into segments
+	//geom_nseg()  //for now, let the CCell do this after biophys is executed
 }
 
 /*!
@@ -129,16 +85,70 @@ proc geom_nseg_lambda() { local secIndex
     }
 }
 
+proc delete_axon(){local nSec, D1, D2, dist, i1, i2, count
+    count = 0
+    nSec  = 0
+    forsec axonal{nSec = nSec + 1}
+    if(nSec ==0){ //No axon section present
+        D1 = 1
+        D2 = 1
+    }else{
+        access axon[0]
+        i1 = v(0.0001) //hack needed for bglib
+        i2 = v(0.0001)
+        D1 = diam
+        D2 = diam
+        if(nSec >1){ //Only one axon section present
+            access soma distance() //to calculate distance from soma
+            forsec axonal{   // loop through all axon sections and check for 60um distance
+                if(count == 1){
+                    i2 = v(0.0001) //hack needed for bglib
+                }
+                count = count + 1
+                dist = distance(0.5)
+                if(dist > 60){ //if section is longer than 60um then store diam and exit from look
+                    D2 = diam
+                    break
+                }
+            
+            }
+        }
+    }
+    forsec axonal{delete_section()}   
+    execute1("create axon[2]\n", this)
+    access axon[0] {
+        L = 30 
+        diam = D1
+        nseg = 1 + 2*int(L/40)
+        all.append()
+        axonal.append()
+        v(0.0001) = i1
+    }
+    access axon[1] {
+        L = 30 
+        diam = D2
+        nseg = 1 + 2*int(L/40)
+        all.append()
+        axonal.append()  
+        v(0.0001) = i2
+    } 
+    nSecAxonal = 2
+    soma[0] connect axon[0](0), 1
+    axon[0] connect axon[1](0), 1
+}
+
+
 /*!
  * Iterate over the section and compute how many sqgments should be allocate to each.  This number
  * is influenced by the mechanisms distributed, so this function should be called after assigning biophys
- * @param $1 nseg length
  */
 proc geom_nseg_fixed() { local secIndex
     soma area(.5) // make sure diam reflects 3d points
+    
     secIndex=0
     forsec all {
-        nseg = 1 + 2*int(L/$1)
+        nseg = 1 + 2*int(L/40)
+        
         segCounts.x[secIndex] = nseg
         secIndex = secIndex+1
     }
@@ -150,19 +160,21 @@ proc geom_nseg_fixed() { local secIndex
  */
 proc geom_nsec() { local nSec
     nSec = 0
-    forsec all {        
-        nSec = nSec + 1        
+    forsec all {
+        //nseg = int((L/(0.1*lambda_f(100))+.9)/2)*2 + 1
+        nSec = nSec + 1
+        //print nseg, " ", L
     }
     nSecAll = nSec
     nSec = 0
     forsec somatic { nSec = nSec + 1}
-    nSecSoma    =   nSec
+    nSecSoma	= 	nSec
     nSec = 0
     forsec apical { nSec = nSec + 1}
-    nSecApical=     nSec
+    nSecApical= 	nSec
     nSec = 0
     forsec basal { nSec = nSec + 1}
-    nSecBasal   =   nSec
+    nSecBasal	= 	nSec
     nSec = 0
     forsec axonal { nSec = nSec + 1}
     nSecAxonalOrig = nSecAxonal = nSec
@@ -177,10 +189,10 @@ proc geom_nsec() { local nSec
 }
 
 obfunc getCCell(){
-    return CCellRef
+	return CCellRef
 }
 proc setCCell(){
-    CCellRef = $o1
+	CCellRef = $o1
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -234,121 +246,6 @@ proc insertChannel(){ localobj tmpString
     execute(tmpString.s, this)
 }
 
-/*!
- * Calculates the length of the longest branch in a section array
- *
- * @param $s1 Name of the section array - soma, dend, apic, axon, or all
- */
-func getLongestBranch(){local maxL,d localobj distallist,sref
-    strdef tstr
-    sprint(tstr,"%s distance()",$s1)
-    execute(tstr,this)
 
-    if (0 == strcmp($s1,"axon")) {
-        sprint(tstr,"%s[0] distance(1)",$s1)
-        execute(tstr,this)
-    }
-
-    maxL = 0
-    d = 0
-    distallist = new SectionList()
-    forsec $s1 {
-        sref = new SectionRef()
-        if (sref.nchild==0) distallist.append()
-    }
-    forsec distallist{
-        d = distance(1)
-        if(maxL<d) maxL = d
-    }
-    // for the soma case
-    if (maxL == 0) {
-        $s1 {
-            maxL = L
-        }
-    }
-
-    return maxL
-}
-
-/*!
- * Locates the compartments at a certain distance in a section array
- *
- * @param $s1 Name of the section array - soma, dend, apic, axon, or all
- * @param $2 Distance value
- *
- * returns a list of vectors with two values. Every vector in the list [value1, value2]
- * represents one point at the specified distance. 
- * value1 is the index of the section in the section array
- * value2 is the x of the compartment in the section
- */
-obfunc locateSites2() {local site,d0,d1,siteX,i localobj vv,ll
-    strdef tstr
-    ll = new List()
-
-    sprint(tstr,"%s distance()", $s1)
-    execute(tstr, this)
-
-    if (0 == strcmp($s1,"axon")) {
-        sprint(tstr,"%s[0] distance(1)",$s1)
-        execute(tstr,this)
-    }
-
-    site = $2
-    i = 0
-
-    forsec $s1 {
-        if (distance(0) < distance(1)) {
-            d0 = distance(0)
-            d1 = distance(1)
-        } else {
-            d1 = distance(0)
-            d0 = distance(1)
-        }
-
-        if (site <= d1 && site >= d0) {
-            siteX = (site-d0)/(d1-d0)
-            secNum = i
-            vv = new Vector()
-            ll.append(vv.append(secNum,siteX))
-        }
-
-        i = i+1
-    }
-    return ll
-}
-
-/*!
- * Locates a compartment at a certain distance in a section array. If there is more than one compartment is found
- * at this distance, the thickest compartment is chosen
- *
- * @param $s1 Name of the section array - soma, dend, apic, axon, or all
- * @param $2 Distance value
- *
- * returns a vector [value1, value2] that represents one point at the specified distance. 
- * value1 is the index of the section in the section array
- * value2 is the x of the segment in the section
- * If no compartment is found at the specified distance, and an empty vector is returned 
- */
-obfunc locateBAPSite() {local thisdiam, iSite, thickSite localobj sitesList, returnList, thickSection
-    strdef locName
-    sitesList = locateSites2($s1, $2)
-    maxdiam = 0
-    for (iSite = 0; iSite < sitesList.count(); iSite += 1) {
-        thisdiam = apic[sitesList.o[iSite].x[0]].diam
-        if (thisdiam > maxdiam) {
-          thickSite = iSite
-          maxdiam = thisdiam
-        }
-    }
-    returnList = new Vector()
-   
-    if (sitesList.count() == 0) {
-        print "*** Unable to find compartment at BAP site ***"
-    } else {
-        returnList.append(sitesList.o(thickSite).x[0], sitesList.o(thickSite).x[1])
-    }
-    
-    return returnList
-}
-
+create soma[1], dend[1], apic[1], axon[1]
 endtemplate Cell

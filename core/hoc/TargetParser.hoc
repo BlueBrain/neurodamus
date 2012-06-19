@@ -1,12 +1,10 @@
-/*****************************************************************
-    FileName    : TargetParser.hoc
-    Project     : Blue Brain Project
-    Place       : EPFL, Lausanne Switzerland.
-    Purpose     : The TargetParser will handle reading target files from disk so that such code is removed from the
-                  TargetManager class
-    Author      : 1. James King
-    Revision    : $Revision$ at: $Date$ by $Author$
-****************************************************************/
+/**
+ * @file TargetParser.hoc
+ * @brief Handles reading target files from disk so that such code is removed from the TargetManager class 
+ * @author king
+ * @date 2009-06-12
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
 
 {load_file("Target.hoc")}
 
@@ -23,6 +21,9 @@ objref targetList
 //public functions
 public init, open, targetList, getTarget, updateTargets
 
+//allow some nodes (i.e. node 1) to output messages to the console
+public isVerbose
+
 //------------------------------------------------------------------------------------------------------------
 
 /*!
@@ -30,6 +31,7 @@ public init, open, targetList, getTarget, updateTargets
  */
 proc init() {
     targetList = new List()
+    isVerbose = 0
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -46,8 +48,11 @@ proc open() { localobj tFile, targetInstance
     tFile.ropen($s1)
     
     if (tFile.isopen == 0) {
-        print "Error : Could not open target file :[", $s1,"]"
-	    execerror("Error : Could not open target file :[%s]", $s1)        
+        if( isVerbose != 0 ) {
+            //limit how many error messages are printed since people have difficulty not lying about having a user target :P
+            print "Error : Could not open target file :[", $s1,"]"
+        }
+        quit()
     }else {
         //Read till end of file
         while(tFile.gets(tstr) >= 0){
@@ -74,13 +79,16 @@ proc open() { localobj tFile, targetInstance
                 tFile.gets(tstr) //Grab '{'
                 sscanf(tstr, "%s",tstr1) 
                 if( targetInstance.isCellTarget() ) {  //only need to parse into cellnames and target names
-                    parseCellTargetContents( tFile, targetInstance )
+                    targetInstance.isEmpty = parseCellTargetContents( tFile, targetInstance )
                 } else {
-                    parseOtherTargetContents( tFile, targetInstance )
+                    targetInstance.isEmpty = parseOtherTargetContents( tFile, targetInstance )
                 }
                 
                 //note that the closing '}' was grabbed during whichever parse*Contents function call
                 targetInstance.isDefined = 1
+
+                //Display msg to default output if target instance is empty
+                if (targetInstance.isEmpty) print "Warning: Following target is empty: ", targetInstance.name
             }            
         }
         tFile.close()
@@ -141,8 +149,9 @@ proc updateTargets() { local targetIndex localobj activeTarget
  *
  * @param $o1 Reference to file where data is coming from
  * @param $o2 Reference to Target object where data is stored
+ * @return Returns error code (1 if target is empty, 0 otherwise)
  */
-proc parseCellTargetContents() { local potentialGid  localobj tFile, targetInstance, addition
+func parseCellTargetContents() { local potentialGid, numberToken localobj tFile, targetInstance, addition
     tFile = $o1
     targetInstance = $o2
     strdef tstr1
@@ -152,24 +161,31 @@ proc parseCellTargetContents() { local potentialGid  localobj tFile, targetInsta
     
     while(0 != strcmp(tstr1, "}") && 0 != strcmp( tstr1, "{" ) && !tFile.eof() ) {
         potentialGid = addMember(tstr1, targetInstance )
-        
+
+        //count the number of parsed token 
+        numberToken = numberToken + 1       
+      
         //get next string
         tFile.scanstr(tstr1)
     }
     
     validateTargetTermination(targetInstance.name, tstr1)
+
+    //Return error code: 1 if target is empty, 0 if 
+    if (numberToken == 0) return 1 else return 0
 }
 
 //------------------------------------------------------------------------------------------------------------
 
 /*!
  * For non-Cell targets, any member (cell or subtarget) must be on separate line.  The rest of the line can potentially
- * contain section names, normalized distances (float), or synapse ids (int)
+ * contain section names, section ids (int, but treated as float), normalized distances (float), or synapse ids (int)
  *
  * @param $o1 Reference to file where data is coming from
  * @param $o2 Reference to Target object where data is stored
+ * @return Returns error code (1 if target is empty, 0 otherwise)
  */
-proc parseOtherTargetContents() { local offset, extraIndex, potentialGid, val localobj tFile, targetInstance, addition, extraData, strobj, extraStrings, extraValues, pendingSubset
+func parseOtherTargetContents() { local offset, extraIndex, potentialGid, val, numberToken localobj tFile, targetInstance, addition, extraData, strobj, extraStrings, extraValues, pendingSubset
     tFile = $o1
     targetInstance = $o2
     strdef tstr, tstr1, remake
@@ -180,7 +196,10 @@ proc parseOtherTargetContents() { local offset, extraIndex, potentialGid, val lo
     
     sscanf(tstr, "%s",tstr1)
     while(0 != strcmp(tstr1, "}") && 0 != strcmp( tstr1, "{" ) && !tFile.eof() ) {
-    
+   
+        //count the number of parsed token
+        numberToken = numberToken + 1
+ 
         potentialGid = addMember(tstr1, targetInstance )
         
         //look at remainder of line for [cell|target]Extra field
@@ -213,7 +232,7 @@ proc parseOtherTargetContents() { local offset, extraIndex, potentialGid, val lo
                 }
                 
                 for extraIndex=offset, extraStrings.count()-1 {
-                    sscanf(extraStrings.o(extraIndex).s, "%d", &val)
+                    sscanf(extraStrings.o(extraIndex).s, "%f", &val)
                     extraValues.append(val)
                 }
             } else {
@@ -237,6 +256,9 @@ proc parseOtherTargetContents() { local offset, extraIndex, potentialGid, val lo
     }
     
     validateTargetTermination(targetInstance.name, tstr1)
+
+    //Return error code: 1 if target is empty, 0 if
+    if (numberToken == 0) return 1 else return 0
 }
  
 //------------------------------------------------------------------------------------------------------------
@@ -300,14 +322,13 @@ func addMember() { local potentialGid  localobj targetInstance, addition
  *                    is not found
  */
 obfunc getTarget() { local targetIndex  localobj targetUtil
-    strdef errorMessage
-
     targetUtil = new TargetUtility()
     targetIndex = targetUtil.findTarget( $s1, targetList )
     if( targetIndex < 0 ) {  //not found, error
-        print "Error: target ", $s1, " not found.  Attempting to terminate"
-        sprint( errorMessage, "Error: target %s not found", $s1 )
-        execerror( errorMessage )
+        if( isVerbose ) {
+            print "Error: target ", $s1, " not found.  Attempting to terminate"
+        }
+        quit()
     } else {
         return targetList.object(targetIndex)
     }    
