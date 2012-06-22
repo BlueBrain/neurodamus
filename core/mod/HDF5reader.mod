@@ -120,6 +120,9 @@ struct Info {
     hsize_t rowsize_;
     hsize_t columnsize_;
     
+    /// Sometimes we want to silence certain warnings
+    int verboseLevel;
+    
     /// Used to catalog contents of some h5 files tracked by this cpu
     SynapseCatalog synapseCatalog;
     
@@ -145,6 +148,8 @@ void initInfo( Info *info )
     info->name_group[0] = '\0';
     info->rowsize_ = 0;
     info->columnsize_ = 0;
+    
+    info->verboseLevel = 1;
     
     // These fields are used exclusively for catalogging which h5 files contain which postsynaptic gids
     info->synapseCatalog.fileID = -1;
@@ -349,7 +354,7 @@ VERBATIM {
     if( ifarg(2) ) {
         nFiles = *getarg(2);
     }
-    
+        
     if(ifarg(1) && hoc_is_str_arg(1)) {
         INFOCAST;
         Info* info = 0;
@@ -357,6 +362,11 @@ VERBATIM {
         strncpy(nameoffile, gargstr(1),256);
         info = (Info*) hoc_Emalloc(sizeof(Info)); hoc_malchk();
         initInfo( info );
+        
+        if( ifarg(3) ) {
+            info->verboseLevel = *getarg(3);
+        }
+        
         *ip = info;
         
         if( nFiles == 1 ) {
@@ -541,7 +551,8 @@ VERBATIM {
         }
         
         //if we reach here, did not find data
-        fprintf( stderr, "Warning: failed to find data for gid %d\n", gid );
+        if( info->verboseLevel > 0 )
+            fprintf( stderr, "Warning: failed to find data for gid %d\n", gid );
     }
     
     return 0;
