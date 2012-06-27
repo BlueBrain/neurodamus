@@ -229,7 +229,7 @@ int openFile( Info* info, const char *filename, int fileID, int nRanksPerFile, i
     info->name_group[0]='\0';
     if( info->file_ < 0 ) {
         info->file_ = -1;
-        printf( "ERROR: Failed to open synapse file: %s\n", filename );
+        printf( "ERROR: Failed to open synapse file: %s\n", nameoffile );
         return -1;
     }
     
