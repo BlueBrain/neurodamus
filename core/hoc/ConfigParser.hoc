@@ -1,13 +1,15 @@
-/**
- * @file ConfigParser.hoc
- * @brief The ConfigParser will handle reading BlueConfig files and make the information available
- * @brief to other modules.  Whether the data read from the file should be stored in objects defined
- * @brief in other files may be revised later.  For now, store everything in generic "map" class built
- * @brief from basic implementation
- * @author king
- * @date 2009-06-24
- * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
- */
+/*****************************************************************
+    FileName    : ConfigParser.hoc
+    Project     : Blue Brain Project
+    Place       : EPFL, Lausanne Switzerland.
+    Purpose     : The ConfigParser will handle reading BlueConfig files and make the information available
+                  to other modules.  Whether the data read from the file should be stored in objects defined
+                  in other files may be revised later.  For now, store everything in generic "map" class built
+                  from basic implementation
+    Author      : 1. James King
+                  2. Rajnish Ranjan
+    Revision    : $Revision$ at: $Date$ by $Author$
+****************************************************************/
 
 {load_file("nrngui.hoc")}
 {load_file("Map.hoc")}
@@ -27,13 +29,13 @@ begintemplate ConfigParser
 // Member fields
 //------------------------------------------------------------------------------------------------------------
 
-objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, strUtil
+objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, strUtil
 
 //------------------------------------------------------------------------------------------------------------
 // Public accessible
 //------------------------------------------------------------------------------------------------------------
 
-public init, open, parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes
+public init, open, parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects
 
 //------------------------------------------------------------------------------------------------------------
 // Member function implementations
@@ -47,7 +49,6 @@ proc init() {
     parsedStimuli = new Map()
     parsedInjects = new Map()
     parsedConnects = new Map()
-    parsedElectrodes = new Map()
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -74,7 +75,6 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
     sectionName = new String()
     
     while( configIn.gets(rawline.s) >= 0 ) {
-        trimFront( rawline.s )
         if( strcmp( rawline.s, "\n" ) == 0 ) {
         
         } else if( isCommented( rawline.s ) ) {
@@ -94,19 +94,12 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
                 tempBlock = parseBlock( configIn )
                 parsedReports.put( sectionName, tempBlock )
             } else if ( strcmp( sectionType.s, "Stimulus" ) == 0 ) {
-                tempBlock = parseBlock( configIn )
-                parsedStimuli.put( sectionName, tempBlock )
-                //parseStimulus( configIn, sectionName )
+                parseStimulus( configIn, sectionName )
             } else if ( strcmp( sectionType.s, "StimulusInject" ) == 0 ) {
-                tempBlock = parseBlock( configIn )
-                parsedInjects.put( sectionName, tempBlock )
-                //parseStimulusInject( configIn, sectionName )
+                parseStimulusInject( configIn, sectionName )
             } else if ( strcmp( sectionType.s, "Connection" ) == 0 ) {
                 tempBlock = parseBlock( configIn )
                 parsedConnects.put( sectionName, tempBlock )
-            } else if ( strcmp( sectionType.s, "Electrode" ) == 0 ){
-            	tempBlock = parseBlock( configIn )            			
-            	parsedElectrodes.put( sectionName, tempBlock )
             }
         }
     }
@@ -153,8 +146,6 @@ proc parseRun() { localobj rawline, configIn, fieldName, fieldValue
 //------------------------------------------------------------------------------------------------------------
 
 /*!
- * Generic method for parsing the field/value pairs bwteen the opening/closing braces in the config file
- *
  * @param $o1 File getting parsed
  */
 obfunc parseBlock() { local ret  localobj pendingBlock, rawline, configIn, fieldName, fieldValue
@@ -166,11 +157,6 @@ obfunc parseBlock() { local ret  localobj pendingBlock, rawline, configIn, field
     pendingBlock = new Map()
     
     while( configIn.gets(rawline.s) >= 0 ) {
-        //ignore empty lines
-        trimFront(rawline.s)
-        if( strcmp(rawline.s, "\n") == 0 ) {
-            continue
-        }
     
         //check if close brace to terminate section
         if( isTerminated( rawline.s ) ) {
@@ -211,7 +197,6 @@ obfunc parseBlock() { local ret  localobj pendingBlock, rawline, configIn, field
 //------------------------------------------------------------------------------------------------------------
 
 /*!
- * deprecated - used to get report info, now should use parseBlock
  * @param $o1 File getting parsed
  * @param $o2 Stimulus name - String containing the name
  */
@@ -246,7 +231,6 @@ proc parseReport() { localobj pendingReport, rawline, configIn, fieldName, field
 //------------------------------------------------------------------------------------------------------------
 
 /*!
- * deprecated - used to get stimulus info, now should use parseBlock
  * @param $o1 File getting parsed
  * @param $o2 Stimulus name - String containing the name
  */
@@ -281,7 +265,6 @@ proc parseStimulus() { localobj pendingStim, rawline, configIn, fieldName, field
 //------------------------------------------------------------------------------------------------------------
 
 /*!
- * deprecated - used to get inject info, now should use parseBlock
  * @param $o1 File getting parsed
  * @param $o2 Stimulus Inject name - String containing the name
  */
@@ -308,28 +291,6 @@ proc parseStimulusInject() { localobj pendingInject, rawline, configIn, fieldNam
             sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
             pendingInject.put( fieldName, fieldValue )
         }
-    }
-}
-
-//------------------------------------------------------------------------------------------------------------
-
-/**
- * Remove white space from start and end of a string
- * @param $s1 string to get trimmed
- */
-proc trimFront() { local index
-    strdef peek
-    
-    //confirm that first character is ws
-    peek = $s1
-    strUtil.left(peek, 1)
-    index = strUtil.head( peek, "[ \t]", peek )
-    while( index != -1 ) {
-        strUtil.tail( $s1, "[ \t]", $s1 )
-        
-        peek = $s1
-        strUtil.left(peek, 1)
-        index = strUtil.head( peek, "[ \t]", peek )
     }
 }
 

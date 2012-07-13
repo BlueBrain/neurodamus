@@ -1,11 +1,12 @@
-/**
- * @file TargetManager.hoc
- * @brief Provides an entity to encapsulate the steps to get cell points for use in Stimulation or Reporting 
- * @brief This should make certain features of the simulation transparent such as load balancing and target file format
- * @author king
- * @date 2009-06-12
- * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
- */
+/*****************************************************************
+    FileName    : TargetManager.hoc
+    Project     : Blue Brain Project
+    Place       : EPFL, Lausanne Switzerland.
+    Purpose     : The TargetManager provides an entity to encapsulate the steps to get cell points for use in Stimulation or Reporting
+                  This should make certain features of the simulation transparent such as load balancing and target file format
+    Author      : 1. Jim King
+    Revision    : $Revision$ at: $Date$ by $Author$
+****************************************************************/
 
 //make sure we have some basic things loaded
 {load_file( "nrngui.hoc" )}
@@ -95,7 +96,7 @@ objref targetList, cellList, sectionAccess, isec2sec[1], cellDistributor, nilSec
 public init
 public getTarget, setTargetList, getPointList, locationToPoint, cellDistributor, gids
 public getSomaticSections, getApicalSections, getBasalSections, getAxonalSections, registerCell
-public getApicalPoints, getBasalPoints, compartmentCast
+public getApicalPoints, getBasalPoints
 public selectRandomPoints, getCells
 
 // Ruben's PFE
@@ -532,7 +533,7 @@ obfunc compartmentCast() { localobj target, wrapper
     if( argtype(1) == 2 ) {
         target = getTarget( $s1 )
     } else {
-        target = $o1
+        target = $s1
     }
     
     if( !target.isCellTarget() ) {
@@ -624,9 +625,11 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
  * @param $1 gid
  * @return List object with SectionRefs to every section in the cell
  */
-obfunc gidToSections() { local n  localobj resultSerial, nil, cellRef
+obfunc gidToSections() { local n  localobj searchString, resultSerial, nil, cellRef
+    searchString = new String()
+    sprint( searchString.s, "%d", $1 )
     
-    resultSerial = sectionAccess.get( $1 )
+    resultSerial = sectionAccess.get( searchString )
     
     if( object_id(resultSerial) == 0 ) {  //must build new one
         //determine if we should use pnm or cellList based on which is actually allocated
@@ -642,7 +645,7 @@ obfunc gidToSections() { local n  localobj resultSerial, nil, cellRef
         
         resultSerial = new SerializedSections( cellRef )
         
-        sectionAccess.put( $1, resultSerial )
+        sectionAccess.put( searchString, resultSerial )
     }
     
     return resultSerial
