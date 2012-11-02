@@ -614,7 +614,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
     ptProcessLibrary.append( new String( "StdpWADoublet" ) )
     ptProcessLibrary.append( new String( "StdpWATriplet" ) )
 
-    //Note - only synapse types are put in ptProcessLibrary, with IClamp getting checked separately.  Should we change that behavior?
+    //Note - only synapse types are put in ptProcessLibrary, with IClamp & SEClamp getting checked separately.  Should we change that behavior?
     
     //split 'ReportOn' field on white space and check for special keywords - AllCurrent, SynapticCurrents, IntrinsicCurrents
     strdef fullToken, token, sourceString, skipBlock, internalVar
@@ -677,6 +677,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
                 ptProcessList.append( ptProcessLibrary.o(libIndex) )
             }
             ptProcessList.append( new String( "IClamp" ) )
+            ptProcessList.append( new String( "SEClamp" ) )
         } else if ( strcmp(token, "SynapticCurrents") == 0 ) {
             includeSyn = 1
             for libIndex=0, ptProcessLibrary.count()-1 {
@@ -739,6 +740,11 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
                 includeSyn = 1
                 matched = 1
                 ptProcessList.append( new String( "IClamp" ) )
+            }
+            if ( matched == 0 && strcmp(token,"SEClamp") == 0 ) {
+                includeSyn = 1
+                matched = 1
+                ptProcessList.append( new String( "SEClamp" ) )
             }
             if ( matched == 0 && strcmp(token,"i_membrane") == 0 ) {
                 matched = 1

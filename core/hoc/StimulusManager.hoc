@@ -186,6 +186,10 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 
 //-----------------------------------------------------------------------------------------------
 
+
+
+//-----------------------------------------------------------------------------------------------
+
 /*!
  * For handling stimulus which has been parsed from a file - look at the parameters collected and
  * call the appropriate stimulus functions
@@ -198,19 +202,17 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
  * @param $o2 stim - map containing stimulus parameters
  * @param $3 gid of cell
  */
-proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, target, paramValue, paramVect, patternName, nil
+proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localobj stim, target, paramValue, paramVect, patternName, nil
 
     stim = $o2
     
     paramVect = new Vector()
 	paramValue = stim.get( "Mode" )
+    
+    //Extracellular stimuli handled separately; Current and Voltage Modes only
 	if( strcmp( paramValue.s, "Extracellular" ) == 0 ) { 
-		//Extracellular stimuli handled separately
 		return
-	}else if( strcmp( paramValue.s, "Current" ) != 0 ) {
-		print "Invalid Mode - ", paramValue.s
-		return
-	}    
+	}
     
     //all will have Delay and Duration, so parse immediately
     del = stim.valueOf( "Delay" )
@@ -234,7 +236,10 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
     // check for target name argument
     } else if( argtype(1) == 2 ) {
         // SquarePulse for target name arg
-        if( strcmp( patternName.s, "Hyperpolarizing" ) == 0 ) {
+        if( strcmp( patternName.s, "SEClamp" ) == 0 ) {
+            targetVm = stim.valueOf( "Voltage" )
+            seclamp( $s1, targetVm, del, dur )
+        } else if( strcmp( patternName.s, "Hyperpolarizing" ) == 0 ) {
             hypamp( $s1, del, dur )
         } else if( strcmp( patternName.s, "SquarePulse" ) == 0 ) {
             /*
@@ -1154,6 +1159,36 @@ proc replayVoltageTrace() { local gidIndex, x, dtReport, del, dur \
         
     }
     
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Places an SEClamp on the targeted locations which will hold the voltage to the indicated value
+ *
+ * @param $s1 Target name
+ * @param $2 target membrane voltage Vm
+ * @param $3 delay for stimulus onset (not used)
+ * @param $4 duration of stimulus
+ */
+proc seclamp() { local del, dur, gidIndex, x  localobj pts, stim
+    del = $3
+    dur = $4
+    
+    //gids = targetManager.gids( $s1 )
+    pts = targetManager.getPointList( $s1 )
+    
+    for gidIndex=0, pts.count()-1 {
+        for pts.o(gidIndex).each_point(&x) {
+            stim = new SEClamp(x)
+            stim.rs = 0.01
+            stim.dur1 = dur
+            stim.amp1 = $2
+            
+            stimList.append(stim)
+        }        
+    }
+
 }
 
 endtemplate StimulusManager
