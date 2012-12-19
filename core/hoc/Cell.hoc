@@ -138,57 +138,6 @@ proc geom_nseg_lambda() { local secIndex
     }
 }
 
-proc delete_axon(){local nSec, D1, D2, dist, i1, i2, count
-    count = 0
-    nSec  = 0
-    forsec axonal{nSec = nSec + 1}
-    if(nSec ==0){ //No axon section present
-        D1 = 1
-        D2 = 1
-    }else{
-        access axon[0]
-        i1 = v(0.0001) //hack needed for bglib
-        i2 = v(0.0001)
-        D1 = diam
-        D2 = diam
-        if(nSec >1){ //Only one axon section present
-            access soma distance() //to calculate distance from soma
-            forsec axonal{   // loop through all axon sections and check for 60um distance
-                if(count == 1){
-                    i2 = v(0.0001) //hack needed for bglib
-                }
-                count = count + 1
-                dist = distance(0.5)
-                if(dist > 60){ //if section is longer than 60um then store diam and exit from look
-                    D2 = diam
-                    break
-                }
-            
-            }
-        }
-    }
-    forsec axonal{delete_section()}   
-    execute1("create axon[2]\n", this)
-    access axon[0] {
-        L = 30 
-        diam = D1
-        nseg = 1 + 2*int(L/40)
-        all.append()
-        axonal.append()
-        v(0.0001) = i1
-    }
-    access axon[1] {
-        L = 30 
-        diam = D2
-        nseg = 1 + 2*int(L/40)
-        all.append()
-        axonal.append()  
-        v(0.0001) = i2
-    } 
-    nSecAxonal = 2
-    soma[0] connect axon[0](0), 1
-    axon[0] connect axon[1](0), 1
-}
 
 
 /*!

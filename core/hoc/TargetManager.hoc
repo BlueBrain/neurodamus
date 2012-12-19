@@ -10,70 +10,7 @@
 //make sure we have some basic things loaded
 {load_file( "nrngui.hoc" )}
 {load_file( "Map.hoc" )}
-
-//------------------------------------------------------------------------------------------
-// 
-//------------------------------------------------------------------------------------------
-
-/**
- * When getting a location to a compartment by section index, the compartments must be serialized
- * and stored for future access.  Maybe we will better encapsulate this object?
- */
-begintemplate SerializedSections
-
-//-----------------------------------------------------------------------------------------------
-// Declare member variables
-//-----------------------------------------------------------------------------------------------
-
-objref isec2sec[1]
-
-//-----------------------------------------------------------------------------------------------
-// public members
-//-----------------------------------------------------------------------------------------------
-
-public isec2sec, init, count
-
-//-----------------------------------------------------------------------------------------------
-// Member function implementations
-//-----------------------------------------------------------------------------------------------
-
-/*!
- * Constructor serializes the sections of a cell for easier random access.
- *
- * $o1 Cell reference (basic cell, not a CCell)
- */
-proc init() { local index
-    
-    n = $o1.nSecAll
-    //print "section count ", n
-    
-    objref isec2sec[n]
-    
-    index=1
-    forsec $o1.all {
-        if( v(0.0001) >= n ) {
-            printf("%s v(1)=%d n3d()=%d\n", secname(), v(1), n3d())
-			execerror("Error: failure in mk2_isec2sec()")
-        }
-        //print index, v(0.0001)
-        isec2sec[v(0.0001)] = new SectionRef()
-        index = index+1
-    }
-}
-
-/*!
- * @return The number of sections the cell originally had
- */
-func count() {
-    return n
-}
-
-endtemplate SerializedSections
-
-
-//------------------------------------------------------------------------------------------
-// Target Manager
-//------------------------------------------------------------------------------------------
+{load_file( "SerializedSections.hoc" )}
 
 /**
  * Target Manager itself, providing the interface for the user to get cell points to use
