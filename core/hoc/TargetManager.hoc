@@ -577,7 +577,7 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
         quit()
     }
     
-    distance = -1
+    distance = 0.5
     tmpSection = cellSections.isec2sec[isec]
     
     if (tmpSection == nil) {  //assume we are in LoadBalance mode (until we decide to verify this either here or in a higher layer)
