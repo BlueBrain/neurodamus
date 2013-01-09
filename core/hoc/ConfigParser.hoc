@@ -27,13 +27,13 @@ begintemplate ConfigParser
 // Member fields
 //------------------------------------------------------------------------------------------------------------
 
-objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, strUtil
+objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, parsedConfigures, strUtil
 
 //------------------------------------------------------------------------------------------------------------
 // Public accessible
 //------------------------------------------------------------------------------------------------------------
 
-public init, open, parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes
+public init, open, parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, parsedConfigures
 
 //------------------------------------------------------------------------------------------------------------
 // Member function implementations
@@ -48,6 +48,7 @@ proc init() {
     parsedInjects = new Map()
     parsedConnects = new Map()
     parsedElectrodes = new Map()
+    parsedConfigures = new Map()
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -107,6 +108,9 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
             } else if ( strcmp( sectionType.s, "Electrode" ) == 0 ){
             	tempBlock = parseBlock( configIn )            			
             	parsedElectrodes.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "NeuronConfigure" ) == 0 ){
+            	tempBlock = parseBlock( configIn )            			
+            	parsedConfigures.put( sectionName, tempBlock )
             }
         }
     }
