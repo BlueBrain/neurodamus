@@ -275,6 +275,7 @@ ENDVERBATIM
 }
 
 
+
 COMMENT
 /**
  * Upon a net_receive, we do up to two things.  The first is to determine the next time this artificial cell triggers

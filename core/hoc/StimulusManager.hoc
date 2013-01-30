@@ -6,8 +6,8 @@
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
 
-{load_file("alib/TStim.hoc")}  //note that the TStim functions are used in a way where our naming schemes don't match 100%
-{load_file("alib/EStim.hoc")}
+{load_file("TStim.hoc")}  //note that the TStim functions are used in a way where our naming schemes don't match 100%
+{load_file("EStim.hoc")}
 
 begintemplate StimulusManager
 
@@ -129,7 +129,7 @@ obfunc getExtracellularParams() { local injIndex localobj listForTarget, newList
  * 
  */
 proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIndex, scaleFac, secType, secNum, offset, tx, ty, tz, x localobj stimlist, eName, pts, gidObj, stim, estim, paramValue, activeElectrode, nil
-    
+    strdef tstr 
     //verify that electrode manager was passed to StimulusManager
     if( elecManager == nil ) {
         execerror("Error: attempting to use extracellular stimulation without ElectrodeManager" )
@@ -155,16 +155,15 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 				//Compare Electrode name. TODO: Need to find a solution for lookup by location.
 				//Also: Maybe do this with a Map object?
 				if( paramValue != nil && (strcmp(paramValue.s,eName.s)==0) ){
-					estim.train( stim.valueOf( "Delay" ), stim.valueOf( "Duration" ), stim.valueOf( "AmpStart" ), stim.valueOf( "Frequency" ), stim.valueOf( "Width" ) )					
+					estim.train( stim.valueOf( "Delay" ), stim.valueOf( "Duration" ), stim.valueOf( "AmpStart" ), stim.valueOf( "Frequency" ), stim.valueOf( "Width" ) )
 				}								
 			}
-			estim.initElec() //now that we treated all stimuli using this electrode we can initiate it
+			estim.initRawElec() //now that we treated all stimuli using this electrode we can initiate it
 			for cellIndex=0, pts.count()-1 { //Now over all compartments in the target
 				scaleFac = 0
 				for pts.o(cellIndex).each_point(&x) {
-					if(!ismembrane("extracellular")){
-						insert extracellular
-					}
+					sprint(tstr,"{%s insert extracellular}",secname())
+			                execute1(tstr,0)
 					if(!getSecTypeAndIndex(&secType,&secNum)){	//Now get the scale factor based on distance
 						if(activeElectrode.vInfo()>4){ //version 4 has one value per compartment, <4 only one per Section							
 							scaleFac = activeElectrode.getValueForSection(gidObj.x[cellIndex],secType,secNum,x)
@@ -187,6 +186,7 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 }
 
 //-----------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------
 
 /*!
  * For handling stimulus which has been parsed from a file - look at the parameters collected and
@@ -200,17 +200,15 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
  * @param $o2 stim - map containing stimulus parameters
  * @param $3 gid of cell
  */
-proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, target, paramValue, paramVect, patternName, nil
+proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localobj stim, target, paramValue, paramVect, patternName, nil
 
     stim = $o2
     
     paramVect = new Vector()
 	paramValue = stim.get( "Mode" )
+    
+    //Extracellular stimuli handled separately; Current and Voltage Modes only
 	if( strcmp( paramValue.s, "Extracellular" ) == 0 ) { 
-		//Extracellular stimuli handled separately
-		return
-	}else if( strcmp( paramValue.s, "Current" ) != 0 ) {
-		print "Invalid Mode - ", paramValue.s
 		return
 	}
     
@@ -240,10 +238,18 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
     // check for target name argument
     } else if( argtype(1) == 2 ) {
         // SquarePulse for target name arg
-        if( strcmp( patternName.s, "SquarePulse" ) == 0 ) {
+        if( strcmp( patternName.s, "SEClamp" ) == 0 ) {
+            targetVm = stim.valueOf( "Voltage" )
+            seclamp( $s1, targetVm, del, dur )
+        } else if( strcmp( patternName.s, "Hyperpolarizing" ) == 0 ) {
+            hypamp( $s1, del, dur )
+        } else if( strcmp( patternName.s, "SquarePulse" ) == 0 ) {
+            /*
             relamp = stim.valueOf( "relAmp" )
             threshold = targetManager.getCells($s1).o(0).getCCell().getThreshold()
             linear( $s1, relamp * threshold, relamp * threshold, del, dur )
+            targetManager.getCells($s1)
+            */
         } else if( strcmp( patternName.s, "Linear" ) == 0 ) {
             paramVect.append( stim.valueOf("AmpStart") )
             
@@ -251,7 +257,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             if( stim.get( "AmpEnd" ) != nil ) {
                 paramVect.append( stim.valueOf("AmpEnd") )
             } else {
-                paramVect.append( paramVect.x[paramVect.count()-1] )
+                paramVect.append( paramVect.x[paramVect.size()-1] )
             }
             
             linear( $s1, paramVect.x[0], paramVect.x[1], del, dur )
@@ -262,7 +268,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold  localobj stim, ta
             if( stim.get( "PercentEnd" ) != nil ) {
                 paramVect.append( stim.valueOf("PercentEnd") )
             } else {
-                paramVect.append( paramVect.x[paramVect.count()-1] )
+                paramVect.append( paramVect.x[paramVect.size()-1] )
             }
             
             relativeLinear( $s1, paramVect.x[0], paramVect.x[1], del, dur )
@@ -358,6 +364,38 @@ proc squarepulse() { local cellIndex, x, amp, del, dur  localobj pts, tstim
         
         tstim.pulse( del, dur, amp)
         stimList.append( tstim )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Apply a cell's hyperpolarizing current for the given time span.  The current value (I) to apple is 
+ * part of the CCell template (provided it has been calculated)
+ *
+ * @param $s1 Target name
+ * @param $2 delay 
+ * @param $3 duration
+ */
+proc hypamp() { local hypampI, ret, x, del, dur  localobj pts, cellList, tstim
+    pts = targetManager.getPointList($s1)
+    cellList = targetManager.getCells($s1)
+    del = $2
+    dur = $3
+    
+    for cellIndex=0, pts.count()-1 {
+        for pts.o(cellIndex).each_point(&x) {
+            ret = execute1( "{getHypAmp()}", cellList.o(cellIndex).getCCell(), 0 )
+            if( ret == 0 ) {
+                print cellList.o(cellIndex).getCCell()
+                print "Warning: gid ", pts.o(cellIndex).gid, " request for hyperpolarizing current injection where CCell template has no getHypAmp function"
+            } else {
+                hypampI = cellList.o(cellIndex).getCCell().getHypAmp()
+                tstim = new TStim(x)
+                tstim.pulse( del, dur, hypampI )
+                stimList.append(tstim)
+            }
+        }
     }
 }
 
@@ -1039,7 +1077,6 @@ proc FillSpikeTrain() { local i,tmpt, time, index, SpikeNeeded, nSpikeNeeded, Sp
     if((SpikeNeeded - nSpikeNeeded) >= 0.5){
        nSpikeNeeded = nSpikeNeeded + 1
     }
-    //print nSpikeNeeded
    
     while (time < $4){
 	tmpt = ran.repick()
@@ -1055,10 +1092,7 @@ proc FillSpikeTrain() { local i,tmpt, time, index, SpikeNeeded, nSpikeNeeded, Sp
     }
     
     for i =0, tVec.size-1 {
-        if( tVec.x[i] + $3 > t ) {
-        //print "event at ", tVec.x[i], " ", t
         $o1.event(tVec.x[i] + $3) 
-        }
     }
 }
 
@@ -1167,5 +1201,34 @@ proc reevent() { local eIndex, vIndex, res
     }*/
 }
 
-endtemplate StimulusManager
+//-----------------------------------------------------------------------------------------------
 
+/*
+ * Places an SEClamp on the targeted locations which will hold the voltage to the indicated value
+ *
+ * @param $s1 Target name
+ * @param $2 target membrane voltage Vm
+ * @param $3 delay for stimulus onset (not used)
+ * @param $4 duration of stimulus
+ */
+proc seclamp() { local del, dur, gidIndex, x  localobj pts, stim
+    del = $3
+    dur = $4
+    
+    //gids = targetManager.gids( $s1 )
+    pts = targetManager.getPointList( $s1 )
+    
+    for gidIndex=0, pts.count()-1 {
+        for pts.o(gidIndex).each_point(&x) {
+            stim = new SEClamp(x)
+            stim.rs = 0.01
+            stim.dur1 = dur
+            stim.amp1 = $2
+            
+            stimList.append(stim)
+        }        
+    }
+
+}
+
+endtemplate StimulusManager

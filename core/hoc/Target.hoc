@@ -115,7 +115,7 @@ begintemplate Target
 objref localCellsMap
 
 //! 
-objref gidMembers, subtargets, flattenedGids, completeFlattenedGids, binfo
+objref gidMembers, subtargets, flattenedGids, completeFlattenedGids, sortedGids, completeSortedGids
 objref cellExtraValues, targetExtraValues, cellSubsets, targetSubsets
 
 strdef name, type
@@ -141,7 +141,7 @@ public cellExtraValues, targetExtraValues
 //! memberfunctions - see below for detailed information
 public evalType, isCellTarget, isSectionTarget, isCompartmentTarget, isSynapseTarget
 public update, getgid, gids, completegids, getCellExtraValues, getCellSubset, evaluateSynapses, getPointList, getCompletePointList
-public isDefined, completeContains, contains, localCount
+public isDefined, isEmpty, completeContains, contains, localCount
 
 //------------------------------------------------------------------------------------------------------------
 // Member functions
@@ -179,8 +179,17 @@ proc init() {
     completeFlattenedGids = new Vector()
     isCompleteFlattened = 0
     
+    sortedGids = new Vector()
+    isSorted = 0
+    
+    completeSortedGids = new Vector()
+    isCompleteSorted = 0
+    
     //flag to indicate the target's contents are defined to prevent multiple targets with same name being *merged*
     isDefined = 0
+
+    //flag to indicate if target's content is empty
+    isEmpty = 0
     
     //flag indicating that addressing functions (address*Points) should fill in nils
     completeMode = 0
@@ -270,9 +279,8 @@ proc update() { local gid, cellIndex, binsrch_low, binsrch_high, binsrch_mid  lo
     allCellIndices = gidMembers.sortindex()
     localCellsMap = new Vector()
     isFlattened = 0
+    isSorted = 0
     
-    //binfo = $o2
-        
     //for each cell on node, determine if it exists in this target
     for cellIndex=0, $o1.size()-1 {
         gid = $o1.x[cellIndex]
@@ -366,14 +374,13 @@ obfunc getCellSubset() {
 
 //------------------------------------------------------------------------------------------------------------
 
-/*****************************************************************
-    Retrieve the flattened ids for this target, i.e. all cells ids in one vector including those from subtargets
-    Required Inputs : 
-    Logic           : if this target flattened itself previously, just return the existing vector; otherwise, instruct any
-                      subtargets to flatten themselves and append their flattened vectors to mine.  The gids are then
-                      sorted for faster searching
-*****************************************************************/
+/*!
+ * Retrieve the flattened ids for this target, i.e. all cells ids in one vector including those from subtargets
+ */
 obfunc gids() { local cellIndex targetIndex
+    // if this target flattened itself previously, just return the existing vector; otherwise, instruct any
+    // subtargets to flatten themselves and append the resulting flattened vectors to this Target's.
+    
     if( isFlattened == 1 ) {
         return flattenedGids
     }
@@ -387,12 +394,25 @@ obfunc gids() { local cellIndex targetIndex
         flattenedGids.append( subtargets.object(targetIndex).gids() )
     }
 	
-	flattenedGids.sort()
-    
     isFlattened = 1
     return flattenedGids
 }
 
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Get all local gids for this Target in a sorted vector.  This is currently private
+ */
+obfunc gidsSorted() { localobj gidvec
+    if( isSorted == 1 ) {
+        return sortedGids
+    }
+    
+    sortedGids = gids().c().sort()
+    isSorted = 1
+    
+    return sortedGids
+}
 
 /*****************************************************************
     Certain cases require all gids from a target rather than just the once local to the cpu
@@ -412,11 +432,22 @@ obfunc completegids() { local cellIndex targetIndex
     for targetIndex=0, subtargets.count()-1 {
         completeFlattenedGids.append( subtargets.object(targetIndex).completegids() )
     }
-	
-	completeFlattenedGids.sort()
-    
+	    
     isCompleteFlattened = 1
     return completeFlattenedGids
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+obfunc completegidsSorted() {
+    if( isCompleteSorted == 1 ) {
+        return completeSortedGids
+    }
+    
+    completeSortedGids = completegids().c().sort()
+    isCompleteSorted = 1
+    
+    return completeSortedGids
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -429,7 +460,7 @@ obfunc completegids() { local cellIndex targetIndex
  */
 func contains() { localobj targetUtil
     targetUtil = new TargetUtility()
-    return targetUtil.binary_search_contains( gids(), $1 )
+    return targetUtil.binary_search_contains( gidsSorted(), $1 )
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -442,7 +473,7 @@ func contains() { localobj targetUtil
  */
 func completeContains() { localobj targetUtil
     targetUtil = new TargetUtility()
-    return targetUtil.binary_search_contains( completegids(), $1 )
+    return targetUtil.binary_search_contains( completegidsSorted(), $1 )
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -645,6 +676,7 @@ proc addressCompartmentPoints(){ local ret, cnt, val  localobj strList, tVec
 	addressSectionPoints( $o1, $2, $s3, tVec, $o4, $o5 )
 }
 
+//------------------------------------------------------------------------------------------------------------
 
 /*!
  *  Use the extra data of a section target to identify locations on a neuron that must be addressed
