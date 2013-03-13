@@ -145,11 +145,15 @@ proc geom_nseg_lambda() { local secIndex
  * is influenced by the mechanisms distributed, so this function should be called after assigning biophys
  * @param $1 nseg length
  */
-proc geom_nseg_fixed() { local secIndex
+proc geom_nseg_fixed() { local secIndex, chunkSize
+    chunkSize = 40
+    if( numarg() > 0 ) {
+        chunkSize = $1
+    }
     soma area(.5) // make sure diam reflects 3d points
     secIndex=0
     forsec all {
-        nseg = 1 + 2*int(L/$1)
+        nseg = 1 + 2*int(L/chunkSize)
         segCounts.x[secIndex] = nseg
         secIndex = secIndex+1
     }
