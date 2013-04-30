@@ -27,13 +27,13 @@ begintemplate ConfigParser
 // Member fields
 //------------------------------------------------------------------------------------------------------------
 
-objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, parsedConfigures, strUtil
+objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, parsedConfigures, parsedModifications, strUtil
 
 //------------------------------------------------------------------------------------------------------------
 // Public accessible
 //------------------------------------------------------------------------------------------------------------
 
-public init, open, parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, parsedConfigures
+public init, open, parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, parsedConfigures, parsedModifications
 
 //------------------------------------------------------------------------------------------------------------
 // Member function implementations
@@ -49,6 +49,7 @@ proc init() {
     parsedConnects = new Map()
     parsedElectrodes = new Map()
     parsedConfigures = new Map()
+    parsedModifications = new Map()
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -89,28 +90,23 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
             
             if( strcmp( sectionType.s, "Run" ) == 0 ) {
                 parseRun( configIn )
-            } else if ( strcmp( sectionType.s, "Report" ) == 0 ) {
-                //print sectionName.s
-                //parseReport( configIn, sectionName )
+            } else {
                 tempBlock = parseBlock( configIn )
-                parsedReports.put( sectionName, tempBlock )
-            } else if ( strcmp( sectionType.s, "Stimulus" ) == 0 ) {
-                tempBlock = parseBlock( configIn )
-                parsedStimuli.put( sectionName, tempBlock )
-                //parseStimulus( configIn, sectionName )
-            } else if ( strcmp( sectionType.s, "StimulusInject" ) == 0 ) {
-                tempBlock = parseBlock( configIn )
-                parsedInjects.put( sectionName, tempBlock )
-                //parseStimulusInject( configIn, sectionName )
-            } else if ( strcmp( sectionType.s, "Connection" ) == 0 ) {
-                tempBlock = parseBlock( configIn )
-                parsedConnects.put( sectionName, tempBlock )
-            } else if ( strcmp( sectionType.s, "Electrode" ) == 0 ){
-            	tempBlock = parseBlock( configIn )            			
-            	parsedElectrodes.put( sectionName, tempBlock )
-            } else if ( strcmp( sectionType.s, "NeuronConfigure" ) == 0 ){
-            	tempBlock = parseBlock( configIn )            			
-            	parsedConfigures.put( sectionName, tempBlock )
+                if ( strcmp( sectionType.s, "Report" ) == 0 ) {
+                    parsedReports.put( sectionName, tempBlock )
+                } else if ( strcmp( sectionType.s, "Stimulus" ) == 0 ) {
+                    parsedStimuli.put( sectionName, tempBlock )
+                } else if ( strcmp( sectionType.s, "StimulusInject" ) == 0 ) {
+                    parsedInjects.put( sectionName, tempBlock )
+                } else if ( strcmp( sectionType.s, "Connection" ) == 0 ) {
+                    parsedConnects.put( sectionName, tempBlock )
+                } else if ( strcmp( sectionType.s, "Electrode" ) == 0 ){
+            	    parsedElectrodes.put( sectionName, tempBlock )
+                } else if ( strcmp( sectionType.s, "NeuronConfigure" ) == 0 ){
+            	    parsedConfigures.put( sectionName, tempBlock )
+                } else if ( strcmp( sectionType.s, "Modification" ) == 0 ) {
+                    parsedModifications.put( sectionName, tempBlock )
+                }
             }
         }
     }
