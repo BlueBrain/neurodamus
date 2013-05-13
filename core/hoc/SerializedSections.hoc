@@ -7,7 +7,7 @@
  */
 
 //make sure we have some basic things loaded
-{load_file( "nrngui.hoc" )}
+{load_file( "stdrun.hoc" )}
 {load_file( "Map.hoc" )}
 
 //------------------------------------------------------------------------------------------
