@@ -420,7 +420,8 @@ proc relativeNoise() { local x, threshold  localobj pts, cellList, rand, tstim
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
             threshold = cellList.o(cellIndex).getCCell().getThreshold()
-            rand = new Random( pts.o(cellIndex).gid + noiseStimCount )
+            rand = new Random()
+            rand.MCellRan4( 120 + noiseStimCount*10000, 240 + globalBaseSeed + pts.o(cellIndex).gid )
             tstim = new TStim(x, rand)
             
             tstim.noise( $4, $5, threshold*$2/100, threshold*$3/100 )
@@ -448,7 +449,8 @@ proc noise() { local x  localobj pts, rand, tstim
     pts = targetManager.getPointList($s1)
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
-            rand = new Random( pts.o(cellIndex).gid + noiseStimCount )
+            rand = new Random()
+            rand.MCellRan4( 120 + noiseStimCount*10000, 240 + globalBaseSeed + pts.o(cellIndex).gid )
             tstim = new TStim(x, rand)
             
             tstim.noise( $4, $5, $2, $3 )
@@ -1176,6 +1178,10 @@ proc saveStatePreparation() { local ppIndex
     for ppIndex=0, poissonSynList.count()-1 {
         //print poissonSynList.o(ppIndex)
         $o1.ignore( poissonSynList.o(ppIndex) )
+    }
+
+    for ppIndex=0, stimList.count()-1 {
+        $o1.ignore( stimList.o(ppIndex).ic )
     }
 }
 
