@@ -420,8 +420,9 @@ proc relativeNoise() { local x, threshold  localobj pts, cellList, rand, tstim
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
             threshold = cellList.o(cellIndex).getCCell().getThreshold()
-            rand = new Random()
-            rand.MCellRan4( 120 + noiseStimCount*10000, 240 + globalBaseSeed + pts.o(cellIndex).gid )
+            //rand = new Random()
+            //rand.MCellRan4( 120 + noiseStimCount*10000, 240 + globalBaseSeed + pts.o(cellIndex).gid )
+            rand = new Random( pts.o(cellIndex).gid + noiseStimCount )
             tstim = new TStim(x, rand)
             
             tstim.noise( $4, $5, threshold*$2/100, threshold*$3/100 )

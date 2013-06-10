@@ -174,8 +174,8 @@ for remtime=0, tvec.size()-1 {
 		tvec.indgen($1,$1+$2,dT)
 		stim.copy(tvec.c)
 		stim.setrand(rand)
-		//stim.x[0] = 0
-		//addpoint(0,0)
+		stim.x[0] = 0
+		addpoint(0,0)
 	}
 		
 	proc delay(/*dur*/){
