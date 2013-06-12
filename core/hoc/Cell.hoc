@@ -11,7 +11,7 @@
 begintemplate Cell
 public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
 public locateBAPSite, getLongestBranch, locateSites2
-public soma, dend, apic, axon, nSecAxonal, nSecAxonalOrig, segCounts, rnglist
+public soma, dend, apic, axon, myelin, nSecAxonal, nSecAxonalOrig, segCounts, rnglist
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
 objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts, rnglist
 
@@ -40,7 +40,7 @@ proc init() {
     synlist = new List()
     rnglist = new List()
 }
-create soma[1], dend[1], apic[1], axon[1]
+create soma[1], dend[1], apic[1], axon[1], myelin[1]
 
 proc AddMorphNL(){ localobj nl, import
     forall delete_section()
@@ -54,56 +54,106 @@ proc AddMorphNL(){ localobj nl, import
     geom_nsec()
 }
 
-proc delete_axon(){local nSec, D1, D2, dist, i1, i2, count
-    count = 0
+
+
+/**
+ * Replace the axon built from the original morphology file with a stub axon.  If no args are given,
+ * The stub axon will attempt to use diam info from original axon and L=30.  If args are present, the
+ * axon diam is tapered according to the values given.  Also, axon[0].L = 20, axon[1].L = 30.
+ * An optional myelin section can be added according to a flag.
+ *
+ * @param $1 Initial diameter for axon[0]
+ * @param $2 diameter at end of axon[0], start of axon[1]
+ * @param $3 diameter at end of axon[1]
+ * @param $4 diameter of myelin section (if set to 0, then not created at all)
+ */
+proc delete_axon(){ local nSec, D1, D2, dist, i1, i2, count
+
+    // preserve the number of original axonal sections
     nSec  = 0
     forsec axonal{nSec = nSec + 1}
-    if(nSec ==0){ //No axon section present
-        D1 = 1
-        D2 = 1
-    }else{
+    
+    // Try to grab info from original axon
+    if(nSec == 0){ //No axon section present
+        //is this actually working?  Seems it would cause problems if we ever did have cells with 0 axon sections
+        D1 = D2 = 1
+    } else {
         access axon[0]
-        i1 = v(0.0001) //hack needed for bglib
-        i2 = v(0.0001) //hack needed for bglib 
-        D1 = diam
-        D2 = diam
-        if(nSec >1){ //Only one axon section present
+        i1 = i2 = v(0.0001) // used when serializing sections prior to sim start
+        D1 = D2 = diam
+        if( nSec > 1 ){ //More than one axon section present
             access soma distance() //to calculate distance from soma
+            count = 0
             forsec axonal{   // loop through all axon sections and check for 60um distance 
-                if(count == 1){
-                    i2 = v(0.0001) //hack needed for bglib
+                if( count == 1 ){
+                    i2 = v(0.0001)
                 }
                 count = count + 1
                 dist = distance(0.5)
-                if(dist > 60){ //if section is longer than 60um then store diam and exit from look
+                if( dist > 60 ){ //if section is longer than 60um then store diam and exit from look
                     D2 = diam
                     break
                 }
             }
         }
     }
-    forsec axonal{delete_section()}    
+    
+    // get rid of the old axon
+    forsec axonal{delete_section()}
     execute1("create axon[2]\n", this)
+    
+    // new axon dependant on args passed (or lack thereof)
     access axon[0] {
-        L = 30
-        diam = D1
-        nseg = 1 + 2*int(L/40)
+        if( numarg() == 0 ) {
+            L = 30
+            diam = D1
+            nseg = 1 + 2*int(L/40)
+        } else {
+            L = 20
+            nseg = 1+2*int(L/10)
+            diam(0:1) = $1:$2
+        }
         all.append()
         axonal.append()
         v(0.0001) = i1
     }
     access axon[1] {
         L = 30
-        diam = D2
-        nseg = 1 + 2*int(L/40)
+        if( numarg() == 0 ) {
+            diam = D2
+            nseg = 1 + 2*int(L/40)
+        } else {
+            nseg = 1+2*int(L/10)
+            diam(0:1) = $2:$3
+        }
         all.append()
         axonal.append()
         v(0.0001) = i2
-    } 
+    }
     nSecAxonal = 2
-    soma[0] connect axon[0](0), 1
-    axon[0] connect axon[1](0), 1
+    
+    if( numarg() > 0 ) if ( $4 ) {
+        execute1("create myelin[1]\n", this)
+        access myelin{
+            L = 1000
+            nseg = 1+2*int(L/100)
+            diam = $4
+            v(0.0001) = i1
+        }
+        connect myelin(0), axon[1](1)
+    }
+    
+    // I am not sure if these connection methods have different consequences.  Maybe someone can reconcile that later?
+    if( numarg() == 0 ) {
+        soma[0] connect axon[0](0), 1
+        axon[0] connect axon[1](0), 1
+    } else {
+        connect axon(0), soma(0.5)
+        connect axon[1](0), axon[0](1)
+        access soma
+    }
 }
+
 
 
 proc SetCellProperties(){local Rm,v_init
@@ -146,11 +196,15 @@ proc geom_nseg_lambda() { local secIndex
  * is influenced by the mechanisms distributed, so this function should be called after assigning biophys
  * @param $1 nseg length
  */
-proc geom_nseg_fixed() { local secIndex
+proc geom_nseg_fixed() { local secIndex, chunkSize
+    chunkSize = 40
+    if( numarg() > 0 ) {
+        chunkSize = $1
+    }
     soma area(.5) // make sure diam reflects 3d points
     secIndex=0
     forsec all {
-        nseg = 1 + 2*int(L/$1)
+        nseg = 1 + 2*int(L/chunkSize)
         segCounts.x[secIndex] = nseg
         secIndex = secIndex+1
     }
