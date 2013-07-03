@@ -27,13 +27,15 @@ begintemplate ConfigParser
 // Member fields
 //------------------------------------------------------------------------------------------------------------
 
-objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, parsedConfigures, parsedModifications, strUtil
+objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, \
+    parsedConfigures, parsedModifications, parsedProjections, strUtil
 
 //------------------------------------------------------------------------------------------------------------
 // Public accessible
 //------------------------------------------------------------------------------------------------------------
 
-public init, open, parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, parsedConfigures, parsedModifications
+public init, open, parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, \
+    parsedConfigures, parsedModifications, parsedProjections
 
 //------------------------------------------------------------------------------------------------------------
 // Member function implementations
@@ -50,6 +52,7 @@ proc init() {
     parsedElectrodes = new Map()
     parsedConfigures = new Map()
     parsedModifications = new Map()
+    parsedProjections = new Map()
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -106,6 +109,8 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
             	    parsedConfigures.put( sectionName, tempBlock )
                 } else if ( strcmp( sectionType.s, "Modification" ) == 0 ) {
                     parsedModifications.put( sectionName, tempBlock )
+                } else if ( strcmp( sectionType.s, "Projection" ) == 0 ) {
+                    parsedProjections.put( sectionName, tempBlock )
                 }
             }
         }
