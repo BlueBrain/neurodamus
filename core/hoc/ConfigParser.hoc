@@ -34,7 +34,8 @@ objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, p
 // Public accessible
 //------------------------------------------------------------------------------------------------------------
 
-public init, open, parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, \
+public init, open, toggleVerbose
+public parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, \
     parsedConfigures, parsedModifications, parsedProjections
 
 //------------------------------------------------------------------------------------------------------------
@@ -373,6 +374,33 @@ func isTerminated() {
         return 0
     } else {
         return 1
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * For all the maps stored in the ConfigParser, activate verbose logging so that any unexpected events are 
+ * more descriptively printed to the console
+ */
+proc toggleVerbose() { local mapIndex, itemIndex  localobj mapList
+    parsedRun.toggleVerbose()
+    
+    mapList = new List()
+    mapList.append( parsedReports )
+    mapList.append( parsedStimuli )
+    mapList.append( parsedInjects )
+    mapList.append( parsedConnects )
+    mapList.append( parsedElectrodes )
+    mapList.append( parsedConfigures )
+    mapList.append( parsedModifications )
+    mapList.append( parsedProjections )
+
+    for mapIndex=0, mapList.count()-1 {
+        mapList.o(mapIndex).toggleVerbose()
+        for itemIndex=0, mapList.o(mapIndex).count()-1 {
+            mapList.o(mapIndex).o(itemIndex).toggleVerbose()
+        }
     }
 }
 

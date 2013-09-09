@@ -24,7 +24,7 @@ strdef prevKey
 // Public accessible
 //------------------------------------------------------------------------------------------------------------
 
-public init, get, put, key, keyValue, o, object, count, getV, valueOf, exists
+public init, get, put, key, keyValue, o, object, count, getV, valueOf, exists, toggleVerbose
 
 //------------------------------------------------------------------------------------------------------------
 // Member function implementations
@@ -38,6 +38,7 @@ proc init() { localobj nil
     numericKeys = new Vector()
     prevItem = nil
     isCacheValid = 0
+    verbose = 0
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -143,6 +144,10 @@ obfunc getV() { local mapIndex localobj nil
         }
     }
 
+    // if we have reached here, then probably something is wrong (users should use 'exists' first for optional items)
+    if( verbose ) {
+        print "Warning: map key '", searchName, "' not found.\n"
+    }
     isCacheValid = 0
     return nil
 }
@@ -190,6 +195,10 @@ obfunc get() { local mapIndex localobj nil
         }
     }
     
+    // if we have reached here, then probably something is wrong (users should use 'exists' first for optional items)
+    if( verbose ) {
+        print "Warning: map key '", searchName, "' not found.\n"
+    }
     isCacheValid = 0
     return nil
 }
@@ -296,14 +305,30 @@ func valueOf() { local tvalue  localobj tfield
  * @param $1/$s1 Field name - e.g. map key
  * @return 1 if the key is present, 0 if the key is not present
  */
-func exists() {  localobj tfield
+func exists() {  local oldVerbose  localobj tfield
+
+    oldVerbose = verbose
+    verbose = 0
     if( argtype(1) == 0 ) {
         tfield = get($1)
     } else {
         tfield = get( $s1 )
     }
+    verbose = oldVerbose
+    
     if( object_id(tfield,1) < 0 ) return 0
     return 1
 }
 
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Turns on/off verbose logging.  Useful for having only a single cpu report warnings so as not to get a flood
+ * of messages to the console
+ */
+proc toggleVerbose() {
+    verbose = 1-verbose
+}
+
 endtemplate Map
+
