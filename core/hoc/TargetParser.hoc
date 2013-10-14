@@ -293,18 +293,18 @@ proc validateTargetTermination() {
 func addMember() { local potentialGid  localobj targetInstance, addition
     strdef remake
     targetInstance = $o2
-    
+
     //is this entry a cell? : make sure not to confuse some names for gids( i.e. a17sources = target, a17 = gid )
     //  test this by trying to extract a gid then putting it back.  If either step fails, then can't be a gid
     sscanf($s1, "a%d", &potentialGid )
     sprint( remake, "a%d", potentialGid )
     
-    if( strcmp( tstr1, remake ) == 0 )  { //cell detected
+    if( strcmp( $s1, remake ) == 0 )  { //cell detected
         targetInstance.gidMembers.append( potentialGid )
         return potentialGid
     } else { //must be new or existing target
         addition = new Target()
-        addition.name = tstr1
+        addition.name = $s1
         
         //following line either replaces addition with reference to existing target, or addition is used to insert new reference into master list
         addition = updateTargetList( addition )
