@@ -36,6 +36,7 @@ NET_RECEIVE(w) {
 
 VERBATIM
 
+#undef ptr
 #define H5_USE_16_API 1
 #include "hdf5.h"
 //#include "/opt/hdf5/include/hdf5.h"  //-linsrv
