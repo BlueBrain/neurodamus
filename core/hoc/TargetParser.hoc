@@ -67,7 +67,9 @@ proc open() { localobj tFile, targetInstance
                 
                 //make sure that contents for this target haven't been seen before
                 if( targetInstance.isDefined ) {
-                    print "Error.  Multiple definitions for Target ", targetInstance.name
+                    if( isVerbose != 0 ) {
+                        print "Error.  Multiple definitions for Target ", targetInstance.name
+                    }
                     nErrors = nErrors + 1
                 }
                 
