@@ -548,10 +548,14 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
             if (ipt < n3d()) {
                 //distance = (arc3d(ipt))/L
                 distance = (arc3d(ipt)+offset)/L
-                
+               
+                if( ditance == 0.0 ) {
+                    distance = 0.0000001
+                }
+
                 if( distance >= 1.0 ) {  
                     total = (arc3d(ipt)+offset)
-                    distance = 1.0
+                    distance = 0.9999999
                 }
             }
             if (section_orientation() == 1) {
