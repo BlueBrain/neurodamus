@@ -14,7 +14,7 @@ begintemplate Report
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-strdef reportName, reportType,  reportOn, unit, format, outputDir
+strdef reportName, reportType,  reportOn, unit, format, outputDir, iscParam
 objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, memory_report, activeProcess, electrode
 
 external cvode
@@ -43,6 +43,7 @@ public init, addCompartmentReport, addSummationReport, addSynapseReport, get_mem
  * @param $s9 Output dir - directory where report files are to be written
  * @param $o10 Electrode - the electrode object (lookupTableV2)
  * @param $o11 Scaling option to apply to Summation reports: 'None' disables all scaling, 'Area' (or nil) converts density to area, electrodeName - TBD
+ * @param $s12 ISC parameter string
  */
 proc init() { localobj nil
     reportName = $s1
@@ -102,6 +103,8 @@ proc init() { localobj nil
             }
         }
     }
+
+    iscParam = $s12
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -207,7 +210,11 @@ func prepareReportForCell() { local node, rpt, vgid
     
     if( 0 == strcmp( format, "Bin")) {
         rpt = -1
-        rec = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit )
+        if (0 == strcmp(iscParam, "")) {
+          rec = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit)
+        } else {
+          rec = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit, iscParam )
+        }
         binList.append( rec )
     } else {
         if(0 == strcmp( format, "HDF5")) {
@@ -230,10 +237,12 @@ func prepareReportForCell() { local node, rpt, vgid
     sumSectionCounts( $o2 )
 
     //for ascii/hdf5 reports, must give section counts now to allocate memory - can I give it to Bin reports, too?
-    if( 0 != strcmp( format, "Bin")) {
-        rec.newMapping(rpt, "compartment", nAll, nSoma, nAxon, nBasal, nApical)
-    } else {
-        rec.ExtraMapping( nAll, nSoma, nAxon, nBasal, nApical)
+    if (0 == strcmp(iscParam, "")) {
+        if( 0 != strcmp( format, "Bin")) {
+            rec.newMapping(rpt, "compartment", nAll, nSoma, nAxon, nBasal, nApical)
+        } else {
+            rec.ExtraMapping( nAll, nSoma, nAxon, nBasal, nApical)
+        }
     }
     
     return rpt
@@ -279,7 +288,11 @@ proc addCompartmentReport() { local x, rpt, vgid
     
         //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
         if( 0 == strcmp(format, "Bin") ) {
-            sprint(tstr, "rec.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
+            if (0 == strcmp(iscParam, "")){
+              sprint(tstr, "rec.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
+            } else{
+              sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d )", reportOn, x, sectionNo( $o1 ), 1 )
+            }
             execute(tstr, this)
         } else if( 0 == strcmp(format, "Memory") ) {
             // in-memory report
