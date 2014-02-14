@@ -35,12 +35,11 @@ NET_RECEIVE(w) {
 }
 
 VERBATIM
+#ifdef REPORTING
 
 #undef ptr
 #define H5_USE_16_API 1
 #include "hdf5.h"
-//#include "/opt/hdf5/include/hdf5.h"  //-linsrv
-//#include "/users/delalond/Dev/bglib1.5/dep-install/include/hdf5.h" // Cray XT5
 #include "mpi.h"
 #include <stdlib.h>
 
@@ -343,12 +342,14 @@ int loadDataMatrix( Info *info, char* name )
     return 0;
 }
 
+#endif
 ENDVERBATIM
 
 
 
 CONSTRUCTOR { : double - loc of point process ??? ,string filename
 VERBATIM {
+#ifdef REPORTING
     char nameoffile[512];
     int nFiles = 1;
     
@@ -431,6 +432,7 @@ VERBATIM {
             }
         }
     }
+#endif
 }
 ENDVERBATIM
 }
@@ -439,6 +441,7 @@ ENDVERBATIM
 
 DESTRUCTOR {
 VERBATIM { 
+#ifdef REPORTING
     INFOCAST; Info* info = *ip; 
     if(info->file_>=0)
     {
@@ -452,6 +455,7 @@ VERBATIM {
         free(info->datamatrix_);
         info->datamatrix_ = NULL;
     }
+#endif
 }
 ENDVERBATIM
 }
@@ -460,6 +464,7 @@ ENDVERBATIM
 
 FUNCTION redirect() {
 VERBATIM {
+#ifdef REPORTING
     FILE *fout;
     char fname[128];
     
@@ -484,12 +489,14 @@ VERBATIM {
         fout = freopen( fname, "w", stderr );
         setbuf( fout, NULL );
     }
+#endif
 }
 ENDVERBATIM
 }
 
 FUNCTION checkVersion() {
 VERBATIM {
+#ifdef REPORTING
     INFOCAST; 
     Info* info = *ip;
     int mpi_size, mpi_rank;
@@ -522,12 +529,14 @@ VERBATIM {
         H5Dclose(dataset_id);
     }
     return 0;
+#endif
 }
 ENDVERBATIM
 }
 
 FUNCTION loadData() {
 VERBATIM { 
+#ifdef REPORTING
     INFOCAST; 
     Info* info = *ip;
     
@@ -557,6 +566,7 @@ VERBATIM {
     }
     
     return 0;
+#endif
 }
 ENDVERBATIM
 }
@@ -565,6 +575,7 @@ ENDVERBATIM
 
 FUNCTION getNoOfColumns(){ : string cellname
 VERBATIM { 
+#ifdef REPORTING
     INFOCAST;
     Info* info = *ip;
     //printf("(Inside number of Col)Number of Col %s\n",gargstr(1));
@@ -586,6 +597,7 @@ VERBATIM {
     {
         return 0;
     }
+#endif
 }
 ENDVERBATIM
 }       
@@ -594,6 +606,7 @@ ENDVERBATIM
 
 FUNCTION numberofrows() { : string cellname
 VERBATIM { 
+#ifdef REPORTING
     INFOCAST; 
     Info* info = *ip;
     //printf("(Inside number of rows)Number of rows %s\n",gargstr(1));
@@ -615,6 +628,7 @@ VERBATIM {
     {
         return 0;
     }
+#endif
 }
 ENDVERBATIM
 }
@@ -623,6 +637,7 @@ ENDVERBATIM
 
 FUNCTION getData() {
 VERBATIM { 
+#ifdef REPORTING
     INFOCAST; 
     Info* info = *ip;
     if(info->file_>=0&& ifarg(1) && hoc_is_str_arg(1) && ifarg(2) && ifarg(3))
@@ -650,6 +665,7 @@ VERBATIM {
         //printf("ERROR:Error on number of rows of \n");
         return 0;
     }
+#endif
 }
 ENDVERBATIM
 }
@@ -658,6 +674,7 @@ ENDVERBATIM
 
 FUNCTION getColumnDataRange() {
 VERBATIM { 
+#ifdef REPORTING
     INFOCAST; 
     Info* info = *ip;
     void* pdVec = NULL;
@@ -699,6 +716,7 @@ VERBATIM {
         //printf("ERROR:Error on number of rows of \n");
         return 0;
     } 
+#endif
 }
 ENDVERBATIM
 }
@@ -716,6 +734,7 @@ COMMENT
 ENDCOMMENT
 FUNCTION getColumnData() {
 VERBATIM { 
+#ifdef REPORTING
     INFOCAST; 
     Info* info = *ip;
     void* pdVec = NULL;
@@ -752,6 +771,7 @@ VERBATIM {
         //printf("ERROR:Error on number of rows of \n");
         return 0;
     } 
+#endif
 }
 ENDVERBATIM
 }
@@ -768,6 +788,7 @@ COMMENT
 ENDCOMMENT
 FUNCTION getAttributeValue() {
 VERBATIM
+#ifdef REPORTING
     INFOCAST; 
     Info* info = *ip;
     if( info->file_ >= 0 && ifarg(1) && hoc_is_str_arg(1) && ifarg(2) && hoc_is_str_arg(2) )
@@ -792,6 +813,7 @@ VERBATIM
     }
     
     return 0;
+#endif
 ENDVERBATIM
 }
 
@@ -799,6 +821,7 @@ ENDVERBATIM
 
 FUNCTION closeFile() {
 VERBATIM { 
+#ifdef REPORTING
     INFOCAST; 
     Info* info = *ip;
     if(info->file_ >=0)
@@ -813,6 +836,7 @@ VERBATIM {
         free(info->datamatrix_);
         info->datamatrix_ = NULL;
     }
+#endif
 }
 ENDVERBATIM
 }
@@ -831,6 +855,7 @@ COMMENT
 ENDCOMMENT
 FUNCTION exchangeSynapseLocations() {
 VERBATIM
+#ifdef REPORTING
     INFOCAST; 
     Info* info = *ip;
     
@@ -914,6 +939,6 @@ VERBATIM
     free(fileIDsFound);
     free(foundCountsAcrossCPUs);
     free(foundDispls);
-    
+#endif    
 ENDVERBATIM
 }

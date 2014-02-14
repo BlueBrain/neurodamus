@@ -288,11 +288,7 @@ proc addCompartmentReport() { local x, rpt, vgid
     
         //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
         if( 0 == strcmp(format, "Bin") ) {
-            if (0 == strcmp(iscParam, "")){
-              sprint(tstr, "rec.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
-            } else{
-              sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d )", reportOn, x, sectionNo( $o1 ), 1 )
-            }
+            sprint(tstr, "rec.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
             execute(tstr, this)
         } else if( 0 == strcmp(format, "Memory") ) {
             // in-memory report
