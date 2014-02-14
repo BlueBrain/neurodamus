@@ -430,8 +430,13 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
                 
                 dist = activeProcess.get_loc()
                 cmpID = int(dist*nseg)
-                if( cmpID == int(x*nseg) ) {                  	                	                
-                	sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
+                if( cmpID == int(x*nseg) ) {
+                    // need special handling for Clamp processes to flip the current value
+                    if( strcmp( ptProcessList.o(ptProcessIndex).s, "SEClamp" ) == 0 || strcmp( ptProcessList.o(ptProcessIndex).s, "IClamp" ) == 0 ) {
+                        sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s, -1 )}",internalVar.s)
+                    } else {
+                        sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
+                    }
                 	result = execute(tstr, this)
                 	if( result == 0 ) {
                 		//Error message here?!
