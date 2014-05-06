@@ -35,7 +35,7 @@ NET_RECEIVE(w) {
 }
 
 VERBATIM
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
 
 #undef ptr
 #define H5_USE_16_API 1
@@ -349,7 +349,7 @@ ENDVERBATIM
 
 CONSTRUCTOR { : double - loc of point process ??? ,string filename
 VERBATIM {
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     char nameoffile[512];
     int nFiles = 1;
     
@@ -441,7 +441,7 @@ ENDVERBATIM
 
 DESTRUCTOR {
 VERBATIM { 
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     INFOCAST; Info* info = *ip; 
     if(info->file_>=0)
     {
@@ -464,7 +464,7 @@ ENDVERBATIM
 
 FUNCTION redirect() {
 VERBATIM {
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     FILE *fout;
     char fname[128];
     
@@ -496,7 +496,7 @@ ENDVERBATIM
 
 FUNCTION checkVersion() {
 VERBATIM {
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     INFOCAST; 
     Info* info = *ip;
     int mpi_size, mpi_rank;
@@ -536,7 +536,7 @@ ENDVERBATIM
 
 FUNCTION loadData() {
 VERBATIM { 
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     INFOCAST; 
     Info* info = *ip;
     
@@ -575,7 +575,7 @@ ENDVERBATIM
 
 FUNCTION getNoOfColumns(){ : string cellname
 VERBATIM { 
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
     //printf("(Inside number of Col)Number of Col %s\n",gargstr(1));
@@ -606,7 +606,7 @@ ENDVERBATIM
 
 FUNCTION numberofrows() { : string cellname
 VERBATIM { 
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     INFOCAST; 
     Info* info = *ip;
     //printf("(Inside number of rows)Number of rows %s\n",gargstr(1));
@@ -637,7 +637,7 @@ ENDVERBATIM
 
 FUNCTION getData() {
 VERBATIM { 
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     INFOCAST; 
     Info* info = *ip;
     if(info->file_>=0&& ifarg(1) && hoc_is_str_arg(1) && ifarg(2) && ifarg(3))
@@ -674,7 +674,7 @@ ENDVERBATIM
 
 FUNCTION getColumnDataRange() {
 VERBATIM { 
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     INFOCAST; 
     Info* info = *ip;
     void* pdVec = NULL;
@@ -734,7 +734,7 @@ COMMENT
 ENDCOMMENT
 FUNCTION getColumnData() {
 VERBATIM { 
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     INFOCAST; 
     Info* info = *ip;
     void* pdVec = NULL;
@@ -788,7 +788,7 @@ COMMENT
 ENDCOMMENT
 FUNCTION getAttributeValue() {
 VERBATIM
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     INFOCAST; 
     Info* info = *ip;
     if( info->file_ >= 0 && ifarg(1) && hoc_is_str_arg(1) && ifarg(2) && hoc_is_str_arg(2) )
@@ -821,7 +821,7 @@ ENDVERBATIM
 
 FUNCTION closeFile() {
 VERBATIM { 
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     INFOCAST; 
     Info* info = *ip;
     if(info->file_ >=0)
@@ -855,7 +855,7 @@ COMMENT
 ENDCOMMENT
 FUNCTION exchangeSynapseLocations() {
 VERBATIM
-#ifdef REPORTING
+#ifndef DISABLE_HDF5
     INFOCAST; 
     Info* info = *ip;
     
