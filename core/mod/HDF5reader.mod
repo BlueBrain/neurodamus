@@ -55,7 +55,6 @@ extern double chkarg(int iarg, double low, double high);
 extern double* vector_vec(void* vv);
 extern int vector_capacity(void* vv);
 extern void* vector_arg(int);
-extern void* vector_resize();
 
 /**
  * During synapse loading initialization, the h5 files with synapse data are catalogged
