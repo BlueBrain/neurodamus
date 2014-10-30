@@ -175,6 +175,7 @@ for remtime=0, tvec.size()-1 {
 		stim.copy(tvec.c)
 		stim.setrand(rand)
 		stim.x[0] = 0
+                stim.x[stim.size()-1] = 0
 		addpoint(0,0)
 	}
 		
