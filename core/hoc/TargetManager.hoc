@@ -159,12 +159,27 @@ proc printTargets() {
  *  Logic           : Use binary search to locate the target, throwing an error if the target
  *                    is not found
  */
-obfunc getTarget() { local targetIndex  localobj targetUtil
-    strdef errorMessage
+obfunc getTarget() { local targetIndex, potentialGid  localobj targetUtil, singleTarget
+    strdef errorMessage, remake
 
     targetUtil = new TargetUtility()
     targetIndex = targetUtil.findTarget( $s1, targetList )
-    if( targetIndex < 0 ) {  //not found, error
+    if( targetIndex < 0 ) {
+        // not found -> check if it is just a gid and create a basic target
+        
+        //is this entry a cell? : make sure not to confuse some names for gids( i.e. a17sources = target, a17 = gid )
+        //  test this by trying to extract a gid then putting it back.  If either step fails, then can't be a gid
+        sscanf($s1, "a%d", &potentialGid )
+        sprint( remake, "a%d", potentialGid )
+
+        if( strcmp( $s1, remake ) == 0 )  { //cell detected
+            singleTarget = new Target( "gid", "Cell" )
+            singleTarget.gidMembers.append( potentialGid )
+            singleTarget.update( cellDistributor.getGidListForProcessor() )
+            return singleTarget
+        }
+        
+        // otherwise, at a loss for what to do
         print "Error: target ", $s1, " not found.  Attempting to terminate"
         sprint( errorMessage, "Error: target %s not found", $s1 )
         execerror( errorMessage )

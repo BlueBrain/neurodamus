@@ -27,13 +27,16 @@ begintemplate ConfigParser
 // Member fields
 //------------------------------------------------------------------------------------------------------------
 
-objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, parsedConfigures, parsedModifications, strUtil
+objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, \
+    parsedConfigures, parsedModifications, parsedProjections, strUtil
 
 //------------------------------------------------------------------------------------------------------------
 // Public accessible
 //------------------------------------------------------------------------------------------------------------
 
-public init, open, parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, parsedConfigures, parsedModifications
+public init, open, toggleVerbose
+public parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, \
+    parsedConfigures, parsedModifications, parsedProjections
 
 //------------------------------------------------------------------------------------------------------------
 // Member function implementations
@@ -50,6 +53,7 @@ proc init() {
     parsedElectrodes = new Map()
     parsedConfigures = new Map()
     parsedModifications = new Map()
+    parsedProjections = new Map()
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -106,6 +110,8 @@ proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionNa
             	    parsedConfigures.put( sectionName, tempBlock )
                 } else if ( strcmp( sectionType.s, "Modification" ) == 0 ) {
                     parsedModifications.put( sectionName, tempBlock )
+                } else if ( strcmp( sectionType.s, "Projection" ) == 0 ) {
+                    parsedProjections.put( sectionName, tempBlock )
                 }
             }
         }
@@ -368,6 +374,33 @@ func isTerminated() {
         return 0
     } else {
         return 1
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * For all the maps stored in the ConfigParser, activate verbose logging so that any unexpected events are 
+ * more descriptively printed to the console
+ */
+proc toggleVerbose() { local mapIndex, itemIndex  localobj mapList
+    parsedRun.toggleVerbose()
+    
+    mapList = new List()
+    mapList.append( parsedReports )
+    mapList.append( parsedStimuli )
+    mapList.append( parsedInjects )
+    mapList.append( parsedConnects )
+    mapList.append( parsedElectrodes )
+    mapList.append( parsedConfigures )
+    mapList.append( parsedModifications )
+    mapList.append( parsedProjections )
+
+    for mapIndex=0, mapList.count()-1 {
+        mapList.o(mapIndex).toggleVerbose()
+        for itemIndex=0, mapList.o(mapIndex).count()-1 {
+            mapList.o(mapIndex).o(itemIndex).toggleVerbose()
+        }
     }
 }
 

@@ -200,7 +200,7 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
  * @param $o2 stim - map containing stimulus parameters
  * @param $3 gid of cell
  */
-proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localobj stim, target, paramValue, paramVect, patternName, nil
+proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localobj stim, target, paramValue, paramVect, patternName, synType, synConfig, fillFunc, nil
 
     stim = $o2
     
@@ -254,7 +254,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localob
             paramVect.append( stim.valueOf("AmpStart") )
             
             //optional option - AmpEnd.  If not there, use same value as AmpStart
-            if( stim.get( "AmpEnd" ) != nil ) {
+            if( stim.exists( "AmpEnd" ) ) {
                 paramVect.append( stim.valueOf("AmpEnd") )
             } else {
                 paramVect.append( paramVect.x[paramVect.size()-1] )
@@ -282,7 +282,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localob
             
             //optional argument - Offset; default = 0.
             // TODO: re-evaluate offset for Pulse stimulus and debug because it looks like it might not be multisplit safe
-            if( stim.get( "Offset" ) != nil ) {
+            if( stim.exists( "Offset" ) ) {
                 paramVect.append( stim.valueOf( "Offset" ) )
             } else {
                 paramVect.append( 0 )
@@ -293,7 +293,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localob
         } else if(strcmp(patternName.s, "Sinusoidal")==0){        	
         	paramVect.append( stim.valueOf("AmpStart"))
 			paramVect.append( stim.valueOf("Frequency"))
-			if( stim.get( "Offset" ) != nil ) {
+			if( stim.exists( "Offset" ) ) {
 				paramVect.append( stim.valueOf( "Offset" ) )
 			} else {
 				paramVect.append( 0 )
@@ -308,16 +308,20 @@ proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localob
             //Note: SynapseConfigure is optional and may return nil (handled by npoisson function)
             //Note: FillFunctionOverride is optional and under development, may return nil (handled by npoisson function)
             //Note: requires special Target handling, so just pass targetName through
-            npoisson( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], stim.get( "SynapseType" ), \
-                stim.get( "SynapseConfigure" ), stim.get( "FillFunctionOverride" ), del, dur )
+            if( stim.exists( "SynapseType" ) ) { synType = stim.get( "SynapseType" ) }
+            if( stim.exists( "SynapseConfigure" ) ) { synConfig = stim.get( "SynapseConfigure" ) }
+            if( stim.exists( "FillFunctionOverride" ) ) { fillFunc = stim.get( "FillFunctionOverride" ) }
+            npoisson( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], synType, synConfig, fillFunc, del, dur )
         } else if( strcmp( patternName.s, "NPoissonInhomogeneous" ) == 0 ) {
             //Note: SynapseType is optional and may return nil (handled by npoisson function)
             //Note: SynapseConfigure is optional and may return nil (handled by npoisson function)
             
             //Note: even though we dont use delay/duration, they must still be present in the BlueConfig until I can refactor the code better
             //Note: requires special Target handling, so just pass targetName through
-            npoissonInhomogeneous( $s1, stim.valueOf( "Weight" ), stim.valueOf( "NumOfSynapses" ), stim.get( "SynapseType" ), \
-                stim.get( "SynapseConfigure" ), stim.get( "H5File" ), stim.get( "TBins" ), stim.get( "Rate" )  )
+            if( stim.exists( "SynapseType" ) ) { synType = stim.get( "SynapseType" ) }
+            if( stim.exists( "SynapseConfigure" ) ) { synConfig = stim.get( "SynapseConfigure" ) }
+            npoissonInhomogeneous( $s1, stim.valueOf( "Weight" ), stim.valueOf( "NumOfSynapses" ), synType, \
+                synConfig, stim.get( "H5File" ), stim.get( "TBins" ), stim.get( "Rate" )  )
         } else if( strcmp( patternName.s, "SubThreshold" ) == 0 ) {
             subthreshold( $s1, stim.valueOf( "PercentLess" ), del, dur )
         } else if( strcmp( patternName.s, "Noise" ) == 0 ) {
