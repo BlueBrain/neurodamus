@@ -159,6 +159,24 @@ ENDVERBATIM
 
 COMMENT
 /*!
+ * Ignore the ptr and instead just report the constant value.  This is a hack to allow reporting of the
+ * area of a section.  A better solution should be created
+ */
+ENDCOMMENT
+PROCEDURE constant() {
+VERBATIM { INFOCAST; Info* info = *ip;
+    if( info->np_ > 0 ) {
+        output = info->scalars_[0];
+    } else {
+        output = 0;
+    }
+}
+ENDVERBATIM
+}
+
+
+COMMENT
+/*!
  * Take an average of all the variables assigned to this ALU object
  */
 ENDCOMMENT
@@ -218,6 +236,8 @@ VERBATIM { INFOCAST; Info* info = *ip;
         info->process = &summation;
     } else if ( strcmp( opname, "average" ) == 0 ) {
         info->process = &average;
+    } else if ( strcmp( opname, "constant" ) == 0 ) {
+        info->process = &constant;
     } else {
         fprintf( stderr, "Error: unknown operation '%s' for ALU object.  Terminating.\n", opname );
         exit(0);
