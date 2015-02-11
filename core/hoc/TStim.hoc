@@ -20,6 +20,8 @@ begintemplate TStim
 	objref ic,tvec
 	objref stim,ic,rand,null
 	public ic,pulse,ramp,stim,tvec,delay,segment,sinspec,noise,x,c,loc,mark,get_loc, train, sin
+
+    external tstop
 	
 /**
 * In this object and any other object that uses random numbers, the random
@@ -159,24 +161,45 @@ for remtime=0, tvec.size()-1 {
 		tvec.integral	
 	}
 
-/**
-* Note that the easiest way to write the noise function is:
-* 	rand.play(&iclamp.amp)
-* However, this does not allow you the control of when to start and to end the
-* stimulus, so there is a memory overhead of preparing the noise vector in advanced
-* and put it in memory. I do now know of any differences in performance between
-* the vector.play and the rand.play functions.
-*/
-	proc noise(/*start,dur,mean,var[,dt]*/){local dT
-		if(numarg()>4) dT = $5 else dT = 0.5
-		initinject()
-		rand.normal($3,$4)
-		tvec.indgen($1,$1+$2,dT)
-		stim.copy(tvec.c)
-		stim.setrand(rand)
-		stim.x[0] = 0
-		addpoint(0,0)
-	}
+    /**
+     * Note that the easiest way to write the noise function is:
+     * rand.play(&iclamp.amp)
+     * However, this does not allow you the control of when to start and to end the
+     * stimulus, so there is a memory overhead of preparing the noise vector in advanced
+     * and put it in memory. I do now know of any differences in performance between
+     * the vector.play and the rand.play functions.
+     */
+    proc noise(/*start,dur,mean,var[,dt]*/){local dT, tstim_end
+        if(numarg()>4) dT = $5 else dT = 0.5
+        initinject()
+        rand.normal($3,$4)
+        tstim_end = $1+$2
+        
+        // To help with save state, we want Noise stimulus to continue where it left off
+        // so first draw the numbers that were already used (not very efficient, but can be improved later)
+        if( $1 > 0 ) {
+            tvec.indgen(0,$1,dT)
+            stim.copy(tvec.c)
+            stim.setrand(rand)
+        }
+        
+        tvec.indgen($1,tstim_end,dT)
+        stim.copy(tvec.c)
+        stim.setrand(rand)
+        
+        // If the stimulus starts with a delay from simulation start time, we will want 0 amps until the next Dt.
+        // Note that for Resume, we will be at t > 0 and delay was offset by previous save time. Ergo, we must check that delay > t
+        if ( $1 > t ) {
+            stim.x[0] = 0
+        }
+        
+        // If the stimulus should end before the simulation, make sure the final value will set the amp to 0
+        if(tstim_end < tstop) {
+            stim.x[stim.size()-1] = 0
+        }
+        
+        addpoint(0,0)
+    }
 		
 	proc delay(/*dur*/){
 		tvec.add($1)
