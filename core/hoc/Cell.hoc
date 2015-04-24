@@ -11,9 +11,9 @@
 begintemplate Cell
 public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
 public locateBAPSite, getLongestBranch, locateSites2, enable_ttx, disable_ttx
-public soma, dend, apic, axon, myelin, nSecAxonal, nSecAxonalOrig, segCounts, rnglist
+public soma, dend, apic, axon, myelin, nSecAxonal, nSecAxonalOrig, segCounts, rnglist, synHelperList
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
-objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts, rnglist
+objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts, rnglist, synHelperList
 
 //! Used when computing nseg per section
 external lambda_f
@@ -38,7 +38,8 @@ proc init() {
     }
     
     synlist = new List()
-    rnglist = new List()
+    rnglist = new List()  // maybe this can be phased out?
+    synHelperList = new List()
 }
 create soma[1], dend[1], apic[1], axon[1], myelin[1]
 
