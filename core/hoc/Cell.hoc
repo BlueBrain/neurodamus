@@ -10,7 +10,7 @@
 
 begintemplate Cell
 public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
-public locateBAPSite, getLongestBranch, locateSites2
+public locateBAPSite, getLongestBranch, locateSites2, enable_ttx, disable_ttx
 public soma, dend, apic, axon, myelin, nSecAxonal, nSecAxonalOrig, segCounts, rnglist
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
 objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts, rnglist
@@ -154,7 +154,44 @@ proc delete_axon(){ local nSec, D1, D2, dist, i1, i2, count
     }
 }
 
+/**
+*
+* Enable TTX by inserting TTXDynamicsSwitch and setting ttxo to 1.0
+*
+*/
+proc enable_ttx() {
 
+    forsec all {
+        // Insert the mechanism that controls the ttx concentration
+        // Na channels should use the ttxo variable set by this mechanism
+        // to switch on/off
+        if (!ismembrane("TTXDynamicsSwitch")) {
+            insert TTXDynamicsSwitch
+        }
+        ttxo_level_TTXDynamicsSwitch = 1.0
+    }
+
+}
+
+
+/**
+*
+* Disable TTX by inserting TTXDynamicsSwitch and setting ttxo to 1e-14
+*
+*/
+proc disable_ttx() {
+
+    forsec all {
+        if (!ismembrane("TTXDynamicsSwitch")) {
+            insert TTXDynamicsSwitch
+        }
+
+        // Use 1e-14 instead of 0.0. According to M.Hines setting ttxo could
+        // result in unexpected behavior
+        ttxo_level_TTXDynamicsSwitch = 1e-14
+    }
+
+}
 
 proc SetCellProperties(){local Rm,v_init
         Rm = $1
