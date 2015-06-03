@@ -8,6 +8,17 @@
 
 objref globrec
 
+// Note: the following is to allow this version with save state to be used by a non-savestate enabled NEURON.
+// maybe we can get rid of it in the future
+objref test
+if( execute1("test = new BBSaveState()", 0) == 0 ) {
+    test = new ParallelContext()
+    if( test.id() == 0 ) {
+        print "Using non-savestate version of NEURON"
+    }
+    execute( "~begintemplate BBSaveState\npublic ignore\nproc ignore(){}\nendtemplate BBSaveState" )
+}
+
 begintemplate Report
 
 //-----------------------------------------------------------------------------------------------
@@ -641,6 +652,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
     ptProcessLibrary.append( new String( "ProbAMPANMDA_EMS" ) )
     ptProcessLibrary.append( new String( "StdpWADoublet" ) )
     ptProcessLibrary.append( new String( "StdpWATriplet" ) )
+    ptProcessLibrary.append( new String( "GluSynapse" ) )
 
     //Note - only synapse types are put in ptProcessLibrary, with IClamp & SEClamp getting checked separately.  Should we change that behavior?
     
