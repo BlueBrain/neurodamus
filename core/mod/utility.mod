@@ -18,6 +18,7 @@ VERBATIM
 #include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
+#include <mpi.h>
 
 extern char* gargstr();
 extern char** hoc_pgargstr();
@@ -124,3 +125,40 @@ VERBATIM
     }
 ENDVERBATIM
 }
+
+COMMENT
+Provide a convenience function for redirecting program output to separate files on disk such that it might help debugging
+ENDCOMMENT
+FUNCTION redirect() {
+VERBATIM {
+#ifndef DISABLE_HDF5
+    FILE *fout;
+    char fname[128];
+    
+    int mpi_size, mpi_rank;
+    //fprintf( stderr, "rank %d\n", getpid() );
+    //sleep(20);
+
+    
+    // get MPI info
+    MPI_Comm_size (MPI_COMM_WORLD, &mpi_size);
+    MPI_Comm_rank (MPI_COMM_WORLD, &mpi_rank);  
+    
+    if( mpi_rank != 0 ) {    
+        sprintf( fname, "NodeFiles/%d.%dnode.out", mpi_rank, mpi_size );
+        fout = freopen( fname, "w", stdout );
+        if( !fout ) {
+            fprintf( stderr, "failed to redirect.  Terminating\n" );
+            exit(0);
+        }
+        setbuf( fout, NULL );
+        
+        sprintf( fname, "NodeFiles/%d.%dnode.err", mpi_rank, mpi_size );
+        fout = freopen( fname, "w", stderr );
+        setbuf( fout, NULL );
+    }
+#endif
+}
+ENDVERBATIM
+}
+

@@ -36,6 +36,9 @@ external cvode
 
 public init, addCompartmentReport, addSummationReport, addSynapseReport, get_memory_report
 
+// for save/restore
+public restartALUs
+
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
 //-----------------------------------------------------------------------------------------------
@@ -271,7 +274,7 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
  * @param $o2 TPointList with the points for a single cell
  * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
  */
-proc addCompartmentReport() { local x, rpt, vgid
+proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
     strdef tstr
     
     // Don't attempt to put a cell with 0 points in a BinReport; bad things happen
@@ -308,6 +311,8 @@ proc addCompartmentReport() { local x, rpt, vgid
             sprint( tstr, "{ALUhelper.addvar( &v(%lf), %lf )}", x, area(x)  )
             result = execute(tstr, this)
             addSummationVarAndCommitALU( sectionNo($o1), rpt )
+            bbss = new BBSaveState()
+            bbss.ignore(ALUhelper)
         } else {
     
         //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
@@ -361,7 +366,7 @@ obfunc get_memory_report() {
  * @param $4 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
  */
 proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, useElectrode, secType, secNum \
-    localobj intrinsicList, ptProcessList, mechtype, internalVar, nil
+    localobj intrinsicList, ptProcessList, mechtype, internalVar, nil, bbss
     strdef tstr        
     
     evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
@@ -389,6 +394,9 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
         $o1.soma {
             ALUhelper = new ALU( 0.5, reportDt )
             ALUhelper.setop( "summation" )
+            
+            bbss = new BBSaveState()
+            bbss.ignore(ALUhelper)
         }
     }
     
@@ -398,6 +406,9 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
         if( !(collapsed) ) { //need 1 ALU per cmp
             ALUhelper = new ALU( x, reportDt )
             ALUhelper.setop( "summation" )
+            
+            bbss = new BBSaveState()
+            bbss.ignore(ALUhelper)
         }
         
         //intrinsic currents
@@ -491,7 +502,7 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
  * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
  */
 proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID \
-    localobj intrinsicList, ptProcessList, locALUList, locTPointList, mechtype, internalVar, synList
+    localobj intrinsicList, ptProcessList, locALUList, locTPointList, mechtype, internalVar, synList, bbss
     strdef tstr
 
     locALUList = new List()
@@ -523,11 +534,13 @@ proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProce
                     // Here is the "hack" to report synapses with the Summation ALU
                     ALUhelper = new ALU( x, reportDt )
                     ALUhelper.setop( "summation" )                	                	               
-                	sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
-                	result = execute(tstr, this)
-                	if( result == 0 ) {
-                            //is this an error?
-                	}
+                    sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
+                    result = execute(tstr, this)
+                    if( result == 0 ) {
+                        //is this an error?
+                    }
+                    bbss = new BBSaveState()
+                    bbss.ignore(ALUhelper)
 
                     locALUList.append(ALUhelper)
                     locTPointList.append(x)
@@ -837,4 +850,21 @@ $&2=secIndex
                 return 0
 }
 
+/**
+ * After a restore, the ALU objects need to be manually triggered so that they periodically update
+ *
+ * @param $o1 jumpstarters List object to hold NetCons which are used to restart the ALUs
+ */
+proc restartALUs() { local aluIndex  localobj nc, nil
+    if( object_id( ALUList, 1 ) != -1 ) {
+        
+        for aluIndex=0, ALUList.count()-1 {
+            nc = new NetCon( nil, ALUList.o(aluIndex), 10, 1, 1 )
+            nc.event(t)
+            $o1.append(nc)
+        }
+    }
+}
+
 endtemplate Report
+
