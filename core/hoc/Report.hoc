@@ -81,7 +81,7 @@ proc init() { localobj nil
     retVal = 0
     
     //For some reports, we will need to store the ALU objects that are performing operations on the various properties (e.g. current sources)
-    if( strcmp( reportType, "Summation" ) == 0 ||  strcmp( reportType, "Synapse" ) == 0 ) {
+    if( strcmp( reportType, "Summation" ) == 0 ||  strcmp( reportType, "Synapse" ) == 0 || strcmp(reportOn, "area") == 0 ) {
         ALUList = new List()
     }
     
@@ -258,6 +258,7 @@ func prepareReportForCell() { local node, rpt, vgid
  * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
  */
 proc addCompartmentReport() { local x, rpt, vgid
+    strdef tstr
     
     // Don't attempt to put a cell with 0 points in a BinReport; bad things happen
     if( $o2.count() == 0 ) {
@@ -285,6 +286,15 @@ proc addCompartmentReport() { local x, rpt, vgid
 
     //for each point, register variable and mapping
     for $o2.each_point(&x) {
+        
+        // special case: area.  create an alu to do the reporting.  
+        if( strcmp(reportOn, "area") == 0 ) {
+            ALUhelper = new ALU( 0.5, reportDt )
+            ALUhelper.setop( "constant" )
+            sprint( tstr, "{ALUhelper.addvar( &v(%lf), %lf )}", x, area(x)  )
+            result = execute(tstr, this)
+            addSummationVarAndCommitALU( sectionNo($o1), rpt )
+        } else {
     
         //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
         if( 0 == strcmp(format, "Bin") ) {
@@ -306,6 +316,8 @@ proc addCompartmentReport() { local x, rpt, vgid
                 break
             }
             rec.addmapping( rpt, sectionNo( $o1 ) )
+        }
+
         }
     }    
 }
