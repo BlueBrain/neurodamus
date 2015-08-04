@@ -104,7 +104,8 @@ proc init() { localobj nil
         }
     }
 
-    //iscParam = $s12
+    // TODO: clean up excessive number of arguments to this constructor.  Also it makes no sense to have a mandatory arg anfter an optional arg.
+    iscParam = $s12
 }
 
 //-----------------------------------------------------------------------------------------------
