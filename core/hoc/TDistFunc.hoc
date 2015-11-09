@@ -25,14 +25,14 @@ begintemplate TDistFunc
         }
     }
 
-    proc distribute_section_variable(){local x localobj sl        
+    proc distribute_section_variable(){ localobj sl        
         sl = $o1
         mech = $s2
         distfunc = $s3                
         sprint(distfunc,"%%s %s = %s",mech, distfunc)
         //print distfunc
         forsec sl {
-            sprint (stmp,distfunc,secname(),distance(x))
+            sprint (stmp,distfunc,secname(),distance(0.5))
             //print stmp
             execute(stmp)
         }
