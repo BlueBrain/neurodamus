@@ -117,10 +117,8 @@ begintemplate TStim
                 addpoint( 0, $1+$2 )
             }
             
-//TODO: determine if we should stick with old bglib way, where time spent in pulse doesn't count against tpulse
-            //nextpulse = nextpulse + tpulse
-            nextpulse = nextpulse + tpulse + width //by adding time of width, tpulse is kept full
-            remtime = remtime - tpulse // width doesn't count against remtime
+            nextpulse = nextpulse + tpulse
+            remtime = remtime - tpulse
         }
         
         addpoint( 0, $1+$2 )
@@ -178,7 +176,7 @@ for remtime=0, tvec.size()-1 {
         // To help with save state, we want Noise stimulus to continue where it left off
         // so first draw the numbers that were already used (not very efficient, but can be improved later)
         if( $1 > 0 ) {
-            tvec.indgen(0,$1,dT)
+            tvec.indgen(0,$1-dT,dT)
             stim.copy(tvec.c)
             stim.setrand(rand)
         }
