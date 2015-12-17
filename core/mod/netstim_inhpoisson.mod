@@ -98,7 +98,6 @@ INITIAL {
    }
 
    ENDVERBATIM
-
    update_time()
    erand() : for some reason, the first erand() call seems
            : to give implausibly large values, so we discard it
@@ -114,7 +113,6 @@ INITIAL {
 : This procedure queues the next surrogate event in the 
 : poisson process (rate=ramx) to be thinned.
 PROCEDURE generate_next_event() {
-
 	event = 1000.0/rmax*erand()
 	: but not earlier than 0
 	if (event < 0) {
@@ -287,17 +285,17 @@ COMMENT
 ENDCOMMENT
 NET_RECEIVE (w) {
     : Note - if we have restored a sim from a saved state.  We need to restart the queue, but do not generate a spike now
-	if (flag == 0 || flag == POST_RESTORE_RESTART_FLAG ) {
-        
+    if ( flag == POST_RESTORE_RESTART_FLAG ) {
+        net_send(event, 0)
+    } else if (flag == 0 ) {
         update_time()
         generate_next_event()
+        
         : stop even producing surrogate events if we are past duration
         if (t+event < start+duration) {
             net_send(event, 0)
         }
-    }
     
-    if( flag == 0 ) {
         : check if we trigger event on coupled synapse
 VERBATIM
         double u = (double)urand();
@@ -325,3 +323,33 @@ VERBATIM
     return POST_RESTORE_RESTART_FLAG;
 ENDVERBATIM
 }
+
+
+
+COMMENT
+/**
+ * After a resume, populate variable 'event' with the first event time that can be given to net_send such that the elapsed time is 
+ * greater than the resume time.  Note that if an event was generated just before saving, but due for delivery afterwards (delay 0.1), 
+ * then the hoc layer must deliver this event directly.
+ *
+ * @param delay (typically 0.1) #TODO: accept a parameter rather than using hard coded value below
+ * @return Time of the next event.  If this is less than the current time (resume time), the hoc layer should deliver the event immediately
+ */
+ENDCOMMENT
+FUNCTION resumeEvent() {
+    LOCAL elapsed_time, delay
+    : Since we want the minis to be consistent with the previous run, it should use t=0 as a starting point until it
+    : reaches an elapsed_time >= resume_t.  I need to be careful, though, since events generated right before the save
+    : time but to be deliver afterwards must be accounted for properly
+    elapsed_time = event : event has some value from the INITIAL block
+    delay = 0.1
+
+    while( elapsed_time+delay < t ) {
+        update_time()
+        generate_next_event()
+        elapsed_time = elapsed_time + event
+    }
+    resumeEvent = elapsed_time
+    event = elapsed_time-t
+}
+
