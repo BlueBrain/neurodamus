@@ -9,7 +9,7 @@
 {load_file("import3d.hoc")}
 
 begintemplate Cell
-public init, printInfo, AddMorphNL, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
+public init, printInfo, AddMorph, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
 public locateBAPSite, getLongestBranch, locateSites2, enable_ttx, disable_ttx
 public soma, dend, apic, axon, myelin, nSecAxonal, nSecAxonalOrig, segCounts, rnglist, synHelperList
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
@@ -34,22 +34,37 @@ proc init() {
     forall delete_section()
     if(numarg()>0) gid = $1
 	if(numarg()>1){
-		AddMorphNL($s2)
+		AddMorph($s2)
     }
     
     synlist = new List()
-    rnglist = new List()  // maybe this can be phased out?
+    rnglist = new List()
     synHelperList = new List()
 }
 create soma[1], dend[1], apic[1], axon[1], myelin[1]
 
-proc AddMorphNL(){ localobj nl, import
+proc AddMorph(){ localobj morph, import, strobj, extension
     forall delete_section()
     
-    nl = new Import3d_Neurolucida3()
-    nl.quiet = 1
-    nl.input($s1)
-    import = new Import3d_GUI(nl, 0)
+    strobj = new StringFunctions()
+    extension = new String()
+    
+    sscanf($s1, "%s", extension.s)
+    
+    strobj.right(extension.s, strobj.len(extension.s)-4)
+
+    if( strcmp(extension.s, ".asc") == 0 ) {
+        morph = new Import3d_Neurolucida3()
+    } else if( strcmp(extension.s, ".swc" ) == 0) {
+        morph = new Import3d_SWC_read()
+    } else {
+        printf("Unsupported file format: Morphology file has to end with .asc or .swc" )
+        quit()
+    }
+
+    morph.quiet = 1
+    morph.input($s1)
+    import = new Import3d_GUI(morph, 0)
     import.instantiate(this)
     indexSections(import)
     geom_nsec()

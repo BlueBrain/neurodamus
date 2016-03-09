@@ -388,12 +388,13 @@ int loadDataMatrix( Info *info, char* name )
     
     hsize_t dims[2] = {0}, offset[2] = {0};
     hid_t dataset_id, dataspace;
-    dataset_id = H5Dopen(info->file_, name);
-    if( dataset_id < 0)
+
+    if( H5Lexists(info->file_, name, H5P_DEFAULT) == 0)
     {
         printf("Error accessing to dataset %s in synapse file\n", name);
         return -1;
     }
+    dataset_id = H5Dopen(info->file_, name);
     
     strncpy(info->name_group, name, 256);
     
@@ -446,7 +447,7 @@ VERBATIM {
         INFOCAST;
         Info* info = 0;
         
-        strncpy(nameoffile, gargstr(1),256);
+        strncpy(nameoffile, gargstr(1),512);
         info = (Info*) hoc_Emalloc(sizeof(Info)); hoc_malchk();
         initInfo( info );
         
@@ -617,13 +618,13 @@ VERBATIM {
     //check version for synapse file; must be version 1 -> only have processor 0 do this to avoid output overload on errors
     if( mpi_rank == 0 )
     {
-        hid_t dataset_id = H5Dopen( info->file_, "version" );
-        if( dataset_id < 0 ) //no version info - must be version 0
+        if( H5Lexists(info->file_, "version", H5P_DEFAULT) == 0)
         {
             fprintf( stderr, "Error. Incompatible synapse version file (given version 0 file, require version 1).\n" );
             fprintf( stderr, "Terminating" );
             MPI_Abort( MPI_COMM_WORLD, 27 );
         }
+        hid_t dataset_id = H5Dopen( info->file_, "version" );
         
         H5Aread( H5Aopen_name( dataset_id, "attr" ), H5T_NATIVE_INT, &versionNumber );
         if( versionNumber != 1 )
@@ -900,12 +901,12 @@ VERBATIM
     Info* info = *ip;
     if( info->file_ >= 0 && ifarg(1) && hoc_is_str_arg(1) && ifarg(2) && hoc_is_str_arg(2) )
     {
-        hid_t dataset_id = H5Dopen( info->file_, gargstr(1) );
-        if( dataset_id < 0 )
+        if( H5Lexists(info->file_, gargstr(1), H5P_DEFAULT) == 0)
         {
             fprintf( stderr, "Error: no dataset with name %s available.\n", gargstr(1) );
             return 0;
         }
+        hid_t dataset_id = H5Dopen( info->file_, gargstr(1) );
         
         double soughtValue;
         hid_t attr_id = H5Aopen_name( dataset_id, gargstr(2) );
@@ -933,7 +934,6 @@ VERBATIM {
     Info* info = *ip;
     if(info->file_ >=0)
     {
-        //printf("Trying to close\n");
         H5Fclose(info->file_);
         //printf("Close\n");
         info->file_ = -1;

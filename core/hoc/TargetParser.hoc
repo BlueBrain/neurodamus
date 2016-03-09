@@ -46,6 +46,9 @@ proc open() { localobj tFile, targetInstance
     strdef tstr, tstr1, typeString
     tFile   = new File() //new FakeFile()
     tFile.ropen($s1)
+    if( isVerbose ) {
+        print "Reading target file ", $s1
+    }
     
     if (tFile.isopen == 0) {
         if( isVerbose != 0 ) {

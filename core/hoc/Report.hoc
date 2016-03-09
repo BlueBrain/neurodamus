@@ -118,6 +118,7 @@ proc init() { localobj nil
         }
     }
 
+    // TODO: clean up excessive number of arguments to this constructor.  Also it makes no sense to have a mandatory arg anfter an optional arg.
     iscParam = $s12
 }
 
@@ -666,6 +667,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
     ptProcessLibrary.append( new String( "StdpWADoublet" ) )
     ptProcessLibrary.append( new String( "StdpWATriplet" ) )
     ptProcessLibrary.append( new String( "GluSynapse" ) )
+    ptProcessLibrary.append( new String( "Gap" ) )
 
     //Note - only synapse types are put in ptProcessLibrary, with IClamp & SEClamp getting checked separately.  Should we change that behavior?
     

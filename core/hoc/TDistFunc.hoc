@@ -10,7 +10,7 @@ D__TDISTFUNCHOC = 1
 
 begintemplate TDistFunc
     strdef stmp,distfunc,mech
-    public distribute, ndistribute
+    public distribute, ndistribute, distribute_section_variable
     
     proc distribute(){local x localobj sl        
         sl = $o1
@@ -20,6 +20,19 @@ begintemplate TDistFunc
         //print distfunc
         forsec sl for(x) {
             sprint (stmp,distfunc,secname(),x,distance(x))
+            //print stmp
+            execute(stmp)
+        }
+    }
+
+    proc distribute_section_variable(){ localobj sl        
+        sl = $o1
+        mech = $s2
+        distfunc = $s3                
+        sprint(distfunc,"%%s %s = %s",mech, distfunc)
+        //print distfunc
+        forsec sl {
+            sprint (stmp,distfunc,secname(),distance(0.5))
             //print stmp
             execute(stmp)
         }
