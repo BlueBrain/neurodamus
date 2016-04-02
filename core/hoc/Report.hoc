@@ -638,6 +638,8 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
     ptProcessLibrary.append( new String( "ProbNMDA" ) )
     ptProcessLibrary.append( new String( "ProbAMPANMDA" ) )
     ptProcessLibrary.append( new String( "ProbAMPANMDA_EMS" ) )
+    ptProcessLibrary.append( new String( "DetAMPANMDA" ) )
+    ptProcessLibrary.append( new String( "DetGABAAB" ) )
     ptProcessLibrary.append( new String( "StdpWADoublet" ) )
     ptProcessLibrary.append( new String( "StdpWATriplet" ) )
     ptProcessLibrary.append( new String( "GluSynapse" ) )
