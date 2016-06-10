@@ -18,7 +18,7 @@ begintemplate TDistFunc
         distfunc = $s3                
         sprint(distfunc,"%%s %s(%%f) = %s",mech, distfunc)
         //print distfunc
-        forsec sl for(x) {
+        forsec sl for(x,0) {
             sprint (stmp,distfunc,secname(),x,distance(x))
             //print stmp
             execute(stmp)
@@ -47,7 +47,7 @@ begintemplate TDistFunc
             if(numarg()>3) norm_factor = getLongestBranch(sl)
             sprint(distfunc,"%%s %s(%%f) = %s",mech, distfunc)
             //print distfunc
-            forsec sl for(x) {
+            forsec sl for(x,0) {
                 sprint (stmp,distfunc,secname(),x,distance(x)/norm_factor)
             //    print stmp
                 execute(stmp)
