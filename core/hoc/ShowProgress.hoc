@@ -26,6 +26,7 @@ proc init() {
 
     if( $2 == 0 ) {
         lastTimeCheck = startsw()
+	simStart = lastTimeCheck
         fihTimer = new FInitializeHandler("updateProgress()", this)
     }
 }
@@ -35,9 +36,12 @@ proc init() {
  * inserts the next call into the event queue
  */
 proc updateProgress() {
-    if((startsw()-lastTimeCheck) > 0.10 ) {
-        printf(" Completed =%d\%\r",  (t*100/tstop))
-        lastTimeCheck = startsw()
+    if(((startsw()-lastTimeCheck) > 0.10 ) && (t>0)) {
+	lastTimeCheck = startsw()
+	NumSecRemain = (lastTimeCheck-simStart)*(tstop/t-1)
+        printf(" Completed =%02d%% ETA =%d:%02d:%02d  \r",  (t*100/tstop), int(NumSecRemain/3600), int(NumSecRemain%3600/60), int(NumSecRemain%3600%60) )
+    
+        
     }
     
     cvode.event(t+1, "updateProgress()")
