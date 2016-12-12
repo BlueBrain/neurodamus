@@ -339,12 +339,13 @@ ENDCOMMENT
 FUNCTION resumeEvent() {
     LOCAL elapsed_time, delay
     : Since we want the minis to be consistent with the previous run, it should use t=0 as a starting point until it
-    : reaches an elapsed_time >= resume_t.  I need to be careful, though, since events generated right before the save
-    : time but to be deliver afterwards must be accounted for properly
+    : reaches an elapsed_time >= resume_t.  Events generated right before the save time but scheduled for delivery afterwards
+    : will already be restored to the NetCon by the bbsavestate routines
+    
     elapsed_time = event : event has some value from the INITIAL block
     delay = 0.1
 
-    while( elapsed_time+delay < t ) {
+    while( elapsed_time < t ) {
         update_time()
         generate_next_event()
         elapsed_time = elapsed_time + event
