@@ -93,7 +93,7 @@ proc open() { localobj tFile, targetInstance
                 targetInstance.isDefined = 1
 
                 //Display msg to default output if target instance is empty
-                if (targetInstance.isEmpty) {
+                if (targetInstance.isEmpty && isVerbose) {
                     print "Warning: Following target is empty: ", targetInstance.name
                 }
             }            
