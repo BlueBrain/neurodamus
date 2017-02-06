@@ -673,7 +673,7 @@ VERBATIM {
             fprintf( stderr, "Warning: failed to find data for gid %d\n", gid );
     }
     
-    return 0;
+    return -1;
 #endif
 }
 ENDVERBATIM
