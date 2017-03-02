@@ -12,7 +12,7 @@ ENDCOMMENT
 : Vector stream of events	
 NEURON {
     ARTIFICIAL_CELL VecStim
-    RANGE ping
+    RANGE ping, index, etime
 }
 
 PARAMETER {
