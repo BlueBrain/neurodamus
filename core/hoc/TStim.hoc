@@ -159,11 +159,13 @@ begintemplate TStim
 * and put it in memory. I do now know of any differences in performance between
 * the vector.play and the rand.play functions.
 */
-	proc noise(/*start,dur,mean,var[,dt]*/){local dT
+	proc noise(/*start,dur,mean,var[,dt]*/){local dT localobj rngInfo
 		if(numarg()>4) dT = $5 else dT = 0.5
 		initinject()
 		rand.normal($3,$4)
         tstim_end = $1+$2
+
+        rngInfo = new RNGSettings()
 
 		tvec.indgen($1,$1+$2,dT)
 		stim.copy(tvec.c)
@@ -171,7 +173,7 @@ begintemplate TStim
 
         // If the stimulus starts with a delay from simulation start time, we will want 0 amps until the next Dt.
         // Note that for Resume, we will be at t > 0 and delay was offset by previous save time. Ergo, we must check that delay > t
-        if ( $1 > t ) {
+        if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY || $1 > t ) {
             stim.x[0] = 0
         }
         

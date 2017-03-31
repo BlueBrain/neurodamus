@@ -39,7 +39,7 @@ public noise
  *
  * @param $o1 TargetManager
  * @param $o2 Electrode Manager for extracellular stimulation (optional)
- * @param $3 optional globalBaseSeed to apply to random numbers (default 0)
+ * @param $3 [deprecated] optional globalBaseSeed to apply to random numbers (default 0)
  */
 proc init() { local argIndex
     
@@ -55,8 +55,6 @@ proc init() { local argIndex
     vecStimList = new List()
     voltageReplayList = new List()
     timeReplayList = new List()
-    
-    globalBaseSeed = 0
     
     // if we have been passed an elec manager or base seed argument, need to determine now by arg type.  May want to clean this up in the future to
     // remove excess freedom for the users
@@ -415,17 +413,23 @@ proc hypamp() { local hypampI, ret, x, del, dur  localobj pts, cellList, tstim
  * @param $4 delay from start of simulation to when current is injected (ms)
  * @param $5 duration of stimulus (ms)
  */
-proc relativeNoise() { local x, threshold  localobj pts, cellList, rand, tstim
+proc relativeNoise() { local x, threshold  localobj pts, cellList, rand, tstim, rngInfo
     pts = targetManager.getPointList($s1)
     cellList = targetManager.getCells($s1)
+
+    rngInfo = new RNGSettings()
     
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
             threshold = cellList.o(cellIndex).getCCell().getThreshold()
-            //rand.MCellRan4( 120 + noiseStimCount*10000, 240 + globalBaseSeed + pts.o(cellIndex).gid )
-            rand = new Random( pts.o(cellIndex).gid + noiseStimCount )
+
+            if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY ) {
+                rand = new Random( pts.o(cellIndex).gid + noiseStimCount )
+            } else {
+                rand = new Random()
+                rand.MCellRan4( noiseStimCount*10000+100, rngInfo.getGlobalSeed() + rngInfo.getStimulusSeed() + pts.o(cellIndex).gid*1000 )
+            }
             tstim = new TStim(x, rand)
-            
             tstim.noise( $4, $5, threshold*$2/100, threshold*$3/100 )
             stimList.append(tstim)
         }
@@ -447,14 +451,20 @@ proc relativeNoise() { local x, threshold  localobj pts, cellList, rand, tstim
  * @param $4 delay from start of simulation to when current is injected (ms)
  * @param $5 duration of stimulus (ms)
  */
-proc noise() { local x  localobj pts, rand, tstim
+proc noise() { local x  localobj pts, rand, tstim, rngInfo
     pts = targetManager.getPointList($s1)
+
+    rngInfo = new RNGSettings()
+    
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
-            rand = new Random( pts.o(cellIndex).gid + noiseStimCount )
-            rand.MCellRan4( 120 + noiseStimCount*10000, 240 + globalBaseSeed + pts.o(cellIndex).gid )
+            if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY ) {
+                rand = new Random( pts.o(cellIndex).gid + noiseStimCount )
+            } else {
+                rand = new Random()
+                rand.MCellRan4( noiseStimCount*10000+100, rngInfo.getGlobalSeed() + rngInfo.getStimulusSeed() + pts.o(cellIndex).gid*1000 )
+            }
             tstim = new TStim(x, rand)
-            
             tstim.noise( $4, $5, $2, $3 )
             stimList.append(tstim)
         }
@@ -786,13 +796,15 @@ $&2=secIndex
  * @param $o11 TPointList with basal points
  */
 proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, lambda, weight, del, dur, substituteCount, vIndex \
-    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, fih, sf, fillFunctionOverride, vecstim, myvec, nil
+    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, fih, sf, fillFunctionOverride, vecstim, myvec, nil, rngInfo
     strdef tstr, tstr1
     
     iteration = 0
     nCreated = 0
 
-    baseSeed = globalBaseSeed + $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
+    rngInfo = new RNGSettings()
+
+    baseSeed = rngInfo.getGlobalSeed() + $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
     lambda = $2
     weight = $3
     nNeeded  =  int($4)
@@ -908,7 +920,7 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
  * @param $o10 basal points
  */
 proc distributePoissonSynapsesInhomogeneous() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, weight, substituteCount, tIndex \
-    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, sf, h5file, tbins, rate, h5reader, vecstim, tbins_vec, rate_vec, inhpoiss, exprng, uniformrng, nil
+    localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, sf, h5file, tbins, rate, h5reader, vecstim, tbins_vec, rate_vec, inhpoiss, exprng, uniformrng, nil, rngInfo
     strdef tstr, tstr1
     
     //TODO: refactor this code with distributePoissonSynapses
@@ -916,7 +928,9 @@ proc distributePoissonSynapsesInhomogeneous() { local nCreated, nNeeded, iterati
     iteration = 0
     nCreated = 0
 
-    baseSeed = globalBaseSeed + $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
+    rngInfo = new RNGSettings()
+
+    baseSeed = rngInfo.getGlobalSeed() + $1 + poissonStimCount * 10000 //-> should baseSeed be an arg so that it doesn't need knowledge of # of previous npoisson stims?
     weight = $2
     nNeeded  =  int($3)
     synapseConfigure = $o5
