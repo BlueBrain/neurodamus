@@ -1,0 +1,106 @@
+/**
+ * @file RNGSetting.hoc
+ * @brief To help with transitioning RNG behavior, this will contain setting/flags.
+ * @author king
+ * @date 2017-03-08
+ * @remark Copyright © BBP/EPFL 2005-2017; All rights reserved. Do not distribute without further notice.
+ */
+
+rngMode = 1  // corresponds to RANDOM123 defined below
+ionchannelSeed = 0
+synapseSeed = 0
+stimulusSeed = 0
+minisSeed = 0
+globalSeed = 0
+
+begintemplate RNGSettings
+
+public init, interpret, getRNGMode, getIonChannelSeed, getSynapseSeed, getStimulusSeed, getMinisSeed, getGlobalSeed
+public COMPATIBILITY, RANDOM123, UPMCELLRAN4
+
+external rngMode, ionchannelSeed, synapseSeed, stimulusSeed, minisSeed, globalSeed
+
+proc init() {
+    // consts for random number handling
+    COMPATIBILITY = 0
+    RANDOM123 = 1
+    UPMCELLRAN4 = 2
+}
+
+/**
+ * Given the Run block from a BlueConfig, check if there are special flags governing rng behavior
+ *
+ * $o1 ParsedRun from a BlueConfig (type is Map)
+ */
+proc interpret() { localobj runInfo, pc
+    strdef rngModeField
+    runInfo = $o1
+    
+    rngMode = UPMCELLRAN4
+    if( runInfo.exists( "RNGMode" ) ) {
+        rngModeField = runInfo.get( "RNGMode" ).s
+        if( strcmp( rngModeField, "Compatibility" ) == 0 ) {
+            rngMode = COMPATIBILITY
+        } else if( strcmp( rngModeField, "UpdatedMCell" ) == 0 ) {
+            rngMode = UPMCELLRAN4
+        } else if( strcmp( rngModeField, "Random123" ) == 0 ) {
+            rngMode = RANDOM123
+        } else {
+            pc = new ParallelContext()
+            if( pc.id() == 0 ) {
+                print "Invalid RNGMode '", rngModeField, "'; use Compatibility, UpdatedMCell, or Random123.  Terminating"
+            }
+            pc.barrier()
+            quit()
+        }
+    }
+    
+    if( runInfo.exists("BaseSeed") ) {
+        globalSeed = runInfo.valueOf( "BaseSeed" )
+    }
+    
+    // don't search for indicidual seeds if we are in compatibility mode
+    if( rngMode == COMPATIBILITY ) {
+        return
+    }
+
+    if( runInfo.exists("IonChannelSeed") ) {
+        ionchannelSeed = runInfo.valueOf( "IonChannelSeed" )
+    }
+    if( runInfo.exists("StimulusSeed") ) {
+        stimulusSeed = runInfo.valueOf( "StimulusSeed" )
+    }
+    if( runInfo.exists("MinisSeed") ) {
+        minisSeed = runInfo.valueOf( "MinisSeed" )
+    }
+    if( runInfo.exists("SynapseSeed") ) {
+        synapseSeed = runInfo.valueOf( "SynapseSeed" )
+    }
+}
+
+func getRNGMode() {
+    return rngMode
+}
+
+func getIonChannelSeed() {
+    return ionchannelSeed
+}
+
+func getStimulusSeed() {
+    return stimulusSeed
+}
+
+func getMinisSeed() {
+    return minisSeed
+}
+
+func getSynapseSeed() {
+    return synapseSeed
+}
+
+func getGlobalSeed() {
+    return globalSeed
+}
+
+endtemplate RNGSettings
+
