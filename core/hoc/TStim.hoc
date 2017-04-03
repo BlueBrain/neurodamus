@@ -178,7 +178,6 @@ for remtime=0, tvec.size()-1 {
         // To help with save state, we want Noise stimulus to continue where it left off
         // so first draw the numbers that were already used (not very efficient, but can be improved later)
         if( rngInfo.getRNGMode() != rngInfo.COMPATIBILITY ) if( $1 > 0 ) {
-print "hello world"
             tvec.indgen(0,$1-dT,dT)
             stim.copy(tvec.c)
             stim.setrand(rand)
