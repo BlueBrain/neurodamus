@@ -108,6 +108,10 @@ struct ConfirmedCells
 
 typedef struct ConfirmedCells ConfirmedCells;
 
+#define NONE 0
+#define FLOAT_MATRIX 1
+#define LONG_VECTOR 2
+
 /**
  * Hold persistent HDF5 data such as file handle and info about latest dataset loaded
  */
@@ -116,9 +120,11 @@ struct Info {
     /// data members for general HDF5 usage
     hid_t file_;
     float * datamatrix_;
+    long long *datavector_;
     char name_group[256];
     hsize_t rowsize_;
     hsize_t columnsize_;
+    int mode;
     
     /// Sometimes we want to silence certain warnings
     int verboseLevel;
@@ -145,6 +151,8 @@ void initInfo( Info *info )
     // These fields are used when data is being accessed from a dataset
     info->file_ = -1;
     info->datamatrix_ = NULL;
+    info->datavector_ = NULL;
+    info->mode = NONE;
     info->name_group[0] = '\0';
     info->rowsize_ = 0;
     info->columnsize_ = 0;
@@ -428,6 +436,102 @@ int loadDataMatrix( Info *info, char* name )
     return 0;
 }
 
+/**
+ * Given the name of a dataset with id values, load it from the current hdf5 file into the matrix pointer
+ *
+ * @param info Structure that manages hdf5 info, its datavector_ variable is populated with hdf5 data on success
+ * @param name The name of the dataset to access and load in the hdf5 file
+ */
+int loadDataVector( Info *info, char* name )
+{
+    hsize_t dims[2] = {0}, offset[2] = {0};
+    hid_t dataset_id, dataspace;
+
+    if( H5Lexists(info->file_, name, H5P_DEFAULT) == 0)
+    {
+        printf("Error accessing to dataset %s in synapse file\n", name);
+        return -1;
+    }
+    dataset_id = H5Dopen(info->file_, name);
+    dataspace = H5Dget_space(dataset_id);
+
+    strncpy(info->name_group, name, 256);
+    
+    int dimensions = H5Sget_simple_extent_ndims(dataspace);
+    H5Sget_simple_extent_dims(dataspace,dims,NULL);
+    info->rowsize_ = (unsigned long)dims[0];
+    if( dimensions > 1 )
+        info->columnsize_ = dims[1];
+    else
+        info->columnsize_ = 1;
+    
+    if(info->datavector_ != NULL) {
+        free(info->datavector_);
+    }
+    info->datavector_ = (long long *) malloc(sizeof(long long)*(info->rowsize_*info->columnsize_)); 
+
+    H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset, NULL, dims, NULL);
+    hid_t dataspacetogetdata=H5Screate_simple(dimensions,dims,NULL);
+    H5Dread(dataset_id,H5T_NATIVE_ULONG,dataspacetogetdata,H5S_ALL,H5P_DEFAULT,info->datavector_);
+    H5Sclose(dataspace);
+    H5Sclose(dataspacetogetdata);
+    H5Dclose(dataset_id);
+    return 0;
+}
+
+
+
+/**
+ * Given the name of a dataset that should contain variable length string data, load those strings
+ */
+int loadDataString( Info* info, char* name, hid_t row, char **hoc_dest )
+{
+    hsize_t dims[1] = {1}, offset[1] = {row}, offset_out[1] = {0}, count[1] = {1};
+    hid_t dataset_id, dataspace, memspace, space, filetype, memtype;
+    herr_t status;
+    char** rdata;
+    int ndims = 0;
+    
+    if( H5Lexists(info->file_, name, H5P_DEFAULT) == 0)
+    {
+        printf("Error accessing to dataset %s in h5 file\n", name);
+        return -1;
+    }
+    dataset_id = H5Dopen(info->file_, name);
+    dataspace = H5Dget_space(dataset_id);
+    
+    filetype = H5Dget_type (dataset_id);
+    space = H5Dget_space (dataset_id);
+    ndims = H5Sget_simple_extent_dims (space, dims, NULL);
+    rdata = (char **) malloc (sizeof (char *));
+    
+    memtype = H5Tcopy (H5T_C_S1);
+    status = H5Tset_size (memtype, H5T_VARIABLE);
+    H5Tset_cset(memtype, H5T_CSET_UTF8);
+    
+    status = H5Sselect_hyperslab( space, H5S_SELECT_SET, offset, NULL, count, NULL );
+    
+    // memory space to receive data and select hyperslab in that
+    memspace = H5Screate_simple( 1, dims, NULL );
+    status = H5Sselect_hyperslab( memspace, H5S_SELECT_SET, offset_out, NULL, count, NULL );
+    
+    status = H5Dread (dataset_id, memtype, memspace, space, H5P_DEFAULT, rdata);
+    
+    hoc_assign_str( hoc_dest, rdata[0] );
+    
+    //fprintf( stderr, "free h5 mem\n" );  // TODO: determine why this causes a crash.  For now we leak memory
+    //status = H5Dvlen_reclaim (memtype, space, H5P_DEFAULT, rdata );
+    //fprintf( stderr, "free rdata\n" );
+    free(rdata);
+    
+    status = H5Sclose (space);
+    status = H5Sclose (dataspace);
+    status = H5Tclose (filetype);
+    status = H5Tclose (memtype);
+
+    return 0;
+}
+
 #endif
 ENDVERBATIM
 
@@ -563,6 +667,11 @@ VERBATIM {
         free(info->datamatrix_);
         info->datamatrix_ = NULL;
     }
+    if( info->datavector_ != NULL )
+    {
+        free( info->datavector_ );
+        info->datavector_ = NULL;
+    }
 #endif
 }
 ENDVERBATIM
@@ -650,6 +759,14 @@ VERBATIM {
     
     if(info->file_>=0 && ifarg(1) && hoc_is_str_arg(1))
     {
+        if( ifarg(2) ) {
+            if( *getarg(2) == 1 ) { //load vector
+                info->mode = LONG_VECTOR;
+                return loadDataVector( info, gargstr(1) );
+            }
+        }
+        
+        info->mode = FLOAT_MATRIX;
         return loadDataMatrix( info, gargstr(1) );
     }
     else if( ifarg(1) )
@@ -664,6 +781,7 @@ VERBATIM {
                 char cellname[256];
                 sprintf( cellname, "a%d", gid );
                 
+                info->mode = FLOAT_MATRIX;
                 return loadDataMatrix( info, cellname );
             }
         }
@@ -734,6 +852,7 @@ VERBATIM {
     }
     else
     {
+        printf( "general error: bad file handle, missing arg?" );
         return 0;
     }
 #endif
@@ -762,19 +881,46 @@ VERBATIM {
                 printf("ERROR: trying to access to a row and column erroneus on %s, size: %d,%d accessing to %d,%d\n ",name,info->rowsize_,info->columnsize_,row,column);
                 return 0;
             }
-            float res = info->datamatrix_[row*info->columnsize_ + column];
-            return res;
+
+            if( info->mode == FLOAT_MATRIX ) {
+                return info->datamatrix_[row*info->columnsize_ + column];
+            } else if( info->mode == LONG_VECTOR ) {
+                return (double) info->datavector_[row];
+            } else {
+                fprintf( stderr, "unexpected mode: %d\n", info->mode );
+            }
         }
         printf("(Getting data)Error on the name of last loaded data: access:%s loaded:%s\n",name,info->name_group);
         return 0;
     }
     else
     {
-        //printf("ERROR:Error on number of rows of \n");
+        fprintf( stderr, "ERROR:Error on number of rows of %s\n", gargstr(1) );
         return 0;
     }
 #endif
 }
+ENDVERBATIM
+}
+
+COMMENT
+Retrieve a single string from an hdf5 dataset and store in the provided hoc strdef
+Note that this function doesn't apply as many checks as other functions.
+e.g. The row is assumed to be within the dataset; this code is expected to be refactored ( -JGK, Jul 6 2017)
+@param dataset name
+@param row
+@param destination strdef from hoc
+ENDCOMMENT
+PROCEDURE getDataString() {
+VERBATIM
+    INFOCAST;  
+    Info* info = *ip;
+    
+    if( info->file_ >= 0 && ifarg(1) && hoc_is_str_arg(1) && ifarg(2) && ifarg(3) )
+    {
+        // Use HDF5 interface to get the requested string item from the dataset
+        loadDataString( info, gargstr(1), *getarg(2), hoc_pgargstr(3) );
+    }
 ENDVERBATIM
 }
 
