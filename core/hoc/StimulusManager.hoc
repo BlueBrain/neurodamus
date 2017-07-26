@@ -15,7 +15,7 @@ begintemplate StimulusManager
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-objref stimList, elecManager, targetManager, this
+objref stimList, elecManager, targetManager, cellDistributor, this
 
 //! For use in poisson stims, when creating via the execute stmt, need to have class level object (not just local to function)
 objref stimHelper, poissonNetconList, handleList, poissonSynList, vecStimList, voltageReplayList, timeReplayList
@@ -381,18 +381,19 @@ proc squarepulse() { local cellIndex, x, amp, del, dur  localobj pts, tstim
  */
 proc hypamp() { local hypampI, ret, x, del, dur  localobj pts, cellList, tstim
     pts = targetManager.getPointList($s1)
-    cellList = targetManager.getCells($s1)
+    cellList = targetManager.getMETypes($s1)
+    //cellList = targetManager.getCells($s1)
     del = $2
     dur = $3
     
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
-            ret = execute1( "{getHypAmp()}", cellList.o(cellIndex).getCCell(), 0 )
+            ret = execute1( "{getHypAmp()}", cellList.o(cellIndex), 0 )
             if( ret == 0 ) {
-                print cellList.o(cellIndex).getCCell()
+                print cellList.o(cellIndex)
                 print "Warning: gid ", pts.o(cellIndex).gid, " request for hyperpolarizing current injection where CCell template has no getHypAmp function"
             } else {
-                hypampI = cellList.o(cellIndex).getCCell().getHypAmp()
+                hypampI = cellList.o(cellIndex).getHypAmp()
                 tstim = new TStim(x)
                 tstim.pulse( del, dur, hypampI )
                 stimList.append(tstim)
@@ -417,11 +418,11 @@ proc hypamp() { local hypampI, ret, x, del, dur  localobj pts, cellList, tstim
  */
 proc relativeNoise() { local x, threshold  localobj pts, cellList, rand, tstim
     pts = targetManager.getPointList($s1)
-    cellList = targetManager.getCells($s1)
+    cellList = targetManager.getMETypes($s1)
     
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
-            threshold = cellList.o(cellIndex).getCCell().getThreshold()
+            threshold = cellList.o(cellIndex).getThreshold()
             rand = new Random( pts.o(cellIndex).gid + noiseStimCount )
             tstim = new TStim(x, rand)
             
@@ -475,13 +476,14 @@ proc noise() { local x  localobj pts, rand, tstim
 proc subthreshold() { local cellIndex, x  localobj pts, cellList, tstim
 
     pts = targetManager.getPointList($s1)
-    cellList = targetManager.getCells($s1)
+    cellList = targetManager.getMETpes($s1)
+    //cellList = targetManager.getCells($s1)
     
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
             tstim = new TStim(x)
             
-            tstim.pulse( $3, $4, cellList.o(cellIndex).getCCell().getThreshold()*(100-$2)/100 )
+            tstim.pulse( $3, $4, cellList.o(cellIndex).getThreshold()*(100-$2)/100 )
             stimList.append(tstim)
         }
     }
@@ -508,11 +510,12 @@ proc relativeLinear() { local cellIndex, x, percentStart, percentEnd, cellThresh
     dur = $5
     
     pts = targetManager.getPointList($s1)
-    cellList = targetManager.getCells($s1)
+    cellList = targetManager.getMETypes($s1)
+    //cellList = targetManager.getCells($s1)
     
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
-            cellThresh = cellList.o(cellIndex).getCCell().getThreshold()
+            cellThresh = cellList.o(cellIndex).getThreshold()
             tstim = new TStim(x)
             
             if( percentStart == percentEnd ) {
