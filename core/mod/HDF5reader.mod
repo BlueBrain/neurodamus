@@ -383,6 +383,49 @@ int openFile( Info* info, const char *filename, int fileID, int nRanksPerFile, i
 
 
 /**
+ * Load a dataset so that the dimensions are available, but don't retrieve any data
+ *
+ * @param info Structure that manages hdf5 info, its datamatrix_ variable is populated with hdf5 data on success
+ * @param name The name of the dataset to access
+ * @return 0 on success, < 0 on error
+ */
+int loadDimensions( Info *info, char* name )
+{
+    int isCurrentlyLoaded = strncmp( info->name_group, name, 256 ) == 0;
+    if( isCurrentlyLoaded )
+        return 0;
+    
+    hsize_t dims[2] = {0}, offset[2] = {0};
+    hid_t dataset_id, dataspace;
+
+    if( H5Lexists(info->file_, name, H5P_DEFAULT) == 0)
+    {
+        printf("Error accessing to dataset %s in synapse file\n", name);
+        return -1;
+    }
+    dataset_id = H5Dopen(info->file_, name);
+    
+    strncpy(info->name_group, name, 256);
+    
+    dataspace = H5Dget_space(dataset_id);
+    
+    int dimensions = H5Sget_simple_extent_ndims(dataspace);
+    H5Sget_simple_extent_dims(dataspace,dims,NULL);
+    info->rowsize_ = (unsigned long)dims[0];
+    if( dimensions > 1 )
+        info->columnsize_ = dims[1];
+    else
+        info->columnsize_ = 1;
+    
+    H5Sclose(dataspace);
+    H5Dclose(dataset_id);
+    
+    return 0;
+}
+
+
+
+/**
  * Given the name of a dataset, load it from the current hdf5 file into the matrix pointer
  *
  * @param info Structure that manages hdf5 info, its datamatrix_ variable is populated with hdf5 data on success
@@ -436,6 +479,8 @@ int loadDataMatrix( Info *info, char* name )
     return 0;
 }
 
+
+
 /**
  * Given the name of a dataset with id values, load it from the current hdf5 file into the matrix pointer
  *
@@ -476,6 +521,60 @@ int loadDataVector( Info *info, char* name )
     H5Sclose(dataspace);
     H5Sclose(dataspacetogetdata);
     H5Dclose(dataset_id);
+    return 0;
+}
+
+
+
+/**
+ * Load an individual value from a dataset
+ *
+ * @param info Shared data
+ * @param name dataset to open and read from
+ * @param row  data item to retrieve
+ * @param dest int address where data is to be stored
+ */
+int loadDataInt( Info* info, char* name, hid_t row, int *dest )
+{
+    hsize_t dims[1] = {1}, offset[1] = {row}, offset_out[1] = {0}, count[1] = {1};
+    hid_t dataset_id, dataspace, memspace, space; //, filetype;
+    herr_t status;
+    int ndims = 0;
+    long long temp;
+    
+    if( H5Lexists(info->file_, name, H5P_DEFAULT) == 0) {
+        printf("Error accessing to dataset %s in h5 file\n", name);
+        return -1;
+    }
+    
+    dataset_id = H5Dopen(info->file_, name);
+    dataspace = H5Dget_space(dataset_id);
+    
+    //filetype = H5Dget_type (dataset_id);
+    space = H5Dget_space (dataset_id);
+    ndims = H5Sget_simple_extent_dims (space, dims, NULL);
+    printf( "ndims: %d\n", ndims );
+    printf( "dims: %d\n", dims[0] );
+    //dims[0] = 1;
+    
+    status = H5Sselect_hyperslab( space, H5S_SELECT_SET, offset, NULL, count, NULL );
+    
+    // memory space to receive data and select hyperslab in that
+    memspace = H5Screate_simple( 1, dims, NULL );
+    status = H5Sselect_hyperslab( memspace, H5S_SELECT_SET, offset_out, NULL, count, NULL );
+    
+    status = H5Dread (dataset_id, H5T_NATIVE_ULONG, memspace, space, H5P_DEFAULT, &temp );
+
+    printf( "%lld\n", temp );
+    *dest = temp;
+    
+    status = H5Sclose (space);
+    status = H5Sclose(dataspace);
+    status = H5Dclose(dataset_id);
+    
+    //status = H5Sclose (dataspace);
+    //status = H5Tclose (filetype);
+
     return 0;
 }
 
@@ -528,6 +627,7 @@ int loadDataString( Info* info, char* name, hid_t row, char **hoc_dest )
     status = H5Sclose (dataspace);
     status = H5Tclose (filetype);
     status = H5Tclose (memtype);
+    status = H5Dclose (dataset_id);
 
     return 0;
 }
@@ -826,7 +926,7 @@ VERBATIM {
 #endif
 }
 ENDVERBATIM
-}       
+}
 
 
 
@@ -902,6 +1002,53 @@ VERBATIM {
 }
 ENDVERBATIM
 }
+
+
+
+COMMENT
+Retrieve a integer value  from an hdf5 dataset
+Note that this function doesn't apply as many checks as other functions.
+e.g. The row is assumed to be within the dataset; this code is expected to be refactored ( -JGK, Jul 6 2017)
+@param dataset name
+@param row
+@return read integer
+ENDCOMMENT
+FUNCTION getDataInt() {
+VERBATIM
+    INFOCAST;  
+    Info* info = *ip;
+    int value = -1;
+    
+    _lgetDataInt = 0;
+    if( info->file_ >= 0 && ifarg(1) && hoc_is_str_arg(1) && ifarg(2) )
+    {
+        // Use HDF5 interface to get the requested string item from the dataset
+        if( loadDataInt( info, gargstr(1), *getarg(2), &value ) == 0 ) {
+            _lgetDataInt = value;
+        }
+    }
+    ENDVERBATIM
+}
+
+
+
+COMMENT
+Load a dataset so that the dimensions can be accessed
+Note that this function doesn't apply as many checks as other functions.
+@param dataset name
+ENDCOMMENT
+PROCEDURE getDimensions() {
+VERBATIM
+    INFOCAST;  
+    Info* info = *ip;
+    
+    if( info->file_ >= 0 && ifarg(1) && hoc_is_str_arg(1) ) {
+        loadDimensions( info, gargstr(1) );
+    }
+    ENDVERBATIM
+}
+
+
 
 COMMENT
 Retrieve a single string from an hdf5 dataset and store in the provided hoc strdef
