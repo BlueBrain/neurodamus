@@ -553,9 +553,6 @@ int loadDataInt( Info* info, char* name, hid_t row, int *dest )
     //filetype = H5Dget_type (dataset_id);
     space = H5Dget_space (dataset_id);
     ndims = H5Sget_simple_extent_dims (space, dims, NULL);
-    printf( "ndims: %d\n", ndims );
-    printf( "dims: %d\n", dims[0] );
-    //dims[0] = 1;
     
     status = H5Sselect_hyperslab( space, H5S_SELECT_SET, offset, NULL, count, NULL );
     
@@ -565,15 +562,11 @@ int loadDataInt( Info* info, char* name, hid_t row, int *dest )
     
     status = H5Dread (dataset_id, H5T_NATIVE_ULONG, memspace, space, H5P_DEFAULT, &temp );
 
-    printf( "%lld\n", temp );
     *dest = temp;
     
     status = H5Sclose (space);
     status = H5Sclose(dataspace);
     status = H5Dclose(dataset_id);
-    
-    //status = H5Sclose (dataspace);
-    //status = H5Tclose (filetype);
 
     return 0;
 }
