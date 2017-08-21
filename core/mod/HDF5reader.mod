@@ -440,9 +440,7 @@ int loadDataMatrix( Info *info, char* name )
     hsize_t dims[2] = {0}, offset[2] = {0};
     hid_t dataset_id, dataspace;
 
-    if( H5Lexists(info->file_, name, H5P_DEFAULT) == 0)
-    {
-        printf("Error accessing to dataset %s in synapse file\n", name);
+    if( H5Lexists(info->file_, name, H5P_DEFAULT) == 0) {
         return -1;
     }
     dataset_id = H5Dopen(info->file_, name);
