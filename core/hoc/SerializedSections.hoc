@@ -46,7 +46,6 @@ public isec2sec, init, count
 proc init() { local index
     
     n = $o1.nSecAll
-    print "section count ", n
     
     objref isec2sec[n]
     
