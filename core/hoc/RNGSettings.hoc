@@ -32,7 +32,7 @@ proc init() {
  *
  * $o1 ParsedRun from a BlueConfig (type is Map)
  */
-proc interpret() { localobj runInfo, pc
+proc interpret() { localobj runInfo, pc, rng
     strdef rngModeField
     runInfo = $o1
     
@@ -57,6 +57,12 @@ proc interpret() { localobj runInfo, pc
     
     if( runInfo.exists("BaseSeed") ) {
         globalSeed = runInfo.valueOf( "BaseSeed" )
+
+        // random123 can set the global index now
+        if( rngMode == RANDOM123 ) {
+            rng = new Random()
+            rng.Random123_globalindex( globalSeed )
+        }
     }
     
     // don't search for indicidual seeds if we are in compatibility mode
