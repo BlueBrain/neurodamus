@@ -23,7 +23,7 @@ THREADSAFE
   ARTIFICIAL_CELL InhPoissonStim
   RANGE rmax
   RANGE duration
-  POINTER uniform_rng, exp_rng, vecRate, vecTbins
+  BBCOREPOINTER uniform_rng, exp_rng, vecRate, vecTbins
   :THREADSAFE : only true if every instance has its own distinct Random
 }
 VERBATIM
@@ -149,14 +149,16 @@ VERBATIM
             nrnran123_deletestream(*pv);
             *pv = (nrnran123_State*)0;
         }
-        *pv = nrnran123_newstream3((uint32_t)*getarg(1), (uint32_t)*getarg(2), (uint32_t)*getarg(3));
+        //*pv = nrnran123_newstream3((uint32_t)*getarg(1), (uint32_t)*getarg(2), (uint32_t)*getarg(3));
+        *pv = nrnran123_newstream((uint32_t)*getarg(1), (uint32_t)*getarg(2));
         
         pv = (nrnran123_State**)(&_p_uniform_rng);
         if (*pv) {
             nrnran123_deletestream(*pv);
             *pv = (nrnran123_State*)0;
         }
-        *pv = nrnran123_newstream3((uint32_t)*getarg(4), (uint32_t)*getarg(5), (uint32_t)*getarg(6));
+        //*pv = nrnran123_newstream3((uint32_t)*getarg(4), (uint32_t)*getarg(5), (uint32_t)*getarg(6));
+        *pv = nrnran123_newstream((uint32_t)*getarg(4), (uint32_t)*getarg(5));
 
         usingR123 = 1;
     } else if( ifarg(1) ) {
@@ -394,4 +396,99 @@ FUNCTION resumeEvent() {
     resumeEvent = elapsed_time
     event = elapsed_time-t
 }
+
+VERBATIM
+static void bbcore_write(double* dArray, int* iArray, int* doffset, int* ioffset, _threadargsproto_) {
+        uint32_t dsize = 0;
+        if (_p_vecRate)
+        {
+          dsize = (uint32_t)vector_capacity(_p_vecRate);
+        }
+        if (iArray) {
+                uint32_t* ia = ((uint32_t*)iArray) + *ioffset;
+                nrnran123_State** pv = (nrnran123_State**)(&_p_exp_rng);
+                nrnran123_getids(*pv, ia, ia+1);
+
+                ia = ia + 2;
+                pv = (nrnran123_State**)(&_p_uniform_rng);
+                nrnran123_getids(*pv, ia, ia+1);
+
+                ia = ia + 2;
+                void* vec = _p_vecRate;
+                ia[0] = dsize;
+
+                double *da = dArray + *doffset;
+                double *dv;
+                if(dsize)
+                {
+                  dv = vector_vec(vec);
+                }
+                int iInt;
+                for (iInt = 0; iInt < dsize; ++iInt)
+                {
+                  da[iInt] = dv[iInt];
+                }
+
+                vec = _p_vecTbins;
+                da = dArray + *doffset + dsize;
+                if(dsize)
+                {
+                  dv = vector_vec(vec);
+                }
+                for (iInt = 0; iInt < dsize; ++iInt)
+                {
+                  da[iInt] = dv[iInt];
+                }
+        }
+        *ioffset += 5;
+        *doffset += 2*dsize;
+
+}
+
+static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset, _threadargsproto_) {
+        assert(!_p_exp_rng);
+        assert(!_p_uniform_rng);
+        assert(!_p_vecRate);
+        assert(!_p_vecTbins);
+        uint32_t* ia = ((uint32_t*)iArray) + *ioffset;
+        nrnran123_State** pv;
+        if (ia[0] != 0 || ia[1] != 0)
+        {
+          pv = (nrnran123_State**)(&_p_exp_rng);
+          *pv = nrnran123_newstream(ia[0], ia[1]);
+        }
+
+        ia = ia + 2;
+        if (ia[0] != 0 || ia[1] != 0)
+        {
+          pv = (nrnran123_State**)(&_p_uniform_rng);
+          *pv = nrnran123_newstream(ia[0], ia[1]);
+        }
+
+        ia = ia + 2;
+        int dsize = ia[0];
+        *ioffset += 5;
+
+        double *da = dArray + *doffset;
+        _p_vecRate = vector_new1(dsize);  /* works for dsize=0 */
+        double *dv = vector_vec(_p_vecRate);
+        int iInt;
+        for (iInt = 0; iInt < dsize; ++iInt)
+        {
+          dv[iInt] = da[iInt];
+        }
+        *doffset += dsize;
+
+        da = dArray + *doffset;
+        _p_vecTbins = vector_new1(dsize);
+        dv = vector_vec(_p_vecTbins);
+        for (iInt = 0; iInt < dsize; ++iInt)
+        {     
+          dv[iInt] = da[iInt];
+        }
+        *doffset += dsize; 
+}
+ENDVERBATIM
+
+
 
