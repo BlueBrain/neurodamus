@@ -804,6 +804,7 @@ ENDVERBATIM
 
 FUNCTION checkVersion() {
 VERBATIM {
+    int versionNumber = 0;
 #ifndef DISABLE_HDF5
     INFOCAST; 
     Info* info = *ip;
@@ -813,31 +814,26 @@ VERBATIM {
     MPI_Comm_size (MPI_COMM_WORLD, &mpi_size);
     MPI_Comm_rank (MPI_COMM_WORLD, &mpi_rank);  
     
-    int versionNumber = 0;
-    
-    //check version for synapse file; must be version 1 -> only have processor 0 do this to avoid output overload on errors
     if( mpi_rank == 0 )
     {
-        if( H5Lexists(info->file_, "version", H5P_DEFAULT) == 0)
+        if( H5Lexists(info->file_, "info", H5P_DEFAULT) == 0)
         {
             fprintf( stderr, "Error. Incompatible synapse version file (given version 0 file, require version 1).\n" );
             fprintf( stderr, "Terminating" );
             MPI_Abort( MPI_COMM_WORLD, 27 );
         }
-        hid_t dataset_id = H5Dopen( info->file_, "version" );
         
-        H5Aread( H5Aopen_name( dataset_id, "attr" ), H5T_NATIVE_INT, &versionNumber );
-        if( versionNumber != 1 )
-        {
-            fprintf( stderr, "Error. Incompatible synapse version file (given version %d file, require version 1).\n", versionNumber );
-            fprintf( stderr, "Terminating" );
-            MPI_Abort( MPI_COMM_WORLD, 28 );
-        }
-        
+        hid_t dataset_id = H5Dopen( info->file_, "info" );
+        hid_t attr_id = H5Aopen_name( dataset_id, "version" );
+        H5Aread( attr_id, H5T_NATIVE_INT, &versionNumber );
+        H5Aclose(attr_id);
         H5Dclose(dataset_id);
     }
-    return 0;
+
+    MPI_Bcast( &versionNumber, 1, MPI_INT, 0, MPI_COMM_WORLD );
+
 #endif
+    return versionNumber;
 }
 ENDVERBATIM
 }
