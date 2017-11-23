@@ -416,7 +416,7 @@ proc hypamp() { local hypampI, ret, x, del, dur  localobj pts, cellList, tstim
  */
 proc relativeNoise() { local x, threshold  localobj pts, cellList, rand, tstim, rngInfo
     pts = targetManager.getPointList($s1)
-    cellList = targetManager.getCells($s1)
+    cellList = targetManager.getMETypes($s1)
 
     rngInfo = new RNGSettings()
     
