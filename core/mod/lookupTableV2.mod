@@ -113,7 +113,7 @@ CONSTRUCTOR{
 		if(strncmp(header,"ExtracellularElectrodeLookupTable",33)!=0){
 			*tempTable = tbl;
 			printf("Header does not match: \n");
-			printf(header);
+			printf("%s", header);
 			return;
 		}
 		fread(&(tbl->vInfo),sizeof(char),1,file);		
