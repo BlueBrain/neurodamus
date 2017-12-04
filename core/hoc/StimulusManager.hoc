@@ -464,9 +464,12 @@ proc noise() { local x  localobj pts, rand, tstim, rngInfo
         for pts.o(cellIndex).each_point(&x) {
             if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY ) {
                 rand = new Random( pts.o(cellIndex).gid + noiseStimCount )
-            } else {
+            } else if( rngInfo.getRNGMode() == rngInfo.UPMCELLRAN4 ) {
                 rand = new Random()
                 rand.MCellRan4( noiseStimCount*10000+100, rngInfo.getGlobalSeed() + rngInfo.getStimulusSeed() + pts.o(cellIndex).gid*1000 )
+            } else if( rngInfo.getRNGMode() == rngInfo.RANDOM123 ) {
+                rand = new Random()
+                rand.Random123( noiseStimCount+100, rngInfo.getStimulusSeed() + 500, pts.o(cellIndex).gid + 300 )
             }
             tstim = new TStim(x, rand)
             tstim.noise( $4, $5, $2, $3 )
