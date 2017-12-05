@@ -315,7 +315,17 @@ int openFile( Info* info, const char *filename, int fileID, int nRanksPerFile, i
     if( info->file_ < 0 ) {
         info->file_ = -1;
         printf( "ERROR: Failed to open synapse file: %s\n", nameoffile );
-        return -1;
+        H5Eprint (stderr);
+        
+        //try one more time
+        info->file_ = H5Fopen( nameoffile, H5F_ACC_RDONLY, H5P_DEFAULT );
+        if( info->file_ < 0 ) {
+            printf( "ERROR: Failed second attempt to open synapse file: %s\n", nameoffile );
+            H5Eprint (stderr);
+            return -1;
+        } else {
+            printf( "Success on second attempt\n" );
+        }
     }
     
     if( nRanksPerFile == 0 ) {
