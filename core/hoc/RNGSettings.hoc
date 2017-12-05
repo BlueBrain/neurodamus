@@ -6,7 +6,7 @@
  * @remark Copyright © BBP/EPFL 2005-2017; All rights reserved. Do not distribute without further notice.
  */
 
-rngMode = 1  // corresponds to RANDOM123 defined below
+rngMode = 0  // corresponds to COMPATIBILITY defined below
 ionchannelSeed = 0
 synapseSeed = 0
 stimulusSeed = 0
@@ -36,7 +36,7 @@ proc interpret() { localobj runInfo, pc, rng
     strdef rngModeField
     runInfo = $o1
     
-    rngMode = UPMCELLRAN4
+    rngMode = COMPATIBILITY
     if( runInfo.exists( "RNGMode" ) ) {
         rngModeField = runInfo.get( "RNGMode" ).s
         if( strcmp( rngModeField, "Compatibility" ) == 0 ) {
