@@ -20,3 +20,6 @@ SKv3_1.mod
 StochKv.mod
 TTXDynamicsSwitch.mod
 VecStim.mod
+BinReportHelper.mod
+BinReports.mod
+ProfileHelper.mod
