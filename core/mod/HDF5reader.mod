@@ -119,6 +119,7 @@ struct Info {
     char name_group[256];
     hsize_t rowsize_;
     hsize_t columnsize_;
+    hid_t acc_tpl1;
     
     /// Sometimes we want to silence certain warnings
     int verboseLevel;
@@ -148,6 +149,7 @@ void initInfo( Info *info )
     info->name_group[0] = '\0';
     info->rowsize_ = 0;
     info->columnsize_ = 0;
+    info->acc_tpl1 = -1;
     
     info->verboseLevel = 1;
     
@@ -310,22 +312,33 @@ int openFile( Info* info, const char *filename, int fileID, int nRanksPerFile, i
         strncpy( nameoffile, filename, 512 );
     }
     
-    info->file_ = H5Fopen( nameoffile, H5F_ACC_RDONLY, H5P_DEFAULT );
     info->name_group[0]='\0';
-    if( info->file_ < 0 ) {
+    if( info->acc_tpl1 != -1 ) {
+       info->file_ = H5Fopen( nameoffile, H5F_ACC_RDONLY, info->acc_tpl1 );
+
+       // ensure collectively that open suceeded; if not print 1 message
+       int result = (info->file_ < 0), nfail = 0;
+       MPI_Allreduce( &result, &nfail, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
+       
+       if( nfail > 0 ) {
+         int canreport = (result<0)?nrnmpi_myid:nrnmpi_numprocs, willreport = 0;
+         MPI_Allreduce( &canreport, &willreport, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD );
+         
+         if( willreport == nrnmpi_myid ) {
+             printf( "%d ERROR: %d ranks failed collective open of synapse file: %s\n", nrnmpi_myid, nfail, nameoffile );
+         }
+         
+         H5Eprint (stderr);
+       }
+    } else {
+       info->file_ = H5Fopen( nameoffile, H5F_ACC_RDONLY, H5P_DEFAULT );
+
+       if( info->file_ < 0 ) {
         info->file_ = -1;
         printf( "ERROR: Failed to open synapse file: %s\n", nameoffile );
         H5Eprint (stderr);
-        
-        //try one more time
-        info->file_ = H5Fopen( nameoffile, H5F_ACC_RDONLY, H5P_DEFAULT );
-        if( info->file_ < 0 ) {
-            printf( "ERROR: Failed second attempt to open synapse file: %s\n", nameoffile );
-            H5Eprint (stderr);
-            return -1;
-        } else {
-            printf( "Success on second attempt\n" );
-        }
+        return -1;
+       }
     }
     
     if( nRanksPerFile == 0 ) {
@@ -446,7 +459,7 @@ VERBATIM {
 #ifndef DISABLE_HDF5
     char nameoffile[512];
     int nFiles = 1;
-    
+
     if( ifarg(2) ) {
         nFiles = *getarg(2);
     }
@@ -466,6 +479,15 @@ VERBATIM {
         *ip = info;
         
         if( nFiles == 1 ) {
+            hid_t plist_id = 0;
+
+            // if a second arg was explicitly given as 1, I assume that we are doing a parallel file access
+            if( ifarg(2) ) {
+                if( nrnmpi_myid == 0 ) { fprintf( stderr, "using parallel hdf5 open\n" ); }
+                info->acc_tpl1 = H5Pcreate(H5P_FILE_ACCESS);
+                H5Pset_fapl_mpio(info->acc_tpl1, MPI_COMM_WORLD, MPI_INFO_NULL);
+            }
+            
             // normal case - open a file and be ready to load data as needed
             openFile( info, nameoffile, -1, 0, 0, 0 );
         }
@@ -561,6 +583,10 @@ VERBATIM {
     INFOCAST; Info* info = *ip; 
     if(info->file_>=0)
     {
+        if( info->acc_tpl1 != -1 ) {
+            if( nrnmpi_myid == 0 ) { fprintf( stderr, "terminating parallel h5 access\n" ); }
+            H5Pclose(info->acc_tpl1);
+        }
         //printf("Trying to close\n");
         H5Fclose(info->file_);
         //printf("Close\n");
