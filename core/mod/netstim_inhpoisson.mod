@@ -106,6 +106,21 @@ INITIAL {
       rmax = 1.0;
    }
 
+   /** after discussion with michael : rng streams should be set 0
+     * in initial block. this is to make sure if initial block is
+     * get called multiple times then the simulation should give the
+     * same results. Otherwise this is an issue in coreneuron because
+     * finitialized is get called twice in coreneuron (once from
+     * neurodamus and then in coreneuron. But in general, initial state
+     * should be callable multiple times.
+     */
+   if (_p_uniform_rng) {
+     nrnran123_setseq((nrnran123_State*)_p_uniform_rng, 0, 0);
+   }
+   if (_p_exp_rng) {
+     nrnran123_setseq((nrnran123_State*)_p_exp_rng, 0, 0);
+   }
+
    ENDVERBATIM
    update_time()
    erand() : for some reason, the first erand() call seems
@@ -466,7 +481,7 @@ static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset,
           pv = (nrnran123_State**)(&_p_exp_rng);
           *pv = nrnran123_newstream(ia[0], ia[1]);
           // todo: netstim poisson shouldn't restore sequences, why?
-          //nrnran123_setseq(*pv, ia[2], (char)ia[3]);
+          nrnran123_setseq(*pv, ia[2], (char)ia[3]);
         }
 
         ia = ia + 4;
@@ -475,7 +490,7 @@ static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset,
           pv = (nrnran123_State**)(&_p_uniform_rng);
           *pv = nrnran123_newstream(ia[0], ia[1]);
           // todo: netstim poisson shouldn't restore sequences, why?
-          //nrnran123_setseq(*pv, ia[2], (char)ia[3]);
+          nrnran123_setseq(*pv, ia[2], (char)ia[3]);
         }
 
         ia = ia + 4;
