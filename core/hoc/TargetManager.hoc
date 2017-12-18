@@ -33,7 +33,7 @@ public init
 public getTarget, setTargetList, getPointList, locationToPoint, cellDistributor, gids
 public getSomaticSections, getApicalSections, getBasalSections, getAxonalSections, registerCell
 public getApicalPoints, getBasalPoints, compartmentCast
-public selectRandomPoints, getCells
+public selectRandomPoints, getCells, getMETypes
 
 // Ruben's PFE
 public getApicalAtDistance, getSomaPoint, getCell
@@ -128,6 +128,30 @@ obfunc getCells() { local cellIndex  localobj target, gids, resultList
         resultList.append( cellDistributor.getCell(gids.x[cellIndex]) )
     }
     
+    return resultList
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience functin for objects like StimuluManager to get access to cell objects without
+ * having a direct line to the CellDistributor object.  Subject to debate, but there must be some way
+ * for the StimulusManager to access the threshold value for the cells to execute a subThreshols stim (for example).
+ *
+ * @param $s1 Target Name to get the gids and collect references to cell objects
+ * @return List containing cell object references
+ */
+obfunc getMETypes() { local cellIndex  localobj target, gids, resultList
+
+    resultList = new List()
+
+    target = getTarget( $s1 )
+    gids = target.gids()
+
+    for cellIndex=0, gids.size()-1 {
+        resultList.append( cellDistributor.getMEType(gids.x[cellIndex]) )
+    }
+
     return resultList
 }
 

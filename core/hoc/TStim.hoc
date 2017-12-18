@@ -216,7 +216,7 @@ for remtime=0, tvec.size()-1 {
         }
         
         addpoint(0,0)
-    }
+        }
 		
 	proc delay(/*dur*/){
 		tvec.add($1)

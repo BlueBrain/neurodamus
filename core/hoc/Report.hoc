@@ -131,25 +131,30 @@ proc init() { localobj nil
  * @return index which can be used to map back onto the neuron
  */
 func sectionNo() { local baseOffset, secIndex  localobj str
-    strdef subset
+    strdef subset, objtype
     str = new String()
+
+    sprint( objtype, "%s", $o1 )
+    sprint( str.s, "%s", secname() )
+    strobj.right( str.s, strobj.len(objtype) )
     
-    if( strobj.substr( secname(), "soma" ) > 0 ) {
+    if( strobj.substr( str.s, "soma" ) > 0 ) {
         subset = "soma"
         baseOffset = 0
-    } else if (strobj.substr( secname(), "axon") >0) {
+    } else if (strobj.substr( str.s, "axon") >0) {
         subset = "axon"
         baseOffset = $o1.nSecSoma
-    }else if (strobj.substr( secname(), "dend") >0) {
+    }else if (strobj.substr( str.s, "dend") >0) {
         subset = "dend"
         baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig
-    }else if (strobj.substr( secname(), "apic") > 0) {
+    }else if (strobj.substr( str.s, "apic") > 0) {
         subset = "apic"
         baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal
     }
+    objtype = str.s
     
     // parse out the index from the secname
-    strobj.tail( secname(), subset, str.s )
+    strobj.tail( objtype, subset, str.s )
     if (strobj.len(str.s) > 0) {
         strobj.left(str.s, strobj.len(str.s)-1) // result should look like [n
         strobj.right(str.s, 1)
