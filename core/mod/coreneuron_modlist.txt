@@ -24,3 +24,7 @@ BinReportHelper.mod
 BinReports.mod
 ProfileHelper.mod
 ALU.mod
+CaDynamics_DC0.mod
+Ca_HVA2.mod
+NaTg.mod
+StochKv3.mod
