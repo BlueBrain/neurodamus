@@ -23,7 +23,7 @@ THREADSAFE
   ARTIFICIAL_CELL InhPoissonStim
   RANGE rmax
   RANGE duration
-  POINTER uniform_rng, exp_rng, vecRate, vecTbins
+  BBCOREPOINTER uniform_rng, exp_rng, vecRate, vecTbins
   :THREADSAFE : only true if every instance has its own distinct Random
 }
 VERBATIM
@@ -106,6 +106,21 @@ INITIAL {
       rmax = 1.0;
    }
 
+   /** after discussion with michael : rng streams should be set 0
+     * in initial block. this is to make sure if initial block is
+     * get called multiple times then the simulation should give the
+     * same results. Otherwise this is an issue in coreneuron because
+     * finitialized is get called twice in coreneuron (once from
+     * neurodamus and then in coreneuron. But in general, initial state
+     * should be callable multiple times.
+     */
+   if (_p_uniform_rng) {
+     nrnran123_setseq((nrnran123_State*)_p_uniform_rng, 0, 0);
+   }
+   if (_p_exp_rng) {
+     nrnran123_setseq((nrnran123_State*)_p_exp_rng, 0, 0);
+   }
+
    ENDVERBATIM
    update_time()
    erand() : for some reason, the first erand() call seems
@@ -149,14 +164,14 @@ VERBATIM
             nrnran123_deletestream(*pv);
             *pv = (nrnran123_State*)0;
         }
-        *pv = nrnran123_newstream3((uint32_t)*getarg(1), (uint32_t)*getarg(2), (uint32_t)*getarg(3));
+        *pv = nrnran123_newstream((uint32_t)*getarg(1), (uint32_t)*getarg(2));
         
         pv = (nrnran123_State**)(&_p_uniform_rng);
         if (*pv) {
             nrnran123_deletestream(*pv);
             *pv = (nrnran123_State*)0;
         }
-        *pv = nrnran123_newstream3((uint32_t)*getarg(4), (uint32_t)*getarg(5), (uint32_t)*getarg(6));
+        *pv = nrnran123_newstream((uint32_t)*getarg(4), (uint32_t)*getarg(5));
 
         usingR123 = 1;
     } else if( ifarg(1) ) {
@@ -393,4 +408,112 @@ FUNCTION resumeEvent() {
     resumeEvent = elapsed_time
     event = elapsed_time-t
 }
+
+VERBATIM
+static void bbcore_write(double* dArray, int* iArray, int* doffset, int* ioffset, _threadargsproto_) {
+        uint32_t dsize = 0;
+        if (_p_vecRate)
+        {
+          dsize = (uint32_t)vector_capacity(_p_vecRate);
+        }
+        if (iArray) {
+                uint32_t* ia = ((uint32_t*)iArray) + *ioffset;
+                nrnran123_State** pv = (nrnran123_State**)(&_p_exp_rng);
+                nrnran123_getids(*pv, ia, ia+1);
+
+                // for stream sequence
+                char which;
+
+                nrnran123_getseq(*pv, ia+2, &which);
+                ia[3] = (int)which;
+
+                ia = ia + 4;
+                pv = (nrnran123_State**)(&_p_uniform_rng);
+                nrnran123_getids(*pv, ia, ia+1);
+
+                nrnran123_getseq(*pv, ia+2, &which);
+                ia[3] = (int)which;
+
+                ia = ia + 4;
+                void* vec = _p_vecRate;
+                ia[0] = dsize;
+
+                double *da = dArray + *doffset;
+                double *dv;
+                if(dsize)
+                {
+                  dv = vector_vec(vec);
+                }
+                int iInt;
+                for (iInt = 0; iInt < dsize; ++iInt)
+                {
+                  da[iInt] = dv[iInt];
+                }
+
+                vec = _p_vecTbins;
+                da = dArray + *doffset + dsize;
+                if(dsize)
+                {
+                  dv = vector_vec(vec);
+                }
+                for (iInt = 0; iInt < dsize; ++iInt)
+                {
+                  da[iInt] = dv[iInt];
+                }
+        }
+        *ioffset += 9;
+        *doffset += 2*dsize;
+
+}
+
+static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset, _threadargsproto_) {
+        assert(!_p_exp_rng);
+        assert(!_p_uniform_rng);
+        assert(!_p_vecRate);
+        assert(!_p_vecTbins);
+        uint32_t* ia = ((uint32_t*)iArray) + *ioffset;
+        nrnran123_State** pv;
+        if (ia[0] != 0 || ia[1] != 0)
+        {
+          pv = (nrnran123_State**)(&_p_exp_rng);
+          *pv = nrnran123_newstream(ia[0], ia[1]);
+          // todo: netstim poisson shouldn't restore sequences, why?
+          nrnran123_setseq(*pv, ia[2], (char)ia[3]);
+        }
+
+        ia = ia + 4;
+        if (ia[0] != 0 || ia[1] != 0)
+        {
+          pv = (nrnran123_State**)(&_p_uniform_rng);
+          *pv = nrnran123_newstream(ia[0], ia[1]);
+          // todo: netstim poisson shouldn't restore sequences, why?
+          nrnran123_setseq(*pv, ia[2], (char)ia[3]);
+        }
+
+        ia = ia + 4;
+        int dsize = ia[0];
+        *ioffset += 9;
+
+        double *da = dArray + *doffset;
+        _p_vecRate = vector_new1(dsize);  /* works for dsize=0 */
+        double *dv = vector_vec(_p_vecRate);
+        int iInt;
+        for (iInt = 0; iInt < dsize; ++iInt)
+        {
+          dv[iInt] = da[iInt];
+        }
+        *doffset += dsize;
+
+        da = dArray + *doffset;
+        _p_vecTbins = vector_new1(dsize);
+        dv = vector_vec(_p_vecTbins);
+        for (iInt = 0; iInt < dsize; ++iInt)
+        {     
+          dv[iInt] = da[iInt];
+        }
+        *doffset += dsize; 
+}
+ENDVERBATIM
+
+
 

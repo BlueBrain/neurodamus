@@ -11,6 +11,7 @@ ENDCOMMENT
 
 : Vector stream of events	
 NEURON {
+    THREADSAFE
     ARTIFICIAL_CELL VecStim
     RANGE ping, index, etime
 }
@@ -26,6 +27,9 @@ ASSIGNED {
 }
 
 INITIAL {
+VERBATIM
+ #if !NRNBBCORE
+ENDVERBATIM
     index = 0
     element()
     if (index > 0) {
@@ -34,6 +38,9 @@ INITIAL {
     if (ping > 0) {
         net_send(ping, 2)
     }
+VERBATIM
+ #endif
+ENDVERBATIM
 }
 
 NET_RECEIVE (w) {
@@ -57,7 +64,7 @@ NET_RECEIVE (w) {
             : time, they are ignored.
             while (etime < t && index >= 0) {
                 element()
-                :printf("element(): index=%g, etime=%g, t=%g\n",index,etime,t)
+                : printf("element(): index=%g, etime=%g, t=%g\n",index,etime,t)
             }
             if (index > 0) {
                 net_send(etime - t, 1)
