@@ -50,6 +50,7 @@ func sectionNo() { local baseOffset, secIndex  localobj str, strobj
 
 /*!
  * Register section/segment mapping to NEURON for report generation
+ * todo : removing logic of target selection as its incomplete
  * @param $o1 Node object
  * @param $o2 target object
  */
@@ -58,7 +59,7 @@ proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic
   localobj gidvec, cellref, pyobj, commstr, node, target
 
   node = $o1
-  target = $o2
+  //target = $o2
 
   pyobj = new PythonObject()
   commstr = new String()
@@ -76,9 +77,9 @@ proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic
 
     // skip gids that we don't want to report, instead of skipping
     // we should add a flag in mapping
-    if(!target.contains(activegid)) {
+    //if(!target.contains(activegid)) {
         //continue
-    }
+    //}
 
     nSoma = 0
     nAxon = 0
