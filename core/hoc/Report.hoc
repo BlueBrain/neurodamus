@@ -34,7 +34,7 @@ external cvode
 // public members
 //-----------------------------------------------------------------------------------------------
 
-public init, addCompartmentReport, addSummationReport, addSynapseReport, get_memory_report
+public init, addCompartmentReport, addSummationReport, addSynapseReport, get_memory_report, reportName
 
 // for save/restore
 public restartALUs

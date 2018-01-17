@@ -679,10 +679,11 @@ VERBATIM {
             hid_t plist_id = 0;
 
             // if a second arg was explicitly given as 1, I assume that we are doing a parallel file access
+            // saw deadlock while running on viz cluster and hence disabling parallel read
             if( ifarg(2) ) {
-                if( nrnmpi_myid == 0 ) { fprintf( stderr, "using parallel hdf5 open\n" ); }
-                info->acc_tpl1 = H5Pcreate(H5P_FILE_ACCESS);
-                H5Pset_fapl_mpio(info->acc_tpl1, MPI_COMM_WORLD, MPI_INFO_NULL);
+                if( nrnmpi_myid == 0 ) { fprintf( stderr, "using parallel hdf5 is disabled\n" ); }
+                //info->acc_tpl1 = H5Pcreate(H5P_FILE_ACCESS);
+                //H5Pset_fapl_mpio(info->acc_tpl1, MPI_COMM_WORLD, MPI_INFO_NULL);
             }
             
             // normal case - open a file and be ready to load data as needed
