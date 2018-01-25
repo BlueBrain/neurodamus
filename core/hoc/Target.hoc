@@ -115,7 +115,7 @@ begintemplate Target
 objref localCellsMap
 
 //! 
-objref gidMembers, subtargets, flattenedGids, completeFlattenedGids, sortedGids, completeSortedGids
+objref gidMembers, subtargets, flattenedGids, completeFlattenedGids, sortedGids, completeSortedGids, allFlattenedGids
 objref cellExtraValues, targetExtraValues, cellSubsets, targetSubsets
 
 strdef name, type
@@ -141,7 +141,7 @@ public cellExtraValues, targetExtraValues
 //! memberfunctions - see below for detailed information
 public evalType, isCellTarget, isSectionTarget, isCompartmentTarget, isSynapseTarget
 public update, getgid, gids, completegids, getCellExtraValues, getCellSubset, evaluateSynapses, getPointList, getCompletePointList
-public isDefined, isEmpty, completeContains, contains, localCount
+public isDefined, isEmpty, completeContains, contains, localCount, allGids
 
 //------------------------------------------------------------------------------------------------------------
 // Member functions
@@ -397,6 +397,33 @@ obfunc gids() { local cellIndex targetIndex
     isFlattened = 1
     return flattenedGids
 }
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Retrieve the flattened ids for this target on all cpus, i.e. all cells ids in one vector including those from subtargets
+ */
+obfunc allGids() { local cellIndex targetIndex
+    // if this target flattened itself previously, just return the existing vector; otherwise, instruct any
+    // subtargets to flatten themselves and append the resulting flattened vectors to this Target's.
+
+    if( isAllFlattened == 1 ) {
+        return allFlattenedGids
+    }
+
+    allFlattenedGids = new Vector()
+    for cellIndex=0, gidMembers.size()-1 {
+        allFlattenedGids.append( gidMembers.x[cellIndex] )
+    }
+
+    for targetIndex=0, subtargets.count()-1 {
+        allFlattenedGids.append( subtargets.object(targetIndex).allGids() )
+    }
+
+    isAllFlattened = 1
+    return allFlattenedGids
+}
+
 
 //------------------------------------------------------------------------------------------------------------
 
