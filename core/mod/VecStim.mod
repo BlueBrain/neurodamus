@@ -106,6 +106,7 @@ ENDVERBATIM
 
 PROCEDURE play() {
 VERBATIM
+    #if !NRNBBCORE
     void** vv;
     vv = (void**)(&space);
     *vv = (void*)0;
@@ -113,6 +114,7 @@ VERBATIM
         *vv = vector_arg(1);
     }
     index = -2;
+    #endif
 ENDVERBATIM
 }
 

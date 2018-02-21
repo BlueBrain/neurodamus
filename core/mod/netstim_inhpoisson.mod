@@ -244,7 +244,7 @@ ENDVERBATIM
 
 PROCEDURE setTbins() {
 VERBATIM
-
+  #if !NRNBBCORE
   void** vv;
   vv = (void**)(&_p_vecTbins);
   *vv = (void*)0;
@@ -259,13 +259,14 @@ VERBATIM
       printf("%f ", px[i]);
     }*/
   }
-
+  #endif
 ENDVERBATIM
 }
 
 
 PROCEDURE setRate() {
 VERBATIM
+  #if !NRNBBCORE
 
   void** vv;
   vv = (void**)(&_p_vecRate);
@@ -284,6 +285,7 @@ VERBATIM
     rmax = max;
 
   }
+  #endif
 ENDVERBATIM
 }
 
