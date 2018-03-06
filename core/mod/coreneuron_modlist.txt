@@ -29,4 +29,4 @@ Ca_HVA2.mod
 NaTg.mod
 StochKv3.mod
 MemUsage.mod
-SimConfig.mod
+CoreConfig.mod

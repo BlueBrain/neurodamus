@@ -18,7 +18,7 @@ begintemplate RNGSettings
 public init, interpret, getRNGMode, getIonChannelSeed, getSynapseSeed, getStimulusSeed, getMinisSeed, getGlobalSeed
 public COMPATIBILITY, RANDOM123, UPMCELLRAN4
 
-external rngMode, ionchannelSeed, synapseSeed, stimulusSeed, minisSeed, globalSeed
+external rngMode, ionchannelSeed, synapseSeed, stimulusSeed, minisSeed, globalSeed, simConfig
 
 proc init() {
     // consts for random number handling
@@ -35,9 +35,16 @@ proc init() {
 proc interpret() { localobj runInfo, pc, rng
     strdef rngModeField
     runInfo = $o1
-    
+
     rngMode = COMPATIBILITY
-    if( runInfo.exists( "RNGMode" ) ) {
+    pc = new ParallelContext()
+
+    if( simConfig.coreNeuronUsed() ) {
+        if( pc.id() == 0 ) {
+            print "CoreNEURON requires Random123 generator, setting RNGMode = Random123"
+        }
+        rngMode = RANDOM123
+    } else if( runInfo.exists( "RNGMode" ) ) {
         rngModeField = runInfo.get( "RNGMode" ).s
         if( strcmp( rngModeField, "Compatibility" ) == 0 ) {
             rngMode = COMPATIBILITY
@@ -46,7 +53,6 @@ proc interpret() { localobj runInfo, pc, rng
         } else if( strcmp( rngModeField, "Random123" ) == 0 ) {
             rngMode = RANDOM123
         } else {
-            pc = new ParallelContext()
             if( pc.id() == 0 ) {
                 print "Invalid RNGMode '", rngModeField, "'; use Compatibility, UpdatedMCell, or Random123.  Terminating"
             }
@@ -54,7 +60,7 @@ proc interpret() { localobj runInfo, pc, rng
             quit()
         }
     }
-    
+
     if( runInfo.exists("BaseSeed") ) {
         globalSeed = runInfo.valueOf( "BaseSeed" )
 

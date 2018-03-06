@@ -7,16 +7,16 @@
 {load_file("RNGSettings.hoc")}
 
 simulatorMode = 0  // corresponds to NEURON
-objref coreneuronDataDir
+objref coreneuronDataDir, coreneuronOutputDir
 
 
 begintemplate SimSettings
 
 public init, interpret, execResult
-public getSimulatorMode, generateData, runNeuron, getCoreneuronDataDir
+public getSimulatorMode, generateData, runNeuron, getCoreneuronDataDir, coreNeuronUsed, getCoreneuronOutputDir
 public NEURON, CORENEURON, NEURON_CORENEURON
 
-external simulatorMode, coreneuronDataDir
+external simulatorMode, coreneuronDataDir, simulator, coreneuronOutputDir
 objref this
 
 /* BlueConfig can specify simulator mode : NEURON, CORENEURON or NEURON_CORENEURON
@@ -39,49 +39,32 @@ proc init() {
  * Given the Run block from a BlueConfig, check simulator to be used
  * $o1 ParsedRun from a BlueConfig (type is Map)
  */
-proc interpret() { localobj runInfo, pc, rng, rngInfo, commandString
-    strdef simulatorField
+proc interpret() { localobj runInfo, pc, rng, commandString
     runInfo = $o1
-
     pc = new ParallelContext()
 
-    // NEURON is default simulator
-    simulatorMode = NEURON
-    simulatorField = ""
-
     // check if simulator option is set in BlueConfig, abort if invalid
-    if( runInfo.exists( "SimulatorMode" ) ) {
-        simulatorField = runInfo.get( "SimulatorMode" ).s
-        if( strcmp( simulatorField, "NEURON" ) == 0 ) {
-            simulatorMode = NEURON
-        } else if( strcmp( simulatorField, "CORENEURON" ) == 0 ) {
-            simulatorMode = CORENEURON
-        } else if( strcmp( simulatorField, "NEURON_CORENEURON" ) == 0 ) {
-            simulatorMode = NEURON_CORENEURON
-        } else {
-            if( pc.id() == 0 ) {
-                print "Invalid SimulatorMode '", simulatorField, "'; use NEURON, CORENEURON or NEURON_CORENEURON. Terminating"
-            }
-            pc.barrier()
-            quit()
+    if( strcmp( simulator, "NEURON" ) == 0 ) {
+        simulatorMode = NEURON
+    } else if( strcmp( simulator, "CORENEURON" ) == 0 ) {
+        simulatorMode = CORENEURON
+    } else if( strcmp( simulator, "NEURON_CORENEURON" ) == 0 ) {
+        simulatorMode = NEURON_CORENEURON
+    } else {
+        if( pc.id() == 0 ) {
+            print "Invalid SimulatorMode '", simulator, "'; use NEURON, CORENEURON or NEURON_CORENEURON. Terminating"
         }
+        pc.barrier()
+        quit()
     }
 
-    // CoreNEURON only supports Random123, check if BlueConfig has compatible RNGMode
-    // if so, create directory for dumping dataset into separate directory inside OutputRoot
+    // create directory for dumping dataset into separate directory inside OutputRoot
     if( simulatorMode != NEURON ) {
-        rngInfo = new RNGSettings()
-        if( rngInfo.getRNGMode() != rngInfo.RANDOM123 ) {
-            if( pc.id() == 0 ) {
-                print "SimulatorMode '", simulatorField, "' requires RNGMode Random123 in BlueConfig"
-            }
-            pc.barrier()
-            quit()
-        }
-
         // create directory for dumping coreneuron binary dataset
         coreneuronDataDir = new String()
-        sprint(coreneuronDataDir.s, "%s/coreneuron_data", runInfo.get( "OutputRoot" ).s )
+        coreneuronOutputDir = new String()
+        sprint(coreneuronDataDir.s, "%s/coreneuron_input", runInfo.get( "OutputRoot" ).s )
+        sprint(coreneuronOutputDir.s, "%s/", runInfo.get( "OutputRoot" ).s )
         if( pc.id() == 0 ) {
             commandString = new String()
             execResult = 0
@@ -94,14 +77,8 @@ proc interpret() { localobj runInfo, pc, rng, rngInfo, commandString
     }
 
     if( pc.id() == 0 ) {
-        if( strcmp( simulatorField, "") == 0) {
-            print "SimulatorMode not set, using NEURON simulator"
-        } else {
-            print "SimulatorMode set to '", simulatorField, "'"
-        }
+        print "SimulatorMode set to '", simulator, "'"
     }
-
-    // TODO: Add code to dump command line arguments file for CoreNEURON
 
     pc.barrier()
 }
@@ -115,6 +92,11 @@ func generateData() {
     return (simulatorMode != NEURON)
 }
 
+// true if coreneuron is specified
+func coreNeuronUsed() {
+    return (simulatorMode != NEURON)
+}
+
 // Don't run NEURON if "exclusive" CoreNEURON mode specified
 func runNeuron() {
     return (simulatorMode != CORENEURON)
@@ -124,5 +106,11 @@ func runNeuron() {
 obfunc getCoreneuronDataDir() {
     return coreneuronDataDir
 }
+
+// Directory where coreneuron will be output files
+obfunc getCoreneuronOutputDir() {
+    return coreneuronOutputDir
+}
+
 
 endtemplate SimSettings

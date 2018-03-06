@@ -14,6 +14,7 @@ NEURON {
 
 VERBATIM
 
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -101,6 +102,45 @@ VERBATIM
 ENDVERBATIM
 }
 
+VERBATIM
+/* creatory directory recursively, simlar to mkdir -p command */
+int mkdir_p(const char* path) {
+    const int path_len = strlen(path);
+    if (path_len == 0) {
+        printf("Warning: Empty path for creating directory");
+        return -1;
+    }
+
+    char* dirpath = (char*) calloc(sizeof(char), path_len+1);
+    strcpy(dirpath, path);
+    errno = 0;
+
+    char* p;
+    /* iterate from outer upto inner dir */
+    for (p = dirpath + 1; *p; p++) {
+        if (*p == '/') {
+            /* temporarily truncate to sub-dir */
+            *p = '\0';
+            if (mkdir(dirpath, S_IRWXU|S_IRGRP|S_IXGRP) != 0) {
+                if (errno != EEXIST)
+                    return -1;
+            }
+            *p = '/';
+        }
+    }
+
+    if (mkdir(dirpath, S_IRWXU|S_IRGRP|S_IXGRP) != 0) {
+        if (errno != EEXIST) {
+            return -1;
+        }
+    }
+
+    free(dirpath);
+    return 0;
+}
+
+ENDVERBATIM
+
 FUNCTION checkDirectory() {
 VERBATIM
     char* dirName = gargstr(1);
@@ -115,7 +155,7 @@ VERBATIM
     }
     else if( errno == ENOENT ) {
         fprintf( stdout, "Directory %s does not exist.  Creating...\n", dirName );
-        int res = mkdir( dirName, 0777 );
+        int res = mkdir_p(dirName);
         if( res < 0 ) {
             fprintf( stderr, "Failed to create directory %s.\n", dirName );
             return -1;
