@@ -28,11 +28,11 @@ THREADSAFE
 }
 VERBATIM
 extern int ifarg(int iarg);
+#if !defined(CORENEURON_BUILD)
 extern double* vector_vec(void* vv);
 extern void* vector_new1(int _i);
 extern int vector_capacity(void* vv);
 extern void* vector_arg(int iarg);
-#if !defined(CORENEURON_BUILD)
 double nrn_random_pick(void* r);
 #endif
 void* nrn_random_arg(int argpos);
@@ -424,7 +424,7 @@ static void bbcore_write(double* dArray, int* iArray, int* doffset, int* ioffset
                 nrnran123_getids(*pv, ia, ia+1);
 
                 // for stream sequence
-                char which;
+                unsigned char which;
 
                 nrnran123_getseq(*pv, ia+2, &which);
                 ia[3] = (int)which;
