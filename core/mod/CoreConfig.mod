@@ -13,6 +13,9 @@ NEURON {
 VERBATIM
 #include <stdio.h>
 #include <stdlib.h>
+#if !NRNBBCORE && defined(ENABLE_CORENEURON)
+#include <coreneuron/engine.h>
+#endif
 
 extern double* vector_vec();
 extern int vector_capacity();
@@ -20,9 +23,9 @@ extern void* vector_arg();
 extern int nrnmpi_myid;
 
 // name of config files
-const char* SIM_CONFIG_FILE = "sim.conf";
-const char* REPORT_CONFIG_FILE = "report.conf";
-const int DEFAULT_CELL_PERMUTE = 0;
+static char* SIM_CONFIG_FILE = "sim.conf";
+static char* REPORT_CONFIG_FILE = "report.conf";
+static const int DEFAULT_CELL_PERMUTE = 0;
 
 #define MAX_FILE_PATH 4096
 
@@ -85,18 +88,14 @@ VERBATIM
     #if !NRNBBCORE
     // should be done by rank 0 only
     if(nrnmpi_myid == 0) {
-        char filename[MAX_FILE_PATH];
         char pattern_option[MAX_FILE_PATH] = "";
-
-        // path of the simulator config file
-        snprintf(filename, MAX_FILE_PATH, "%s/%s", hoc_gargstr(8), SIM_CONFIG_FILE);
 
         // if spike replay specified
         if (strlen(hoc_gargstr(7))) {
             snprintf(pattern_option, MAX_FILE_PATH, "--pattern %s\n", hoc_gargstr(7));
         }
 
-        FILE *fp = open_file(filename, "w");
+        FILE *fp = open_file(SIM_CONFIG_FILE, "w");
         fprintf(fp, "--outpath %s\n", hoc_gargstr(1));
         fprintf(fp, "--datpath %s\n", hoc_gargstr(2));
         fprintf(fp, "--tstop %lf\n", *getarg(3));
@@ -127,4 +126,19 @@ VERBATIM
     }
     #endif
 ENDVERBATIM
+}
+
+PROCEDURE psolve_core() {
+    VERBATIM
+        #if !NRNBBCORE && defined(ENABLE_CORENEURON)
+            int argc = 5;
+            char *argv[5] = {"", "--read-config", SIM_CONFIG_FILE, "--skip-mpi-finalize", "-mpi"};
+            solve_core(argc, argv);
+        #else
+            if(nrnmpi_myid == 0) {
+                fprintf(stderr, "%s", "ERROR : CoreNEURON library not linked!\n");
+                abort();
+            }
+        #endif
+    ENDVERBATIM
 }
