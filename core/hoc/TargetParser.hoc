@@ -19,7 +19,7 @@ begintemplate TargetParser
 objref targetList
 
 //public functions
-public init, open, targetList, getTarget, updateTargets
+public init, open, targetList, getTarget, updateTargets, updateTargetList
 
 //allow some nodes (i.e. node 1) to output messages to the console
 public isVerbose
