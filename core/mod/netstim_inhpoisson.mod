@@ -114,10 +114,10 @@ INITIAL {
      * neurodamus and then in coreneuron. But in general, initial state
      * should be callable multiple times.
      */
-   if (_p_uniform_rng) {
+   if (_p_uniform_rng && usingR123) {
      nrnran123_setseq((nrnran123_State*)_p_uniform_rng, 0, 0);
    }
-   if (_p_exp_rng) {
+   if (_p_exp_rng && usingR123) {
      nrnran123_setseq((nrnran123_State*)_p_exp_rng, 0, 0);
    }
 
