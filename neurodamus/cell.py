@@ -69,8 +69,6 @@ endtemplate {cls_name}"""
 
             imprt.instantiate(self.h)
 
-    # indexSections(imprt)
-    # geom_nsec()
     @LazyProperty
     def all(self):
         return SectionList(self.h.all)
@@ -93,8 +91,8 @@ endtemplate {cls_name}"""
 
 
 class SectionList(object):
-    """A SectionList wrapper providing convenience methods, inc len()
-       and consolidates SectionList and hoc section arrays
+    """A SectionList wrapper providing convenience methods, inc len(),
+       and consolidating SectionList and hoc section arrays
     """
     __slots__ = ('_hlist', '_harray')
 
