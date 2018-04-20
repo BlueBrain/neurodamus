@@ -5,6 +5,7 @@ A wrapper over the neuron simulator.
 
 # The neuron hoc interpreter
 # Is it a global var since only one can exist and thus can be imported anywhere
+# We dont import it at module-level to avoid starting neuron
 _h = None
 """The Neuron hoc interpreter.
 Be sure to use after having called init() before.
@@ -28,8 +29,7 @@ def get_init(hoc_mods=()):
 
 def _init(hoc_mods):
     global _h
-    import neuron
-    _h = neuron.h
+    from neuron import h as _h
     _h.load_file("stdrun.hoc")
     _h.stdinit()
     for mod in hoc_mods:
@@ -72,18 +72,3 @@ endtemplate {cls_name}
 
     def exec_within_context(self, hoc_cmd):
         self.h.exec_within_context(hoc_cmd)
-
-
-class SectionList(object):
-    """A SectionList wrapper providing convenience methods, inc len()
-    """
-    __slots__ = ('_hlist',)
-
-    def __init__(self, hoc_section_list):
-        self._hlist = hoc_section_list
-
-    def __len__(self):
-        return sum(1 for _ in self._hlist)
-
-    def __getattr__(self, item):
-        return object.__getattribute__(self._hlist, item)

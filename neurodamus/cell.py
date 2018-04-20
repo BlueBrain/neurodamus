@@ -1,4 +1,6 @@
 from __future__ import absolute_import
+from lazy_property import LazyProperty
+import logging
 from .commands import GlobalConfig
 from . import nrn
 
@@ -28,12 +30,8 @@ begintemplate {cls_name}
     }}
 endtemplate {cls_name}"""
 
-    _section_lists = ('all', 'apical', 'basal', 'somatic', 'axonal')
-    _section_arrays = ('soma', 'dend', 'apic', 'axon', 'myelin')
-
-    # Hints for API crawlers
-    all = apical = basal = somatic = axonal = None
-    soma = dend = apic = axon = myelin = None
+    _section_lists = ('all', 'somatic', 'axonal', 'basal', 'apical')
+    _section_arrays = ('soma', 'axon', 'dend', 'apic', 'myelin')
 
     def __init__(self, gid=0, morpho=None):
         # type: (int, str) -> None
@@ -73,15 +71,49 @@ endtemplate {cls_name}"""
 
     # indexSections(imprt)
     # geom_nsec()
+    @LazyProperty
+    def all(self):
+        return SectionList(self.h.all)
 
     @property
     def soma(self):
         return self.h.soma[0]
 
+    @LazyProperty
+    def axons(self):
+        return SectionList(self.h.axonal, self.h.axon)
+
+    @LazyProperty
+    def dendrites(self):
+        return SectionList(self.h.basal, self.h.basal)
+
+    @LazyProperty
+    def apical_dendrites(self):
+        return SectionList(self.h.apical, self.h.aic)
+
+
+class SectionList(object):
+    """A SectionList wrapper providing convenience methods, inc len()
+       and consolidates SectionList and hoc section arrays
+    """
+    __slots__ = ('_hlist', '_harray')
+
+    def __init__(self, hoc_section_list, hoc_section_array=None):
+        self._hlist = hoc_section_list
+        self._harray = hoc_section_array
+
+    def __len__(self):
+        return sum(1 for _ in self._hlist)
+
     def __getattr__(self, item):
-        if item in self._section_lists:
-            return nrn.SectionList(self.h.__getattribute__(item))
-        elif item in self._section_arrays:
-            return self.h.__getattribute__(item)
+        return object.__getattribute__(self._hlist, item)
+
+    def __getitem__(self, item):
+        if self._harray is not None:
+            return self._harray[item]
         else:
-            raise AttributeError("Cell objects doesnt have attribute " + item)
+            logging.info("Indexing list without array. This might be inneficient")
+            for i, elem in self._hlist:
+                if i == item:
+                    return elem
+            return None
