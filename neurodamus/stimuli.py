@@ -25,7 +25,7 @@ class StimuliSource(object):
         self.time_vec.append(self._cur_t)
         self.stim_vec.append(amp)
 
-    def _add_delay(self, duration):
+    def delay(self, duration):
         """Increments the ref time so that the next created signal is delayed
         """
         self._cur_t += duration
@@ -35,7 +35,7 @@ class StimuliSource(object):
         If amp2 is None (default) then we have constant voltage
         """
         self._add_point(amp)
-        self._add_delay(duration)
+        self.delay(duration)
         self._add_point(amp if amp2 is None else amp2)
 
     def add_pulse(self, max_amp, duration, base_amp=.0):
@@ -54,27 +54,40 @@ class StimuliSource(object):
         self.add_segment(amp1, duration, amp2)
         self._add_point(base_amp)
 
-    def add_train(self, amp, frequency, pulse_duration, dur, base_amp=.0):
+    def add_train(self, amp, frequency, pulse_duration, total_duration, base_amp=.0):
         """Stimulus with repeated pulse injections at a specified frequency.
         Args:
           amp: the amplitude of a each pulse
           frequency: determines the number of pulses per second (hz)
-          pulse_duration: the duration of a single pulse (peak time)
-          dur: duration of the whole train
+          pulse_duration: the duration of a single pulse (peak time) (ms)
+          total_duration: duration of the whole train (ms)
           base_amp: The base amplitude
         """
-        tau = 1000 / frequency
+        tau = 1000 // frequency
         delay = tau - pulse_duration
-        number_pulses = dur // tau
-        for _ in number_pulses:
+        number_pulses = total_duration // tau
+        for _ in range(number_pulses):
             self.add_pulse(amp, pulse_duration, base_amp)
-            self._add_delay(delay)
-        # Last point of the last cycle
+            self.delay(delay)
+
+        # Add extra pulse if fits
+        remaining_time = total_duration % tau
+        if pulse_duration <= remaining_time:
+            self.add_pulse(amp, pulse_duration, base_amp)
+            self.delay(min(delay, remaining_time - pulse_duration))
+        # Last point
         self._add_point(base_amp)
 
-    def add_sin(self, amp, dur, freq, step=0.025):
+    def add_sin(self, amp, total_duration, freq, step=0.025):
+        """ Builds a sinusoidal signal
+        Args:
+            amp: The max amplitude of the wave
+            total_duration: Total duration, in ms
+            freq: The wave frequency, in Hz
+            step: The step, in ms (default: 0.025)
+        """
         h = nrn.get_init()
-        n_steps = dur // step + 1
+        n_steps = total_duration // step + 1
 
         t_vec = h.Vector(n_steps)
         t_vec.indgen(step)
