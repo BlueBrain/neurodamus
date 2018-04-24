@@ -28,7 +28,7 @@ ASSIGNED {
 
 INITIAL {
 VERBATIM
- #if !NRNBBCORE
+ #ifndef CORENEURON_BUILD
 ENDVERBATIM
     index = 0
     element()
@@ -106,7 +106,7 @@ ENDVERBATIM
 
 PROCEDURE play() {
 VERBATIM
-    #if !NRNBBCORE
+    #ifndef CORENEURON_BUILD
     void** vv;
     vv = (void**)(&space);
     *vv = (void*)0;

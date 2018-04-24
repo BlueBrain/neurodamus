@@ -28,7 +28,7 @@ THREADSAFE
 }
 VERBATIM
 extern int ifarg(int iarg);
-#if !defined(CORENEURON_BUILD)
+#ifndef CORENEURON_BUILD
 extern double* vector_vec(void* vv);
 extern void* vector_new1(int _i);
 extern int vector_capacity(void* vv);
@@ -155,7 +155,7 @@ PROCEDURE generate_next_event() {
 PROCEDURE setRNGs() {
 VERBATIM
 {
-#if !NRNBBCORE
+#ifndef CORENEURON_BUILD
     usingR123 = 0;
     if( ifarg(1) && hoc_is_double_arg(1) ) {
         nrnran123_State** pv = (nrnran123_State**)(&_p_exp_rng);
@@ -207,7 +207,7 @@ VERBATIM
             if( usingR123 ) {
 		_lurand = nrnran123_dblpick((nrnran123_State*)_p_uniform_rng);
             } else {
-#if !NRNBBCORE
+#ifndef CORENEURON_BUILD
 		_lurand = nrn_random_pick(_p_uniform_rng);
 #endif
             }
@@ -228,7 +228,7 @@ VERBATIM
             if( usingR123 ) {
 		_lerand = nrnran123_negexp((nrnran123_State*)_p_exp_rng);
             } else {
-#if !NRNBBCORE
+#ifndef CORENEURON_BUILD
 		_lerand = nrn_random_pick(_p_exp_rng);
 #endif
             }
@@ -244,7 +244,7 @@ ENDVERBATIM
 
 PROCEDURE setTbins() {
 VERBATIM
-  #if !NRNBBCORE
+  #ifndef CORENEURON_BUILD
   void** vv;
   vv = (void**)(&_p_vecTbins);
   *vv = (void*)0;
@@ -266,7 +266,7 @@ ENDVERBATIM
 
 PROCEDURE setRate() {
 VERBATIM
-  #if !NRNBBCORE
+  #ifndef CORENEURON_BUILD
 
   void** vv;
   vv = (void**)(&_p_vecRate);
