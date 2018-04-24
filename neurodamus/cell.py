@@ -37,6 +37,7 @@ endtemplate {cls_name}"""
         # type: (int, str) -> None
         h = nrn.get_init()
         self.gid = gid
+        self._soma = None
         # Sections
         if morpho is not None:
             self.load_morphology(morpho)
@@ -60,7 +61,6 @@ endtemplate {cls_name}"""
                 raise ValueError(
                     "{} is not a recognised morphology file format".format(morpho_path) +
                     "Should be either .hoc, .asc, .swc, .xml!")
-
             try:
                 imp.input(morpho_path)
                 imprt = h.Import3d_GUI(imp, 0)
@@ -68,6 +68,7 @@ endtemplate {cls_name}"""
                 raise Exception("Error loading morphology. Verify Neuron outputs")
 
             imprt.instantiate(self.h)
+            self._soma = self.h.soma[0]
 
     @LazyProperty
     def all(self):
@@ -75,7 +76,7 @@ endtemplate {cls_name}"""
 
     @property
     def soma(self):
-        return self.h.soma[0]
+        return self._soma
 
     @LazyProperty
     def axons(self):
@@ -88,6 +89,60 @@ endtemplate {cls_name}"""
     @LazyProperty
     def apical_dendrites(self):
         return SectionList(self.h.apical, self.h.aic)
+
+    def show(self):
+        nrn.get_init().topology(sec=self.soma)
+
+    class Builder:
+        """Enables building a cell from soma/axon blocks
+        """
+        # Dont inherit
+        class Section:
+            def __init__(self, name, length, n_segments=None, **params):
+                h = nrn.get_init()
+                self.parent = None
+                self.this = h.Section(name=name)
+                self.this.L = length
+                if n_segments:
+                    self.this.nseg=n_segments
+                for param, value in params.items():
+                    setattr(self.this, param, value)
+                self.sub_nodes = []
+
+            def create_append(self, name, length, n_segments, **params):
+                self.append(self.__class__(name, length, nseg=n_segments, **params))
+                return self
+
+            def append(self, *nodes):
+                for n in nodes:
+                    self.sub_nodes.append(n)
+                    n.change_parent(self)
+                return self
+
+            def change_parent(self, parent):
+                self.parent = parent
+                self.this.connect(parent.this)
+
+            def create(self):
+                sec = self
+                while isinstance(sec.parent, self.__class__):
+                    sec = sec.parent
+                if sec.parent is None:
+                    raise RuntimeError("Disconnected subtree. Attach to a CellBuilder root node")
+                assert sec.parent is True, "Unable to find Cell root"
+                c = Cell()
+                c.h.all.wholetree(sec.this)
+                c._soma = sec.this
+                # This requires further init to fill axonal, apical... etc
+                return c
+
+        def __init__(self):
+            self.root = None
+
+        def add_root(self, name, diam, **params):
+            self.root = self.Section(name, diam, **params)
+            self.root.parent = True  # this is root
+            return self.root
 
 
 class SectionList(object):
@@ -111,7 +166,7 @@ class SectionList(object):
             return self._harray[item]
         else:
             logging.info("Indexing list without array. This might be inneficient")
-            for i, elem in self._hlist:
+            for i, elem in enumerate(self._hlist):
                 if i == item:
                     return elem
             return None

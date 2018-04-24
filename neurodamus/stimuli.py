@@ -101,19 +101,31 @@ class StimuliSource(object):
     def add_sinspec(self, start, dur):
         raise NotImplementedError()
 
-    def add_pulses(self, dur, amp, *more_amps):
+    def add_pulses(self, pulse_duration, amp, *more_amps, **kw):
         """Appends a set of voltages without returning to zero
-           Each voltage is applied 'dur' time
+           Each voltage is applied 'dur' time\
+        Args:
+          pulse_duration: The duration of each pulse
+          amp: The amplitude of the first pulse
+          *more_amps: 2nd, 3rd, ... pulse amplitudes
+          **kw: Additional params:
+            - base_amp [default: 0]
         """
-        # First and last are 0
-        self._add_point(.0)
-        self.add_segment(amp, dur)
+        # First and last are base_amp
+        base_amp = kw.get("base_amp", .0)
+        self._add_point(base_amp)
+        self.add_segment(amp, pulse_duration)
         for amp in more_amps:
-            self.add_segment(amp, dur)
-        self._add_point(.0)
+            self.add_segment(amp, pulse_duration)
+        self._add_point(base_amp)
 
-    def add_noise(self, start, dur, mean, var, dt=0.5):
-        raise NotImplementedError()
+    def add_noise(self, rand_source, mean, variance, duration, dt=0.5):
+        rand_source.normal(mean, variance)
+
+    @classmethod
+    def infinite_noise_source_attach(cls, rand_source, mean, variance, dt=0.5):
+        return
+
 
 
 # EStim class is a derivative of TStim for stimuli with an extracelular electrode. The main
