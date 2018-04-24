@@ -34,18 +34,18 @@ extern int ifarg(int iarg);
 typedef struct {
     //! list of pointers to hoc variables
 	double** ptrs_;
-    
+
     /*! list of scalars to apply to corresponding variables; useful for making units of variables
      * from different sources consistent (e.g. i current sources may be distributed, mA/cm^2, or point processes, nA)
      */
     double * scalars_;
-    
+
     //! number of elements stored in the vectors
 	int np_;
-    
+
     //! number of slots allocated to the vectors
 	int psize_;
-    
+
     //! function pointer to execute when net_receive is triggered
     int (*process)(_threadargsproto_);
 } Info;
@@ -116,11 +116,11 @@ VERBATIM {
     info->scalars_ = (double*)hoc_Ecalloc(info->psize_, sizeof(double)); hoc_malchk();
 	info->np_ = 0;
 	*ip = info;
-	
+
     if (ifarg(2)) {
          Dt = *getarg(2);
     }
-    
+
     //default operation is average
     info->process = &average;
 #endif
@@ -157,7 +157,7 @@ VERBATIM {
 		info->ptrs_ = (double**) hoc_Erealloc(info->ptrs_, info->psize_*sizeof(double*)); hoc_malchk();
         info->scalars_ = (double*) hoc_Erealloc(info->scalars_, info->psize_*sizeof(double)); hoc_malchk();
 	}
-    
+
 	info->ptrs_[info->np_] = hoc_pgetarg(1);
     if( ifarg(2)) {
         info->scalars_[info->np_] = *getarg(2);
@@ -212,7 +212,7 @@ VERBATIM {
 	}
     //printf("\n");
 //	output = n/info->np_;
-	if (info->np_ > 0) 
+	if (info->np_ > 0)
 	  output = n/info->np_;
 	else output = 0;
 #endif
@@ -235,7 +235,7 @@ VERBATIM {
         //printf("%f = %f * %f\n", (*info->ptrs_[i] * info->scalars_[i]), *info->ptrs_[i], info->scalars_[i] );
 		n += (*info->ptrs_[i] * info->scalars_[i]);
 	}
-    
+
     output = n;
 #endif
 }
@@ -253,12 +253,12 @@ PROCEDURE setop() {
 VERBATIM {
 #ifndef CORENEURON_BUILD
     INFOCAST; Info* info = *ip;
-	
+
     char *opname = NULL;
     if (!hoc_is_str_arg(1)) {
         exit(0);
     }
-    
+
     opname = gargstr(1);
     if( strcmp( opname, "summation" ) == 0 ) {
         info->process = &summation;

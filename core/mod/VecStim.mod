@@ -1,7 +1,7 @@
 COMMENT
 /**
  * @file VecStim.mod
- * @brief 
+ * @brief
  * @author king
  * @date 2011-03-16
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
@@ -9,7 +9,7 @@ COMMENT
 ENDCOMMENT
 
 
-: Vector stream of events	
+: Vector stream of events
 NEURON {
     THREADSAFE
     ARTIFICIAL_CELL VecStim
@@ -79,7 +79,7 @@ VERBATIM
 extern double* vector_vec();
 extern int vector_capacity();
 extern void* vector_arg();
-ENDVERBATIM     
+ENDVERBATIM
 
 PROCEDURE element() {
 VERBATIM

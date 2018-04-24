@@ -13,7 +13,7 @@ NEURON {
 VERBATIM
 #include <stdio.h>
 #include <stdlib.h>
-#if !NRNBBCORE && defined(ENABLE_CORENEURON)
+#if defined(ENABLE_CORENEURON)
 #include <coreneuron/engine.h>
 #endif
 
@@ -29,21 +29,23 @@ static const int DEFAULT_CELL_PERMUTE = 0;
 
 #define MAX_FILE_PATH 4096
 
+
 // helper function to open file and error checking
 FILE* open_file(const char *filename, const char *mode) {
     FILE *fp = fopen(filename, mode);
     if(!fp) {
-        printf("Error while writing simulation configuration in %s\n", REPORT_CONFIG_FILE);
+        printf("Error while opening file %s\n", filename);
         abort();
     }
     return fp;
 }
 ENDVERBATIM
 
+
 : write report defined in BlueConfig
 PROCEDURE write_report_config() {
     VERBATIM
-    #if !NRNBBCORE
+    #ifndef CORENEURON_BUILD
         if(nrnmpi_myid == 0) {
             // gids to be reported is double vector
             double *gid_vec = vector_vec(vector_arg(11));
@@ -82,11 +84,11 @@ PROCEDURE write_report_config() {
     ENDVERBATIM
 }
 
+
 : Write basic sim settings from Run block of BlueConfig
 PROCEDURE write_sim_config() {
 VERBATIM
-    #if !NRNBBCORE
-    // should be done by rank 0 only
+    #ifndef CORENEURON_BUILD
     if(nrnmpi_myid == 0) {
         char pattern_option[MAX_FILE_PATH] = "";
 
@@ -112,11 +114,11 @@ VERBATIM
 ENDVERBATIM
 }
 
+
 : Write report count as first line
 PROCEDURE write_report_count() {
 VERBATIM
-    #if !NRNBBCORE
-    // should be done by rank 0 only
+    #ifndef CORENEURON_BUILD
     if(nrnmpi_myid == 0) {
         char filename[MAX_FILE_PATH];
         snprintf(filename, MAX_FILE_PATH, "%s/%s", hoc_gargstr(2), REPORT_CONFIG_FILE);
@@ -128,15 +130,16 @@ VERBATIM
 ENDVERBATIM
 }
 
+
 PROCEDURE psolve_core() {
     VERBATIM
-        #if !NRNBBCORE && defined(ENABLE_CORENEURON)
+        #if defined(ENABLE_CORENEURON)
             int argc = 5;
             char *argv[5] = {"", "--read-config", SIM_CONFIG_FILE, "--skip-mpi-finalize", "-mpi"};
             solve_core(argc, argv);
         #else
             if(nrnmpi_myid == 0) {
-                fprintf(stderr, "%s", "ERROR : CoreNEURON library not linked!\n");
+                fprintf(stderr, "%s", "ERROR : CoreNEURON library not linked with NEURODAMUS!\n");
                 abort();
             }
         #endif

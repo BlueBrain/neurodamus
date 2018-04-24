@@ -1,7 +1,7 @@
 COMMENT
 /**
  * @file netstim_inhpoisson.mod
- * @brief 
+ * @brief
  * @author ebmuller
  * @date 2011-03-16
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
@@ -9,7 +9,7 @@ COMMENT
 ENDCOMMENT
 
 : Inhibitory poisson generator by the thinning method.
-: See:  
+: See:
 :   Muller, Buesing, Schemmel, Meier (2007). "Spike-Frequency Adapting
 :   Neural Ensembles: Beyond Mean Adaptation and Renewal Theories",
 :   Neural Computation 19:11, 2958-3010.
@@ -81,7 +81,7 @@ INITIAL {
    }
    else start = 0.0;
 
-   /* first event is at the start 
+   /* first event is at the start
    TODO: This should draw from a more appropriate dist
    that has the surrogate process starting a t=-inf
    */
@@ -131,10 +131,10 @@ INITIAL {
      net_send(event, 0)
    }
 
- 
+
 }
 
-: This procedure queues the next surrogate event in the 
+: This procedure queues the next surrogate event in the
 : poisson process (rate=ramx) to be thinned.
 PROCEDURE generate_next_event() {
 	event = 1000.0/rmax*erand()
@@ -159,13 +159,13 @@ VERBATIM
     usingR123 = 0;
     if( ifarg(1) && hoc_is_double_arg(1) ) {
         nrnran123_State** pv = (nrnran123_State**)(&_p_exp_rng);
-        
+
         if (*pv) {
             nrnran123_deletestream(*pv);
             *pv = (nrnran123_State*)0;
         }
         *pv = nrnran123_newstream((uint32_t)*getarg(1), (uint32_t)*getarg(2));
-        
+
         pv = (nrnran123_State**)(&_p_uniform_rng);
         if (*pv) {
             nrnran123_deletestream(*pv);
@@ -338,7 +338,7 @@ COMMENT
  * and sending a self event.  Second, we check to see if the synapse coupled to this artificial cell should be activated.
  * This second task is not done if we have just completed a state restore and only wish to restart the self event triggers.
  *
- * @param flag 0 for Typical activation, POST_RESTORE_RESTART_FLAG for only restarting the self event triggers 
+ * @param flag 0 for Typical activation, POST_RESTORE_RESTART_FLAG for only restarting the self event triggers
  */
 ENDCOMMENT
 NET_RECEIVE (w) {
@@ -348,12 +348,12 @@ NET_RECEIVE (w) {
     } else if (flag == 0 ) {
         update_time()
         generate_next_event()
-        
+
         : stop even producing surrogate events if we are past duration
         if (t+event < start+duration) {
             net_send(event, 0)
         }
-    
+
         : check if we trigger event on coupled synapse
 VERBATIM
         double u = (double)urand(_threadargs_);
@@ -373,7 +373,7 @@ COMMENT
 /**
  * Supply the POST_RESTORE_RESTART_FLAG.  For example, so a hoc program can call a NetCon.event with the proper event value
  *
- * @return POST_RESTORE_RESTART_FLAG value for entities that wish to use its value 
+ * @return POST_RESTORE_RESTART_FLAG value for entities that wish to use its value
  */
 ENDCOMMENT
 FUNCTION getPostRestoreFlag() {
@@ -385,8 +385,8 @@ ENDVERBATIM
 
 COMMENT
 /**
- * After a resume, populate variable 'event' with the first event time that can be given to net_send such that the elapsed time is 
- * greater than the resume time.  Note that if an event was generated just before saving, but due for delivery afterwards (delay 0.1), 
+ * After a resume, populate variable 'event' with the first event time that can be given to net_send such that the elapsed time is
+ * greater than the resume time.  Note that if an event was generated just before saving, but due for delivery afterwards (delay 0.1),
  * then the hoc layer must deliver this event directly.
  *
  * @param delay (typically 0.1) #TODO: accept a parameter rather than using hard coded value below
@@ -398,7 +398,7 @@ FUNCTION resumeEvent() {
     : Since we want the minis to be consistent with the previous run, it should use t=0 as a starting point until it
     : reaches an elapsed_time >= resume_t.  Events generated right before the save time but scheduled for delivery afterwards
     : will already be restored to the NetCon by the bbsavestate routines
-    
+
     elapsed_time = event : event has some value from the INITIAL block
     delay = 0.1
 
@@ -479,7 +479,6 @@ static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset,
         {
           pv = (nrnran123_State**)(&_p_exp_rng);
           *pv = nrnran123_newstream(ia[0], ia[1]);
-          // todo: netstim poisson shouldn't restore sequences, why?
           nrnran123_setseq(*pv, ia[2], (char)ia[3]);
         }
 
@@ -488,7 +487,6 @@ static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset,
         {
           pv = (nrnran123_State**)(&_p_uniform_rng);
           *pv = nrnran123_newstream(ia[0], ia[1]);
-          // todo: netstim poisson shouldn't restore sequences, why?
           nrnran123_setseq(*pv, ia[2], (char)ia[3]);
         }
 
@@ -510,12 +508,9 @@ static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset,
         _p_vecTbins = vector_new1(dsize);
         dv = vector_vec(_p_vecTbins);
         for (iInt = 0; iInt < dsize; ++iInt)
-        {     
+        {
           dv[iInt] = da[iInt];
         }
-        *doffset += dsize; 
+        *doffset += dsize;
 }
 ENDVERBATIM
-
-
-
