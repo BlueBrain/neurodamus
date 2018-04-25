@@ -4,6 +4,8 @@ import logging
 from .commands import GlobalConfig
 from . import Neuron
 
+__all__ = ["Cell", "Mechanisms"]
+
 
 class Cell(Neuron.HocEntity):
     # We must override the basic tpl definition
@@ -193,6 +195,9 @@ endtemplate {cls_name}"""
         soma.parent = self
         return soma
 
+    # We later redefine this shortcut
+    Mechanisms = None
+
 
 class SectionList(object):
     """A SectionList wrapper providing convenience methods, inc len(),
@@ -219,3 +224,60 @@ class SectionList(object):
                 if i == item:
                     return elem
             return None
+
+
+class Mechanisms:
+    _mec_name = None
+    HH = None
+    PAS = None
+
+    def __new__(cls, **opts):
+        if cls is Mechanisms:
+            raise TypeError("Mechanisms is virtual. Instantiate a specific Mechanism")
+        o = object.__new__(cls)
+        o._init(**opts)
+        return o
+
+    def _init(self, **opts):
+        for name, val in opts.items():
+            if not name.startswith("_") and hasattr(self, name):
+                setattr(self, name, val)
+            elif not hasattr(self, name):
+                print("Warning: param {} not recognized for the mechanism".format(name))
+        return self
+
+    def apply(self, section):
+        section.insert(self._mec_name)
+        for name, val in vars(self).items():
+            print("{}{}".format(name, val))
+            if not name.startswith("_") and hasattr(self, name) and val is not None:
+                print("setting {} to {}".format(name, val))
+                setattr(section, "{}_{}".format(name, self._mec_name), val)
+
+    mk_HH = classmethod(lambda cls, **opts: _HH()._init(**opts))
+    mk_PAS = classmethod(lambda cls, **opts: _PAS()._init(**opts))
+
+
+class _HH(Mechanisms):
+    _mec_name = "hh"
+    gnabar = None  # 0.120 mho/cm2   Maximum specific sodium channel conductance
+    gkbar   = None  # 0.036 mho/cm2   Maximum potassium channel conductance
+    gl      = None  # 0.0003 mho/cm2  Leakage conductance
+    el      = None  # -54.3 mV        Leakage reversal potential
+    m       = None  #                 sodium activation state variable
+    h       = None  #                 sodium inactivation state variable
+    n       = None  #                 potassium activation state variable
+    ina     = None  # mA/cm2          sodium current through the hh channels
+    ik      = None  # mA/cm2          potassium current through the hh channels
+
+
+class _PAS(Mechanisms):
+    _mec_name = "pas"
+    g = None  # mho/cm2      conductance
+    e = None  # mV           reversal potential
+    i = None  # mA/cm2       non-specific current
+
+
+Mechanisms.HH = _HH
+Mechanisms.PAS = _PAS
+Cell.Mechanisms = Mechanisms
