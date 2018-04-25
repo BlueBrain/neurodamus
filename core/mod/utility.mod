@@ -138,13 +138,12 @@ int mkdir_p(const char* path) {
     free(dirpath);
     return 0;
 }
-
 ENDVERBATIM
+
 
 FUNCTION checkDirectory() {
 VERBATIM
     char* dirName = gargstr(1);
-    
     struct stat st;
     if ( stat(dirName, &st) == 0) {
         if( !S_ISDIR(st.st_mode) ) {
