@@ -56,7 +56,7 @@ endtemplate {cls_name}
 """
 
     def __new__(cls, *args, **kw):
-        if not cls._hoc_cls:
+        if cls._hoc_cls is None:
             h = get_init()
             # Create a HOC template to be able to use as context
             h(cls._hoc_cldef.format(cls_name=cls.__name__))

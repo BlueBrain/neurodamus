@@ -1,11 +1,12 @@
 from __future__ import absolute_import
 from lazy_property import LazyProperty
 import logging
+from.utils import classproperty
 from .commands import GlobalConfig
-from . import nrn
+from . import _neuron
 
 
-class Cell(nrn.HocEntity):
+class Cell(_neuron.HocEntity):
     # We must override the basic tpl definition
     # Since the morphology parser expects several arrays
     _hoc_cldef = """
@@ -28,6 +29,7 @@ begintemplate {cls_name}
     proc exec_within_context() {{
         execute($s1)
     }}
+
 endtemplate {cls_name}"""
 
     _section_lists = ('all', 'somatic', 'axonal', 'basal', 'apical')
@@ -35,7 +37,7 @@ endtemplate {cls_name}"""
 
     def __init__(self, gid=0, morpho=None):
         # type: (int, str) -> None
-        h = nrn.get_init()
+        h = _neuron.get_init()
         self.gid = gid
         self._soma = None
         # Sections
@@ -44,7 +46,7 @@ endtemplate {cls_name}"""
 
     def load_morphology(self, morpho_path):
         # type: (str) -> None
-        h = nrn.get_init("import3d.hoc")
+        h = _neuron.get_init("import3d.hoc")
         # try and determine format
         if morpho_path.endswith(('hoc', 'HOC')):
             h.load_file(1, morpho_path)
@@ -78,6 +80,9 @@ endtemplate {cls_name}"""
     def soma(self):
         return self._soma
 
+    # Other properties use neuron structures as source
+    # So that we don't need to handle sync issues
+
     @LazyProperty
     def axons(self):
         return SectionList(self.h.axonal, self.h.axon)
@@ -90,43 +95,76 @@ endtemplate {cls_name}"""
     def apical_dendrites(self):
         return SectionList(self.h.apical, self.h.aic)
 
-    def show(self):
-        nrn.get_init().topology(sec=self.soma)
+    @staticmethod
+    def show_topology():
+        h = _neuron.get_init()
+        h.topology()
 
     class Builder:
-        """Enables building a cell from soma/axon blocks
-        """
-        # Dont inherit
+        """Enables building a cell from soma/axon blocks"""
+        # Cell Section builder
         class Section:
             def __init__(self, name, length, n_segments=None, **params):
-                h = nrn.get_init()
+                # type: (str, float, int, dict) -> None
+                """Creates a new section
+                Args:
+                    name: Section name
+                    **params: Additional properties to be set on the hoc object
+                """
+                h = _neuron.get_init()
                 self.parent = None
                 self.this = h.Section(name=name)
                 self.this.L = length
                 if n_segments:
-                    self.this.nseg=n_segments
+                    self.this.nseg = n_segments
                 for param, value in params.items():
                     setattr(self.this, param, value)
                 self.sub_nodes = []
 
-            def create_append(self, name, length, n_segments, **params):
-                self.append(self.__class__(name, length, nseg=n_segments, **params))
+            def add(self, name, length, n_segments, **params):
+                """Creates a new section as a child of the current section"""
+                self.add_children(self.__class__(name, length, nseg=n_segments, **params))
                 return self
 
-            def append(self, *nodes):
+            def add_children(self, *nodes):
+                """Adds the given sections as children of the current"""
                 for n in nodes:
                     self.sub_nodes.append(n)
-                    n.change_parent(self)
+                    n.set_parent(self)
                 return self
 
-            def change_parent(self, parent):
+            def append(self, name, length, n_segments, **params):
+                """Creates a new section as a child and returns it"""
+                newnode = self.__class__(name, length, nseg=n_segments, **params)
+                self.add_children(newnode)
+                return newnode
+
+            def chain(self, *nodes):
+                """Chain given nodes in parent-child relations, and make it child of the current"""
+                parent = self
+                for n in nodes:
+                    n.set_parent(parent)
+                    parent = n
+                return parent
+
+            def set_parent(self, parent):
+                """Sets the parent of the given section"""
                 self.parent = parent
                 self.this.connect(parent.this)
+                return self
 
-            def create(self):
+            def get_root(self):
+                """Finds the root section by crawling parents up"""
                 sec = self
                 while isinstance(sec.parent, self.__class__):
                     sec = sec.parent
+                return sec
+
+            def create(self):
+                """Builds the cell the current section belongs to.
+                If no root is found (e.g. disconnected branch) an exception is raised
+                """
+                sec = self.get_root()
                 if sec.parent is None:
                     raise RuntimeError("Disconnected subtree. Attach to a CellBuilder root node")
                 assert sec.parent is True, "Unable to find Cell root"
@@ -136,13 +174,11 @@ endtemplate {cls_name}"""
                 # This requires further init to fill axonal, apical... etc
                 return c
 
-        def __init__(self):
-            self.root = None
-
-        def add_root(self, name, diam, **params):
-            self.root = self.Section(name, diam, **params)
-            self.root.parent = True  # this is root
-            return self.root
+        @classmethod
+        def add_root(cls, name, diam, **params):
+            root = cls.Section(name, diam, **params)
+            root.parent = True  # this is root
+            return root
 
 
 class SectionList(object):

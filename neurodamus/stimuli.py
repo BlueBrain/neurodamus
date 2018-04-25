@@ -1,16 +1,16 @@
 from __future__ import absolute_import
-from . import nrn
+from . import _neuron
 
 
 class StimuliSource(object):
     def __init__(self):
-        h = nrn.get_init()
+        h = _neuron.get_init()
         self.stim_vec = h.Vector()
         self.time_vec = h.Vector()
         self._cur_t = 0
 
     def attach_to(self, section, position=0.5):
-        h = nrn.get_init()
+        h = _neuron.get_init()
         clamp = h.IClamp(position, sec=section)
         self.stim_vec.play(clamp.amp, self.time_vec, 1)
 
@@ -86,7 +86,7 @@ class StimuliSource(object):
             freq: The wave frequency, in Hz
             step: The step, in ms (default: 0.025)
         """
-        h = nrn.get_init()
+        h = _neuron.get_init()
         n_steps = total_duration // step + 1
 
         t_vec = h.Vector(n_steps)
