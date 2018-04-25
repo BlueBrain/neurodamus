@@ -164,14 +164,14 @@ VERBATIM
             nrnran123_deletestream(*pv);
             *pv = (nrnran123_State*)0;
         }
-        *pv = nrnran123_newstream((uint32_t)*getarg(1), (uint32_t)*getarg(2));
+        *pv = nrnran123_newstream3((uint32_t)*getarg(1), (uint32_t)*getarg(2), (uint32_t)*getarg(3));
 
         pv = (nrnran123_State**)(&_p_uniform_rng);
         if (*pv) {
             nrnran123_deletestream(*pv);
             *pv = (nrnran123_State*)0;
         }
-        *pv = nrnran123_newstream((uint32_t)*getarg(4), (uint32_t)*getarg(5));
+        *pv = nrnran123_newstream3((uint32_t)*getarg(4), (uint32_t)*getarg(5), (uint32_t)*getarg(6));
 
         usingR123 = 1;
     } else if( ifarg(1) ) {
