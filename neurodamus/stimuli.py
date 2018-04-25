@@ -1,18 +1,25 @@
 from __future__ import absolute_import
-from . import _neuron
+from . import Neuron
 
 
 class StimuliSource(object):
+    _all_sources = []
+
     def __init__(self):
-        h = _neuron.get_init()
+        h = Neuron.h
         self.stim_vec = h.Vector()
         self.time_vec = h.Vector()
         self._cur_t = 0
+        self._clamps = []
+        self._all_sources = self
 
     def attach_to(self, section, position=0.5):
-        h = _neuron.get_init()
-        clamp = h.IClamp(position, sec=section)
-        self.stim_vec.play(clamp.amp, self.time_vec, 1)
+        clamp = Neuron.h.IClamp(position, sec=section)
+        self.stim_vec.play(clamp._ref_amp, self.time_vec, 1)
+        clamp.dur = self.time_vec[-1]
+        # Clamps must be kept otherwise they are garbage-collected
+        self._clamps.append(clamp)
+        return clamp
 
     def reset(self):
         self.stim_vec.resize(0)
@@ -29,6 +36,7 @@ class StimuliSource(object):
         """Increments the ref time so that the next created signal is delayed
         """
         self._cur_t += duration
+        return self
 
     def add_segment(self, amp, duration, amp2=None):
         """Sets a linear voltage for a certain duration
@@ -37,6 +45,7 @@ class StimuliSource(object):
         self._add_point(amp)
         self.delay(duration)
         self._add_point(amp if amp2 is None else amp2)
+        return self
 
     def add_pulse(self, max_amp, duration, base_amp=.0):
         """Adds a pulse.
@@ -45,6 +54,7 @@ class StimuliSource(object):
         self._add_point(base_amp)
         self.add_segment(max_amp, duration)
         self._add_point(base_amp)
+        return self
 
     def add_ramp(self, amp1, amp2, duration, base_amp=.0):
         """Adds a ramp.
@@ -53,6 +63,7 @@ class StimuliSource(object):
         self._add_point(base_amp)
         self.add_segment(amp1, duration, amp2)
         self._add_point(base_amp)
+        return self
 
     def add_train(self, amp, frequency, pulse_duration, total_duration, base_amp=.0):
         """Stimulus with repeated pulse injections at a specified frequency.
@@ -77,6 +88,7 @@ class StimuliSource(object):
             self.delay(min(delay, remaining_time - pulse_duration))
         # Last point
         self._add_point(base_amp)
+        return self
 
     def add_sin(self, amp, total_duration, freq, step=0.025):
         """ Builds a sinusoidal signal
@@ -86,17 +98,17 @@ class StimuliSource(object):
             freq: The wave frequency, in Hz
             step: The step, in ms (default: 0.025)
         """
-        h = _neuron.get_init()
         n_steps = total_duration // step + 1
 
-        t_vec = h.Vector(n_steps)
+        t_vec = Neuron.h.Vector(n_steps)
         t_vec.indgen(step)
         self.time_vec.append(t_vec)
 
-        v_vec = h.Vector(n_steps)
+        v_vec = Neuron.h.Vector(n_steps)
         v_vec.sin(freq, .0, step)
         v_vec.mul(amp)
         self.stim_vec.append(v_vec)
+        return self
 
     def add_sinspec(self, start, dur):
         raise NotImplementedError()
@@ -118,15 +130,32 @@ class StimuliSource(object):
         for amp in more_amps:
             self.add_segment(amp, pulse_duration)
         self._add_point(base_amp)
+        return self
 
     def add_noise(self, rand_source, mean, variance, duration, dt=0.5):
         rand_source.normal(mean, variance)
+        return self
 
     @classmethod
     def infinite_noise_source_attach(cls, rand_source, mean, variance, dt=0.5):
-        return
+        return cls
 
+    # ==== Helpers =====
+    @classmethod
+    def pulse(cls, max_amp, duration, base_amp=.0, delay=0):
+        return cls().delay(delay).add_pulse(max_amp, duration, base_amp)
 
+    @classmethod
+    def ramp(cls, amp1, amp2, duration, base_amp=.0, delay=0):
+        return cls().delay(delay).add_ramp(amp1, amp2, duration, base_amp)
+
+    @classmethod
+    def train(cls, amp, frequency, pulse_duration, total_duration, base_amp=.0, delay=0):
+        return cls().delay(delay).add_train(amp, frequency, pulse_duration, total_duration, base_amp)
+
+    @classmethod
+    def sin(cls, amp, total_duration, freq, step=0.025, delay=0):
+        return cls().delay(delay).add_sin(amp, total_duration, freq, step)
 
 # EStim class is a derivative of TStim for stimuli with an extracelular electrode. The main
 # difference is that it collects all elementary stimuli pulses and converts them using a

@@ -1,47 +1,55 @@
 from __future__ import absolute_import
-""" 
-A wrapper over the neuron simulator.
-"""
-
-# The neuron hoc interpreter
-# Is it a global var since only one can exist and thus can be imported anywhere
-# We dont import it at module-level to avoid starting neuron
-_h = None
-"""The Neuron hoc interpreter.
-Be sure to use after having called init() before.
-"""
-_mods_loaded = []
-"""A list of modules already loaded"""
+from .utils import classproperty
 
 
-def get_init(hoc_mods=()):
-    """Initializes neuron and its hoc interpreter which is returned
+class Neuron:
     """
-    global _h
-    if isinstance(hoc_mods, str):
-        hoc_mods = (hoc_mods,)
-    if _h is None:
-        return _init(hoc_mods)
-    for mod in hoc_mods:
-        use_mod(mod)
-    return _h
+    A wrapper over the neuron simulator.
+    """
+    # The neuron hoc interpreter
+    # Is it a global var since only one can exist and thus can be imported anywhere
+    # We dont import it at module-level to avoid starting neuron
+    _h = None
+    """The Neuron hoc interpreter.
+    Be sure to use after having called init() before.
+    """
+    _mods_loaded = []
+    """A list of modules already loaded"""
 
+    @classproperty
+    def h(cls):
+        """Initializes neuron and its hoc interpreter which is returned
+        """
+        return cls._h or cls._init()
 
-def _init(hoc_mods):
-    global _h
-    from neuron import h as _h
-    _h.load_file("stdrun.hoc")
-    _h.stdinit()
-    for mod in hoc_mods:
-        use_mod(mod)
-    return _h
+    @classmethod
+    def _init(cls):
+        from neuron import h as _h
+        cls._h = _h
+        _h.load_file("stdrun.hoc")
+        _h.stdinit()
+        return _h
 
+    @classmethod
+    def _load_mod(cls, mod_name):
+        if mod_name in cls._mods_loaded:
+            return
+        cls.h.load_file(mod_name)
+        cls._mods_loaded.append(mod_name)
 
-def use_mod(mod_name):
-    if mod_name in _mods_loaded:
-        return
-    _h.load_file(mod_name)
-    _mods_loaded.append(mod_name)
+    @classmethod
+    def with_mods(cls, *hoc_mods):
+        for mod in hoc_mods:
+            cls._load_mod(mod)
+        return cls._h
+
+    @classmethod
+    def run_sim(cls, t_stop, *monitored_sections, **params):
+        sim = Simulation(t_stop, **params)
+        for sec in monitored_sections:
+            sim.record_activity(sec)
+        sim.run()
+        return sim
 
 
 class HocEntity(object):
@@ -57,7 +65,7 @@ endtemplate {cls_name}
 
     def __new__(cls, *args, **kw):
         if cls._hoc_cls is None:
-            h = get_init()
+            h = Neuron.h
             # Create a HOC template to be able to use as context
             h(cls._hoc_cldef.format(cls_name=cls.__name__))
             cls._hoc_cls = getattr(h, cls.__name__)
@@ -72,3 +80,51 @@ endtemplate {cls_name}
 
     def exec_within_context(self, hoc_cmd):
         self.h.exec_within_context(hoc_cmd)
+
+
+class Simulation:
+    def __init__(self, t_stop, **args):
+        self.t_stop = t_stop
+        self.args = args
+        self.t_vec = None
+        self.recordings = {}
+
+    def run(self):
+        h = Neuron.h
+        self.t_vec = h.Vector()  # Time stamp vector
+        self.t_vec.record(h._ref_t)
+
+        Neuron.h.tstop = self.t_stop
+        for key, val in self.args.items():
+            setattr(Neuron.h, key, val)
+        Neuron.h.run()
+
+    def record_activity(self, section, rel_pos=0.5):
+        rec_vec = Neuron.h.Vector()
+        rec_vec.record(section(rel_pos)._ref_v)
+        self.recordings[section.name()] = rec_vec
+
+    def plot(self):
+        try:
+            from matplotlib import pyplot
+        except Exception:
+            print("Matplotlib is not installed. Please install pyneurodamus[full]")
+            return None
+        if len(self.recordings) == 0:
+            print("No recording sections defined")
+            return None
+        if not self.t_vec:
+            print("No Simulation data. Please run it first.")
+            return None
+
+        fig = pyplot.figure()
+        ax = fig.add_subplot(1, 1, 1)  # (nrows, ncols, axnum)
+        for name, y in self.recordings.items():
+            ax.plot(self.t_vec, y, label=name)
+        ax.legend()
+        pyplot.show(fig)
+
+
+# shortcuts
+Neuron.HocEntity = HocEntity
+Neuron.Simulation = Simulation

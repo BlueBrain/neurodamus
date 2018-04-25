@@ -7,16 +7,15 @@ from neurodamus import Cell
 def test_create_cell():
     builder = Cell.Builder
     c = (builder
-         .add_root("soma", 1)
+         .add_soma(1)
          .add("dend1", 2, 5)
-         .attach(builder.Section("dend2", 3, 2)
-                 .add("sub2_dend", 4, 2))
+         .attach(builder.Section("dend2", 3, 2).add("sub2_dend", 4, 2))
          .create())
 
 
 def test_create_cell_2():
     c = (Cell.Builder
-         .add_root("soma", 1)
+         .add_soma(1)
          .add("dend1", 2, 5)
          .append("dend2", 3, 2).add("sub2_dend", 4, 2)
          .create())
@@ -25,7 +24,7 @@ def test_create_cell_2():
 def test_create_cell_3():
     Sec = Cell.Builder.Section
     c = (Cell.Builder
-         .add_root("soma", 1)
+         .add_soma(1)
          .add("dend1", 2, 5)
          .attach(Sec("dend2", 3, 2)
                  .append("sub2_dend", 4, 2)

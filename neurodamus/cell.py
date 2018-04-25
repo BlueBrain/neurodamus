@@ -1,12 +1,11 @@
 from __future__ import absolute_import
 from lazy_property import LazyProperty
 import logging
-from.utils import classproperty
 from .commands import GlobalConfig
-from . import _neuron
+from . import Neuron
 
 
-class Cell(_neuron.HocEntity):
+class Cell(Neuron.HocEntity):
     # We must override the basic tpl definition
     # Since the morphology parser expects several arrays
     _hoc_cldef = """
@@ -37,7 +36,7 @@ endtemplate {cls_name}"""
 
     def __init__(self, gid=0, morpho=None):
         # type: (int, str) -> None
-        h = _neuron.get_init()
+        h = Neuron.h
         self.gid = gid
         self._soma = None
         # Sections
@@ -46,7 +45,7 @@ endtemplate {cls_name}"""
 
     def load_morphology(self, morpho_path):
         # type: (str) -> None
-        h = _neuron.get_init("import3d.hoc")
+        h = Neuron.with_mods("import3d.hoc")
         # try and determine format
         if morpho_path.endswith(('hoc', 'HOC')):
             h.load_file(1, morpho_path)
@@ -97,8 +96,14 @@ endtemplate {cls_name}"""
 
     @staticmethod
     def show_topology():
-        h = _neuron.get_init()
-        h.topology()
+        Neuron.h.topology()
+
+    def section_info(self, section):
+        c = self.all[section] if isinstance(section, int) else section
+        return ("|lenght: {} um\n".format(c.L) +
+                "|diameter: {} um\n".format(c.diam) +
+                "|N_segments: {}\n".format(c.nseg) +
+                "|axial resistance: {} ohm.cm\n".format(c.Ra))
 
     class Builder:
         """Enables building a cell from soma/axon blocks"""
@@ -111,9 +116,8 @@ endtemplate {cls_name}"""
                     name: Section name
                     **params: Additional properties to be set on the hoc object
                 """
-                h = _neuron.get_init()
                 self.parent = None
-                self.this = h.Section(name=name)
+                self.this = Neuron.h.Section(name=name)
                 self.this.L = length
                 if n_segments:
                     self.this.nseg = n_segments
@@ -167,18 +171,27 @@ endtemplate {cls_name}"""
                 sec = self.get_root()
                 if sec.parent is None:
                     raise RuntimeError("Disconnected subtree. Attach to a CellBuilder root node")
-                assert sec.parent is True, "Unable to find Cell root"
-                c = Cell()
+                # If parent is True we must create the cell. Otherwise use it
+                c = Cell() if sec.parent is True else sec.parent
                 c.h.all.wholetree(sec.this)
                 c._soma = sec.this
                 # This requires further init to fill axonal, apical... etc
                 return c
 
         @classmethod
-        def add_root(cls, name, diam, **params):
+        def add_soma(cls, diam, name="soma", **params):
             root = cls.Section(name, length=diam, diam=diam, **params)
             root.parent = True  # this is root
             return root
+
+    # Shortcut
+    def add_soma(self, diam, name="soma", **params):
+        """Creates a soma and returns the section builder
+        NOTE: you must call create at the end so that the new sections are added to the cell
+        """
+        soma = self.Builder.add_soma(diam, name, **params)
+        soma.parent = self
+        return soma
 
 
 class SectionList(object):
