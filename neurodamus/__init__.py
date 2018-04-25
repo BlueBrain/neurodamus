@@ -10,3 +10,4 @@ __copyright__ = "2018 Blue Brain Project, EPFL"
 
 from _neurodamus import *
 from .cell import Cell
+from stimuli import StimuliSource

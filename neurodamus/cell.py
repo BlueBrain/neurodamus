@@ -123,10 +123,10 @@ endtemplate {cls_name}"""
 
             def add(self, name, length, n_segments, **params):
                 """Creates a new section as a child of the current section"""
-                self.add_children(self.__class__(name, length, nseg=n_segments, **params))
+                self.attach(self.__class__(name, length, nseg=n_segments, **params))
                 return self
 
-            def add_children(self, *nodes):
+            def attach(self, *nodes):
                 """Adds the given sections as children of the current"""
                 for n in nodes:
                     self.sub_nodes.append(n)
@@ -136,7 +136,7 @@ endtemplate {cls_name}"""
             def append(self, name, length, n_segments, **params):
                 """Creates a new section as a child and returns it"""
                 newnode = self.__class__(name, length, nseg=n_segments, **params)
-                self.add_children(newnode)
+                self.attach(newnode)
                 return newnode
 
             def chain(self, *nodes):
@@ -176,7 +176,7 @@ endtemplate {cls_name}"""
 
         @classmethod
         def add_root(cls, name, diam, **params):
-            root = cls.Section(name, diam, **params)
+            root = cls.Section(name, length=diam, diam=diam, **params)
             root.parent = True  # this is root
             return root
 
