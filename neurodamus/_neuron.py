@@ -51,6 +51,8 @@ class Neuron:
         sim.run()
         return sim
 
+    HocEntity = None  # type: HocEntity
+
 
 class HocEntity(object):
     _hoc_cls = None

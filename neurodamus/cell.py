@@ -3,6 +3,7 @@ from lazy_property import LazyProperty
 import logging
 from .commands import GlobalConfig
 from . import Neuron
+from .utils import dict_filter
 
 __all__ = ["Cell", "Mechanisms"]
 
@@ -38,7 +39,6 @@ endtemplate {cls_name}"""
 
     def __init__(self, gid=0, morpho=None):
         # type: (int, str) -> None
-        h = Neuron.h
         self.gid = gid
         self._soma = None
         # Sections
@@ -67,7 +67,7 @@ endtemplate {cls_name}"""
             try:
                 imp.input(morpho_path)
                 imprt = h.Import3d_GUI(imp, 0)
-            except:
+            except Exception:
                 raise Exception("Error loading morphology. Verify Neuron outputs")
 
             imprt.instantiate(self.h)
@@ -195,7 +195,7 @@ endtemplate {cls_name}"""
         soma.parent = self
         return soma
 
-    # We later redefine this shortcut
+    # Declare shortcut
     Mechanisms = None
 
 
@@ -228,30 +228,27 @@ class SectionList(object):
 
 class Mechanisms:
     _mec_name = None
-    HH = None
-    PAS = None
+    # Declare the subtypes
+    HH = None   # type: _HH
+    PAS = None  # type: _PAS
 
-    def __new__(cls, **opts):
+    def __new__(cls):
         if cls is Mechanisms:
-            raise TypeError("Mechanisms is virtual. Instantiate a specific Mechanism")
-        o = object.__new__(cls)
-        o._init(**opts)
-        return o
+            raise TypeError("Mechanisms is abstract. Instantiate a specific Mechanism")
+        return object.__new__(cls)
 
     def _init(self, **opts):
-        for name, val in opts.items():
-            if not name.startswith("_") and hasattr(self, name):
+        for name, val in dict_filter(opts, lambda _name, _: not _name.startswith("_")):
+            if hasattr(self, name):
                 setattr(self, name, val)
-            elif not hasattr(self, name):
-                print("Warning: param {} not recognized for the mechanism".format(name))
+            else:
+                logging.warn("Warning: param %s not recognized for the mechanism", name)
         return self
 
     def apply(self, section):
         section.insert(self._mec_name)
         for name, val in vars(self).items():
-            print("{}{}".format(name, val))
             if not name.startswith("_") and hasattr(self, name) and val is not None:
-                print("setting {} to {}".format(name, val))
                 setattr(section, "{}_{}".format(name, self._mec_name), val)
 
     mk_HH = classmethod(lambda cls, **opts: _HH()._init(**opts))
@@ -261,14 +258,14 @@ class Mechanisms:
 class _HH(Mechanisms):
     _mec_name = "hh"
     gnabar = None  # 0.120 mho/cm2   Maximum specific sodium channel conductance
-    gkbar   = None  # 0.036 mho/cm2   Maximum potassium channel conductance
-    gl      = None  # 0.0003 mho/cm2  Leakage conductance
-    el      = None  # -54.3 mV        Leakage reversal potential
-    m       = None  #                 sodium activation state variable
-    h       = None  #                 sodium inactivation state variable
-    n       = None  #                 potassium activation state variable
-    ina     = None  # mA/cm2          sodium current through the hh channels
-    ik      = None  # mA/cm2          potassium current through the hh channels
+    gkbar  = None  # 0.036 mho/cm2   Maximum potassium channel conductance
+    gl     = None  # 0.0003 mho/cm2  Leakage conductance
+    el     = None  # -54.3 mV        Leakage reversal potential
+    m      = None  #                 sodium activation state variable
+    h      = None  #                 sodium inactivation state variable
+    n      = None  #                 potassium activation state variable
+    ina    = None  # mA/cm2          sodium current through the hh channels
+    ik     = None  # mA/cm2          potassium current through the hh channels
 
 
 class _PAS(Mechanisms):
