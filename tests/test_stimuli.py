@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import pytest
-from neurodamus.stimuli import StimuliSource
+from neurodamus import StimuliSource
 
 __author__ = "Fernando Pereira"
 __copyright__ = "Fernando Pereira"
@@ -24,7 +24,7 @@ class TestStimuli(object):
 
     @pytest.mark.parametrize("base_amp", [-1, 0, 1.5])
     def test_pulse_diff_base(self, base_amp):
-        self.stim.add_pulse(1.2, 10, base_amp)
+        self.stim.add_pulse(1.2, 10, base_amp=base_amp)
         assert list(self.stim.time_vec) == [0, 0, 10, 10]
         assert list(self.stim.stim_vec) == [base_amp, 1.2, 1.2, base_amp]
 
