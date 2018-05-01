@@ -15,3 +15,6 @@ clamp.detach()
 
 StimuliSource.Constant(0.1, 50, 10).attach_to(c.soma)
 Neuron.run_sim(100, c.soma, v_init=-70).plot()
+
+from six.moves import input
+input("Press enter to quit")

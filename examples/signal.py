@@ -6,3 +6,6 @@ from neurodamus import StimuliSource
 s = StimuliSource.train(0.5, 100, 4, 100)
 s.add_noise(0, 0.1, 100)
 ax = s.plot(ylims=(-1, 1))
+
+from six.moves import input
+input("Press enter to quit")

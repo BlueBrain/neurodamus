@@ -187,7 +187,7 @@ class StimuliSource(object):
         ax.legend()
         if ylims:
             ax.set_ylim(*ylims)
-        pyplot.show(fig)
+        fig.show()
 
     # ==== Helpers =====
     @classmethod
