@@ -4,20 +4,33 @@ from neurodamus import Cell
 from neurodamus import StimuliSource
 from neurodamus import Neuron
 
+# Change v_init globally
+# Alternatively v_init can be configured per simulation in run_sim(**kw)
+Neuron.Simulation.v_init = -70
 
-def test_tut1():
+
+def test_tut1(quick=True):
     c = Cell.Builder.add_soma(60).create()
-    Cell.Mechanisms.mk_HH(gkbar=0.0, gnabar=0.0, el=-70).apply(c.soma)
+    hh = Cell.Mechanisms.mk_HH(gkbar=0.0, gnabar=0.0, el=-70)
+    hh.apply(c.soma)
 
-    clamp = StimuliSource.pulse(0.1, 50, delay=10).attach_to(c.soma)
-    Neuron.run_sim(100, c.soma, v_init=-70).plot()
-    clamp.detach()
-
+    # clamp = StimuliSource.pulse(0.1, 50, delay=10).attach_to(c.soma)  # eqv. to Constant()
     StimuliSource.Constant(0.1, 50, 10).attach_to(c.soma)
-    Neuron.run_sim(100, c.soma, v_init=-70).plot()
+    Neuron.run_sim(100, c.soma).plot()
+
+    if not quick:
+        # Execution with parametrized HH
+        hh.gkbar = 0.01
+        hh.gnabar = 0.2
+        hh.apply(c.soma)
+        sim = Neuron.run_sim(50, c.soma)
+        sim.plot()
+        # Continue run until 100 ms
+        sim.run_continue(100)
+        sim.plot()
 
 
 if __name__ == "__main__":
     from six.moves import input
-    test_tut1()
+    test_tut1(False)
     input("Press enter to quit")

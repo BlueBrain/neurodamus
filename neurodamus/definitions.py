@@ -1,8 +1,6 @@
 from __future__ import absolute_import
 
-from cycler import concat
-
-from .utils import ConfigT, classproperty
+from .utils import ConfigT
 from enum import Enum
 
 
@@ -24,3 +22,16 @@ class RNGConfig(ConfigT):
                 cls.rng_mode = cls.Modes[mode]
                 config_map.pop("RNGMode")
         cls.global_init(**config_map)
+
+
+class Neuron_Stdrun_Defaults:
+    """Neuron stdrun default (src: share/lib/hoc/stdrun.hoc"""
+    using_cvode_ = 0
+    stdrun_quiet = 0
+    realtime = 0
+    tstop = 5
+    stoprun = 0
+    steps_per_ms = 1 / .025
+    nstep_steprun = 1
+    global_ra = 35.4
+    v_init = -65

@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 from .utils import classproperty
+from .definitions import Neuron_Stdrun_Defaults
 
 
 class Neuron:
@@ -46,13 +47,14 @@ class Neuron:
 
     @classmethod
     def run_sim(cls, t_stop, *monitored_sections, **params):
-        sim = Simulation(t_stop, **params)
+        sim = Simulation(**params)
         for sec in monitored_sections:
             sim.record_activity(sec)
-        sim.run()
+        sim.run(t_stop)
         return sim
 
-    HocEntity = None  # type: HocEntity
+    HocEntity = None   # type: HocEntity
+    Simulation = None  # type: Simulation
 
 
 class HocEntity(object):
@@ -86,21 +88,27 @@ endtemplate {cls_name}
 
 
 class Simulation:
-    def __init__(self, t_stop, **args):
-        self.t_stop = t_stop
+    # Some defaults from stdrun
+    v_init = Neuron_Stdrun_Defaults.v_init
+
+    def __init__(self, **args):
+        args.setdefault("v_init", self.v_init)
         self.args = args
         self.t_vec = None
         self.recordings = {}
 
-    def run(self):
+    def run(self, t_stop):
         h = Neuron.h
         self.t_vec = h.Vector()  # Time stamp vector
         self.t_vec.record(h._ref_t)
 
-        Neuron.h.tstop = self.t_stop
+        Neuron.h.tstop = t_stop
         for key, val in self.args.items():
             setattr(Neuron.h, key, val)
         Neuron.h.run()
+
+    def run_continue(self, t_stop):
+        Neuron.h.continuerun(t_stop)
 
     def record_activity(self, section, rel_pos=0.5):
         rec_vec = Neuron.h.Vector()

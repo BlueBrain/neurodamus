@@ -28,3 +28,5 @@ def test_basic_system():
 if __name__ == "__main__":
     sim = test_basic_system()
     sim.plot()
+    from six.moves import input
+    input("Press enter to quit")
