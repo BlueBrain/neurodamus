@@ -24,23 +24,29 @@ class StimuliSource(object):
         self._rng = rng
 
     class _Clamp:
-        def __init__(self, src, cell_section, position=0.5):
+        def __init__(self, cell_section, position=0.5, clamp_container=None,
+                     stim_vec_mode=True, time_vec=None, stim_vec=None,
+                     **clamp_params):
             self.clamp = Neuron.h.IClamp(position, sec=cell_section)
-            self.clamp.dur = src.time_vec[-1]
-            src.stim_vec.play(self.clamp._ref_amp, src.time_vec, 1)
-            # Keep ref
-            self._stim_src = src  # type: StimuliSource
+            if stim_vec_mode:
+                assert time_vec is not None and stim_vec is not None
+                self.clamp.dur = time_vec[-1]
+                stim_vec.play(self.clamp._ref_amp, time_vec, 1)
+            else:
+                for param, val in clamp_params.items():
+                    setattr(self.clamp, param, val)
+            # Clamps must be kept otherwise they are garbage-collected
+            self._all_clamps = clamp_container
+            clamp_container.add(self)
 
         def detach(self):
             """Detaches a clamp from a cell, destroying it"""
-            self._stim_src._clamps.discard(self)
+            self._all_clamps.discard(self)
             del self.clamp  # Force del on the clamp (there might be references to self)
 
     def attach_to(self, section, position=0.5):
-        clamp = StimuliSource._Clamp(self, section, position)
-        # Clamps must be kept otherwise they are garbage-collected
-        self._clamps.add(clamp)
-        return clamp
+        return StimuliSource._Clamp(section, position, self._clamps, True,
+                                    self.time_vec, self.stim_vec)
 
     def reset(self):
         self.stim_vec.resize(0)
@@ -208,7 +214,7 @@ class StimuliSource(object):
     # Constant has a special attach_to and doesnt share any composing method
     class Constant:
         """Class implementing a minimal IClamp for a Constant current."""
-        _clamps = []
+        _clamps = set()
 
         def __init__(self, amp, duration, delay=0):
             self._amp = amp
@@ -216,12 +222,8 @@ class StimuliSource(object):
             self._delay = delay
 
         def attach_to(self, section, position=0.5):
-            clamp = Neuron.h.IClamp(position, sec=section)
-            clamp.amp = self._amp
-            clamp.delay = self._delay
-            clamp.dur = self._dur
-            self._clamps.append(clamp)
-            return clamp
+            return StimuliSource._Clamp(section, position, self._clamps, False,
+                                        amp=self._amp, delay=self._delay, dur=self._dur)
 
 
 # EStim class is a derivative of TStim for stimuli with an extracelular electrode. The main
