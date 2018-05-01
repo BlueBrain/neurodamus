@@ -69,6 +69,8 @@ endtemplate {cls_name}
 """
 
     def __new__(cls, *args, **kw):
+        if cls is HocEntity:
+            raise TypeError("HocEntity must be subclassed")
         if cls._hoc_cls is None:
             h = Neuron.h
             # Create a HOC template to be able to use as context
@@ -89,7 +91,7 @@ endtemplate {cls_name}
 
 class Simulation:
     # Some defaults from stdrun
-    v_init = Neuron_Stdrun_Defaults.v_init
+    v_init = Neuron_Stdrun_Defaults.v_init  # -65V
 
     def __init__(self, **args):
         args.setdefault("v_init", self.v_init)

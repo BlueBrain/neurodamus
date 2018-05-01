@@ -41,7 +41,7 @@ endtemplate {cls_name}"""
         # type: (int, str) -> None
         self.gid = gid
         self._soma = None
-        # Sections
+        self._builder = None  # type: Cell.Builder.Section
         if morpho is not None:
             self.load_morphology(morpho)
 
@@ -177,6 +177,7 @@ endtemplate {cls_name}"""
                 c = Cell() if sec.parent is True else sec.parent
                 c.h.all.wholetree(sec.this)
                 c._soma = sec.this
+                c._builder = sec
                 # This requires further init to fill axonal, apical... etc
                 return c
 
@@ -187,13 +188,19 @@ endtemplate {cls_name}"""
             return root
 
     # Shortcut
-    def add_soma(self, diam, name="soma", **params):
+    def init_soma(self, diam, name="soma", **params):
         """Creates a soma and returns the section builder
         NOTE: you must call create at the end so that the new sections are added to the cell
         """
         soma = self.Builder.add_soma(diam, name, **params)
         soma.parent = self
         return soma
+
+    @property
+    def builder(self):
+        if self._builder is None:
+            raise RuntimeError("When the cell is void start creating it with init_soma()")
+        return self._builder
 
     # Declare shortcut
     Mechanisms = None

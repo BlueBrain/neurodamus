@@ -17,17 +17,22 @@ def test_tut1(quick=True):
     # clamp = StimuliSource.pulse(0.1, 50, delay=10).attach_to(c.soma)  # eqv. to Constant()
     StimuliSource.Constant(0.1, 50, 10).attach_to(c.soma)
     Neuron.run_sim(100, c.soma).plot()
+    if quick:
+        return
 
-    if not quick:
-        # Execution with parametrized HH
-        hh.gkbar = 0.01
-        hh.gnabar = 0.2
-        hh.apply(c.soma)
-        sim = Neuron.run_sim(50, c.soma)
-        sim.plot()
-        # Continue run until 100 ms
-        sim.run_continue(100)
-        sim.plot()
+    # Execution with Active channels
+    hh.gkbar = 0.01
+    hh.gnabar = 0.2
+    hh.apply(c.soma)
+    sim = Neuron.run_sim(50, c.soma)
+    sim.plot()
+    # Continue run until 100 ms
+    sim.run_continue(100)
+    sim.plot()
+
+    # Extending the model with dendrites
+    c.builder.add("dend", 400, 9, diam=2).add("dend2", 400, 9, diam=2).create()
+    Cell.show_topology()
 
 
 if __name__ == "__main__":
