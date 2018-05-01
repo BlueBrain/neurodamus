@@ -179,7 +179,7 @@ class StimuliSource(object):
         return self
 
     # PLOTTING
-    def plot(self, block=True, ylims=None):
+    def plot(self, ylims=None):
         from matplotlib import pyplot
         fig = pyplot.figure()
         ax = fig.add_subplot(1, 1, 1)  # (nrows, ncols, axnum)

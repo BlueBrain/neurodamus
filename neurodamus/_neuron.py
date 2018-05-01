@@ -24,11 +24,12 @@ class Neuron:
 
     @classmethod
     def _init(cls):
-        from neuron import h as _h
-        cls._h = _h
-        _h.load_file("stdrun.hoc")
-        _h.stdinit()
-        return _h
+        """Initializes the Neuron simulator"""
+        from neuron import h
+        cls._h = h
+        h.load_file("stdrun.hoc")
+        h.init()
+        return h
 
     @classmethod
     def _load_mod(cls, mod_name):
@@ -105,6 +106,9 @@ class Simulation:
         rec_vec = Neuron.h.Vector()
         rec_vec.record(section(rel_pos)._ref_v)
         self.recordings[section.name()] = rec_vec
+
+    def get_voltages_at(self, section):
+        return self.recordings[section.name()]
 
     def plot(self):
         try:

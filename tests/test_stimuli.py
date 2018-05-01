@@ -62,4 +62,3 @@ class TestStimuli(object):
         self.stim.add_pulses(0.5, 1, 2, 3, 4, base_amp=0.1)
         assert list(self.stim.time_vec) == [0, 0, 0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2]
         assert list(self.stim.stim_vec) == [0.1, 1, 1, 2, 2, 3, 3, 4, 4, 0.1]
-
