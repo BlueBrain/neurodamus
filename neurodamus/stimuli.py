@@ -32,19 +32,15 @@ class StimuliSource(object):
             self._stim_src = src  # type: StimuliSource
 
         def detach(self):
+            """Detaches a clamp from a cell, destroying it"""
             self._stim_src._clamps.discard(self)
-
-        def __del__(self):
-            self.detach()
+            del self.clamp  # Force del on the clamp (there might be references to self)
 
     def attach_to(self, section, position=0.5):
         clamp = StimuliSource._Clamp(self, section, position)
         # Clamps must be kept otherwise they are garbage-collected
         self._clamps.add(clamp)
         return clamp
-
-    def detach(self, clamp):
-        self._clamps.discard(clamp)
 
     def reset(self):
         self.stim_vec.resize(0)

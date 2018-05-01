@@ -124,7 +124,7 @@ class Simulation:
         for name, y in self.recordings.items():
             ax.plot(self.t_vec, y, label=name)
         ax.legend()
-        pyplot.show(fig)
+        fig.show()
 
 
 # shortcuts
