@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from .utils import classproperty
 from .definitions import Neuron_Stdrun_Defaults
+from neuron import nrn
 
 
 class Neuron:
@@ -107,9 +108,16 @@ class Simulation:
         Neuron.h.continuerun(t_stop)
 
     def record_activity(self, section, rel_pos=0.5):
+        if isinstance(section, nrn.Segment):
+            segment = section
+            name = str(segment.sec)
+        else:
+            segment = section(rel_pos)
+            name = section.name()
+
         rec_vec = Neuron.h.Vector()
-        rec_vec.record(section(rel_pos)._ref_v)
-        self.recordings[section.name()] = rec_vec
+        rec_vec.record(segment._ref_v)
+        self.recordings[name] = rec_vec
 
     def get_voltages_at(self, section):
         return self.recordings[section.name()]

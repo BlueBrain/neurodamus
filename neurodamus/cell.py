@@ -92,17 +92,17 @@ endtemplate {cls_name}"""
     # Other properties use neuron structures as source
     # So that we don't need to handle sync issues
 
-    @LazyProperty
+    @property
     def axons(self):
-        return SectionList(self.h.axonal, self.h.axon)
+        return self._axon or SectionList(self.h.axonal, self.h.axon)
 
-    @LazyProperty
+    @property
     def dendrites(self):
-        return SectionList(self.h.basal, self.h.basal)
+        return self._dend or SectionList(self.h.basal, self.h.dend)
 
-    @LazyProperty
+    @property
     def apical_dendrites(self):
-        return SectionList(self.h.apical, self.h.apic)
+        return self._apic or SectionList(self.h.apical, self.h.apic)
 
     @staticmethod
     def show_topology():

@@ -24,20 +24,25 @@ def test_tut1(quick=True):
     hh.gkbar = 0.01
     hh.gnabar = 0.2
     hh.apply(c.soma)
-    sim = Neuron.run_sim(50, c.soma)
-    sim.plot()
-    # Continue run until 100 ms
-    sim.run_continue(100)
+    sim = Neuron.run_sim(100, c.soma)
+    # sim.run_continue(100)
     sim.plot()
 
     # Extending the model with dendrites
-    c.builder.add("dend", 400, 9, diam=2).add("dend2", 400, 9, diam=2).create()
-    Cell.show_topology()
+    c = (c.builder
+         .add_dendrite("dend", 400, 9, diam=2, Ra=100)
+         .add_dendrite("dend2", 400, 9, diam=2, Ra=100)
+         .create())
 
-    Cell.Mechanisms.mk_HH(el=-70, gl=1e-4, gkbar=.0, gnabar=.0).apply(c.dendrites)
+    Cell.Mechanisms.mk_HH(el=-70, gl=5e-4, gkbar=.0, gnabar=.0).apply(c.dendrites)
+
+    Cell.show_topology()
+    Neuron.h.psection(sec=c.dendrites[0])
+
+    Neuron.run_sim(50, c.dendrites[0]).plot()
 
 
 if __name__ == "__main__":
-    from six.moves import input
     test_tut1(False)
+    from six.moves import input
     input("Press enter to quit")
