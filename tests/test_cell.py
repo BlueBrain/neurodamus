@@ -11,6 +11,54 @@ def test_load_cell():
     assert c.soma.L == approx(26.11, abs=0.01)
 
 
+def test_create_cell():
+    builder = Cell.Builder
+    c = (builder
+         .add_soma(1)
+         .add_dendrite("dend1", 2, 5)
+         .attach(builder.DendriteSection("dend2", 3, 2).add("sub2_dend", 4, 2))
+         .add_axon("axon1", 2, 3)
+         .create())
+
+    Cell.show_topology()
+    assert len(c.all) == 5
+    assert len(list(c.h.basal)) == 3
+    assert len(c._dend) == 3
+    assert len(c._axon) == 1
+
+
+def test_create_cell_2():
+    c = (Cell.Builder
+         .add_soma(1)
+         .add_dendrite("dend1", 2, 5)
+         .append_axon("ax1", 3, 2).append("ax1_2", 4, 2).append("ax1_3", 3, 3)
+         .create())
+
+    Cell.show_topology()
+    assert len(c.all) == 5
+    assert len(list(c.h.basal)) == 1
+    assert len(c._dend) == 1
+    assert len(c._axon) == 3
+
+
+def test_create_cell_3():
+    Dend = Cell.Builder.DendriteSection
+    c = (Cell.Builder
+         .add_soma(1)
+         .add_dendrite("dend1", 2, 5)
+         .attach(Dend("dend2", 3, 2)
+                 .append("sub2_dend", 4, 2)
+                 .get_root())
+         .create())
+
+    Cell.show_topology()
+    assert len(c.all) == 4
+    assert len(list(c.h.basal)) == 3
+    assert len(c._dend) == 3
+    assert c._axon is None
+    assert len(c.axons) == 0
+
+
 def test_basic_system():
     c = Cell.Builder.add_soma(60).create()
     Cell.Mechanisms.mk_HH(gkbar=0.0, gnabar=0.0, el=-70).apply(c.soma)

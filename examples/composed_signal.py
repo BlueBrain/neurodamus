@@ -4,7 +4,6 @@ from neurodamus import StimuliSource
 
 
 def test_composed_signal():
-    assert 1==1
     s = StimuliSource.train(0.5, 100, 4, 100)
     s.add_noise(0, 0.1, 100)
     s.plot(ylims=(-1, 1))

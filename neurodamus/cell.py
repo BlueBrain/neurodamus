@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 from lazy_property import LazyProperty
+from neuron import nrn
 import logging
 from .commands import GlobalConfig
 from . import Neuron
@@ -9,6 +10,10 @@ __all__ = ["Cell", "Mechanisms"]
 
 
 class Cell(Neuron.HocEntity):
+    """
+    A Cell abstraction. It allows users to instantiate Cells from morphologies or
+    create them from scratch using the Cell.Builder
+    """
     # We must override the basic tpl definition
     # Since the morphology parser expects several arrays
     _hoc_cldef = """
@@ -27,11 +32,6 @@ begintemplate {cls_name}
         axonal  = new SectionList()
         forall delete_section()
     }}
-
-    proc exec_within_context() {{
-        execute($s1)
-    }}
-
 endtemplate {cls_name}"""
 
     _section_lists = ('all', 'somatic', 'axonal', 'basal', 'apical')
@@ -41,6 +41,10 @@ endtemplate {cls_name}"""
         # type: (int, str) -> None
         self.gid = gid
         self._soma = None
+        self._axon = None
+        self._dend = None
+        self._apic = None
+
         self._builder = None  # type: Cell.Builder.Section
         if morpho is not None:
             self.load_morphology(morpho)
@@ -71,7 +75,11 @@ endtemplate {cls_name}"""
                 raise Exception("Error loading morphology. Verify Neuron outputs")
 
             imprt.instantiate(self.h)
+            # Create shortcuts. Hoc arrays are fine, no need to convert
             self._soma = self.h.soma[0]
+            self._dend = self.h.dend
+            self._apic = self.h.apic
+            self._axon = self.h.axon
 
     @LazyProperty
     def all(self):
@@ -94,7 +102,7 @@ endtemplate {cls_name}"""
 
     @LazyProperty
     def apical_dendrites(self):
-        return SectionList(self.h.apical, self.h.aic)
+        return SectionList(self.h.apical, self.h.apic)
 
     @staticmethod
     def show_topology():
@@ -108,17 +116,23 @@ endtemplate {cls_name}"""
                 "|axial resistance: {} ohm.cm\n".format(c.Ra))
 
     class Builder:
-        """Enables building a cell from soma/axon blocks"""
-        # Cell Section builder
+        """Enables building a cell from soma/axon blocks
+        """
         class Section:
-            def __init__(self, name, length, n_segments=None, **params):
-                # type: (str, float, int, dict) -> None
+            SOMA = 0
+            DENDRITE = 1
+            APICAL_DENDRITE = 2
+            AXON = 3
+
+            def __init__(self, name, length, n_segments=None, sec_type=None, **params):
+                # type: (str, float, int, int, dict) -> None
                 """Creates a new section
                 Args:
                     name: Section name
                     **params: Additional properties to be set on the hoc object
                 """
                 self.parent = None
+                self.sec_type = sec_type
                 self.this = Neuron.h.Section(name=name)
                 self.this.L = length
                 if n_segments:
@@ -132,6 +146,17 @@ endtemplate {cls_name}"""
                 self.attach(self.__class__(name, length, nseg=n_segments, **params))
                 return self
 
+            def add_dendrite(self, name, length, n_segments, apical=False, **params):
+                """Creates the first section of a dendrite"""
+                self._ensure_soma()
+                t = self.APICAL_DENDRITE if apical else self.DENDRITE
+                return self.add(name, length, n_segments, sec_type=t, **params)
+
+            def add_axon(self, name, length, n_segments, **params):
+                """Creates the first section of an axon"""
+                self._ensure_soma()
+                return self.add(name, length, n_segments, sec_type=self.AXON, **params)
+
             def attach(self, *nodes):
                 """Adds the given sections as children of the current"""
                 for n in nodes:
@@ -144,6 +169,17 @@ endtemplate {cls_name}"""
                 newnode = self.__class__(name, length, nseg=n_segments, **params)
                 self.attach(newnode)
                 return newnode
+
+            def append_dendrite(self, name, length, n_segments, apical=False, **params):
+                """Creates the first section of an axon"""
+                self._ensure_soma()
+                t = self.APICAL_DENDRITE if apical else self.DENDRITE
+                return self.append(name, length, n_segments, sec_type=t, **params)
+
+            def append_axon(self, name, length, n_segments, **params):
+                """Creates the first section of an axon"""
+                self._ensure_soma()
+                return self.append(name, length, n_segments, sec_type=self.AXON, **params)
 
             def chain(self, *nodes):
                 """Chain given nodes in parent-child relations, and make it child of the current"""
@@ -170,20 +206,52 @@ endtemplate {cls_name}"""
                 """Builds the cell the current section belongs to.
                 If no root is found (e.g. disconnected branch) an exception is raised
                 """
-                sec = self.get_root()
+                sec = self.get_root()  # type: self.__class__
                 if sec.parent is None:
                     raise RuntimeError("Disconnected subtree. Attach to a CellBuilder root node")
                 # If parent is True we must create the cell. Otherwise use it
                 c = Cell() if sec.parent is True else sec.parent
-                c.h.all.wholetree(sec.this)
+                c.h.all.wholetree(sec=sec.this)
+
+                for branch_sec in sec.sub_nodes:
+                    node = branch_sec.this
+                    t = branch_sec.sec_type
+                    if t == self.SOMA:
+                        c.h.somatic.subtree(sec=node)
+                        print("Somas: I got", list(c.h.somatic))
+                    elif t == self.DENDRITE:
+                        c.h.basal.subtree(sec=node)
+                        c._dend = list(c.h.basal)
+                    elif t == self.APICAL_DENDRITE:
+                        c.h.apical.subtree(sec=node)
+                        c._apic = list(c.h.apical)
+                    elif t == self.AXON:
+                        c.h.axonal.subtree(sec=node)
+                        c._axon = list(c.h.axonal)
+                    else:
+                        logging.warn("Branch starting at %s doesnt have a type", node)
                 c._soma = sec.this
                 c._builder = sec
-                # This requires further init to fill axonal, apical... etc
                 return c
+
+            def _ensure_soma(self):
+                if self.sec_type is not self.SOMA:
+                    raise RuntimeError("Dendrites must start on the soma")
+
+        class DendriteSection(Section):
+            def __init__(self, name, length, n_segments=None, apical=False, **params):
+                Cell.Builder.Section.__init__(
+                    self, name, length, n_segments,
+                    sec_type=self.APICAL_DENDRITE if apical else self.DENDRITE,
+                    **params)
+
+        class AxonSection(Section):
+            def __init__(self, name, length, n_segments=None, **params):
+                Cell.Builder.Section.__init__(self, name, length, n_segments, **params)
 
         @classmethod
         def add_soma(cls, diam, name="soma", **params):
-            root = cls.Section(name, length=diam, diam=diam, **params)
+            root = cls.Section(name, length=diam, diam=diam, sec_type=cls.Section.SOMA, **params)
             root.parent = True  # this is root
             return root
 
@@ -232,6 +300,9 @@ class SectionList(object):
                     return elem
             return None
 
+    def __iter__(self):
+        return iter(self._hlist)
+
 
 class Mechanisms:
     _mec_name = None
@@ -252,11 +323,19 @@ class Mechanisms:
                 logging.warn("Warning: param %s not recognized for the mechanism", name)
         return self
 
-    def apply(self, section):
+    def _apply(self, section):
         section.insert(self._mec_name)
         for name, val in vars(self).items():
             if not name.startswith("_") and hasattr(self, name) and val is not None:
                 setattr(section, "{}_{}".format(name, self._mec_name), val)
+
+    def apply(self, section_or_sectionlist):
+        # Single section - base neuron cells used
+        if isinstance(section_or_sectionlist, nrn.Section):
+            self._apply(section_or_sectionlist)
+        else:
+            for s in section_or_sectionlist:
+                self._apply(s)
 
     mk_HH = classmethod(lambda cls, **opts: _HH()._init(**opts))
     mk_PAS = classmethod(lambda cls, **opts: _PAS()._init(**opts))
@@ -268,9 +347,9 @@ class _HH(Mechanisms):
     gkbar  = None  # 0.036 mho/cm2   Maximum potassium channel conductance
     gl     = None  # 0.0003 mho/cm2  Leakage conductance
     el     = None  # -54.3 mV        Leakage reversal potential
-    m      = None  #                 sodium activation state variable
-    h      = None  #                 sodium inactivation state variable
-    n      = None  #                 potassium activation state variable
+    m      = None  # ?               sodium activation state variable
+    h      = None  # ?               sodium inactivation state variable
+    n      = None  # ?               potassium activation state variable
     ina    = None  # mA/cm2          sodium current through the hh channels
     ik     = None  # mA/cm2          potassium current through the hh channels
 

@@ -8,28 +8,32 @@ def test_create_cell():
     builder = Cell.Builder
     c = (builder
          .add_soma(1)
-         .add("dend1", 2, 5)
-         .attach(builder.Section("dend2", 3, 2).add("sub2_dend", 4, 2))
+         .add_dendrite("dend1", 2, 5)
+         .attach(builder.DendriteSection("dend2", 3, 2).add("sub2_dend", 4, 2))
          .create())
+    return c
 
 
 def test_create_cell_2():
     c = (Cell.Builder
          .add_soma(1)
-         .add("dend1", 2, 5)
-         .append("dend2", 3, 2).add("sub2_dend", 4, 2)
+         .add_dendrite("dend1", 2, 5)
+         # Three axon sections in line
+         .append_axon("ax1", 3, 2).append("ax1_2", 4, 2).append("ax1_3", 3, 3)
          .create())
+    return c
 
 
 def test_create_cell_3():
-    Sec = Cell.Builder.Section
+    Dend = Cell.Builder.DendriteSection
     c = (Cell.Builder
          .add_soma(1)
-         .add("dend1", 2, 5)
-         .attach(Sec("dend2", 3, 2)
+         .add_dendrite("dend1", 2, 5)
+         .attach(Dend("dend2", 3, 2)
                  .append("sub2_dend", 4, 2)
                  .get_root())
          .create())
+    return c
 
 
 if __name__ == "__main__":

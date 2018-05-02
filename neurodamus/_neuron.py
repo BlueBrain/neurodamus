@@ -60,11 +60,8 @@ class Neuron:
 class HocEntity(object):
     _hoc_cls = None
     # The hoc hook for executing code within our context
-    _hoc_cldef = """ 
+    _hoc_cldef = """
 begintemplate {cls_name}
-    proc exec_with_context() {{
-        execute($s1)
-    }}
 endtemplate {cls_name}
 """
 
@@ -84,9 +81,6 @@ endtemplate {cls_name}
     @property
     def h(self):
         return self._hoc_obj
-
-    def exec_within_context(self, hoc_cmd):
-        self.h.exec_within_context(hoc_cmd)
 
 
 class Simulation:

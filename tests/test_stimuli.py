@@ -46,7 +46,7 @@ class TestStimuli(object):
         # We end up with 4 pulses, the last one with reduced rest phase
         assert list(self.stim.time_vec) == [0, 0, 20, 20, 100, 100, 120, 120, 200, 200, 220, 220,
                                             300, 300, 320, 320, 350]
-        assert list(self.stim.stim_vec) == [0, 1.2, 1.2, 0]*4 + [0]
+        assert list(self.stim.stim_vec) == [0, 1.2, 1.2, 0] * 4 + [0]
 
     def test_sin(self):
         self.stim.add_sin(1, 0.1, 10000)
@@ -56,7 +56,7 @@ class TestStimuli(object):
     def test_sin_long(self):
         self.stim.add_sin(1, 200, 10, 25)
         assert list(self.stim.time_vec) == pytest.approx([0, 25, 50, 75, 100, 125, 150, 175, 200])
-        assert list(self.stim.stim_vec) == pytest.approx([0, 1, 0, -1]*2 + [0])
+        assert list(self.stim.stim_vec) == pytest.approx([0, 1, 0, -1] * 2 + [0])
 
     def test_add_pulses(self):
         self.stim.add_pulses(0.5, 1, 2, 3, 4, base_amp=0.1)

@@ -34,6 +34,8 @@ def test_tut1(quick=True):
     c.builder.add("dend", 400, 9, diam=2).add("dend2", 400, 9, diam=2).create()
     Cell.show_topology()
 
+    Cell.Mechanisms.mk_HH(el=-70, gl=1e-4, gkbar=.0, gnabar=.0).apply(c.dendrites)
+
 
 if __name__ == "__main__":
     from six.moves import input
