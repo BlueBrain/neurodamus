@@ -91,7 +91,6 @@ endtemplate {cls_name}"""
 
     # Other properties use neuron structures as source
     # So that we don't need to handle sync issues
-
     @property
     def axons(self):
         return self._axon or SectionList(self.h.axonal, self.h.axon)

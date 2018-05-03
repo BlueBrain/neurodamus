@@ -35,11 +35,10 @@ def test_tut1(quick=True):
          .create())
 
     Cell.Mechanisms.mk_HH(el=-70, gl=5e-4, gkbar=.0, gnabar=.0).apply(c.dendrites)
+    Neuron.run_sim(50, c.dendrites[0]).plot()
 
     Cell.show_topology()
     Neuron.h.psection(sec=c.dendrites[0])
-
-    Neuron.run_sim(50, c.dendrites[0]).plot()
 
 
 if __name__ == "__main__":
