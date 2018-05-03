@@ -56,6 +56,7 @@ class Neuron:
 
     HocEntity = None   # type: HocEntity
     Simulation = None  # type: Simulation
+    nrn = nrn
 
 
 class HocEntity(object):

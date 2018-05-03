@@ -42,3 +42,14 @@ class ConfigT(object):
         for name, value in opts.items():
             if value is not None and hasattr(obj, name):
                 setattr(obj, name, value)
+
+    def apply(self, obj, subset=None, excludes=(), **overrides):
+        opts = self.as_dict(subset, excludes)
+        opts.update(overrides)
+        for name, value in opts.items():
+                setattr(obj, name, value)
+
+    def as_dict(self, subset=None, excludes=()):
+        return {key: val for key, val in vars(self).items()
+                if val is not None and not key.startswith("_")
+                and key not in excludes and (subset is None or key in subset)}

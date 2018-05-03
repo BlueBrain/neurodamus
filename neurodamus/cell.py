@@ -1,12 +1,13 @@
 from __future__ import absolute_import
 from lazy_property import LazyProperty
-from neuron import nrn
 import logging
+from collections import defaultdict
 from .commands import GlobalConfig
+from .mechanisms import Mechanism
+from .synapses import SynapseMaker
 from . import Neuron
-from .utils import dict_filter
 
-__all__ = ["Cell", "Mechanisms"]
+__all__ = ["Cell"]
 
 
 class Cell(Neuron.HocEntity):
@@ -44,13 +45,17 @@ endtemplate {cls_name}"""
         self._axon = None
         self._dend = None
         self._apic = None
+        # first indexed by sec_name, then synapse_obj. Leaves are list of NetCon
+        self._synapses = defaultdict(lambda: defaultdict(list))
 
         self._builder = None  # type: Cell.Builder.Section
         if morpho is not None:
             self.load_morphology(morpho)
 
+    # ---
     def load_morphology(self, morpho_path):
-        # type: (str) -> None
+        """ Creates the cell compartments according to the given morphology
+        """
         h = Neuron.with_mods("import3d.hoc")
         # try and determine format
         if morpho_path.endswith(('hoc', 'HOC')):
@@ -114,6 +119,7 @@ endtemplate {cls_name}"""
                 "|N_segments: {}\n".format(c.nseg) +
                 "|axial resistance: {} ohm.cm\n".format(c.Ra))
 
+    # ---
     class Builder:
         """Enables building a cell from soma/axon blocks
         """
@@ -254,7 +260,7 @@ endtemplate {cls_name}"""
             root.parent = True  # this is root
             return root
 
-    # Shortcut
+    # ---
     def init_soma(self, diam, name="soma", **params):
         """Creates a soma and returns the section builder
         NOTE: you must call create at the end so that the new sections are added to the cell
@@ -265,12 +271,38 @@ endtemplate {cls_name}"""
 
     @property
     def builder(self):
+        """Returns the Section builder object, to build additional axon/dendrites"""
         if self._builder is None:
             raise RuntimeError("When the cell is void start creating it with init_soma()")
         return self._builder
 
+    # --------
+    # Synapses
+    # --------
+    def add_synapse(self, src_seg, target_seg, syn_props_obj, **custom_opts):
+        # type: (Neuron.nrn.Segment, Neuron.nrn.Segment, SynapseProps, **dict) -> object
+        """Adds an incoming synapse from another cell, according to the options"""
+        synapse = self.create_raw_synapse(target_seg, syn_props_obj)
+        netcon = self.create_raw_netcon(src_seg, synapse, **syn_props_obj.get_netcon_conf())
+        self._synapses[target_seg.sec.name()][synapse].append(netcon)
+        return netcon
+
+    def create_raw_synapse(self, target_seg, syn_props_obj, **custom):
+        """Creates a raw neuron Synapse"""
+        synapse = getattr(Neuron.h, type(syn_props_obj).__name__)(target_seg)
+        # Applies specific properties
+        syn_props_obj.apply(synapse, subset=syn_props_obj._netcon_fields, **custom)
+        # Save in the cell synapse dict
+        self._synapses[target_seg.sec.name()][synapse] = []
+        return synapse
+
+    def create_raw_netcon(self, src_seg, target_synapse, **opts):
+        """Creates a raw netcom object attaching to a given synapse in the cell"""
+        netcon = Neuron.nrn.NetCon(src_seg._ref_v, target_synapse, sec=self.soma, **opts)
+        return netcon
+
     # Declare shortcut
-    Mechanisms = None
+    Mechanisms = Mechanism
 
 
 class SectionList(object):
@@ -301,65 +333,3 @@ class SectionList(object):
 
     def __iter__(self):
         return iter(self._hlist)
-
-
-class Mechanisms:
-    _mec_name = None
-    # Declare the subtypes
-    HH = None   # type: _HH
-    PAS = None  # type: _PAS
-
-    def __new__(cls):
-        if cls is Mechanisms:
-            raise TypeError("Mechanisms is abstract. Instantiate a specific Mechanism")
-        return object.__new__(cls)
-
-    def _init(self, **opts):
-        for name, val in dict_filter(opts, lambda _name, _: not _name.startswith("_")):
-            if hasattr(self, name):
-                setattr(self, name, val)
-            else:
-                logging.warn("Warning: param %s not recognized for the mechanism", name)
-        return self
-
-    def _apply(self, section):
-        section.insert(self._mec_name)
-        for name, val in vars(self).items():
-            if not name.startswith("_") and hasattr(self, name) and val is not None:
-                setattr(section, "{}_{}".format(name, self._mec_name), val)
-
-    def apply(self, section_or_sectionlist):
-        # Single section - base neuron cells used
-        if isinstance(section_or_sectionlist, nrn.Section):
-            self._apply(section_or_sectionlist)
-        else:
-            for s in section_or_sectionlist:
-                self._apply(s)
-
-    mk_HH = classmethod(lambda cls, **opts: _HH()._init(**opts))
-    mk_PAS = classmethod(lambda cls, **opts: _PAS()._init(**opts))
-
-
-class _HH(Mechanisms):
-    _mec_name = "hh"
-    gnabar = None  # 0.120 mho/cm2   Maximum specific sodium channel conductance
-    gkbar  = None  # 0.036 mho/cm2   Maximum potassium channel conductance
-    gl     = None  # 0.0003 mho/cm2  Leakage conductance
-    el     = None  # -54.3 mV        Leakage reversal potential
-    m      = None  # ?               sodium activation state variable
-    h      = None  # ?               sodium inactivation state variable
-    n      = None  # ?               potassium activation state variable
-    ina    = None  # mA/cm2          sodium current through the hh channels
-    ik     = None  # mA/cm2          potassium current through the hh channels
-
-
-class _PAS(Mechanisms):
-    _mec_name = "pas"
-    g = None  # mho/cm2      conductance
-    e = None  # mV           reversal potential
-    i = None  # mA/cm2       non-specific current
-
-
-Mechanisms.HH = _HH
-Mechanisms.PAS = _PAS
-Cell.Mechanisms = Mechanisms
