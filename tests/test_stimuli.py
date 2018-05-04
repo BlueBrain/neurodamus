@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import pytest
-from neurodamus import StimuliSource
+from neurodamus import CurrentSource
 
 __author__ = "Fernando Pereira"
 __copyright__ = "Fernando Pereira"
@@ -10,7 +10,7 @@ __copyright__ = "Fernando Pereira"
 
 class TestStimuli(object):
     def setup_method(self):
-        self.stim = StimuliSource()
+        self.stim = CurrentSource()
 
     def test_flat_segment(self):
         self.stim.add_segment(1.2, 10)

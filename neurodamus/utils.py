@@ -47,7 +47,7 @@ class ConfigT(object):
         opts = self.as_dict(subset, excludes)
         opts.update(overrides)
         for name, value in opts.items():
-                setattr(obj, name, value)
+            setattr(obj, name, value)
 
     def as_dict(self, subset=None, excludes=()):
         return {key: val for key, val in vars(self).items()

@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from neurodamus import StimuliSource
+from neurodamus import CurrentSource
 
 
 def test_composed_signal():
-    s = StimuliSource.train(0.5, 100, 4, 100)
+    s = CurrentSource.train(0.5, 100, 4, 100)
     s.add_noise(0, 0.1, 100)
     s.plot(ylims=(-1, 1))
 

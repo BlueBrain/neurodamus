@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from neurodamus import Cell
-from neurodamus import StimuliSource
+from neurodamus import CurrentSource
 from neurodamus import Neuron
 
 # Change v_init globally
@@ -15,7 +15,7 @@ def test_tut1(quick=True):
     hh.apply(c.soma)
 
     # clamp = StimuliSource.pulse(0.1, 50, delay=10).attach_to(c.soma)  # eqv. to Constant()
-    StimuliSource.Constant(0.1, 50, 10).attach_to(c.soma)
+    CurrentSource.Constant(0.1, 50, 10).attach_to(c.soma)
     Neuron.run_sim(100, c.soma).plot()
     if quick:
         return

@@ -4,13 +4,13 @@ import logging
 from collections import defaultdict
 from .commands import GlobalConfig
 from .mechanisms import Mechanism
-from .synapses import SynapseMaker
+from .synapses import _SpikeSource
 from . import Neuron
 
 __all__ = ["Cell"]
 
 
-class Cell(Neuron.HocEntity):
+class Cell(Neuron.HocEntity, _SpikeSource):
     """
     A Cell abstraction. It allows users to instantiate Cells from morphologies or
     create them from scratch using the Cell.Builder
@@ -45,7 +45,9 @@ endtemplate {cls_name}"""
         self._axon = None
         self._dend = None
         self._apic = None
+
         # first indexed by sec_name, then synapse_obj. Leaves are list of NetCon
+        # Synapses are relative to receptor cells
         self._synapses = defaultdict(lambda: defaultdict(list))
 
         self._builder = None  # type: Cell.Builder.Section
@@ -279,27 +281,35 @@ endtemplate {cls_name}"""
     # --------
     # Synapses
     # --------
-    def add_synapse(self, src_seg, target_seg, syn_props_obj, **custom_opts):
+
+    def add_synapse(self, src_seg, target_seg, syn_props_obj, **conn_options):
         # type: (Neuron.nrn.Segment, Neuron.nrn.Segment, SynapseProps, **dict) -> object
-        """Adds an incoming synapse from another cell, according to the options"""
-        synapse = self.create_raw_synapse(target_seg, syn_props_obj)
-        netcon = self.create_raw_netcon(src_seg, synapse, **syn_props_obj.get_netcon_conf())
+        """Adds an incoming synapse from another cell, according to the options."""
+        synapse = self.add_synaptic_receptor(syn_props_obj, target_seg)
+        netcon = self._add_connection(src_seg, synapse, **conn_options)
         self._synapses[target_seg.sec.name()][synapse].append(netcon)
         return netcon
 
-    def create_raw_synapse(self, target_seg, syn_props_obj, **custom):
+    def add_synaptic_receptor(self, target_seg, syn_props_obj, **custom):
         """Creates a raw neuron Synapse"""
         synapse = getattr(Neuron.h, type(syn_props_obj).__name__)(target_seg)
         # Applies specific properties
-        syn_props_obj.apply(synapse, subset=syn_props_obj._netcon_fields, **custom)
+        syn_props_obj.apply(synapse, **custom)
         # Save in the cell synapse dict
         self._synapses[target_seg.sec.name()][synapse] = []
         return synapse
 
-    def create_raw_netcon(self, src_seg, target_synapse, **opts):
-        """Creates a raw netcom object attaching to a given synapse in the cell"""
-        netcon = Neuron.nrn.NetCon(src_seg._ref_v, target_synapse, sec=self.soma, **opts)
-        return netcon
+    def connect_to(self, synapse_receptor, threshold=None, delay=None, weight=None):
+        """Creates a synapse between the current cell soma extremity and a given synapse receptor
+        Notes: This is a relatively low-level f, there is no automatic registration of the netcon
+        """
+        return self._add_connection(self.soma(1), synapse_receptor,
+                                   threshold=threshold, delay=delay, weight=weight)
+
+    @staticmethod
+    def _add_connection(src_segment, synapse_receptor, **props):
+        nc = Neuron.h.NetCon(src_segment._ref_v, synapse_receptor, sec=src_segment.sec)
+        return _SpikeSource._setup_netcon(nc, **props)
 
     # Declare shortcut
     Mechanisms = Mechanism

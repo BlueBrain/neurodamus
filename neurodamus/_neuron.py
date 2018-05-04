@@ -56,7 +56,8 @@ class Neuron:
 
     HocEntity = None   # type: HocEntity
     Simulation = None  # type: Simulation
-    nrn = nrn
+    Section = nrn.Section
+    Segment = nrn.Segment
 
 
 class HocEntity(object):

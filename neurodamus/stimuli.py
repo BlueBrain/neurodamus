@@ -4,7 +4,7 @@ from .random import RNG
 import logging
 
 
-class StimuliSource(object):
+class CurrentSource(object):
     _all_sources = []
 
     def __init__(self, base_amp=0.0, rng=None):
@@ -45,7 +45,7 @@ class StimuliSource(object):
             del self.clamp  # Force del on the clamp (there might be references to self)
 
     def attach_to(self, section, position=0.5):
-        return StimuliSource._Clamp(section, position, self._clamps, True,
+        return CurrentSource._Clamp(section, position, self._clamps, True,
                                     self.time_vec, self.stim_vec)
 
     def reset(self):
@@ -222,7 +222,7 @@ class StimuliSource(object):
             self._delay = delay
 
         def attach_to(self, section, position=0.5):
-            return StimuliSource._Clamp(section, position, self._clamps, False,
+            return CurrentSource._Clamp(section, position, self._clamps, False,
                                         amp=self._amp, delay=self._delay, dur=self._dur)
 
 
