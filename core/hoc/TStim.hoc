@@ -107,9 +107,9 @@ begintemplate TStim
         while( remtime > 0 ) {
             if( width < remtime ) {  //can fit whole pulse in remaining time
                 addpoint( 0, nextpulse )
-                addpoint( $3, nextpulse+dt )
-                addpoint( $3, nextpulse+width+dt )
-                addpoint( 0, nextpulse+width+dt )
+                addpoint( $3, nextpulse )
+                addpoint( $3, nextpulse+width )
+                addpoint( 0, nextpulse+width )
             } else { //final pulse, just paritial
                 addpoint( 0, nextpulse )
                 addpoint( $3, nextpulse )
