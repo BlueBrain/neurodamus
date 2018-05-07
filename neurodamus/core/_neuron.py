@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from .utils import classproperty
+from ..utils import classproperty
 from .definitions import Neuron_Stdrun_Defaults
 from neuron import nrn
 

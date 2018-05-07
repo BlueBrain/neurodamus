@@ -3,7 +3,8 @@
 from neurodamus import Cell
 from neurodamus import CurrentSource
 from neurodamus import Neuron
-from neurodamus.synapses import ExpSyn, NetStim
+from neurodamus import synapses
+from neurodamus import mechanisms
 from os import path
 
 MORPHO = path.join(path.dirname(__file__), "..", "tests/morphology/C060114A7.asc")
@@ -19,7 +20,7 @@ def test_tut2():
         sec.cm = 1
         sec.Ra = 100
 
-    hh = Cell.Mechanisms.mk_HH(gkbar=.0, gnabar=.0, el=-70)
+    hh = mechanisms.HH(gkbar=.0, gnabar=.0, el=-70)
     hh.apply(c.all)
     hh.gkbar = 0.01
     hh.gnabar = 0.2
@@ -33,10 +34,10 @@ def test_tut2():
     # Part 2
     clamp.detach()
 
-    stim = NetStim(5, 5, 20, 0)
+    stim = synapses.NetStim(5, 5, 20, 0)
 
     for sect in c.dendrites:
-        sr = ExpSyn(sect(0.5))
+        sr = synapses.ExpSyn(sect(0.5))
         stim.connect_to(sr, weight=0.001)
 
     Neuron.run_sim(80, c.soma, v_init=-70).plot()

@@ -11,7 +11,7 @@ Neuron.Simulation.v_init = -70
 
 def test_tut1(quick=True):
     c = Cell.Builder.add_soma(60).create()
-    hh = Cell.Mechanisms.mk_HH(gkbar=0.0, gnabar=0.0, el=-70)
+    hh = Cell.Mechanisms.HH(gkbar=0.0, gnabar=0.0, el=-70)
     hh.apply(c.soma)
 
     # clamp = StimuliSource.pulse(0.1, 50, delay=10).attach_to(c.soma)  # eqv. to Constant()
@@ -34,7 +34,7 @@ def test_tut1(quick=True):
          .add_dendrite("dend2", 400, 9, diam=2, Ra=100)
          .create())
 
-    Cell.Mechanisms.mk_HH(el=-70, gl=5e-4, gkbar=.0, gnabar=.0).apply(c.dendrites)
+    Mechanism.HH(el=-70, gl=5e-4, gkbar=.0, gnabar=.0).apply(c.dendrites)
     Neuron.run_sim(50, c.dendrites[0]).plot()
 
     Cell.show_topology()

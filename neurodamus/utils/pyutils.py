@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 import logging
+from neuron import nrn
 import sys
 
 
@@ -30,6 +31,7 @@ def dict_filter(dic, filter):
 
 
 class ConfigT(object):
+
     def __init__(self, **opts):
         self._init(self, opts)
 
@@ -40,14 +42,21 @@ class ConfigT(object):
     @staticmethod
     def _init(obj, opts):
         for name, value in opts.items():
-            if value is not None and hasattr(obj, name):
+            if value is not None and not name.startswith("_") and hasattr(obj, name):
                 setattr(obj, name, value)
 
+    def _apply_f(self, o, opts_dict):
+        for key, val in opts_dict.items():
+            setattr(o, key, val)
+
     def apply(self, obj, subset=None, excludes=(), **overrides):
+        """Applies the configuration to one or multiple objects (if tuple)"""
         opts = self.as_dict(subset, excludes)
         opts.update(overrides)
-        for name, value in opts.items():
-            setattr(obj, name, value)
+        if not isinstance(obj, (tuple, list)):
+            obj = (obj,)
+        for o in obj:
+            self._apply_f(o, opts)
 
     def as_dict(self, subset=None, excludes=()):
         return {key: val for key, val in vars(self).items()

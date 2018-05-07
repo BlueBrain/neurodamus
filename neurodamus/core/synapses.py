@@ -1,5 +1,5 @@
 
-from .utils import ConfigT
+from ..utils import ConfigT
 from . import Neuron
 
 

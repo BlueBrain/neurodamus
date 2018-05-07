@@ -1,6 +1,6 @@
 from __future__ import absolute_import
 
-from .utils import ConfigT
+from ..utils import ConfigT
 from enum import Enum
 
 

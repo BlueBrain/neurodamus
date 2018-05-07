@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from lazy_property import LazyProperty
 import logging
 from collections import defaultdict
-from .commands import GlobalConfig
+from ..commands import GlobalConfig
 from .mechanisms import Mechanism
 from .synapses import _SpikeSource
 from . import Neuron
@@ -304,7 +304,7 @@ endtemplate {cls_name}"""
         Notes: This is a relatively low-level f, there is no automatic registration of the netcon
         """
         return self._add_connection(self.soma(1), synapse_receptor,
-                                   threshold=threshold, delay=delay, weight=weight)
+                                    threshold=threshold, delay=delay, weight=weight)
 
     @staticmethod
     def _add_connection(src_segment, synapse_receptor, **props):

@@ -61,7 +61,7 @@ def test_create_cell_3():
 
 def test_basic_system():
     c = Cell.Builder.add_soma(60).create()
-    Cell.Mechanisms.mk_HH(gkbar=0.0, gnabar=0.0, el=-70).apply(c.soma)
+    Cell.Mechanisms.HH(gkbar=0.0, gnabar=0.0, el=-70).apply(c.soma)
     CurrentSource.pulse(0.1, 50, delay=10).attach_to(c.soma)
     # Start sim with specific dt. Default is dt=0.025 Requires setting steps as well
     sim = Neuron.run_sim(100, c.soma, v_init=-70, dt=0.1, steps_per_ms=10)

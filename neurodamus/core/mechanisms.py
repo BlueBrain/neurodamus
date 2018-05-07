@@ -2,46 +2,34 @@
 Class defining cell mechanisms
 """
 from __future__ import absolute_import
-import logging
 from neuron import nrn
-from .utils import dict_filter
+from ..utils import ConfigT
 
 
-class Mechanism:
+class Mechanism(ConfigT):
     _mec_name = None
+
     # Declare the subtypes
     HH = None   # type: HH
     PAS = None  # type: PAS
 
-    def __new__(cls):
+    def __new__(cls, **opts):
         if cls is Mechanism:
             raise TypeError("Mechanisms is abstract. Instantiate a specific Mechanism")
         return object.__new__(cls)
 
-    def _init(self, **opts):
-        for name, val in dict_filter(opts, lambda _name, _: not _name.startswith("_")):
-            if hasattr(self, name):
-                setattr(self, name, val)
-            else:
-                logging.warn("Warning: param %s not recognized for the mechanism", name)
-        return self
-
-    def _apply(self, section):
+    def _apply_f(self, section, opts_dict):
         section.insert(self._mec_name)
-        for name, val in vars(self).items():
-            if not name.startswith("_") and hasattr(self, name) and val is not None:
-                setattr(section, "{}_{}".format(name, self._mec_name), val)
+        for key, val in opts_dict.items():
+            setattr(section, "{}_{}".format(key, self._mec_name), val)
 
-    def apply(self, section_or_sectionlist):
-        # Single section - base neuron cells used
-        if isinstance(section_or_sectionlist, nrn.Section):
-            self._apply(section_or_sectionlist)
-        else:
-            for s in section_or_sectionlist:
-                self._apply(s)
-
-    mk_HH = classmethod(lambda cls, **opts: HH()._init(**opts))
-    mk_PAS = classmethod(lambda cls, **opts: PAS()._init(**opts))
+    def apply(self, obj_or_list, **kw):
+        if not isinstance(obj_or_list, nrn.Section):
+            if hasattr(obj_or_list, "__iter__"):
+                obj_or_list = tuple(iter(obj_or_list))
+            else:
+                raise TypeError("Object {} cant be assigned Mechanism properties")
+        ConfigT.apply(self, obj_or_list)
 
 
 class HH(Mechanism):
@@ -63,3 +51,6 @@ class PAS(Mechanism):
     e = None  # mV           reversal potential
     i = None  # mA/cm2       non-specific current
 
+
+Mechanism.HH = HH
+Mechanism.PAS = PAS
