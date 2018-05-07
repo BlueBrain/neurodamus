@@ -58,7 +58,7 @@ endtemplate {cls_name}"""
     def load_morphology(self, morpho_path):
         """ Creates the cell compartments according to the given morphology
         """
-        h = Neuron.with_mods("import3d.hoc")
+        h = Neuron.use_module("import3d")
         # try and determine format
         if morpho_path.endswith(('hoc', 'HOC')):
             h.load_file(1, morpho_path)

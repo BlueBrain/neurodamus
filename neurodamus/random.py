@@ -1,9 +1,12 @@
+"""
+Py Wrappers for the HOC RNGs
+
+Copyright 2018 - Blue Brain Project, EPFL
+"""
 from __future__ import absolute_import
 from . import Neuron
 from .definitions import RNGConfig
 
-"""Py Wrappers for the HOC RNGs
-"""
 # NOTE: These are pure wrappers, in the sense they dont create Python objects. Instead
 #       Neuron objects are returned (using __new__)
 

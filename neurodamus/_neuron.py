@@ -35,13 +35,16 @@ class Neuron:
 
     @classmethod
     def _load_mod(cls, mod_name):
+        """Loads a hoc module, available in the path.
+        E.g.: Neuron.load_mod("loadbal")
+        """
         if mod_name in cls._mods_loaded:
             return
-        cls.h.load_file(mod_name)
+        cls.h.load_file(mod_name + ".hoc")
         cls._mods_loaded.append(mod_name)
 
     @classmethod
-    def with_mods(cls, *hoc_mods):
+    def use_module(cls, *hoc_mods):
         for mod in hoc_mods:
             cls._load_mod(mod)
         return cls._h

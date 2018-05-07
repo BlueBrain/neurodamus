@@ -1,0 +1,92 @@
+Run:
+  Default:
+    Date:           2:2:16
+    Time:           13:58:14
+    gitPath:        ssh://bbpgit.epfl.ch/sim/neurodamus/bbp
+    Version:        HEAD
+    MorphologyPath: ../morphologies
+    METypePath:     ../CCells
+    MeshPat:        ../NeuMesh_output
+    CircuitPath:    ../BlueBuilder_output
+    nrnPath:        ../Functionalizer_output
+    TargetFile:     ../default_user.target
+    CurrentDir:     .
+    OutputRoot:     .
+    CircuitTarget:  Column
+    TargetFile:     default_user.target
+    RunMode:        WholeCell
+    Duration:       10
+    Dt:             0.025
+    Note:           Sample configuration file.
+
+
+Stimulus:
+  poisson1:
+    Mode:       Current
+    Pattern:    NPoisson
+    AmpStart:   0.000000
+    Lambda:     20.000000
+    Weight:     0.500000
+    NumOfSynapses: 5
+    Delay:      0.000000
+    Duration:   100.000000
+
+  noise1:
+    Mode:       Current
+    Pattern:    Noise
+    MeanPercent: 50
+    Variance:   2.5
+    Delay:      0.000000
+    Duration:   100.000000
+
+
+StimulusInject:
+  pInj:
+    Stimulus: poisson1
+    Target:   Column
+
+  pInj2:
+    Stimulus: noise1
+    Target:   Column
+
+
+Report:
+  somas:
+    Target:     mini50
+    Type:       compartment
+    ReportOn:   v
+    Unit:       mV
+    Format:     Bin
+    Dt:         0.1
+    StartTime:  0
+    EndTime:    100
+
+  voltages:
+    Target:     allmini50
+    Type:       compartment
+    ReportOn:   v
+    Unit:       mV
+    Format:     Bin
+    Dt:         0.1
+    StartTime:  0
+    EndTime:    100
+
+  currents:
+    Target:     allmini50
+    Type:       Summation
+    ReportOn:   i_membrane
+    Unit:       nA
+    Format:     Bin
+    Dt:         0.1
+    StartTime:  0
+    EndTime:    100
+
+  areas:
+    Target:     allmini50
+    Type:       compartment
+    ReportOn:   area
+    Unit:       um
+    Format:     Bin
+    Dt:         0.1
+    StartTime:  0
+    EndTime:    0.1
