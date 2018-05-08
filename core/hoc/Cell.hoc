@@ -182,7 +182,7 @@ proc enable_ttx() {
         // Na channels should use the ttxo variable set by this mechanism
         // to switch on/off
         if (!ismembrane("TTXDynamicsSwitch")) {
-            insert TTXDynamicsSwitch
+            execute1( "insert TTXDynamicsSwitch" )
         }
         ttxo_level_TTXDynamicsSwitch = 1.0
     }
@@ -199,7 +199,7 @@ proc disable_ttx() {
 
     forsec all {
         if (!ismembrane("TTXDynamicsSwitch")) {
-            insert TTXDynamicsSwitch
+            execute1( "insert TTXDynamicsSwitch" )
         }
 
         // Use 1e-14 instead of 0.0. According to M.Hines setting ttxo could
@@ -223,6 +223,8 @@ proc SetCellProperties(){local Rm,v_init
         //whenever the Cell properties (resistance esp.) change, recalculate how a section divides into segments
         //geom_nseg()  //for now, let the CCell do this after biophys is executed
 }
+
+
 
 /*!
  * Iterate over the section and compute how many sqgments should be allocate to each.  This number
@@ -260,6 +262,8 @@ proc geom_nseg_fixed() { local secIndex, chunkSize
         secIndex = secIndex+1
     }
 }
+
+
 
 /*!
  * Count up the number of sections. Additionally, assign as estimate to the nseg var of each section, but this
