@@ -50,9 +50,9 @@ class Node:
         self.init_neuron()
         _h.execute("cvode = new CVode()")
         self.pnm = _h.ParallelNetManager(0)
-        self.rank = self.pnm.myid
+        self.rank = int(self.pnm.myid)
         self.verbose = int(self.rank) == 0
-        print("I am node . Verbosity is ".format(self.rank, self.verbose))
+        print("I am node {} Verbosity is {}".format(self.rank, self.verbose))
         self.configParser = self.openConfig(recipe)
         _h.execute("celsius=34")
         self.execResult = 0
@@ -776,12 +776,7 @@ class Node:
         # Note - the constructor for MemUsage will do a group communication, so must be instantiated
         # before pc.runworker
         memUsage = _h.MemUsage()
-
-        _h.timeit_init(self.pnm.pc)  #need a parallel context reference before doing final gather of timing data
-
-        # spike2file now coordinates the nodes to write out all spike data in place of gatherspikes
-        # it can be called before the cleanup step in init.hoc
-        # spike2file("out.dat")
+        _h.timeit_init(self.pnm.pc)  # need a parallel context reference before doing final gather of timing data
 
         self.pnm.pc.runworker()
         # don't use the built in gather spikes function as this will overload node 0 with events
@@ -800,21 +795,19 @@ class Node:
 
         # root node opens file for writing, all others append
         if self.rank == 0:
-            f = open(outfile, "w")
             logging.info("Create file %s", outfile)
-            f.write("/scatter\n")  # what am I forgetting for this thing?
-            for i in range(int(self.pnm.idvec.size())):
-                f.write("%.3f\t%d\n" % (self.pnm.spikevec.x[i], self.pnm.idvec.x[i]))
-            f.close()
+            with open(outfile, "w") as f:
+                f.write("/scatter\n")  # what am I forgetting for this thing?
+                for i in range(int(self.pnm.idvec.size())):
+                    f.write("%.3f\t%d\n" % (self.pnm.spikevec.x[i], self.pnm.idvec.x[i]))
 
         # Write other nodes' result in order
         for nodeIndex in range(1, int(self.pnm.pc.nhost())):
             self.pnm.pc.barrier()
             if self.rank == nodeIndex:
-                f = open(outfile, "a")
-                for i in range(int(self.pnm.idvec.size())):
-                    f.write("%.3f\t%d\n" %(self.pnm.spikevec.x[i], self.pnm.idvec.x[i]))
-                f.close()
+                with open(outfile, "a") as f:
+                    for i in range(int(self.pnm.idvec.size())):
+                        f.write("%.3f\t%d\n" %(self.pnm.spikevec.x[i], self.pnm.idvec.x[i]))
 
     #
     def getSynapseDataForGID(self, gid):
