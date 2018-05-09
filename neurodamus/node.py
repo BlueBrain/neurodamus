@@ -47,6 +47,10 @@ class Node:
             _h.load_file(HOC_LIB)
 
     def __init__(self, recipe):
+        """ Creates a neurodamus executor
+        Args:
+            recipe: The BlueRecipe file
+        """
         self.init_neuron()
         _h.execute("cvode = new CVode()")
         self.pnm = _h.ParallelNetManager(0)
@@ -68,6 +72,10 @@ class Node:
 
     #
     def openConfig(self, recipe):
+        """This function will run the parser and make the data accessible
+        Args:
+            recipe: Name of Config file to load
+        """
         configParser = _h.ConfigParser()
         configParser.open(recipe)
         if self.verbose:
@@ -89,6 +97,9 @@ class Node:
 
     #
     def computeLB(self):
+        """This function has the simulator instantiate the circuit (cells & synapses) for the purpose
+        of determining the best way to split cells and balance those pieces across the available cpus.
+        """
         runMode = self.configParser.parsedRun.get("RunMode").s
         if runMode == "LoadBalance":
             self.log("LoadBalancing enabled with multisplit capability")
@@ -202,7 +213,10 @@ class Node:
 
     #
     def loadTargets(self):
-        # use hard-coded locations for now. These should come from the BlueConfig file
+        """ Provided that the circuit location is known and whether a user.target file has been specified,
+        load any target files via a TargetParser.  Note that these will be moved into a TargetManager
+        after the cells have been distributed, instantiated, and potentially split
+        """
         self.targetParser = _h.TargetParser()
         if self.rank == 0:
             self.targetParser.isVerbose = 1
@@ -215,6 +229,8 @@ class Node:
 
     #
     def log(self, msg, *args, **kw):
+        """Helper to logging service on rank 0 only
+        """
         if self.verbose:
             level = kw.get("level", logging.INFO)
             logging.log(level, msg, *args)
@@ -225,6 +241,15 @@ class Node:
 
     #
     def readNCS(self, ncs_path):
+        """load start.ncs getting the gids and the metypes for all cells in the base circuit
+        NOTE that we may simulate less if there is a circuit target present in the blue config file
+
+        Args:
+            ncs_path: path to nrn files
+
+        Returns: a tuple of gids (h.Vector) and metypes (h.List)
+        """
+        # local: cellCount, gid, nErrors / localobj: ncsIn, bvec, strUtil
         # strdef ncsFile, tstr, metype, commentCheck
         self.log("Node::readNCS will soon be deprecated. Investigate CellDistributor "
                  "for gid assignement, metype determination")
@@ -285,6 +310,9 @@ class Node:
         Args:
             runMode (str): optional argument to override RunMode as "RR" or "LoadBalance"
         """
+        # local: x, cellIndex
+        # localobj: synVec, target, nrnPath, allVec, allME, gidvec, nil, nc, morphPath, runMode, oldMode
+
         if runMode is not None:
             self.log("override RunMode")
             if not self.configParser.parsedRun.exists("RunMode"):
@@ -382,8 +410,9 @@ class Node:
                     connSource, connDestination, weight, synConfig, self.cellDistributor.getGidListForProcessor(),
                     useSTDP, spontMiniRate)
 
+    #
     def createGapJunctions(self):
-        # local projIndex localobj, nrnPath, circuitTarget, projection
+        # local projIndex / localobj: nrnPath, circuitTarget, projection
         if self.configParser.parsedRun.exists("CircuitTarget"):
             circuitTarget = self.targetManager.getTarget(self.configParser.parsedRun.get("CircuitTarget").s)
         else:
@@ -552,7 +581,7 @@ class Node:
         we want to clear the cells and synapses in order to have a clean slate on which to instantiate the balanced cells.
         Clears appropriate lists and other stored references.
         """
-        # local:cellIndex
+        # local: cellIndex
         self.pnm.pc.gid_clear()
         self.pnm.nclist.remove_all()
         self.pnm.cells.remove_all()
@@ -682,7 +711,6 @@ class Node:
         self.pnm.pc.barrier()
 
         reportRequests = self.configParser.parsedReports
-
         self.reportList = _h.List()
 
         for reportIndex in range(int(reportRequests.count())):
@@ -773,8 +801,7 @@ class Node:
         """Have the compute nodes wrap up tasks before exiting
         """
         # local:i   # localobj: outf, memUsage
-        # Note - the constructor for MemUsage will do a group communication, so must be instantiated
-        # before pc.runworker
+        # Note - MemUsage constructor will do a group communication, so must be instantiated before pc.runworker
         memUsage = _h.MemUsage()
         _h.timeit_init(self.pnm.pc)  # need a parallel context reference before doing final gather of timing data
 
