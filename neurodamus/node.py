@@ -50,7 +50,7 @@ class Node:
         self.init_neuron()
         _h.execute("cvode = new CVode()")
         self.pnm = _h.ParallelNetManager(0)
-        self.rank = self.rank
+        self.rank = self.pnm.myid
         self.verbose = int(self.rank) == 0
         print("I am node . Verbosity is ".format(self.rank, self.verbose))
         self.configParser = self.openConfig(recipe)
@@ -64,7 +64,9 @@ class Node:
         self.cellList = None; self.gidvec = None; self.stimList = None; self.reportList = None
         self.stimManager = None; self.elecManager = None; self.binReportHelper = None
         self.synapseRuleManager = None; self.gjManager = None
+        self.runtime = 0
 
+    #
     def openConfig(self, recipe):
         configParser = _h.ConfigParser()
         configParser.open(recipe)
@@ -85,6 +87,7 @@ class Node:
         _h.steps_per_ms = 1.0 / _h.dt
         return configParser
 
+    #
     def computeLB(self):
         runMode = self.configParser.parsedRun.get("RunMode").s
         if runMode == "LoadBalance":
@@ -195,8 +198,9 @@ class Node:
             raise RuntimeError("Invalid CPU count. See log")
 
         self.log("clearing model")
-        _h.clearModel()
+        self.clearModel()
 
+    #
     def loadTargets(self):
         # use hard-coded locations for now. These should come from the BlueConfig file
         self.targetParser = _h.TargetParser()
@@ -209,14 +213,17 @@ class Node:
         if self.configParser.parsedRun.exists("TargetFile"):
             self.targetParser.open(self.configParser.parsedRun.get("TargetFile").s)
 
+    #
     def log(self, msg, *args, **kw):
         if self.verbose:
             level = kw.get("level", logging.INFO)
             logging.log(level, msg, *args)
 
+    #
     def exportLB(self, lb):
         self.cellDistributor.printLBInfo(lb, self.pnm.pc.nhost())
 
+    #
     def readNCS(self, ncs_path):
         # strdef ncsFile, tstr, metype, commentCheck
         self.log("Node::readNCS will soon be deprecated. Investigate CellDistributor "
@@ -270,6 +277,7 @@ class Node:
         ncsIn.close()
         return gids, metypes
 
+    #
     def createCells(self, runMode=None):
         """
         Instantiate the cells of the network, handling distribution and any load balancing as needed.
@@ -298,19 +306,7 @@ class Node:
 
         # instantiate full cells -> should this be in CellDistributor object?  depends on how split cases work
         gidvec = self.cellDistributor.getGidListForProcessor()
-        cellList = self.cellDistributor.cellList
-
-        # move all this to CellDist
-        morphPath = path.join(self.configParser.parsedRun.get("MorphologyPath").s, "ascii")
-
-        for cellIndex in range(int(gidvec.size())):
-            print("Loading cell %d" % cellIndex)
-            # dynamically determine which cell to instantiate
-            metype = self.cellDistributor.getMETypeFromGid(gidvec.x[cellIndex]).s
-            cell_t = getattr(_h, metype)
-            cell = cell_t(gidvec.x[cellIndex], morphPath)
-            cellList.append(cell)
-            self.pnm.cells.append(cell.CellRef)
+        self.cellList = self.cellDistributor.cellList
 
         self.log("Created %d cells", self.pnm.cells.count())
 
@@ -321,13 +317,14 @@ class Node:
         self.targetManager = _h.TargetManager(self.targetParser.targetList, self.cellDistributor)
 
         # Let the CellDistributor object have any final say in the cell objects
-        self.cellDistributor.finalize(cellList)
+        self.cellDistributor.finalize(self.cellList)
         self.cellDistributor.delayedSplit()
 
         # restore original if there was any override
         if runMode is not None:
             mode_obj.s = oldMode
 
+    #
     def interpretConnections(self):
         # local: connectIndex, spontMiniRate, weight
         # localobj spConnect, connSource, connDestination, message, synConfig, nil
@@ -468,7 +465,7 @@ class Node:
         _h.timeit_add(timeID)
 
         if self.configParser.parsedConnects.count() == 0:
-            self.synapseRuleManager.connectAll(self.cellDistributor.getGidListFordefessor(), 1)
+            self.synapseRuleManager.connectAll(self.cellDistributor.getGidListForProcessor(), 1)
         else:
             # Do a quick scan for any ConnectionBlocks with 'Delay' keyword and put a reference on a separate list
             # to be adjusted until later.  Note that this requires that another connection
@@ -491,7 +488,7 @@ class Node:
             self.synapseRuleManager.openSynapseFile(self.configParser.parsedRun.get("BonusSynapseFile").s, nSynapseFiles, 0)
 
             if self.configParser.parsedConnects.count() == 0:
-                self.synapseRuleManager.connectAll(self.cellDistributor.getGidListFordefessor())
+                self.synapseRuleManager.connectAll(self.cellDistributor.getGidListForProcessor())
             else:
                 # print "self.configParser.parsedConnects"
                 self.interpretConnections()
@@ -517,7 +514,7 @@ class Node:
             # presynaptic cells of the projection.  However, I don't need that at the moment
 
             # Go ahead and make all the Projection connections
-            self.synapseRuleManager.connectAll(self.cellDistributor.getGidListFordefessor())
+            self.synapseRuleManager.connectAll(self.cellDistributor.getGidListForProcessor())
 
             self.interpretConnections()
 
@@ -562,7 +559,7 @@ class Node:
 
         for cellIndex in range(int(self.cellList.count())):
             self.cellList.o(cellIndex).CellRef.clear()
-            self.cellList.remove_all()
+        self.cellList.remove_all()
 
         # remove the self.synapseRuleManager to destroy all underlying synapses/connections
         self.synapseRuleManager = None
@@ -690,7 +687,7 @@ class Node:
 
         for reportIndex in range(int(reportRequests.count())):
             # all reports have same fields - note that reportOn field may include space separated values
-            reportName = reportRequests.key(reportIndex)
+            reportName = reportRequests.key(reportIndex).s
             activeReport = reportRequests.o(reportIndex)
 
             targetName = activeReport.get("Target").s
@@ -763,7 +760,7 @@ class Node:
         """setup recording of spike events (crossing of threshold) for the cells on this node
         """
         # local:i, gid, mg  # localobj: self.gidvec
-        self.gidvec = self.cellDistributor.getGidListFordefessor()
+        self.gidvec = self.cellDistributor.getGidListForProcessor()
 
         for i in range(int(self.gidvec.size())):
             # only want to collect spikes off cell pieces with the soma (i.e. the real gid)
@@ -804,17 +801,18 @@ class Node:
         # root node opens file for writing, all others append
         if self.rank == 0:
             f = open(outfile, "w")
-            logging.info("Create file ", outfile)
+            logging.info("Create file %s", outfile)
             f.write("/scatter\n")  # what am I forgetting for this thing?
             for i in range(int(self.pnm.idvec.size())):
                 f.write("%.3f\t%d\n" % (self.pnm.spikevec.x[i], self.pnm.idvec.x[i]))
             f.close()
 
-        for nodeIndex in range(int(self.pnm.pc.nhost())):
+        # Write other nodes' result in order
+        for nodeIndex in range(1, int(self.pnm.pc.nhost())):
             self.pnm.pc.barrier()
             if self.rank == nodeIndex:
                 f = open(outfile, "a")
-                for i in range(int(self.pnm.idvec.size)):
+                for i in range(int(self.pnm.idvec.size())):
                     f.write("%.3f\t%d\n" %(self.pnm.spikevec.x[i], self.pnm.idvec.x[i]))
                 f.close()
 
@@ -860,11 +858,14 @@ class Node:
                         self.log(tstr, level=logging.DEBUG)
 
     #
-    def prun(self):
+    def prun(self, show_progress=False):
         """ Runs the simulation
         """
         # local:timeID, spike_compress, cacheeffic, forwardSkip, saveDt, flushIndex, delayIndex
         # localobj: progressIndicator, spConnect
+        if show_progress:
+            progress = _h.ShowProgress(_h.cvode, self.rank)
+
         self.pnm.pc.setup_transfer()
         spike_compress = 3
 
@@ -879,8 +880,8 @@ class Node:
         self.want_all_spikes()
         tdat_ = _h.Vector(7)
         self.pnm.pc.set_maxstep(4)
-        _h.runtime = _h.startsw()
-        tdat_.x[0] = self.pnm.pc.wait_time
+        self.runtime = _h.startsw()
+        tdat_.x[0] = self.pnm.pc.wait_time()
 
         timeID = _h.timeit_register("stdinit")
         _h.timeit_start(timeID)
@@ -914,14 +915,14 @@ class Node:
             spConnect = self.connectionWeightDelayList.o(0)
             self.log("will stop after %d", spConnect.valueOf("Delay"), level=logging.DEBUG)
             self.pnm.psolve(spConnect.valueOf("Delay"))
-            self.synapseRuleManager.applyDelayedConnection(spConnect, self.cellDistributor.getGidListFordefessor())
+            self.synapseRuleManager.applyDelayedConnection(spConnect, self.cellDistributor.getGidListForProcessor())
 
             # handle any additional delayed blocks
             for delayIndex in range(int(self.connectionWeightDelayList.count())):
                 spConnect = self.connectionWeightDelayList.o(delayIndex)
                 self.log("will stop again after %d", spConnect.valueOf("Delay"), level=logging.DEBUG)
                 self.pnm.psolve(spConnect.valueOf("Delay"))
-                self.synapseRuleManager.applyDelayedConnection(spConnect, self.cellDistributor.getGidListFordefessor())
+                self.synapseRuleManager.applyDelayedConnection(spConnect, self.cellDistributor.getGidListForProcessor())
 
             self.log("run til the end %d", _h.tstop, level=logging.DEBUG)
             self.pnm.psolve(_h.tstop)
@@ -930,11 +931,11 @@ class Node:
         # final flush for reports
         self.binReportHelper.flush()
 
-        tdat_.x[0] = self.pnm.pc.wait_time - tdat_.x[0]
-        _h.runtime = _h.startsw() - _h.runtime
-        tdat_.x[1] = self.pnm.pc.step_time
-        tdat_.x[2] = self.pnm.pc.send_time
-        tdat_.x[3] = self.pnm.pc.vtransfer_time
-        tdat_.x[4] = self.pnm.pc.vtransfer_time(1) # split exchange time
-        tdat_.x[6] = self.pnm.pc.vtransfer_time(2) # reduced tree computation time
+        tdat_.x[0] = self.pnm.pc.wait_time() - tdat_.x[0]
+        self.runtime = _h.startsw() - self.runtime
+        tdat_.x[1] = self.pnm.pc.step_time()
+        tdat_.x[2] = self.pnm.pc.send_time()
+        tdat_.x[3] = self.pnm.pc.vtransfer_time()
+        tdat_.x[4] = self.pnm.pc.vtransfer_time(1)  # split exchange time
+        tdat_.x[6] = self.pnm.pc.vtransfer_time(2)  # reduced tree computation time
         tdat_.x[4] -= tdat_.x[6]
