@@ -1,26 +1,33 @@
 from neurodamus.node import Node
-node = Node("/home/leite/dev/TestData/build/circuitBuilding_1000neurons/BlueConfig")
-node.loadTargets()
-node.computeLB()
-node.createCells()
-node.executeNeuronConfigures()
 
-node.log("Create connections")
-node.createSynapses()
-node.createGapJunctions()
 
-node.log("Enable Stimulus")
-node.enableStimulus()
+def test_node_run():
+    node = Node("/home/leite/dev/TestData/build/circuitBuilding_1000neurons/BlueConfig")
+    node.loadTargets()
+    node.computeLB()
+    node.createCells()
+    node.executeNeuronConfigures()
 
-node.log("Enable Modifications")
-node.enableModifications()
+    node.log("Create connections")
+    node.createSynapses()
+    node.createGapJunctions()
 
-node.log("Enable Reports")
-node.enableReports()
+    node.log("Enable Stimulus")
+    node.enableStimulus()
 
-node.log("Run")
-node.prun(True)
+    node.log("Enable Modifications")
+    node.enableModifications()
 
-node.log("\nsimulation finished. Gather spikes then clean up.")
-node.spike2file("out.dat")
-node.cleanup()
+    node.log("Enable Reports")
+    node.enableReports()
+
+    node.log("Run")
+    node.prun(True)
+
+    node.log("\nsimulation finished. Gather spikes then clean up.")
+    node.spike2file("out.dat")
+    node.cleanup()
+
+
+if __name__ == "__main__":
+    test_node_run()

@@ -14,7 +14,12 @@ def setup_package():
         name="pyNeurodamus",
         version=VERSION,
         setup_requires=['six'] + sphinx,
-        install_requires=['NEURON', "lazy-property", "pyyaml"]
+        install_requires=['NEURON', "lazy-property", "pyyaml"],
+        entry_points={
+            "console_scripts": [
+                'neurodamus = neurodamus.commands:neurodamus'
+            ]
+        }
     )
 
 

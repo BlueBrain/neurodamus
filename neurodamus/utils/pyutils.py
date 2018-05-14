@@ -1,6 +1,5 @@
 from __future__ import absolute_import
 import logging
-from neuron import nrn
 import sys
 
 
@@ -11,8 +10,13 @@ def setup_logging(loglevel, stream=sys.stdout):
       loglevel (int): minimum loglevel for emitting messages
       stream: The output stream of log messages (default stdout)
     """
-    logformat = "[%(asctime)s] %(levelname)s:%(name)s:%(message)s"
-    logging.basicConfig(level=loglevel, stream=stream,
+    verbosity_levels = {
+        0: logging.WARNING,
+        1: logging.INFO,
+        2: logging.DEBUG
+    }
+    logformat = "(%(asctime)s) [%(levelname)s] %(message)s"
+    logging.basicConfig(level=verbosity_levels[loglevel], stream=stream,
                         format=logformat, datefmt="%Y-%m-%d %H:%M:%S")
 
 
@@ -28,6 +32,12 @@ def dict_filter(dic, filter):
     # type: (dict, lambda) -> lambda
     """Creates a generator for filtering elements in a dictionary"""
     return ((key, val) for key, val in dic.items() if filter(key, val))
+
+
+def docopt_sanitize(docopt_opts):
+    """Sanitizes docopt parsed key names
+    """
+    return {opt.strip("<>-").replace("-", "_"): val for opt, val in docopt_opts.items()}
 
 
 class ConfigT(object):

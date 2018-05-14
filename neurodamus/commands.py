@@ -1,12 +1,20 @@
+from __future__ import absolute_import
+from docopt import docopt
 from .utils import setup_logging
-from ._neurodamus import NeuroDamus
+from . import GlobalConfig
+from ._neurodamus import init
+from .utils.pyutils import docopt_sanitize
 
 
-class GlobalConfig:
-    verbosity = 0
+def neurodamus():
+    """neurodamus
 
+    Usage:
+        neurodamus <BlueConfig> [-v...]
 
-def run(options):
-    setup_logging(options.log_level)
-    ndamus = NeuroDamus()
-    return ndamus
+    """
+    options = docopt_sanitize(docopt(neurodamus.__doc__, version="PyNDamus 0.1"))
+    print(options)
+    GlobalConfig.verbosity = options['v']
+    setup_logging(GlobalConfig.verbosity)
+    init(options["BlueConfig"])

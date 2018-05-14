@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from ..utils import classproperty
 from .definitions import Neuron_Stdrun_Defaults
-from neuron import nrn
 
 
 class Neuron:
@@ -27,7 +26,11 @@ class Neuron:
     @classmethod
     def _init(cls):
         """Initializes the Neuron simulator"""
+        _init_mpi()
         from neuron import h
+        from neuron import nrn
+        cls.Section = nrn.Section
+        cls.Segment = nrn.Segment
         cls._h = h
         h.load_file("stdrun.hoc")
         h.init()
@@ -59,8 +62,21 @@ class Neuron:
 
     HocEntity = None   # type: HocEntity
     Simulation = None  # type: Simulation
-    Section = nrn.Section
-    Segment = nrn.Segment
+    Section = None
+    Segment = None
+
+
+def _init_mpi():
+    # Override default excepthook so that exceptions terminate all ranks
+    from mpi4py import MPI
+    import sys
+    sys_excepthook = sys.excepthook
+
+    def mpi_excepthook(v, t, tb):
+        sys_excepthook(v, t, tb)
+        MPI.COMM_WORLD.Abort(1)
+
+    sys.excepthook = mpi_excepthook
 
 
 class HocEntity(object):
@@ -151,3 +167,5 @@ class Simulation:
 # shortcuts
 Neuron.HocEntity = HocEntity
 Neuron.Simulation = Simulation
+
+

@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from lazy_property import LazyProperty
 import logging
 from collections import defaultdict
-from ..commands import GlobalConfig
+from .. import GlobalConfig
 from .mechanisms import Mechanism
 from .synapses import _SpikeSource
 from . import Neuron

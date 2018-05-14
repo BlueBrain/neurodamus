@@ -2,7 +2,7 @@
 Class defining cell mechanisms
 """
 from __future__ import absolute_import
-from neuron import nrn
+from ._neuron import Neuron
 from ..utils import ConfigT
 
 
@@ -24,7 +24,7 @@ class Mechanism(ConfigT):
             setattr(section, "{}_{}".format(key, self._mec_name), val)
 
     def apply(self, obj_or_list, **kw):
-        if not isinstance(obj_or_list, nrn.Section):
+        if not isinstance(obj_or_list, Neuron.Section):
             if hasattr(obj_or_list, "__iter__"):
                 obj_or_list = tuple(iter(obj_or_list))
             else:

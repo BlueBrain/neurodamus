@@ -4,21 +4,14 @@ The main Neurodamus entity
 Copyright 2018 - Blue Brain Project, EPFL
 """
 from __future__ import absolute_import
+import os
 from os import path
 import sys
-from mpi4py import MPI
-from . import Neuron
 import logging
-logging.basicConfig(level=logging.DEBUG)
+from . import Neuron
 
-# Override default excepthook so that exceptions terminate all ranks
-sys_excepthook = sys.excepthook
-def mpi_excepthook(v, t, tb):
-    sys_excepthook(v, t, tb)
-    MPI.COMM_WORLD.Abort(1)
-sys.excepthook = mpi_excepthook
 
-LIB_PATH = path.normpath(path.join(path.abspath(path.dirname(__file__)), "../../lib"))
+LIB_PATH = "/home/leite/dev/neurodamus/lib" #path.normpath(path.join(path.abspath(path.dirname(__file__)), "../../lib"))
 MOD_LIB = path.join(LIB_PATH, "modlib", "libnrnmech.so")
 HOC_LIB = path.join(LIB_PATH, "hoclib", "neurodamus.hoc")
 
@@ -31,20 +24,16 @@ class Node:
     # -------
     # targetManager, targetParser, cellDistributor, configParser, cellList, gidvec, stimList, reportList, gjManager
     # pnm, this, tmpCell, stimManager, elecManager, binReportHelper, synapseRuleManager, connectionWeightDelayList
-    #
-    # PUBLIC:
-    # -------
-    # pnm, updateGJcont, dat_
-    # init, loadTargets, createCells, createGapJunctions, createSynapses, cleanup, basicStim, prun, clearModel, log, exportLB, enableStimulus, enableReports, enableModifications, readNCS, spike2file
-    # computeLB, myid, openConfig, execResult, cellDistributor, configParser, cellList, getSynapseDataForGID, executeNeuronConfigures
 
     @classmethod
     def init_neuron(cls):
         global _h
         if _h is None:
             _h = Neuron.h
-            _h.nrn_load_dll(MOD_LIB)
-            _h.load_file(HOC_LIB)
+            rc = _h.nrn_load_dll(MOD_LIB)
+            if rc == 0: raise RuntimeError("Cant load neurodamus lib. Make sure {} is in the LD path".format(MOD_LIB))
+            rc = _h.load_file(HOC_LIB)
+            if rc == 0: raise RuntimeError("Cant find neurodamus HOC sources. Looking for " + HOC_LIB)
 
     def __init__(self, recipe):
         """ Creates a neurodamus executor
@@ -56,13 +45,14 @@ class Node:
         self.pnm = _h.ParallelNetManager(0)
         self.rank = int(self.pnm.myid)
         self.verbose = int(self.rank) == 0
-        print("I am node {} Verbosity is {}".format(self.rank, self.verbose))
-        self.configParser = self.openConfig(recipe)
-        _h.execute("celsius=34")
-        self.execResult = 0
-        self.connectionWeightDelayList = _h.List()
         if self.verbose:
             _h.timeit_setVerbose(1)
+        else:
+            logging.disable(logging.WARN)
+        self.configParser = self.openConfig(recipe)
+        _h.execute("celsius=34")
+        self.connectionWeightDelayList = _h.List()
+
         # Instance Objects
         self.targetManager = None; self.targetParser = None; self.cellDistributor = None
         self.cellList = None; self.gidvec = None; self.stimList = None; self.reportList = None
@@ -119,15 +109,14 @@ class Node:
         # determine if we need to regen load balance info, or if it already exists for this config
         # to prevent excessive messages when the file is not there, have rank 0 handle file access
         doGenerate = 0
-        cxinfoFileName = "cxinfo_.txt".format(prospectiveHosts)
+        cxinfoFileName = "cxinfo_%d.txt" % (prospectiveHosts,)
 
         if self.rank == 0:
             if path.isfile(cxinfoFileName):
                 with open(cxinfoFileName, "r") as cxinfo:
-                    cxNrnPath = cxinfo.readline()
-                    cxCircuitTarget = cxinfo.readline()
-                    cxTargetFile = cxinfo.readline()
-
+                    cxNrnPath = cxinfo.readline().strip()
+                    cxCircuitTarget = cxinfo.readline().strip()
+                    cxTargetFile = cxinfo.readline().strip()
                     if cxNrnPath != self.configParser.parsedRun.get("nrnPath").s:
                         self.log("nrnPath has changed")
                         doGenerate = 1
@@ -577,9 +566,9 @@ class Node:
 
     #
     def clearModel(self):
-        """For use with intrinsic load balancing.  After creating and evaluating the network using round robin distribution,
-        we want to clear the cells and synapses in order to have a clean slate on which to instantiate the balanced cells.
-        Clears appropriate lists and other stored references.
+        """Clears appropriate lists and other stored references. For use with intrinsic load balancing.
+        After creating and evaluating the network using round robin distribution, we want to clear the cells
+        and synapses in order to have a clean slate on which to instantiate the balanced cells.
         """
         # local: cellIndex
         self.pnm.pc.gid_clear()
