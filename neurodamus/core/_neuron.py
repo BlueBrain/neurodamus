@@ -33,6 +33,7 @@ class Neuron:
         cls.Segment = nrn.Segment
         cls._h = h
         h.load_file("stdrun.hoc")
+        h("objref nil")
         h.init()
         return h
 

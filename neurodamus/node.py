@@ -9,6 +9,7 @@ from os import path
 import sys
 import logging
 from . import Neuron
+from .cell_distributor import CellDistributor
 
 
 LIB_PATH = "/home/leite/dev/neurodamus/lib" #path.normpath(path.join(path.abspath(path.dirname(__file__)), "../../lib"))
@@ -317,9 +318,9 @@ class Node:
         # readNCS(nrnPath.s, allVec, allME)
 
         # will LoadBalancing need the pnm during distribution?  maybe not round-robin, but maybe split cell?
-        allVec = _h.Vector()
-        allME = _h.List()
-        self.cellDistributor = _h.CellDistributor(allVec, allME, self.configParser, self.targetParser, self.pnm)
+        # allVec = _h.Vector()
+        # allME = _h.List()
+        self.cellDistributor = CellDistributor(self.configParser, self.targetParser, self.pnm)
 
         # instantiate full cells -> should this be in CellDistributor object?  depends on how split cases work
         gidvec = self.cellDistributor.getGidListForProcessor()
@@ -328,6 +329,7 @@ class Node:
         self.log("Created %d cells", self.pnm.cells.count())
 
         # localize targets, give to target manager
+
         self.targetParser.updateTargets(gidvec)
 
         # give a TargetManager the TargetParser's completed targetList

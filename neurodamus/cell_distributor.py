@@ -4,10 +4,23 @@ Handle assignment of cells to processors, instantiate cell objects and store loc
 from __future__ import absolute_import
 from collections import OrderedDict
 import logging  # node.py made it log only in rank 0
+from array import array
 from os import path
 from . import Neuron
+from .metype import METype
 
 _h = None
+
+
+class ArrayCompat(array):
+    __slots__ = ()
+
+    def size(self):
+        return len(self)
+
+    @property
+    def x(self):
+        return self
 
 
 class CellDistributor(object):
@@ -98,10 +111,10 @@ class CellDistributor(object):
             self.binfo = _h.BalanceInfo(cxPath, self.rank, self.nhost)
 
             # self.binfo has gidlist, but gids can appear multiple times
-            self.gidvec = _h.Vector(self.binfo.gids.size())
-            self.gidvec.resize(0)
+            self.gidvec = ArrayCompat("I")
             _seen = set()
             for gid in self.binfo.gids:
+                gid = int(gid)
                 if gid not in _seen:
                     self.gidvec.append(gid)
                     _seen.add(gid)
@@ -112,17 +125,17 @@ class CellDistributor(object):
             #  for now, assume the user is being honest
             if parsedRun.exists("CircuitTarget"):
                 circuitTarget = targetParser.getTarget(parsedRun.get("CircuitTarget").s)
-                self.completeCellCount = circuitTarget.completegids().size()
+                self.completeCellCount = int(circuitTarget.completegids().size())
 
         elif parsedRun.exists("CircuitTarget"):
             # circuit target, so distribute those cells that are members in round-robin style
             circuitTarget = targetParser.getTarget(parsedRun.get("CircuitTarget").s)
             self.completeCellCount = circuitTarget.completegids().size()
-            self.gidvec = _h.Vector(self.completeCellCount/self.nhost)
-            self.gidvec.resize(0)
+            self.gidvec = ArrayCompat("I")
 
             c_gids = circuitTarget.completegids()
             for i, gid in enumerate(c_gids):
+                gid = int(gid)
                 if i % self.nhost == self.rank:
                     self.gidvec.append(gid)
         # else:
@@ -136,29 +149,29 @@ class CellDistributor(object):
             logging.info("done loading mvd3 and all mecombo info")
         else:
             self.gidvec, self.gid2mefile = self.loadNCS(parsedRun.get("nrnPath").s, self.gidvec)
+            self.gid2metype = {}
 
         self.pnm.ncell = self.completeCellCount
         logging.info("Done gid assignment: %d cells in network, %d cells in rank 0",
-                     self.completeCellCount, self.gidvec.size())
+                     self.completeCellCount, len(self.gidvec))
 
-        self.cellList = _h.List()
-        self.gid2meobj = _h.Map()
+        self.cellList = []
+        self.gid2meobj = {}
 
         mePath = configParser.parsedRun.get("METypePath").s
 
         for gid in self.gidvec:
             if self.useMVD3:
                 meInfoItem = self.meinfo.retrieveInfo(gid)
-                tmpCell = _h.METype(gid, mePath, meInfoItem.emodel.s, morphPath, meInfoItem.morph_name.s)
+                tmpCell = METype(gid, mePath, meInfoItem.emodel.s, morphPath, meInfoItem.morph_name.s)
                 tmpCell.setThreshold(meInfoItem.threshold_current)
                 tmpCell.setHypAmp(meInfoItem.holding_current)
             else:
-                self.gid2metype.put(gid, _h.loadTemplate(mePath, self.gid2mefile.get(gid)))
-                melabel = _h.getMETypeFromGid(gid).s
-                tmpCell = _h.METype(gid, mePath, melabel, morphPath)
+                melabel = self.gid2metype[gid] = self.loadTemplate(self.gid2mefile[gid], mePath)
+                tmpCell = METype(gid, mePath, melabel, morphPath)
 
             self.cellList.append(tmpCell)
-            self.gid2meobj.put(gid, tmpCell)
+            self.gid2meobj[gid] = tmpCell
             self.pnm.cells.append(tmpCell.CellRef)
 
         # can I create a dummy section, reference it, then delte it to keep a null SectionRef for insertion into pointlists?
@@ -178,6 +191,7 @@ class CellDistributor(object):
         ncsFile = path.join(nrnPath, "start.ncs")
         ncsIn = open(ncsFile, "r")
         reassign_RR = gidvec is None
+        gid2mefile = OrderedDict()
 
         # first lines might be comments.  Check for leading '#' (TODO: more robust parsing)
         tstr = ncsIn.readline().strip()
@@ -190,25 +204,23 @@ class CellDistributor(object):
         except:
             raise ValueError("NCS file contains invalid config: " + tstr)
 
-        logging.info("read %d from start.ncs")
-
-        gid2mefile = OrderedDict()
-
-        if reassign_RR:
-            gidvec = _h.Vector(cellCount//self.nhost)
-            gidvec.resize(0)
+        logging.info("read {} cells from start.ncs".format(cellCount))
 
         def get_next_cell(f):
             for cell_i, line in enumerate(f):
+                line = line.strip()
+                if line == "}":
+                    break
                 parts = line.split()
-                assert len(parts) >= 2, "Error in ncs line " + line
-                gid = parts[0]
-                metype = int(parts[1])
+                assert len(parts) >= 5, "Error in ncs line " + line
+                gid = int(parts[0][1:])
+                metype = parts[4]
                 yield cell_i, gid, metype
 
         ncsIn.readline()  # skip the '{'
 
         if reassign_RR:
+            gidvec = ArrayCompat("I")
             for cellIndex, gid, metype in get_next_cell(ncsIn):
                 if cellIndex % self.nhost == self.rank:
                     gidvec.append(gid)
@@ -241,8 +253,7 @@ class CellDistributor(object):
             ncells = mvdReader.numberofrows("/cells/properties/me_combo")
             self.completeCellCount = ncells
             incr = self.nhost
-            gidvec = _h.Vector(1+ncells/self.nhost)
-            gidvec.resize(0)
+            gidvec = ArrayCompat("I")
 
             #  the circuit.mvd3 uses intrinsic gids starting from 1; this might change in the future
             cellIndex = self.rank
@@ -293,13 +304,6 @@ class CellDistributor(object):
 
         return gidvec, gid2mefile
 
-
-
-    #
-    #  @param $o1 Full path to template file or just the metype path
-    #  @param $o2 if only the metype path is given for arg 1, then this must contain the metype as it appears in start.ncs
-    #  @return The name of the template as it appears inside the file (sans hyphens)
-    # /
     @staticmethod
     def loadTemplate(tpl_name, tpl_location=None):
         """Helper function which loads the template into NEURON and returns the name of the template.  The
@@ -328,6 +332,7 @@ class CellDistributor(object):
                 l = l.strip()
                 if l.startswith("begintemplate"):
                     templateName = l.split()[1]
+                    break
 
         _h.load_file(tpl_file)
         return templateName
@@ -360,11 +365,9 @@ class CellDistributor(object):
         Note that this function handles multisplit cases incl converting to an spgid automatically
         Returns: Cell object
         """
-
         # are we in load balance mode? must replace gid with spgid
         if self.lbFlag:
             gid = self.binfo.thishost_gid(gid)
-
         return self.pnm.pc.gid2obj(gid)
 
     def getSpGid(self, gid):
@@ -393,7 +396,6 @@ class CellDistributor(object):
         """Iterator over this node GIDs"""
         for gid in self.gidvec:
             yield gid
-
 
     def cell_complexity(self, with_total=True):
         # local i, gid, ncell  localobj cx_cell, id_cell
@@ -539,17 +541,7 @@ class CellDistributor(object):
         ionchannelSeed = rngInfo.getIonChannelSeed()
 
         for i, gid in enumerate(self.gidvec):
-            metype = self.cellList.o(i)
-
-            # TODO: CCell backwards compatibility
-            # if we drop support for older versions, then we can just use cell.CCellRef.connect2target(nil, nc)
-            # without the complexity of checking if a getVersion func exists, what is that version, etc.
-            ret = _h.execute1("{getVersion()}", metype, 0)
-
-            if ret == 0:
-                version = 0
-            else:
-                version = metype.getVersion()
+            metype = self.cellList[i]
 
             #  for v6 and beyond - we can just try to invoke rng initialization
             if self.useMVD3 or rngInfo.getRNGMode() == rngInfo.COMPATIBILITY:
@@ -568,17 +560,21 @@ class CellDistributor(object):
                             logging.warning("Warning: mcellran4 cannot initialize properly with large gids")
                         _h.rngForStochKvInit(metype.CCell)
 
-            nc = _h.nc_
+            # TODO: CCell backwards compatibility
+            # if we drop support for older versions, then we can just use cell.CCellRef.connect2target(nil, nc)
+            # without the complexity of checking if a getVersion func exists, what is that version, etc.
+            version = metype.getVersion()
             if version < 2:
-                metype.CellRef.connect2target(None, nc)
+                nc = _h.nc_
+                metype.CellRef.connect2target(_h.nil, nc)
             else:
-                metype.connect2target(None, nc)
+                nc = metype.connect2target(_h.nil)
 
             if self.lbFlag:
-                ic = self.binfo.gids.indwhere("==", gid)
+                ic = int(self.binfo.gids.indwhere("==", gid))
                 cb = self.binfo.bilist.object(self.binfo.cbindex.x[ic])
 
-                if cb.subtrees.count == 0:
+                if cb.subtrees.count() == 0:
                     #  whole cell, normal creation
                     self.pnm.set_gid2node(gid, self.rank)
                     self.pnm.pc.cell(gid, nc)

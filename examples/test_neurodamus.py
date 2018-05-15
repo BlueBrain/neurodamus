@@ -1,7 +1,9 @@
 from neurodamus.node import Node
+from neurodamus.utils import setup_logging
 
 
 def test_node_run():
+    setup_logging(2)
     node = Node("/home/leite/dev/TestData/build/circuitBuilding_1000neurons/BlueConfig")
     node.loadTargets()
     node.computeLB()
