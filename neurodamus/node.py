@@ -329,7 +329,6 @@ class Node:
         self.log("Created %d cells", self.pnm.cells.count())
 
         # localize targets, give to target manager
-
         self.targetParser.updateTargets(gidvec)
 
         # give a TargetManager the TargetParser's completed targetList
@@ -577,9 +576,9 @@ class Node:
         self.pnm.nclist.remove_all()
         self.pnm.cells.remove_all()
 
-        for cellIndex in range(int(self.cellList.count())):
-            self.cellList.o(cellIndex).CellRef.clear()
-        self.cellList.remove_all()
+        for cell in self.cellList:
+            cell.CellRef.clear()
+        del self.cellList[:]
 
         # remove the self.synapseRuleManager to destroy all underlying synapses/connections
         self.synapseRuleManager = None

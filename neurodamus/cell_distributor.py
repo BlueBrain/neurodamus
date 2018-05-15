@@ -1,13 +1,15 @@
 """
 Handle assignment of cells to processors, instantiate cell objects and store locally and inself.pnm
 """
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 from collections import OrderedDict
 import logging  # node.py made it log only in rank 0
 from array import array
 from os import path
 from . import Neuron
 from .metype import METype
+from .utils import progressbar
+
 
 _h = None
 
@@ -160,7 +162,11 @@ class CellDistributor(object):
 
         mePath = configParser.parsedRun.get("METypePath").s
 
+        logging.info("Loading cells...")
+        pbar = progressbar.AnimatedProgressBar(end=len(self.gidvec), width=80)
+
         for gid in self.gidvec:
+            pbar.show_progress()
             if self.useMVD3:
                 meInfoItem = self.meinfo.retrieveInfo(gid)
                 tmpCell = METype(gid, mePath, meInfoItem.emodel.s, morphPath, meInfoItem.morph_name.s)
@@ -173,6 +179,8 @@ class CellDistributor(object):
             self.cellList.append(tmpCell)
             self.gid2meobj[gid] = tmpCell
             self.pnm.cells.append(tmpCell.CellRef)
+            pbar + 1
+        print("\r", end=" "*88 + "\r")
 
         # can I create a dummy section, reference it, then delte it to keep a null SectionRef for insertion into pointlists?
         # TODO: Check this PY
@@ -399,10 +407,8 @@ class CellDistributor(object):
 
     def cell_complexity(self, with_total=True):
         # local i, gid, ncell  localobj cx_cell, id_cell
-        cx_cell = _h.Vector(self.pnm.cells.count)
-        id_cell = cx_cell.c()
-        cx_cell.resize(0)
-        id_cell.resize(0)
+        cx_cell = ArrayCompat("f")
+        id_cell = ArrayCompat("I")
         ncell = self.gidvec.size()
 
         for gid in self.gidvec:
@@ -461,7 +467,6 @@ class CellDistributor(object):
             b.cell_complexity(self.pnm.cells.object(i))
             b.multisplit(gid, lcx, ms)
             msList.append(ms.c())
-        # }
 
         if self.rank ==0:
             fp = open(filename, "w")
@@ -484,28 +489,28 @@ class CellDistributor(object):
     #  File, dataVec, gid
     def pmsdat(self, fp, ms):  # {local i, i1, n1, i2, n2, i3, n3, id, cx, tcx
         tcx = 0
-        fp.write("%d" % ms.x[0]) #  gid
-        fp.write(" %g", ms.x[1]) #  total complexity of cell
+        fp.write("%d" % ms.x[0])  # gid
+        fp.write(" %g" % ms.x[1])  # total complexity of cell
         n1 = ms.x[2]
         i = 2
-        fp.write(" %d\n", n1) #  number of pieces
+        fp.write(" %d\n" % n1)  # number of pieces
         for i1 in range(int(n1)):
             i += 1
-            n2 = ms.x[i] #  at number of subtrees
-            fp.write("  %d\n", n2) #  number of subtrees
+            n2 = ms.x[i]  # at number of subtrees
+            fp.write("  %d\n" % n2)  # number of subtrees
             for i2 in range(int(n2)):
                 i += 1
-                cx = ms.x[i] #  at subtree complexity
+                cx = ms.x[i]  # at subtree complexity
                 tcx += cx
                 i += 1
-                n3 = ms.x[i] #  at number of children in a subtree
-                fp.write("   %g %d\n", cx, n3) #  subtree complexity
+                n3 = ms.x[i]  # at number of children in a subtree
+                fp.write("   %g %d\n" % (cx, n3))  # subtree complexity
                 if n3 > 0:
                     fp.write("    ")
                 for i3 in range(n3):
                     i += 1
                     id = ms.x[i] #  at next child
-                    fp.write(" %d", id)
+                    fp.write(" %d" % id)
                 if n3 > 0:
                     fp.write("\n")
 
