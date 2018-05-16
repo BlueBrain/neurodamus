@@ -4,10 +4,10 @@ Neurodamus execution main class
 from __future__ import absolute_import
 from .node import Node
 from .utils import setup_logging
+from . import GlobalConfig
 
 
 def init(recipe_file):
-    from . import GlobalConfig
     setup_logging(GlobalConfig.verbosity)
     node = Node(recipe_file)
     node.loadTargets()

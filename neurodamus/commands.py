@@ -9,7 +9,7 @@ def neurodamus():
     """neurodamus
 
     Usage:
-        neurodamus <BlueConfig> [--verbose]
+        neurodamus <BlueConfig> [--no-mpi] [--verbose]
         neurodamus --help
 
     Options:
@@ -18,4 +18,7 @@ def neurodamus():
     options = docopt_sanitize(docopt(neurodamus.__doc__, version="PyNDamus 0.1"))
     if options["verbose"]:
         GlobalConfig.verbosity = 2
+    if options["no_mpi"]:
+        GlobalConfig.use_mpi = False
+        
     init(options["BlueConfig"])

@@ -13,6 +13,7 @@ __copyright__ = "2018 Blue Brain Project, EPFL"
 
 class GlobalConfig:
     verbosity = 1
+    use_mpi = True
 
 
 from .core import Neuron

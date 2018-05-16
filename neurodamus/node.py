@@ -12,7 +12,7 @@ from . import Neuron
 from .cell_distributor import CellDistributor
 
 
-LIB_PATH = "/home/leite/dev/neurodamus/lib" #path.normpath(path.join(path.abspath(path.dirname(__file__)), "../../lib"))
+LIB_PATH = path.realpath(path.join(path.dirname(__file__), "../../lib"))
 MOD_LIB = path.join(LIB_PATH, "modlib", "libnrnmech.so")
 HOC_LIB = path.join(LIB_PATH, "hoclib", "neurodamus.hoc")
 

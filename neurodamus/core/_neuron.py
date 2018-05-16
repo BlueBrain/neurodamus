@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from ..utils import classproperty
 from .definitions import Neuron_Stdrun_Defaults
-
+from .. import GlobalConfig
 
 class Neuron:
     """
@@ -26,7 +26,8 @@ class Neuron:
     @classmethod
     def _init(cls):
         """Initializes the Neuron simulator"""
-        _init_mpi()
+        if GlobalConfig.use_mpi:
+            _init_mpi()
         from neuron import h
         from neuron import nrn
         cls.Section = nrn.Section
@@ -82,7 +83,7 @@ def _init_mpi():
 
 class HocEntity(object):
     _hoc_cls = None
-    # The hoc hook for executing code within our context
+    _hoc_obj = None
     _hoc_cldef = """
 begintemplate {cls_name}
 endtemplate {cls_name}

@@ -3,15 +3,18 @@ Handle assignment of cells to processors, instantiate cell objects and store loc
 """
 from __future__ import absolute_import, print_function
 from collections import OrderedDict
-import logging  # node.py made it log only in rank 0
+import logging  # active only in rank 0 (init)
 from array import array
 from os import path
 from . import Neuron
 from .metype import METype
 from .utils import progressbar
 
-
 _h = None
+h5 = None
+def _ensure_h5py():
+    global h5
+    if not h5: import h5py as h5
 
 
 class ArrayCompat(array):
@@ -66,8 +69,8 @@ class CellDistributor(object):
         self.lbFlag = False
         self.gidvec = None
         self.gid2metype = None
-        self.gid2mefile = None
-        self.meinfo = None
+        self.gid2mefile = None  # for NCS
+        self.meinfo = None      # for MVD3
         self.cellCount = 0
         self.completeCellCount = -1  # may be filled in by CircuitTarget or cell library file
         self.useMVD3 = False
@@ -75,6 +78,7 @@ class CellDistributor(object):
         # finalize will require a placeholder object for calling connect2target
         if not hasattr(_h, "nc_"):
             _h("objref nc_")
+            _h("strdef tstr_")
 
         globalSeed = 0
         ionchannelSeed = 0
@@ -92,6 +96,7 @@ class CellDistributor(object):
             if cellLibFile == "circuit.mvd3":
                 logging.info("Reading gid:METype info from circuit.mvd3")
                 self.useMVD3 = True
+                _ensure_h5py()
             elif cellLibFile != "start.ncs":
                 logging.error("Invalid CellLibraryFile %s. Terminating", cellLibFile)
                 raise ValueError("Invalid CellLibFile {}".format(cellLibFile))
@@ -145,9 +150,8 @@ class CellDistributor(object):
 
         #  Determine metype; apply round-robin assignment if necessary
         if self.useMVD3:  # {
-            self.meinfo = _h.METypeManager()
             # loadMVD3 will set completeCellCount if things assigned RR (gidvec not inited)
-            self.gidvec, self.gid2mefile = self.loadMVD3(configParser, self.gidvec)
+            self.gidvec, self.meinfo = self.loadMVD3(configParser, self.gidvec)
             logging.info("done loading mvd3 and all mecombo info")
         else:
             self.gidvec, self.gid2mefile = self.loadNCS(parsedRun.get("nrnPath").s, self.gidvec)
@@ -249,16 +253,22 @@ class CellDistributor(object):
         """ Loads cells from MVD3
         For circuits v6, start.ncs will no longer have sufficient metype information.  Use circuit.mvd3
         """
+        import numpy as np
         # local res, incr, cellIndex, ncells, typeIndex, ntypes, mtypeMax, etypeMax, useRR
         # localobj configParser, morphList, comboList
         pth = path.join(configParser.parsedRun.get("CircuitPath").s, "circuit.mvd3")
         mvdReader = _h.HDF5Reader(pth)
+        mvdFile = h5.File(pth)
         reassign_RR = gidvec is None
-        gid2mefile = OrderedDict()
 
         if reassign_RR:
-            mvdReader.getDimensions("/cells/properties/me_combo")
-            ncells = mvdReader.numberofrows("/cells/properties/me_combo")
+            # mvdReader.getDimensions("/cells/properties/me_combo")
+            # ncells = mvdReader.numberofrows("/cells/properties/me_combo")
+            # print("HOC ncells: %d" % ncells)
+            mecombo_ds = mvdFile["/cells/properties/me_combo"]
+            ncells = len(mecombo_ds)
+            print("PYTHON ncells: %d" % len(mecombo_ds))
+            
             self.completeCellCount = ncells
             incr = self.nhost
             gidvec = ArrayCompat("I")
@@ -267,34 +277,50 @@ class CellDistributor(object):
             cellIndex = self.rank
             while cellIndex < ncells:
                 gidvec.append(cellIndex+1)
-                # Not used in MVD3
-                # gid2mefile[cellIndex+1] = None
                 cellIndex += incr
+                
         else:
             gidvec = self.gidvec
-            # Not used in MVD3
-            # for gid in gidvec:
-            #     gid2mefile[gid] = None  # Same order as vec
 
-        morphIDVec = _h.Vector(gidvec.size())
-        comboIDVec = _h.Vector(gidvec.size())
+        # # HOC
+        # morphIDVec = _h.Vector(gidvec.size())
+        # comboIDVec = _h.Vector(gidvec.size())
+        # 
+        # for i, gid in enumerate(gidvec):
+        #     morphIDVec.x[i] = mvdReader.getDataInt("/cells/properties/morphology", gid-1)
+        # 
+        # for i, gid in enumerate(gidvec):
+        #     comboIDVec.x[i] = mvdReader.getDataInt("/cells/properties/me_combo", gid-1)
+            
+        # PYTHON
+        indexes = ArrayCompat("i", np.frombuffer(gidvec, dtype="i4") - 1)
+        morphIDVec = mvdFile["/cells/properties/morphology"][indexes]
+        comboIDVec = mvdFile["/cells/properties/me_combo"][indexes]
 
-        for i, gid in enumerate(gidvec):
-            morphIDVec.x[i] = mvdReader.getDataInt("/cells/properties/morphology", gid-1)
 
-        for i, gid in enumerate(gidvec):
-            comboIDVec.x[i] = mvdReader.getDataInt("/cells/properties/me_combo", gid-1)
-
+        # # HOC - No way to work
         morphList = _h.List()
-        tstr = _h.String()
-        for morph_id in morphIDVec:
-            mvdReader.getDataString("/library/morphology", morph_id, tstr)
-            morphList.append(_h.String(tstr))
-
+        # s = _h.tstr_
+        # for morph_id in morphIDVec:
+        #     mvdReader.getDataString("/library/morphology", morph_id, s)
+        #     morphoList.append(_h.String(tstr))
+        
+        # PYTHON
+        # morphList = [mvdFile["/library/morphology"][i] for i in morphIDVec]
+        for i in morphIDVec:
+            morphList.append(_h.String(mvdFile["/library/morphology"][i]))
+        
+        
         comboList = _h.List()
-        for combo_id in comboIDVec:
-            mvdReader.getDataString("/library/me_combo", combo_id, tstr)
-            comboList.append(_h.String(tstr))
+        # for combo_id in comboIDVec:
+        #     mvdReader.getDataString("/library/me_combo", combo_id, tstr)
+        #     comboList.append(_h.String(tstr))
+
+        # PYTHON
+        # comboList = [mvdFile["/library/me_combo"][i] for i in comboIDVec]
+        for i in comboIDVec:
+            comboList.append(_h.String(mvdFile["/library/me_combo"][i]))
+
 
         # now we can open the combo file and get the emodel + additional info
         meinfo = _h.METypeManager()
@@ -302,6 +328,8 @@ class CellDistributor(object):
             meinfo.verbose = 1
 
         res = meinfo.loadInfo(configParser.parsedRun, gidvec, comboList, morphList)
+        if res != 0:
+            raise RuntimeError("meinfo lod error: {}".format(res))
 
         res = self.pnm.pc.allreduce(res, 1)
         if res < 0:
@@ -310,7 +338,7 @@ class CellDistributor(object):
                 raise RuntimeError("MVD3 reduce error.")
             self.pnm.pc.barrier()
 
-        return gidvec, gid2mefile
+        return gidvec, meinfo
 
     @staticmethod
     def loadTemplate(tpl_name, tpl_location=None):
