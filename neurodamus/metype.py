@@ -1,6 +1,9 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 from os import path
+import logging
+from collections import defaultdict
 from . import Neuron
+from .utils import ConfigT
 
 
 class METype:
@@ -82,3 +85,68 @@ class METype:
 
     def re_init_rng(self, _):
         Neuron.h.execute1( "re_init_rng()", self.ccell, 0)
+
+
+class METypeItem(object):
+    __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
+                 "threshold_current", "holding_current")
+
+    def __init__(self, morph_name, layer, fullmtype, etype, emodel, combo_name,
+                 threshold_current=0, holding_current=0):
+        self.morph_name = morph_name
+        self.layer = layer
+        self.fullmtype = fullmtype
+        self.etype = etype
+        self.emodel = emodel
+        self.combo_name = combo_name
+        self.threshold_current = threshold_current
+        self.holding_current = holding_current
+
+
+class METypeManager(object):
+    """ Class to read file with specific METype info and manage the containers for data retrieval
+    """
+    def __init__(self):
+        self._me_map = {}
+
+    def loadInfo(self, runInfo, gidvec, comboList, morphList):
+        """ Read file with mecombo info, retaining only those that are local to this node
+        Args:
+            runInfo: Run info from config parse
+            gidvec: gidvec local gids
+            comboList: comboList Combos corresponding to local gids
+            morphList: morphList Morpholgies corresponding to local gids
+        """
+        if not runInfo.exists("MEComboInfoFile"):
+            logging.error("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel.")
+            raise ValueError("MEComboInfoFile not specified")
+
+        comboFile = runInfo.get("MEComboInfoFile").s
+        f = open(comboFile)
+        next(f)  # Skip Header
+
+        # Optimization: index combos
+        combo_ids = defaultdict(list)
+        for i, c in enumerate(comboList):
+            combo_ids[c].append(i)
+
+        for tstr in f:
+            vals = tstr.strip().split()
+            if len(vals) not in (6, 8):
+                wmsg = ("Could not parse line %s from MEComboInfoFile %s."
+                        "Expecting 6 (hippocampus) or 8 (somatosensory) fields")
+                logging.warning(wmsg, tstr, comboFile)
+            meitem = METypeItem(*vals)
+
+            for i in combo_ids[meitem.combo_name]:
+                if morphList[i] == meitem.morph_name:
+                    self._me_map[gidvec[i]] = meitem
+
+        # confirm that all gids have been matched.
+        # Otherwise, print combo + morph info to help find issues
+        nerr = 0
+        for gid in gidvec:
+            if gid not in self._me_map:
+                logging.error("MEComboInfoFile: No MEInfo for gid %d", gid)
+                nerr += 1
+        return -nerr

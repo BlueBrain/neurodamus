@@ -7,7 +7,7 @@ import logging  # active only in rank 0 (init)
 from array import array
 from os import path
 from . import Neuron
-from .metype import METype
+from .metype import METype, METypeManager
 from .utils import progressbar
 
 _h = None
@@ -137,7 +137,7 @@ class CellDistributor(object):
         elif parsedRun.exists("CircuitTarget"):
             # circuit target, so distribute those cells that are members in round-robin style
             circuitTarget = targetParser.getTarget(parsedRun.get("CircuitTarget").s)
-            self.completeCellCount = circuitTarget.completegids().size()
+            self.completeCellCount = int(circuitTarget.completegids().size())
             self.gidvec = ArrayCompat("I")
 
             c_gids = circuitTarget.completegids()
@@ -278,64 +278,33 @@ class CellDistributor(object):
             while cellIndex < ncells:
                 gidvec.append(cellIndex+1)
                 cellIndex += incr
-                
         else:
             gidvec = self.gidvec
 
-        # # HOC
-        # morphIDVec = _h.Vector(gidvec.size())
-        # comboIDVec = _h.Vector(gidvec.size())
-        # 
-        # for i, gid in enumerate(gidvec):
-        #     morphIDVec.x[i] = mvdReader.getDataInt("/cells/properties/morphology", gid-1)
-        # 
-        # for i, gid in enumerate(gidvec):
-        #     comboIDVec.x[i] = mvdReader.getDataInt("/cells/properties/me_combo", gid-1)
-            
-        # PYTHON
         indexes = ArrayCompat("i", np.frombuffer(gidvec, dtype="i4") - 1)
         morphIDVec = mvdFile["/cells/properties/morphology"][indexes]
         comboIDVec = mvdFile["/cells/properties/me_combo"][indexes]
 
+        morpho_ds = mvdFile["/library/morphology"]
+        morphList = [str(morpho_ds[i]) for i in morphIDVec]
 
-        # # HOC - No way to work
-        morphList = _h.List()
-        # s = _h.tstr_
-        # for morph_id in morphIDVec:
-        #     mvdReader.getDataString("/library/morphology", morph_id, s)
-        #     morphoList.append(_h.String(tstr))
-        
-        # PYTHON
-        # morphList = [mvdFile["/library/morphology"][i] for i in morphIDVec]
-        for i in morphIDVec:
-            morphList.append(_h.String(mvdFile["/library/morphology"][i]))
-        
-        
-        comboList = _h.List()
-        # for combo_id in comboIDVec:
-        #     mvdReader.getDataString("/library/me_combo", combo_id, tstr)
-        #     comboList.append(_h.String(tstr))
-
-        # PYTHON
-        # comboList = [mvdFile["/library/me_combo"][i] for i in comboIDVec]
-        for i in comboIDVec:
-            comboList.append(_h.String(mvdFile["/library/me_combo"][i]))
-
+        combo_ds = mvdFile["/library/me_combo"]
+        comboList = [str(combo_ds[i]) for i in comboIDVec]
 
         # now we can open the combo file and get the emodel + additional info
-        meinfo = _h.METypeManager()
+        meinfo = METypeManager()
         if self.rank == 0:
             meinfo.verbose = 1
 
         res = meinfo.loadInfo(configParser.parsedRun, gidvec, comboList, morphList)
-        if res != 0:
-            raise RuntimeError("meinfo lod error: {}".format(res))
 
-        res = self.pnm.pc.allreduce(res, 1)
+        if self.nhost > 1:
+            res = self.pnm.pc.allreduce(res, 1)
+
         if res < 0:
             if self.rank == 0:
                 logging.error("errors while processing mecombo file. Terminating")
-                raise RuntimeError("MVD3 reduce error.")
+                raise RuntimeError("Could not process mecombo file. Error {}".format(res))
             self.pnm.pc.barrier()
 
         return gidvec, meinfo

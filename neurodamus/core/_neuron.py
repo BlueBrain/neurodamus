@@ -131,7 +131,7 @@ class Simulation:
         Neuron.h.continuerun(t_stop)
 
     def record_activity(self, section, rel_pos=0.5):
-        if isinstance(section, nrn.Segment):
+        if isinstance(section, Neuron.Segment):
             segment = section
             name = str(segment.sec)
         else:

@@ -16,11 +16,17 @@ def setup_package():
         setup_requires=['six'] + sphinx,
         install_requires=[
             'NEURON',
+            'h5py'
             'enum34;python_version<"3.4"',
-            'lazy-property', 
+            'lazy-property',
             'pyyaml',
-            'docopt'
+            'docopt',
         ],
+        extras_require={
+            'plotting': ['matplotlib'],
+            'mp': ['mpi4py'],
+            'full': ['matplotlib', 'mpi4py']
+        },
         entry_points={
             'console_scripts': [
                 'neurodamus = neurodamus.commands:neurodamus'
