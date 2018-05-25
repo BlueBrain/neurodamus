@@ -173,7 +173,7 @@ class CellDistributor(object):
             pbar.show_progress()
             if self.useMVD3:
                 meInfoItem = self.meinfo.retrieveInfo(gid)
-                tmpCell = METype(gid, mePath, meInfoItem.emodel.s, morphPath, meInfoItem.morph_name.s)
+                tmpCell = METype(gid, mePath, meInfoItem.emodel, morphPath, meInfoItem.morph_name)
                 tmpCell.setThreshold(meInfoItem.threshold_current)
                 tmpCell.setHypAmp(meInfoItem.holding_current)
             else:
@@ -183,7 +183,7 @@ class CellDistributor(object):
             self.cellList.append(tmpCell)
             self.gid2meobj[gid] = tmpCell
             self.pnm.cells.append(tmpCell.CellRef)
-            pbar + 1
+            pbar += 1
         print("\r", end=" "*88 + "\r")
 
         # can I create a dummy section, reference it, then delte it to keep a null SectionRef for insertion into pointlists?
@@ -257,25 +257,18 @@ class CellDistributor(object):
         # local res, incr, cellIndex, ncells, typeIndex, ntypes, mtypeMax, etypeMax, useRR
         # localobj configParser, morphList, comboList
         pth = path.join(configParser.parsedRun.get("CircuitPath").s, "circuit.mvd3")
-        mvdReader = _h.HDF5Reader(pth)
         mvdFile = h5.File(pth)
         reassign_RR = gidvec is None
 
         if reassign_RR:
-            # mvdReader.getDimensions("/cells/properties/me_combo")
-            # ncells = mvdReader.numberofrows("/cells/properties/me_combo")
-            # print("HOC ncells: %d" % ncells)
             mecombo_ds = mvdFile["/cells/properties/me_combo"]
-            ncells = len(mecombo_ds)
-            print("PYTHON ncells: %d" % len(mecombo_ds))
-            
-            self.completeCellCount = ncells
-            incr = self.nhost
+            self.completeCellCount = len(mecombo_ds)
             gidvec = ArrayCompat("I")
 
             #  the circuit.mvd3 uses intrinsic gids starting from 1; this might change in the future
             cellIndex = self.rank
-            while cellIndex < ncells:
+            incr = self.nhost
+            while cellIndex < self.completeCellCount:
                 gidvec.append(cellIndex+1)
                 cellIndex += incr
         else:

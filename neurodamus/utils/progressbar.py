@@ -38,8 +38,10 @@ And here another example with different options:
     >>> print p
     100% [####################]
 """
+from __future__ import print_function
 import sys
 import time
+
 
 class ProgressBar(object):
     """ProgressBar class holds the options of the progress bar.
@@ -65,14 +67,14 @@ class ProgressBar(object):
         self.incremental = incremental
         self.reset()
 
-    def __add__(self, increment):
+    def __iadd__(self, increment):
         if self.end > self.progress + increment:
             self.progress += increment
         else:
             self.progress = float(self.end)
         return self
 
-    def __sub__(self, decrement):
+    def __isub__(self, decrement):
         if self.start < self.progress - decrement:
             self.progress -= decrement
         else:
@@ -106,10 +108,20 @@ class AnimatedProgressBar(ProgressBar):
     def show_progress(self):
         if hasattr(self.stdout, 'isatty') and self.stdout.isatty():
             self.stdout.write('\r')
+            self.stdout.write(str(self))
         else:
-            self.stdout.write('\n')
-        self.stdout.write(str(self))
+            self.stdout.write('.')
+            self.show_percentage_n(10)
         self.stdout.flush()
+
+    def show_percentage_n(self, n=10):
+        step = self.end // n
+        n_steps = self.progress // step
+        add = self.end % n
+        cp = n_steps * step + (n_steps + 1) * add // n
+        percentage = self.progress * 100 // self.end
+        if self.progress > 0 and self.progress == cp:
+            print("%d%%" % percentage, end="")
 
 
 if __name__ == '__main__':
@@ -121,5 +133,4 @@ if __name__ == '__main__':
         time.sleep(0.1)
         if p.progress == 100:
             break
-    print #new line
 

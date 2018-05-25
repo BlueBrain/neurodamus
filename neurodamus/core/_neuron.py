@@ -45,8 +45,9 @@ class Neuron:
         """
         if mod_name in cls._mods_loaded:
             return
-        cls.h.load_file(mod_name + ".hoc")
+        rc = cls.h.load_file(mod_name + ".hoc")
         cls._mods_loaded.append(mod_name)
+        return rc
 
     @classmethod
     def use_module(cls, *hoc_mods):

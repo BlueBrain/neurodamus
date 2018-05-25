@@ -32,9 +32,11 @@ class Node:
         if _h is None:
             _h = Neuron.h
             rc = _h.nrn_load_dll(MOD_LIB)
-            if rc == 0: raise RuntimeError("Cant load neurodamus lib. Make sure {} is in the LD path".format(MOD_LIB))
+            if rc == 0:
+                raise RuntimeError("Cant load neurodamus lib. Make sure {} is in the LD path".format(MOD_LIB))
             rc = _h.load_file(HOC_LIB)
-            if rc == 0: raise RuntimeError("Cant find neurodamus HOC sources. Looking for " + HOC_LIB)
+            if rc == 0:
+                raise RuntimeError("Cant find neurodamus HOC sources. Looking for " + HOC_LIB)
 
     def __init__(self, recipe):
         """ Creates a neurodamus executor
@@ -661,7 +663,7 @@ class Node:
                 _h.timeit_add(timeID)
             else:
                 # all other patterns the stim manager will interpret
-                self.stimManager.interpret(targetName, stim)
+                self.stimManager.interpret(_h.String(targetName), stim)
 
     #
     def enableModifications(self):
@@ -738,7 +740,7 @@ class Node:
                 report = _h.Report(reportName, type_, reportOn, unit, format, repDt, startTime, endTime, outputDir,
                                    self.elecManager.getElectrode(electrodeName), scalingOption, iscParam)
 
-            # Go through the target members, one cell at a time.  We give a cell reference along with the
+            # Go through the target members, one cell at a time. We give a cell reference along with the
             target = self.targetManager.getTarget(targetName)
 
             # For summation targets - check if we were given a Cell target because we really want all points of the cell

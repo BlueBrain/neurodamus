@@ -13,7 +13,7 @@ class METype:
     # objref this, CellRef, CCell, synlist, synHelperList, ASCIIrpt, HDF5rpt
     # public getVersion, connect2target
 
-    def __init__(self, gid, etype_path, emodel, morpho_path, morpho_file=None):
+    def __init__(self, gid, etype_path, emodel, morpho_path, morpho_name=None):
         """
         Instantite a new Cell from METype
         Args:
@@ -30,12 +30,14 @@ class METype:
         self._hypAmpCurrent = None
         self._netcons = []
 
-        if morpho_file is not None:
+        if morpho_name is not None:
             # SSCx v6
-            etype_file = path.join(etype_path, emodel)
-            h.load_file(etype_file)
+            etype_mod = path.join(etype_path, emodel)
+            rc = Neuron._load_mod(etype_mod)
+            if rc == 0:
+                raise ValueError("Unable to load METype file %s" % etype_mod + ".hoc")
             EModel = getattr(h, emodel)
-            self.ccell = EModel(gid, path.join(morpho_path, "ascii"), morpho_file)
+            self.ccell = EModel(gid, path.join(morpho_path, "ascii"), morpho_name + ".asc")
             self.synlist = h.List()
             self.synHelperList = h.List()
         else:
@@ -150,3 +152,7 @@ class METypeManager(object):
                 logging.error("MEComboInfoFile: No MEInfo for gid %d", gid)
                 nerr += 1
         return -nerr
+
+    def retrieveInfo(self, gid):
+        return self._me_map.get(gid) \
+               or logging.warning("No info for gid %d found.", gid)
