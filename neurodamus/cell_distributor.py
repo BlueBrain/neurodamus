@@ -4,28 +4,19 @@ Handle assignment of cells to processors, instantiate cell objects and store loc
 from __future__ import absolute_import, print_function
 from collections import OrderedDict
 import logging  # active only in rank 0 (init)
-from array import array
 from os import path
 from . import Neuron
 from .metype import METype, METypeManager
-from .utils import progressbar
+from .utils import progressbar, ArrayCompat
+from .core.configuration import MPInfo
 
 _h = None
 h5 = None
+
+
 def _ensure_h5py():
     global h5
     if not h5: import h5py as h5
-
-
-class ArrayCompat(array):
-    __slots__ = ()
-
-    def size(self):
-        return len(self)
-
-    @property
-    def x(self):
-        return self
 
 
 class CellDistributor(object):
@@ -59,21 +50,18 @@ class CellDistributor(object):
         # localobj: circuitTarget, mePath, templatePath, cxPath, runMode, rngInfo, morphPath, nil, melabel, meInfoItem, parsedRun
         global _h
         _h = Neuron.h
-        self.configParser = configParser
-        self.targetParser = targetParser
+        self._configParser = configParser
+        self._targetParser = targetParser
         self.pnm = pnm
-        self.nhost = int(self.pnm.nhost)
-        self.rank = int(self.pnm.myid)
-
         self._load_balance = None
-        self.lbFlag = False
-        self.gidvec = None
-        self.gid2metype = None
-        self.gid2mefile = None  # for NCS
-        self.meinfo = None      # for MVD3
-        self.cellCount = 0
-        self.completeCellCount = -1  # may be filled in by CircuitTarget or cell library file
-        self.useMVD3 = False
+        self._lbFlag = False
+        self._gidvec = None
+        self._gid2metype = None
+        self._gid2mefile = None  # for NCS
+        self._meinfo = None      # for MVD3
+        self._cellCount = 0
+        self._completeCellCount = -1  # may be filled in by CircuitTarget or cell library file
+        self._useMVD3 = False
 
         # finalize will require a placeholder object for calling connect2target
         if not hasattr(_h, "nc_"):
@@ -95,71 +83,71 @@ class CellDistributor(object):
             cellLibFile = parsedRun.get("CellLibraryFile").s
             if cellLibFile == "circuit.mvd3":
                 logging.info("Reading gid:METype info from circuit.mvd3")
-                self.useMVD3 = True
+                self._useMVD3 = True
                 _ensure_h5py()
             elif cellLibFile != "start.ncs":
                 logging.error("Invalid CellLibraryFile %s. Terminating", cellLibFile)
                 raise ValueError("Invalid CellLibFile {}".format(cellLibFile))
         # Default
-        if not self.useMVD3:
+        if not self._useMVD3:
             logging.info("Reading gid:METype info from start.ncs")
 
         #  are we using load balancing? If yes, init structs accordingly
         if parsedRun.exists("RunMode") and parsedRun.get("RunMode").s in ("LoadBalance", "WholeCell"):
-            self.lbFlag = True
-        if self.lbFlag:
+            self._lbFlag = True
+        if self._lbFlag:
             # read the cx_* files to build the gidvec
-            cxPath = "cx_%d" % self.nhost
+            cxPath = "cx_%d" % MPInfo.cpu_count
             if parsedRun.exists("CWD"):  #  TODO: is checking CWD useful?
                 # Should we allow for another path to facilitate reusing cx* files?
                 cxPath = path.join(parsedRun.get("CWD").s, cxPath)
 
             # self.binfo reads the files that have the predistributed cells (and pieces)
-            self.binfo = _h.BalanceInfo(cxPath, self.rank, self.nhost)
+            self.binfo = _h.BalanceInfo(cxPath, MPInfo.rank, MPInfo.cpu_count)
 
             # self.binfo has gidlist, but gids can appear multiple times
-            self.gidvec = ArrayCompat("I")
+            self._gidvec = ArrayCompat("I")
             _seen = set()
             for gid in self.binfo.gids:
                 gid = int(gid)
                 if gid not in _seen:
-                    self.gidvec.append(gid)
+                    self._gidvec.append(gid)
                     _seen.add(gid)
 
-            self.spgidvec = _h.Vector()
+            self.spgidvec = ArrayCompat("I")
 
             # TODO: do we have any way of knowing that a CircuitTarget found definitively matches the cells in the balance files?
             #  for now, assume the user is being honest
             if parsedRun.exists("CircuitTarget"):
                 circuitTarget = targetParser.getTarget(parsedRun.get("CircuitTarget").s)
-                self.completeCellCount = int(circuitTarget.completegids().size())
+                self._completeCellCount = int(circuitTarget.completegids().size())
 
         elif parsedRun.exists("CircuitTarget"):
             # circuit target, so distribute those cells that are members in round-robin style
             circuitTarget = targetParser.getTarget(parsedRun.get("CircuitTarget").s)
-            self.completeCellCount = int(circuitTarget.completegids().size())
-            self.gidvec = ArrayCompat("I")
+            self._completeCellCount = int(circuitTarget.completegids().size())
+            self._gidvec = ArrayCompat("I")
 
             c_gids = circuitTarget.completegids()
             for i, gid in enumerate(c_gids):
                 gid = int(gid)
-                if i % self.nhost == self.rank:
-                    self.gidvec.append(gid)
+                if i % MPInfo.cpu_count == MPInfo.rank:
+                    self._gidvec.append(gid)
         # else:
         #   if no circuitTarget, distribute all the cells round robin style; readNCS handles this further down
 
         #  Determine metype; apply round-robin assignment if necessary
-        if self.useMVD3:  # {
+        if self._useMVD3:  # {
             # loadMVD3 will set completeCellCount if things assigned RR (gidvec not inited)
-            self.gidvec, self.meinfo = self.loadMVD3(configParser, self.gidvec)
+            self._gidvec, self._meinfo = self.loadMVD3(configParser, self._gidvec)
             logging.info("done loading mvd3 and all mecombo info")
         else:
-            self.gidvec, self.gid2mefile = self.loadNCS(parsedRun.get("nrnPath").s, self.gidvec)
-            self.gid2metype = {}
+            self._gidvec, self._gid2mefile = self.loadNCS(parsedRun.get("nrnPath").s, self._gidvec)
+            self._gid2metype = {}
 
-        self.pnm.ncell = self.completeCellCount
+        self.pnm.ncell = self._completeCellCount
         logging.info("Done gid assignment: %d cells in network, %d cells in rank 0",
-                     self.completeCellCount, len(self.gidvec))
+                     self._completeCellCount, len(self._gidvec))
 
         self.cellList = []
         self.gid2meobj = {}
@@ -167,17 +155,17 @@ class CellDistributor(object):
         mePath = configParser.parsedRun.get("METypePath").s
 
         logging.info("Loading cells...")
-        pbar = progressbar.AnimatedProgressBar(end=len(self.gidvec), width=80)
+        pbar = progressbar.AnimatedProgressBar(end=len(self._gidvec), width=80)
 
-        for gid in self.gidvec:
+        for gid in self._gidvec:
             pbar.show_progress()
-            if self.useMVD3:
-                meInfoItem = self.meinfo.retrieveInfo(gid)
+            if self._useMVD3:
+                meInfoItem = self._meinfo.retrieveInfo(gid)
                 tmpCell = METype(gid, mePath, meInfoItem.emodel, morphPath, meInfoItem.morph_name)
                 tmpCell.setThreshold(meInfoItem.threshold_current)
                 tmpCell.setHypAmp(meInfoItem.holding_current)
             else:
-                melabel = self.gid2metype[gid] = self.loadTemplate(self.gid2mefile[gid], mePath)
+                melabel = self._gid2metype[gid] = self.loadTemplate(self._gid2mefile[gid], mePath)
                 tmpCell = METype(gid, mePath, melabel, morphPath)
 
             self.cellList.append(tmpCell)
@@ -234,11 +222,11 @@ class CellDistributor(object):
         if reassign_RR:
             gidvec = ArrayCompat("I")
             for cellIndex, gid, metype in get_next_cell(ncsIn):
-                if cellIndex % self.nhost == self.rank:
+                if cellIndex % MPInfo.cpu_count == MPInfo.rank:
                     gidvec.append(gid)
                     gid2mefile[gid] = metype
         else:
-            gidvec = self.gidvec
+            gidvec = self._gidvec
             for gid in gidvec:
                 gid2mefile[gid] = None  # Same order as vec
             for cellIndex, gid, metype in get_next_cell(ncsIn):
@@ -262,17 +250,17 @@ class CellDistributor(object):
 
         if reassign_RR:
             mecombo_ds = mvdFile["/cells/properties/me_combo"]
-            self.completeCellCount = len(mecombo_ds)
+            self._completeCellCount = len(mecombo_ds)
             gidvec = ArrayCompat("I")
 
             #  the circuit.mvd3 uses intrinsic gids starting from 1; this might change in the future
-            cellIndex = self.rank
-            incr = self.nhost
-            while cellIndex < self.completeCellCount:
+            cellIndex = MPInfo.rank
+            incr = MPInfo.cpu_count
+            while cellIndex < self._completeCellCount:
                 gidvec.append(cellIndex+1)
                 cellIndex += incr
         else:
-            gidvec = self.gidvec
+            gidvec = self._gidvec
 
         indexes = ArrayCompat("i", np.frombuffer(gidvec, dtype="i4") - 1)
         morphIDVec = mvdFile["/cells/properties/morphology"][indexes]
@@ -286,16 +274,16 @@ class CellDistributor(object):
 
         # now we can open the combo file and get the emodel + additional info
         meinfo = METypeManager()
-        if self.rank == 0:
+        if MPInfo.rank == 0:
             meinfo.verbose = 1
 
         res = meinfo.loadInfo(configParser.parsedRun, gidvec, comboList, morphList)
 
-        if self.nhost > 1:
+        if MPInfo.cpu_count > 1:
             res = self.pnm.pc.allreduce(res, 1)
 
         if res < 0:
-            if self.rank == 0:
+            if MPInfo.rank == 0:
                 logging.error("errors while processing mecombo file. Terminating")
                 raise RuntimeError("Could not process mecombo file. Error {}".format(res))
             self.pnm.pc.barrier()
@@ -319,20 +307,20 @@ class CellDistributor(object):
 
         #  start.ncs gives metype names with hyphens, but the templates themselves
         #  have those hyphens replaced with underscores.
-        tpl_file = tpl_name
+        tpl_mod = tpl_name
         if tpl_location is not None:
-            tpl_file = path.join(tpl_location, tpl_name + ".hoc")
+            tpl_mod = path.join(tpl_location, tpl_name)
 
         # first open the file manually to get the template name
         templateName = None
-        with open(tpl_file, "r") as templateReader:
+        with open(tpl_mod + ".hoc", "r") as templateReader:
             for l in templateReader:
                 l = l.strip()
                 if l.startswith("begintemplate"):
                     templateName = l.split()[1]
                     break
 
-        _h.load_file(tpl_file)
+        Neuron.load_mod(tpl_mod)
         return templateName
 
     def getMEType(self, gid):
@@ -342,7 +330,7 @@ class CellDistributor(object):
         """ Provide the name of the metype which corresponds to a gid \n
         Returns: String with the metype or None
         """
-        return self.gid2metype.get(gid)
+        return self._gid2metype.get(gid)
 
     def getMEFileFromGid(self, gid):
         """Provide the file name of the metype which corresponds to a gid
@@ -350,13 +338,13 @@ class CellDistributor(object):
 
         Returns: String with the mefile or nil
         """
-        return self.gid2mefile.get(gid)
+        return self._gid2mefile.get(gid)
 
     def getGidListForProcessor(self):
         """Get list containing the gids on this cpu.  Note that these gids may be virtual gids.
         If real gids are required, each value in the list should be passed through the getGid() func.
         """
-        return self.gidvec
+        return self._gidvec
 
     def getCell(self, gid):
         """Retrieve a cell object given its gid.
@@ -364,7 +352,7 @@ class CellDistributor(object):
         Returns: Cell object
         """
         # are we in load balance mode? must replace gid with spgid
-        if self.lbFlag:
+        if self._lbFlag:
             gid = self.binfo.thishost_gid(gid)
         return self.pnm.pc.gid2obj(gid)
 
@@ -376,7 +364,7 @@ class CellDistributor(object):
 
         Returns: The gid as it appears on this cpu (if this is the same as the base gid, then that is the soma piece)
         """
-        if self.lbFlag:
+        if self._lbFlag:
             return self.binfo.thishost_gid(gid)
         else:
             return gid
@@ -392,16 +380,16 @@ class CellDistributor(object):
 
     def __iter__(self):
         """Iterator over this node GIDs"""
-        for gid in self.gidvec:
+        for gid in self._gidvec:
             yield gid
 
     def cell_complexity(self, with_total=True):
         # local i, gid, ncell  localobj cx_cell, id_cell
         cx_cell = ArrayCompat("f")
         id_cell = ArrayCompat("I")
-        ncell = self.gidvec.size()
+        ncell = self._gidvec.size()
 
-        for gid in self.gidvec:
+        for gid in self._gidvec:
             id_cell.append(gid)
             cx_cell.append(self._load_balance.cell_complexity(self.pnm.pc.gid2cell(gid)))
 
@@ -448,7 +436,7 @@ class CellDistributor(object):
             lcx = 1e9
             filename += ".dat"
 
-        msList = _h.List()
+        msList = []
         ms   = _h.Vector()
         b = self._load_balance
 
@@ -458,26 +446,25 @@ class CellDistributor(object):
             b.multisplit(gid, lcx, ms)
             msList.append(ms.c())
 
-        if self.rank ==0:
-            fp = open(filename, "w")
-            fp.write("1\n%d\n" % self.pnm.ncell)
-            fp.close()
+        if MPInfo.rank == 0:
+            with open(filename, "w") as fp:
+                fp.write("1\n%d\n" % self.pnm.ncell)
             logging.info("LB Info : TC=%.3f MC=%.3f OptimalCx=%.3f FileName=%s" % (total_cx, max_cx, lcx, filename))
 
-        for j in range(self.nhost):
-            if j == self.rank:
+        for j in range(MPInfo.cpu_count):
+            if j == MPInfo.rank:
                 with open(filename, "a") as fp:
                     for ms in msList:
-                        self.pmsdat(fp, ms)
+                        self.write_msdat(fp, ms)
             self.pnm.pc.barrier()
 
         # now assign to the various cpus - but only the one cpu needs to do the assignment, so use node 0
-        if self.rank == 0:
+        if MPInfo.rank == 0:
             self.cpuAssign(prospectiveHosts)
         self.pnm.pc.barrier()
 
-    #  File, dataVec, gid
-    def pmsdat(self, fp, ms):  # {local i, i1, n1, i2, n2, i3, n3, id, cx, tcx
+    @staticmethod
+    def write_msdat(fp, ms):  # {local i, i1, n1, i2, n2, i3, n3, id, cx, tcx
         tcx = 0
         fp.write("%d" % ms.x[0])  # gid
         fp.write(" %g" % ms.x[1])  # total complexity of cell
@@ -504,27 +491,24 @@ class CellDistributor(object):
                 if n3 > 0:
                     fp.write("\n")
 
-            #printf("gid=%d cell complexity = %g  sum of pieces = %g\n", \
-            #    $o2.x[0], $o2.x[1], tcx)
-
     def rngForStochKvInit(self, ccell):
         """In place of using a CCell's re_init_rng function, we will check for cells that define the re_init_rng function,
         but then setRNG using global seed as well
-        @param $o1 CCell which is to be checked for setRNG
+        Args:
+            ccell: celll to be checked for setRNG
         """
-        #local channelID, hasStochKv  localobj CCell, rng, rngInfo
-        # print "Replace rng for stochKv in gid ", CCell.CellRef.gid
+        # local channelID, hasStochKv  localobj CCell, rng, rngInfo
 
         #  quick check to verify this object contains StochKv
         hasStochKv = _h.ismembrane("StochKv", sec=ccell.CellRef.soma)
         if not hasStochKv:
             return
 
-    def finalize(self, cellList):
+    def finalize(self, gids):
         """Do final steps to setup the network.  For example, multisplit will handle gids depending on additional info
         from self.binfo object.  Otherwise, normal cells do their finalization
         Args:
-            cellList: List containing all CCells
+            gids: The gids of the cells to finalize
         """
         # local cellIndex, ic, gid, spgid, ret, version  localobj cell, metype, cb, nc, nil, rngInfo
 
@@ -535,11 +519,11 @@ class CellDistributor(object):
         globalSeed = rngInfo.getGlobalSeed()
         ionchannelSeed = rngInfo.getIonChannelSeed()
 
-        for i, gid in enumerate(self.gidvec):
+        for i, gid in enumerate(gids):
             metype = self.cellList[i]
 
             #  for v6 and beyond - we can just try to invoke rng initialization
-            if self.useMVD3 or rngInfo.getRNGMode() == rngInfo.COMPATIBILITY:
+            if self._useMVD3 or rngInfo.getRNGMode() == rngInfo.COMPATIBILITY:
                 metype.re_init_rng(ionchannelSeed)
             else:
                 # for v5 circuits and earlier
@@ -565,17 +549,17 @@ class CellDistributor(object):
             else:
                 nc = metype.connect2target(_h.nil)
 
-            if self.lbFlag:
+            if self._lbFlag:
                 ic = int(self.binfo.gids.indwhere("==", gid))
                 cb = self.binfo.bilist.object(self.binfo.cbindex.x[ic])
 
                 if cb.subtrees.count() == 0:
                     #  whole cell, normal creation
-                    self.pnm.set_gid2node(gid, self.rank)
+                    self.pnm.set_gid2node(gid, MPInfo.rank)
                     self.pnm.pc.cell(gid, nc)
                     self.spgidvec.append(gid)
                 else:
-                    spgid = cb.multisplit(nc, self.binfo.msgid, self.pnm.pc, self.rank)
+                    spgid = cb.multisplit(nc, self.binfo.msgid, self.pnm.pc, MPInfo.rank)
                     self.spgidvec.append(spgid)
 
             else:
@@ -585,9 +569,9 @@ class CellDistributor(object):
         # TODO: on bbplinsrv, calling pc.multisplit function now causes problem, but if it is called in a separate
         #  function after return, then it is fine.  Maybe contact Michael for advice?  Works fine leaving
         #  the call here on bluegene
-        if self.lbFlag:
+        if self._lbFlag:
             "self.pnm.pc.multisplit()"
 
     def delayedSplit(self):
-        if self.lbFlag:
+        if self._lbFlag:
             self.pnm.pc.multisplit()

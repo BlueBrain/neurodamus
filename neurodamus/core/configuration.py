@@ -1,7 +1,19 @@
+"""
+Runtime configuration
+"""
 from __future__ import absolute_import
-
-from ..utils import ConfigT
 from enum import Enum
+from neurodamus.utils import ConfigT
+
+
+class GlobalConfig:
+    verbosity = 1
+    use_mpi = True
+
+
+class MPInfo:
+    cpu_count = 1
+    rank = 0
 
 
 class RNGConfig(ConfigT):

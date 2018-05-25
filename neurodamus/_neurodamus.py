@@ -3,34 +3,38 @@ Neurodamus execution main class
 """
 from __future__ import absolute_import
 from .node import Node
-from .utils import setup_logging
-from . import GlobalConfig
+from .utils import logging, setup_logging
+from .core.configuration import GlobalConfig
 
 
-def init(recipe_file):
+def init_node(recipe_file):
     setup_logging(GlobalConfig.verbosity)
     node = Node(recipe_file)
     node.loadTargets()
     node.computeLB()
     node.createCells()
     node.executeNeuronConfigures()
+    return node
 
-    node.log("Create connections")
+
+def run(recipe_file):
+    node = init_node(recipe_file)
+    logging.info("Create connections")
     node.createSynapses()
     node.createGapJunctions()
 
-    node.log("Enable Stimulus")
+    logging.info("Enable Stimulus")
     node.enableStimulus()
 
-    node.log("Enable Modifications")
+    logging.info("Enable Modifications")
     node.enableModifications()
 
-    node.log("Enable Reports")
+    logging.info("Enable Reports")
     node.enableReports()
 
-    node.log("Run")
+    logging.info("Run")
     node.prun(True)
 
-    node.log("\nsimulation finished. Gather spikes then clean up.")
+    logging.info("\nsimulation finished. Gather spikes then clean up.")
     node.spike2file("out.dat")
     node.cleanup()

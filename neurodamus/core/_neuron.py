@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from ..utils import classproperty
-from .definitions import Neuron_Stdrun_Defaults
-from .. import GlobalConfig
+from neurodamus.core.configuration import Neuron_Stdrun_Defaults
+from .configuration import GlobalConfig
 
 class Neuron:
     """
@@ -39,7 +39,7 @@ class Neuron:
         return h
 
     @classmethod
-    def _load_mod(cls, mod_name):
+    def load_mod(cls, mod_name):
         """Loads a hoc module, available in the path.
         E.g.: Neuron.load_mod("loadbal")
         """
@@ -50,9 +50,9 @@ class Neuron:
         return rc
 
     @classmethod
-    def use_module(cls, *hoc_mods):
+    def require(cls, *hoc_mods):
         for mod in hoc_mods:
-            cls._load_mod(mod)
+            cls.load_mod(mod)
         return cls._h
 
     @classmethod
@@ -67,6 +67,9 @@ class Neuron:
     Simulation = None  # type: Simulation
     Section = None
     Segment = None
+    # Datastucts coming from Neuron
+    Vector = classmethod(lambda cls: cls.h.Vector())
+    List = classmethod(lambda cls: cls.h.List())
 
 
 def _init_mpi():

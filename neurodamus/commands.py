@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from docopt import docopt
-from . import GlobalConfig
-from ._neurodamus import init
+from .core.configuration import GlobalConfig
+from . import run
 from .utils.pyutils import docopt_sanitize
 
 
@@ -21,4 +21,4 @@ def neurodamus():
     if options["no_mpi"]:
         GlobalConfig.use_mpi = False
         
-    init(options["BlueConfig"])
+    run(options["BlueConfig"])

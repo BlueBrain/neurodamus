@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 import logging
 import sys
+from array import array
 
 
 def setup_logging(loglevel, stream=sys.stdout):
@@ -72,3 +73,14 @@ class ConfigT(object):
         return {key: val for key, val in vars(self).items()
                 if val is not None and not key.startswith("_")
                 and key not in excludes and (subset is None or key in subset)}
+
+
+class ArrayCompat(array):
+    __slots__ = ()
+
+    def size(self):
+        return len(self)
+
+    @property
+    def x(self):
+        return self

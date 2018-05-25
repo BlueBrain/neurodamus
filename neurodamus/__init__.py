@@ -11,13 +11,9 @@ __author__ = "Fernando Pereira <fernando.pereira@epfl.ch>"
 __copyright__ = "2018 Blue Brain Project, EPFL"
 
 
-class GlobalConfig:
-    verbosity = 1
-    use_mpi = True
-
-
 from .core import Neuron
 from .core import Cell
 from .core import CurrentSource
 from .core import mechanisms
 from .core import synapses
+from ._neurodamus import init_node, run

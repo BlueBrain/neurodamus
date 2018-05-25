@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from lazy_property import LazyProperty
 import logging
 from collections import defaultdict
-from .. import GlobalConfig
+from .configuration import GlobalConfig
 from .mechanisms import Mechanism
 from .synapses import _SpikeSource
 from . import Neuron
@@ -58,7 +58,7 @@ endtemplate {cls_name}"""
     def load_morphology(self, morpho_path):
         """ Creates the cell compartments according to the given morphology
         """
-        h = Neuron.use_module("import3d")
+        h = Neuron.require("import3d")
         # try and determine format
         if morpho_path.endswith(('hoc', 'HOC')):
             h.load_file(1, morpho_path)

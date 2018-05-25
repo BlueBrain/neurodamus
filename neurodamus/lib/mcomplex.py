@@ -9,7 +9,7 @@ from .. import Neuron
 
 
 def create_mcomplex():
-    h = Neuron.use_module("loadbal")
+    h = Neuron.require("loadbal")
     x = h.startsw()
     pc = h.ParallelContext()
     lb = h.LoadBalance()
