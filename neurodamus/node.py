@@ -13,7 +13,7 @@ from .core.configuration import MPInfo
 
 LIB_PATH = path.realpath(path.join(path.dirname(__file__), "../../lib"))
 MOD_LIB = path.join(LIB_PATH, "modlib", "libnrnmech.so")
-HOC_LIB = path.join(LIB_PATH, "hoclib", "neurodamus.hoc")
+HOC_LIB = path.join(LIB_PATH, "hoclib", "neurodamus")
 
 # Initialized h
 _h = None
@@ -33,12 +33,11 @@ class Node:
         global _h
         if _h is None:
             _h = Neuron.h
-            rc = _h.nrn_load_dll(MOD_LIB)
+            rc = Neuron.load_dll(MOD_LIB)
             if rc == 0:
                 raise RuntimeError("Cant load neurodamus lib. Make sure {} is in the LD path".format(MOD_LIB))
-            rc = _h.load_file(HOC_LIB)
-            if rc == 0:
-                raise RuntimeError("Cant find neurodamus HOC sources. Looking for " + HOC_LIB)
+            rc = Neuron.load_hoc(HOC_LIB)
+
             cls.pnm = _h.ParallelNetManager(0)
             MPInfo.cpu_count = int(cls.pnm.nhost)
             MPInfo.rank = int(cls.pnm.myid)

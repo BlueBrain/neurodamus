@@ -3,6 +3,7 @@ from ..utils import classproperty
 from neurodamus.core.configuration import Neuron_Stdrun_Defaults
 from .configuration import GlobalConfig
 
+
 class Neuron:
     """
     A wrapper over the neuron simulator.
@@ -14,7 +15,7 @@ class Neuron:
     """The Neuron hoc interpreter.
     Be sure to use after having called init() before.
     """
-    _mods_loaded = []
+    _mods_loaded = set()
     """A list of modules already loaded"""
 
     @classproperty
@@ -39,21 +40,30 @@ class Neuron:
         return h
 
     @classmethod
-    def load_mod(cls, mod_name):
+    def load_hoc(cls, mod_name):
         """Loads a hoc module, available in the path.
         E.g.: Neuron.load_mod("loadbal")
         """
         if mod_name in cls._mods_loaded:
             return
-        rc = cls.h.load_file(mod_name + ".hoc")
-        cls._mods_loaded.append(mod_name)
-        return rc
+        mod_filename = mod_name + ".hoc"
+        rc = cls.h.load_file(mod_filename)
+        cls._mods_loaded.add(mod_name)
+        if rc == 0:
+            raise RuntimeError("Cant load HOC library {}. Consider checking HOC_LIBRARY_PATH".format(mod_filename))
 
     @classmethod
     def require(cls, *hoc_mods):
         for mod in hoc_mods:
-            cls.load_mod(mod)
+            cls.load_hoc(mod)
         return cls._h
+
+    @classmethod
+    def load_dll(cls, dll_path):
+        rc = cls._h.nrn_load_dll(dll_path)
+        if rc == 0:
+            raise RuntimeError("Cant load MOD dll {}. Please check if it can be loaded (LD path and dependencies)"
+                               .format(dll_path))
 
     @classmethod
     def run_sim(cls, t_stop, *monitored_sections, **params):

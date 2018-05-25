@@ -33,7 +33,7 @@ class METype:
         if morpho_name is not None:
             # SSCx v6
             etype_mod = path.join(etype_path, emodel)
-            rc = Neuron.load_mod(etype_mod)
+            rc = Neuron.load_hoc(etype_mod)
             if rc == 0:
                 raise ValueError("Unable to load METype file %s" % etype_mod + ".hoc")
             EModel = getattr(h, emodel)

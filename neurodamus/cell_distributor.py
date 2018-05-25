@@ -320,7 +320,7 @@ class CellDistributor(object):
                     templateName = l.split()[1]
                     break
 
-        Neuron.load_mod(tpl_mod)
+        Neuron.load_hoc(tpl_mod)
         return templateName
 
     def getMEType(self, gid):
