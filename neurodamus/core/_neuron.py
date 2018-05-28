@@ -199,8 +199,21 @@ class Simulation:
         fig.show()
 
 
+class LoadBalance(object):
+    def __init__(self, parallel_context):
+        self._pc = parallel_context
+        self._lb = Neuron.h.LoadBalance()
+
+    def create_mcomplex(self):
+        self._lb.ExperimentalMechComplex("StdpWA", "extracel", "HDF5", "Report", "Memory", "ASCII")
+
+    def read_mcomplex(self):
+        self._lb.read_mcomplex()
+
+    def __getattr__(self, item):
+        return object.__getattribute__(self._lb, item)
+
+
 # shortcuts
 Neuron.HocEntity = HocEntity
 Neuron.Simulation = Simulation
-
-
