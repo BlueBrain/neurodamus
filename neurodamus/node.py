@@ -8,8 +8,7 @@ from os import path
 import logging
 from . import Neuron
 from .cell_distributor import CellDistributor
-from .core.configuration import MPInfo
-
+from .core.configuration import GlobalConfig, MPInfo
 
 LIB_PATH = path.realpath(path.join(path.dirname(__file__), "../../lib"))
 MOD_LIB = path.join(LIB_PATH, "modlib", "libnrnmech.so")
@@ -33,10 +32,8 @@ class Node:
         global _h
         if _h is None:
             _h = Neuron.h
-            rc = Neuron.load_dll(MOD_LIB)
-            if rc == 0:
-                raise RuntimeError("Cant load neurodamus lib. Make sure {} is in the LD path".format(MOD_LIB))
-            rc = Neuron.load_hoc(HOC_LIB)
+            Neuron.load_dll(MOD_LIB)
+            Neuron.load_hoc(HOC_LIB)
 
             cls.pnm = _h.ParallelNetManager(0)
             MPInfo.cpu_count = int(cls.pnm.nhost)
@@ -48,15 +45,14 @@ class Node:
             recipe: The BlueRecipe file
         """
         self.init_neuron()
-        _h.execute("cvode = new CVode()")
-        self.verbose = int(MPInfo.rank) == 0
-        if self.verbose:
+        Neuron.execute("cvode = new CVode()")
+        if MPInfo.rank == 0:
             _h.timeit_setVerbose(1)
         else:
             logging.disable(logging.WARN)
         self.configParser = self.openConfig(recipe)
         _h.execute("celsius=34")
-        self.connectionWeightDelayList = _h.List()
+        self.connectionWeightDelayList = []
 
         # Instance Objects
         self.targetManager = None; self.targetParser = None; self.cellDistributor = None
@@ -73,7 +69,7 @@ class Node:
         """
         configParser = _h.ConfigParser()
         configParser.open(recipe)
-        if self.verbose:
+        if MPInfo.rank == 0:
             configParser.toggleVerbose()
 
         # set some basic information
@@ -140,9 +136,10 @@ class Node:
                 generate_reason = "no cxinfo file"
 
         # rank 0 broadcasts the fact whether we need to generate loadbalancing data or not
-        message = _h.Vector(1, doGenerate)
-        self.pnm.pc.broadcast(message, 0)
-        doGenerate = message[0]
+        if GlobalConfig.use_mpi:
+            message = Neuron.Vector(1, doGenerate)
+            self.pnm.pc.broadcast(message, 0)
+            doGenerate = message[0]
 
         # pre-existing load balance info is good. We can reuse it, so return now or quit
         if not doGenerate:
@@ -157,14 +154,7 @@ class Node:
         logging.info("Generating loadbalancing data. Reason: %s", generate_reason)
 
         # Can we use an existing mcomplex.dat?  If mechanisms change, it needs to be regenerated.
-        doGenerate = 0
-        if MPInfo.rank == 0:
-            doGenerate = not path.isfile("mcomplex.dat")
-        message.x[0] = doGenerate
-        self.pnm.pc.broadcast(message, 0)
-        doGenerate = message.x[0]
-
-        if doGenerate:
+        if not path.isfile("mcomplex.dat"):
             logging.info("Generating mcomplex.dat...")
             _h.create_mcomplex()
         else:
@@ -228,69 +218,6 @@ class Node:
         self.cellDistributor.printLBInfo(lb, self.pnm.pc.nhost())
 
     #
-    def readNCS(self, ncs_path):
-        """load start.ncs getting the gids and the metypes for all cells in the base circuit
-        NOTE that we may simulate less if there is a circuit target present in the blue config file
-
-        Args:
-            ncs_path: path to nrn files
-
-        Returns: a tuple of gids (h.Vector) and metypes (h.List)
-        """
-        # local: cellCount, gid, nErrors / localobj: ncsIn, bvec, strUtil
-        # strdef ncsFile, tstr, metype, commentCheck
-        logging.info("Node::readNCS will soon be deprecated. Investigate CellDistributor "
-                 "for gid assignement, metype determination")
-
-        ncsIn = open(path.join(ncs_path, "start.ncs"), "r")
-
-        gids = _h.Vector()
-        metypes = _h.List()
-
-        # first lines might be comments.  Check for leading '#' (TODO: more robust parsing)
-        line = ""
-        for line in ncsIn:
-            if line.strip().startswith("#"):
-                continue
-            else:
-                break
-
-        # line should have "Cells x"
-        cell, count = line.split()
-        cellCount = int(count)
-
-        # sanity check -> did all cpus read the same count?  Use node 0 to confirm
-        bvec = _h.Vector()
-        if MPInfo.rank == 0:
-            bvec.append(cellCount)
-        else:
-            bvec.append(-1)
-        self.pnm.pc.broadcast(bvec, 0)
-        nErrors = 0
-        if bvec[0] != cellCount:
-            logging.error("cell count mismatch between nodes. Node 0 has %d vs Node %d with %d",
-                          bvec[0], MPInfo.rank, cellCount)
-
-        nErrors = self.pnm.pc.allreduce(nErrors, 1)
-        if nErrors > 0:
-            raise RuntimeError("File read failure, %d errors".format(nErrors))
-
-        ncsIn.readline()  # skip the ''
-
-        for i in range(cellCount):
-            line = ncsIn.readline().strip()
-            infos = line.split()
-            if len(infos) != 5:
-                logging.info("error in start.ncs format: %s", line)
-                break
-
-            gids.append(int(infos[0]))
-            metypes.append(infos[1])
-
-        ncsIn.close()
-        return gids, metypes
-
-    #
     def createCells(self, runMode=None):
         """
         Instantiate the cells of the network, handling distribution and any load balancing as needed.
@@ -311,13 +238,7 @@ class Node:
             oldMode = mode_obj.s
             mode_obj.s = runMode
 
-        # read start.ncs from the nrnPath
-        # nrnPath = configParser.parsedRun.get("nrnPath")
-        # readNCS(nrnPath.s, allVec, allME)
-
         # will LoadBalancing need the pnm during distribution?  maybe not round-robin, but maybe split cell?
-        # allVec = _h.Vector()
-        # allME = _h.List()
         self.cellDistributor = CellDistributor(self.configParser, self.targetParser, self.pnm)
 
         # instantiate full cells -> should this be in CellDistributor object?  depends on how split cases work
@@ -462,15 +383,9 @@ class Node:
 
         # Even if the user specifies how many synapse files were created by circuit building,
         # check if we have the single nrn.h5 file
-        fileTest = _h.Vector()
-        if MPInfo.rank == 0:
-            nrn_filepath = path.join(nrnPath, "nrn.h5")
-            if path.isfile(nrn_filepath):
-                nSynapseFiles = 1
-            fileTest.append(nSynapseFiles)
-
-        self.pnm.pc.broadcast(fileTest, 0)
-        nSynapseFiles = fileTest.x[0]
+        nrn_filepath = path.join(nrnPath, "nrn.h5")
+        if path.isfile(nrn_filepath):
+            nSynapseFiles = 1
 
         timeID = _h.timeit_register("Synapse init")
         _h.timeit_start(timeID)
@@ -581,12 +496,12 @@ class Node:
         # remove the self.synapseRuleManager to destroy all underlying synapses/connections
         self.synapseRuleManager = None
         self.gjManager = None
-        self.connectionWeightDelayList = _h.List()
+        self.connectionWeightDelayList = []
         # topologging.infoy()
 
-        # clear reports
+        # clear reports if initialized
         if self.reportList is not None:
-            self.reportList.remove_all()
+            self.reportList = []
 
     #
     def enableStimulus(self):
@@ -699,7 +614,7 @@ class Node:
         self.pnm.pc.barrier()
 
         reportRequests = self.configParser.parsedReports
-        self.reportList = _h.List()
+        self.reportList = []
 
         for reportIndex in range(int(reportRequests.count())):
             # all reports have same fields - note that reportOn field may include space separated values
@@ -886,10 +801,12 @@ class Node:
             _h.cvode.cache_efficient(1)
 
         self.want_all_spikes()
-        tdat_ = _h.Vector(7)
         self.pnm.pc.set_maxstep(4)
         self.runtime = _h.startsw()
-        tdat_.x[0] = self.pnm.pc.wait_time()
+
+        # Returned timings
+        tdat = [0] * 7
+        tdat[0] = self.pnm.pc.wait_time()
 
         timeID = _h.timeit_register("stdinit")
         _h.timeit_start(timeID)
@@ -917,17 +834,16 @@ class Node:
         _h.timeit_start(timeID)
 
         # I think I must use continuerun?
-        if self.connectionWeightDelayList.count() == 0:
+        if len(self.connectionWeightDelayList) == 0:
             self.pnm.psolve(_h.tstop)
         else:
-            spConnect = self.connectionWeightDelayList.o(0)
+            spConnect = self.connectionWeightDelayList[0]
             logging.info("will stop after %d", spConnect.valueOf("Delay"), level=logging.DEBUG)
             self.pnm.psolve(spConnect.valueOf("Delay"))
             self.synapseRuleManager.applyDelayedConnection(spConnect, self.cellDistributor.getGidListForProcessor())
 
             # handle any additional delayed blocks
-            for delayIndex in range(int(self.connectionWeightDelayList.count())):
-                spConnect = self.connectionWeightDelayList.o(delayIndex)
+            for spConnect in self.connectionWeightDelayList:
                 logging.info("will stop again after %d", spConnect.valueOf("Delay"), level=logging.DEBUG)
                 self.pnm.psolve(spConnect.valueOf("Delay"))
                 self.synapseRuleManager.applyDelayedConnection(spConnect, self.cellDistributor.getGidListForProcessor())
@@ -939,14 +855,15 @@ class Node:
         # final flush for reports
         self.binReportHelper.flush()
 
-        tdat_.x[0] = self.pnm.pc.wait_time() - tdat_.x[0]
+        tdat[0] = self.pnm.pc.wait_time() - tdat[0]
         self.runtime = _h.startsw() - self.runtime
-        tdat_.x[1] = self.pnm.pc.step_time()
-        tdat_.x[2] = self.pnm.pc.send_time()
-        tdat_.x[3] = self.pnm.pc.vtransfer_time()
-        tdat_.x[4] = self.pnm.pc.vtransfer_time(1)  # split exchange time
-        tdat_.x[6] = self.pnm.pc.vtransfer_time(2)  # reduced tree computation time
-        tdat_.x[4] -= tdat_.x[6]
+        tdat[1] = self.pnm.pc.step_time()
+        tdat[2] = self.pnm.pc.send_time()
+        tdat[3] = self.pnm.pc.vtransfer_time()
+        tdat[4] = self.pnm.pc.vtransfer_time(1)  # split exchange time
+        tdat[6] = self.pnm.pc.vtransfer_time(2)  # reduced tree computation time
+        tdat[4] -= tdat[6]
+        return tdat
 
     @property
     def gidvec(self):

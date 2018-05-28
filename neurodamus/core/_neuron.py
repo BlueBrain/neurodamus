@@ -60,13 +60,32 @@ class Neuron:
 
     @classmethod
     def load_dll(cls, dll_path):
+        """Loads a Neuron mod file (typically an .so file in linux)"""
         rc = cls._h.nrn_load_dll(dll_path)
         if rc == 0:
             raise RuntimeError("Cant load MOD dll {}. Please check if it can be loaded (LD path and dependencies)"
                                .format(dll_path))
 
     @classmethod
+    def execute(cls, expression, hoc_context=None):
+        """Executes a given Hoc statement in Neuron.
+        By default statements are executed at top-level, unless a hoc object is given as context.
+        """
+        if hoc_context is None:
+            cls.h(expression)
+        else:
+            raise NotImplementedError()
+
+    @classmethod
     def run_sim(cls, t_stop, *monitored_sections, **params):
+        """A helper to run the simulation, recording the Voltage in the specified cell sections.
+        Args:
+            t_stop: Stop time
+            *monitored_sections: Cell sections to be probed.
+            **params: Custom simulation parameters
+
+        Returns: A simulation object
+        """
         sim = Simulation(**params)
         for sec in monitored_sections:
             sim.record_activity(sec)
@@ -78,8 +97,8 @@ class Neuron:
     Section = None
     Segment = None
     # Datastucts coming from Neuron
-    Vector = classmethod(lambda cls: cls.h.Vector())
-    List = classmethod(lambda cls: cls.h.List())
+    Vector = classmethod(lambda cls, *args: cls.h.Vector(*args))
+    List = classmethod(lambda cls, *args: cls.h.List(*args))
 
 
 def _init_mpi():
