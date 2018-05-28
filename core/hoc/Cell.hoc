@@ -182,7 +182,7 @@ proc enable_ttx() {
         // Na channels should use the ttxo variable set by this mechanism
         // to switch on/off
         if (!ismembrane("TTXDynamicsSwitch")) {
-            insert TTXDynamicsSwitch
+            execute1( "insert TTXDynamicsSwitch" )
         }
         ttxo_level_TTXDynamicsSwitch = 1.0
     }
@@ -199,7 +199,7 @@ proc disable_ttx() {
 
     forsec all {
         if (!ismembrane("TTXDynamicsSwitch")) {
-            insert TTXDynamicsSwitch
+            execute1( "insert TTXDynamicsSwitch" )
         }
 
         // Use 1e-14 instead of 0.0. According to M.Hines setting ttxo could
