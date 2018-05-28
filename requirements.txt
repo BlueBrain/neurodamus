@@ -1,4 +1,7 @@
-# Add your requirements here like:
-# numpy
-# scipy>=0.9
+numpy
+h5py
+enum34;python_version<"3.4"
+lazy-property
+pyyaml
+docopt
 
