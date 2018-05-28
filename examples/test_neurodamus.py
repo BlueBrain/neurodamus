@@ -1,5 +1,6 @@
 from neurodamus.node import Node
 from neurodamus.utils import setup_logging
+import logging
 
 
 def test_node_run():
@@ -10,23 +11,23 @@ def test_node_run():
     node.createCells()
     node.executeNeuronConfigures()
 
-    node.log("Create connections")
+    logging.info("Create connections")
     node.createSynapses()
     node.createGapJunctions()
 
-    node.log("Enable Stimulus")
+    logging.info("Enable Stimulus")
     node.enableStimulus()
 
-    node.log("Enable Modifications")
+    logging.info("Enable Modifications")
     node.enableModifications()
 
-    node.log("Enable Reports")
+    logging.info("Enable Reports")
     node.enableReports()
 
-    node.log("Run")
+    logging.info("Run")
     node.prun(True)
 
-    node.log("\nsimulation finished. Gather spikes then clean up.")
+    logging.info("\nsimulation finished. Gather spikes then clean up.")
     node.spike2file("out.dat")
     node.cleanup()
 
