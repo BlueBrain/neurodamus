@@ -1,5 +1,5 @@
 from os import path
-from neurodamus import Neuron, Cell, CurrentSource
+from neurodamus.core import Neuron, Cell, CurrentSource
 from pytest import approx
 
 

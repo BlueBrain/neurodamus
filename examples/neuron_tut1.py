@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from neurodamus import Cell
-from neurodamus import CurrentSource
-from neurodamus import Neuron
+from neurodamus.core import Cell
+from neurodamus.core import CurrentSource
+from neurodamus.core import Neuron
 
 # Change v_init globally
 # Alternatively v_init can be configured per simulation in run_sim(**kw)

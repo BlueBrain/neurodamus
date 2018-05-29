@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from neurodamus import CurrentSource
+from neurodamus.core import CurrentSource
 
 
 def test_composed_signal():

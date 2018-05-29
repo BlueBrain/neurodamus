@@ -2,6 +2,7 @@ from __future__ import absolute_import
 import logging
 import sys
 from array import array
+from bisect import bisect_left
 
 
 def setup_logging(loglevel, stream=sys.stdout):
@@ -84,3 +85,30 @@ class ArrayCompat(array):
     @property
     def x(self):
         return self
+
+
+def bin_search(container, key, keyf=None):
+    """Performs binary search in a container, retrieving the index where key should be inserted
+    to keep ordering. Accepts a key function to be applied to each element of the container.
+
+    Args:
+        container: The container to be searched through
+        key: The key to look for
+        keyf: (Optional) the function transforming container elements into comparable keys
+
+    Returns: The position where the element is to be inserted to keep ordering.
+
+    """
+    if keyf is None:
+        return bisect_left(container, key)
+
+    binsrch_low = 0
+    binsrch_high = len(container)
+
+    while binsrch_low < binsrch_high:
+        binsrch_mid = int((binsrch_low + binsrch_high) * 0.5)
+        if key < keyf(container[binsrch_mid]):
+            binsrch_low = binsrch_mid + 1
+        else:
+            binsrch_high = binsrch_mid
+    return binsrch_low

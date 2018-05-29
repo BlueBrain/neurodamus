@@ -6,7 +6,7 @@ Copyright 2018 - Blue Brain Project, EPFL
 from __future__ import absolute_import
 from os import path
 import logging
-from . import Neuron
+from .core import Neuron
 from .cell_distributor import CellDistributor
 from .core.configuration import GlobalConfig, MPInfo
 

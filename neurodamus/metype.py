@@ -2,7 +2,7 @@ from __future__ import absolute_import, print_function
 from os import path
 import logging
 from collections import defaultdict
-from . import Neuron
+from .core import Neuron
 from .utils import ConfigT
 
 

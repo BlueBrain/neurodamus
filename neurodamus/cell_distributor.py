@@ -5,7 +5,7 @@ from __future__ import absolute_import, print_function
 from collections import OrderedDict
 import logging  # active only in rank 0 (init)
 from os import path
-from . import Neuron
+from .core import Neuron
 from .metype import METype, METypeManager
 from .utils import progressbar, ArrayCompat
 from .core.configuration import MPInfo

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import pytest
-from neurodamus import CurrentSource
+from neurodamus.core import CurrentSource
 
 __author__ = "Fernando Pereira"
 __copyright__ = "Fernando Pereira"

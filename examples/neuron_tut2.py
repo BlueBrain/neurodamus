@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from neurodamus import Cell
-from neurodamus import CurrentSource
-from neurodamus import Neuron
-from neurodamus import synapses
-from neurodamus import mechanisms
+from neurodamus.core import Cell
+from neurodamus.core import CurrentSource
+from neurodamus.core import Neuron
+from neurodamus.core import synapses
+from neurodamus.core import mechanisms
 from os import path
 
 MORPHO = path.join(path.dirname(__file__), "..", "tests/morphology/C060114A7.asc")

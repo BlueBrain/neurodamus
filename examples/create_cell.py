@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """A few ways to create a cell with two branches, one of then two sections long"""
-from neurodamus import Cell
+from neurodamus.core import Cell
 
 
 def test_create_cell():

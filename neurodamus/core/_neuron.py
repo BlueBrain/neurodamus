@@ -200,8 +200,7 @@ class Simulation:
 
 
 class LoadBalance(object):
-    def __init__(self, parallel_context):
-        self._pc = parallel_context
+    def __init__(self):
         self._lb = Neuron.h.LoadBalance()
 
     def create_mcomplex(self):
