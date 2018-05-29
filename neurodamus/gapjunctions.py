@@ -13,12 +13,12 @@ class GapJunctionManager(object):
     circuit. The user will have the capacity to scale the conductance weights
     """
     # HOC member variables
-    # ----------------
+    # --------------------
     # objref self._synapse_reader, self._target_manager, self._connections, self._syn_params, this
     # objref self._circuit_target, self._gj_offsets
 
-    # HOC Public members
-    # --------------
+    # Public HOC members
+    # ------------------
     # public updateCond # Oren
     # public creationMode
     # public init, connectAll, groupConnect, finalizeSynapses, replay, groupDelayedWeightAdjust,
@@ -36,9 +36,6 @@ class GapJunctionManager(object):
             circuit_target: (optional) Used to know if a given gid is being simulated,
                 including off node. Default: full circuit
         """
-        # localtimeID, gjSum  # localobj gjinfoFile
-        # strdef synapseFile, sModeStr, gjfname
-
         # TODO: this should be a different name?
         synapse_file = path.join(circuit_path, "nrn_gj.h5")
         self._target_manager = target_manager
@@ -49,13 +46,13 @@ class GapJunctionManager(object):
         self._connections = defaultdict(list)
         self.creationMode = 1
 
-        timeID = Neuron.h.timeit_register( "file read" )
-        Neuron.h.timeit_start(timeID)
+        time_id = Neuron.h.timeit_register("file read")
+        Neuron.h.timeit_start(time_id)
         self._synapse_reader = Neuron.h.HDF5Reader(synapse_file, n_synapse_files)
-        Neuron.h.timeit_add(timeID)
+        Neuron.h.timeit_add(time_id)
 
         if n_synapse_files > 1:
-            timeID = Neuron.h.timeit_register( "syn exchange" )
+            timeID = Neuron.h.timeit_register("syn exchange")
             Neuron.h.timeit_start(timeID)
             self._synapse_reader.exchangeSynapseLocations(
                 self._target_manager.cellDistributor.getGidListForProcessor())
@@ -80,18 +77,15 @@ class GapJunctionManager(object):
             gidvec: The array of local gids
             weight: (Optional) factor to scale all synapse / neetcon weights
         """
-        # localscaling_factor, cellIndex, sgid, tgid
-        # localobj gidvec, synParamsList, activeParams, activeConnection, nilConfig
-
-        # printf( "iterate %d cells\n", gidvec.size() )
+        logging.debug("iterate %d cells", len(gidvec))
         for tgid in gidvec:
             synapses_params = self.loadSynapseParameters(tgid)
             cur_conn = None
 
-            logging.debug("focus post a%d - %d items\n", tgid, len(synapses_params))
+            logging.debug("focus post a%d - %d items", tgid, len(synapses_params))
             for i, syn_params in enumerate(synapses_params):
                 sgid = syn_params.sgid
-                logging.debug("connect pre a%d to post a%d\n", sgid, tgid)
+                logging.debug("connect pre a%d to post a%d", sgid, tgid)
                 if self._circuit_target and not self._circuit_target.completeContains(sgid):
                     continue
                     # should still need to check that the other side of the gap junction will
@@ -222,6 +216,9 @@ class GapJunctionManager(object):
 
     # -
     def _find_connection(self, sgid, tgid, exact=True):
+        """Finds a connection, given its source and destination gids.
+        Returns: None if it doesnt exist, or (when exact is False) the possible insertion index
+        """
         cell_conns = self._connections[tgid]
         if not cell_conns:
             return cell_conns, None
@@ -236,7 +233,6 @@ class GapJunctionManager(object):
     # -
     def findConnection(self, sgid, tgid):
         """Retrieves a connection from the pre and post gids.
-
         Returns: A connection object if it exists. None otherwise.
         """
         conn_lst, idx = self._find_connection(sgid, tgid)
@@ -256,7 +252,8 @@ class GapJunctionManager(object):
         cell_conns, pos = self._find_connection(conn.sgid, conn.tgid, exact=False)
         if pos is not None:
             if cell_conns[pos].sgid == conn.sgid:
-                logging.warning("Attempting to store a connection twice: %d->%d", conn.sgid, conn.tgid)
+                logging.warning("Attempting to store a connection twice: %d->%d",
+                                conn.sgid, conn.tgid)
             else:
                 cell_conns.insert(pos, conn)
         else:
@@ -274,9 +271,8 @@ class GapJunctionManager(object):
 
     # -
     def finalizeGapJunctions(self):
-        """All GapJunctions should be placed, all weight scalars should have their final values.
-        Now we can create the netcons
-        # local innerIndex, connIndex, spgid, baseSeed, cell, connectObj, pc
+        """Creates the netcons for all GapJunctions.
+        Connections must have been places and all weight scalars should have their final values.
         """
         for conn, synapse in self._iter_synapses():
             cell = self._target_manager.cellDistributor.getCell(conn.tgid)
@@ -286,6 +282,8 @@ class GapJunctionManager(object):
 
     # -
     def updateConductance(self, new_conductance):
+        """Updates all synapses for a certain conductance value.
+        """
         for _, synapse in self._iter_synapses():
             synapse.updateConductance(new_conductance)
 
