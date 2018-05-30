@@ -70,11 +70,9 @@ class Neuron:
     def execute(cls, expression, hoc_context=None):
         """Executes a given Hoc statement in Neuron.
         By default statements are executed at top-level, unless a hoc object is given as context.
+        Raises RuntimeError in case the Hoc interpreter can't execute the command
         """
-        if hoc_context is None:
-            cls.h(expression)
-        else:
-            raise NotImplementedError()
+        cls.h.execute(expression, hoc_context)
 
     @classmethod
     def run_sim(cls, t_stop, *monitored_sections, **params):
