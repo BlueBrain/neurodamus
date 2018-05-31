@@ -22,6 +22,9 @@ def setup_package():
             'pyyaml',
             'docopt',
         ],
+        tests_require=[
+            "pytest"
+        ],
         extras_require={
             'plotting': ['matplotlib'],
             'mp': ['mpi4py'],
@@ -37,4 +40,3 @@ def setup_package():
 
 if __name__ == "__main__":
     setup_package()
-

@@ -7,7 +7,10 @@ from .utils import logging, setup_logging
 from .core.configuration import GlobalConfig
 
 
-def init_node(recipe_file):
+init_neurodamus = Node.init_neuron
+
+
+def setup_node(recipe_file):
     setup_logging(GlobalConfig.verbosity)
     node = Node(recipe_file)
     node.loadTargets()
@@ -18,7 +21,7 @@ def init_node(recipe_file):
 
 
 def run(recipe_file):
-    node = init_node(recipe_file)
+    node = setup_node(recipe_file)
     logging.info("Create connections")
     node.createSynapses()
     node.createGapJunctions()

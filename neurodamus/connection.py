@@ -1,28 +1,71 @@
 from __future__ import absolute_import
 from collections import namedtuple
 import logging
+import numpy as np
 from .core import Neuron
 from .utils import ArrayCompat
+from . import init_neurodamus
 
 
-SynapseParameters = namedtuple("SynapseParameters",
-                               ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F",
-                                "DTC", "synType", "nrrp", "location"))
-SynapseParameters.__new__.__defaults__ = (None, 0.5)  # defaults to last 2 optional params
+# SynapseParameters = namedtuple("SynapseParameters", _synapse_fields)
+# SynapseParameters.__new__.__defaults__ = (None, 0.5)  # defaults to last 2 optional params
+class SynapseParameters(object):
+    """Synapse parameters, internally implemented as numpy record
+    """
+    _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F", "DTC",
+                       "synType", "nrrp", "location")  # total: 13
+    _dtype = np.dtype({"names": _synapse_fields,
+                       "formats": ["f4"] * len(_synapse_fields)})
+
+    def __new__(cls, params):
+        npa = np.empty(1, cls._dtype)
+        npa["location"] = 0.5
+        # Return record object
+        return npa.view(np.recarray)[0]
+
+    @classmethod
+    def create_array(cls, length):
+        npa = np.empty(length, cls._dtype)
+        npa["location"] = 0.5
+        return npa.view(np.recarray)
 
 
 class SYNAPSE_MODE:
     # Note, these are constants provided for other objects (like SynapseRuleManager)
     AMPA_ONLY = 1
     DUAL_SYNS = 2
+    default = DUAL_SYNS
+
+    @classmethod
+    def from_str(cls, str_repr):
+        if str_repr.lower().startswith("ampa"):
+            return cls.AMPA_ONLY
+        elif str_repr.lower().startswith("dual"):
+            return cls.DUAL_SYNS
+        raise ValueError("Invalid synapse mode: " + str_repr +
+                         ". Possible values are Ampa% and Dual%")
 
 
-class STDP_RULE:
+class STDP_MODE:
     """Values for each STDP rule. Add more here as more rules are implemented
     """
-    NO_STDP = 0
+    NONE = 0
     DOUBLET_STDP = 1
     TRIPLET_STDP = 2
+
+    _str_repr = {
+        "stdpoff": NONE,
+        "doublet": DOUBLET_STDP,
+        "triplet": TRIPLET_STDP
+    }
+
+    @classmethod
+    def from_str(cls, str_repr):
+        try:
+            return cls._str_repr[str_repr]
+        except KeyError:
+            raise ValueError("Invalid STDP mode: " + str_repr +
+                             ". Possible values are STDPoff, Doublet and Triplet")
 
 
 class Connection(object):
@@ -50,9 +93,10 @@ class Connection(object):
     # public updateConductance # Oren
 
     def __init__(self, sgid, tgid, configuration=None,
-                 stdp=STDP_RULE.NO_STDP,
+                 stdp=STDP_MODE.NONE,
                  minis_spont_rate=0,
-                 synapse_mode=SYNAPSE_MODE.DUAL_SYNS):
+                 synapse_mode=SYNAPSE_MODE.DUAL_SYNS,
+                 weight_factor=1):
         """Creates a connection object
 
         Args:
@@ -64,13 +108,13 @@ class Connection(object):
             minis_spont_rate: rate for spontaneous minis
             synapse_mode: (optional) synapse mode. Default: DUAL_SYNS
         """
-
+        init_neurodamus()
         self.sgid = sgid
         self.tgid = tgid
         self.synapse_mode = synapse_mode
         self.doneReplayRegister = 0
         self.synOverride = None
-        self.weight_factor = 1
+        self.weight_factor = weight_factor
 
         self._stdp = stdp
         self._minis_spont_rate = minis_spont_rate
@@ -95,7 +139,7 @@ class Connection(object):
         return self._synapse_params
 
     def set_stdp(self, stdp):
-        assert stdp in vars(STDP_RULE).values()
+        assert stdp in vars(STDP_MODE).values()
         self._stdp = stdp
 
     # -
@@ -111,7 +155,7 @@ class Connection(object):
         self._synapse_params.append(params_obj)
 
         # copy the location from the pointlist into the param item for easier debugging access
-        params_obj.location = syn_tpoints.x[0]
+        params_obj.location = syn_tpoints[0]
 
         if syn_id is not None:
             self._synapse_ids.append(syn_id)
@@ -215,9 +259,9 @@ class Connection(object):
             # If the config has UseSTDP, do STDP stuff (can add more options later
             #   here and in Connection.init). Instantiates the appropriate StdpWA mod file
             if self._stdp:
-                if self._stdp == STDP_RULE.DOUBLET_STDP:
+                if self._stdp == STDP_MODE.DOUBLET_STDP:
                     weight_adjuster = Neuron.h.StdpWADoublet(x)
-                elif self._stdp == STDP_RULE.TRIPLET_STDP:
+                elif self._stdp == STDP_MODE.TRIPLET_STDP:
                     weight_adjuster = Neuron.h.StdpWATriplet(x)
                 else:
                     raise ValueError("Invalid STDP config")
