@@ -77,7 +77,7 @@ class STDPMode:
 
 class Connection(object):
     """
-    A Connection object which serves a a container for synapses formed from a presynaptic and a
+    A Connection object serves as a container for synapses formed from a presynaptic and a
     postsynaptic gid, including Points where those synapses are placed (stored in TPointList)
     """
     # HOC members

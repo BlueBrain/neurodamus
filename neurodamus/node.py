@@ -9,6 +9,7 @@ import logging
 from .core import Neuron
 from .cell_distributor import CellDistributor
 from .core.configuration import GlobalConfig, MPInfo
+from .connection_manager import SynapseRuleManager, GapJunctionManager
 
 LIB_PATH = path.realpath(path.join(path.dirname(__file__), "../../lib"))
 MOD_LIB = path.join(LIB_PATH, "modlib", "libnrnmech.so")
@@ -16,6 +17,10 @@ HOC_LIB = path.join(LIB_PATH, "hoclib", "neurodamus")
 
 # Initialized h
 _h = None
+
+
+class ConfigurationError(Exception):
+    pass
 
 
 class Node:
@@ -58,8 +63,14 @@ class Node:
         self.targetManager = None; self.targetParser = None; self.cellDistributor = None
         self.cellList = None; self.stimList = None; self.reportList = None
         self.stimManager = None; self.elecManager = None; self.binReportHelper = None
-        self.synapseRuleManager = None; self.gjManager = None
+
         self.runtime = 0
+
+        #self.synapseRuleManager = None; self.gjManager = None
+        self._synapse_manager = None  # type: SynapseRuleManager
+        self._gj_manager = None       # type: GapJunctionManager
+
+
 
     #
     def openConfig(self, recipe):
@@ -277,10 +288,10 @@ class Node:
             connDestination = spConnect.get("Destination").s
             # print "connect ", connSource.s, " -> ", connDestination.s
 
-            self.synapseRuleManager.creationMode = 1
-            # check if we are supposed to disable creation -> i.e. only change weights for existing connections
+            # check if we are supposed to disable creation
+            # -> i.e. only change weights for existing connections
             if spConnect.exists("CreateMode") and spConnect.get("CreateMode").s == "NoCreate":
-                self.synapseRuleManager.creationMode = 0
+                self._synapse_manager.disable_creation()
 
             # Check for STDP flag in config file, or default to no STDP
             if spConnect.exists("UseSTDP"):
@@ -369,31 +380,27 @@ class Node:
 
         # do I need the synapse reader outside this function?
         nrnPath = self.configParser.parsedRun.get("nrnPath").s
-        synMode = None
-        if self.configParser.parsedRun.exists("SynapseMode"):
-            synMode = self.configParser.parsedRun.get("SynapseMode").s
+
+        synMode = self.configParser.parsedRun.get("SynapseMode").s \
+            if self.configParser.parsedRun.exists("SynapseMode") else None
 
         # note - with larger scale circuits, we may divide synapses among several files.
         # Need to know how many from the BlueConfig
         # TODO: determine number of synapse files from nrn.h5.0; it has an info dataset where that count is stored
         # TODO: when running on fewer cpus, it is fast to use the single nrn.h5, so prefer that (but how many if 'few'?)
-        nSynapseFiles = 1
-        if self.configParser.parsedRun.exists("NumSynapseFiles"):
-            nSynapseFiles = self.configParser.parsedRun.valueOf("NumSynapseFiles")
-
-        # Even if the user specifies how many synapse files were created by circuit building,
-        # check if we have the single nrn.h5 file
         nrn_filepath = path.join(nrnPath, "nrn.h5")
         if path.isfile(nrn_filepath):
             nSynapseFiles = 1
+        else:
+            if self.configParser.parsedRun.exists("NumSynapseFiles"):
+                nSynapseFiles = self.configParser.parsedRun.valueOf("NumSynapseFiles")
+            else:
+                raise ConfigurationError("nrn.h5 doesnt exist and BlueConfig does not specify"
+                                         "NumSynapseFiles")
 
         timeID = _h.timeit_register("Synapse init")
         _h.timeit_start(timeID)
-        if synMode is None:
-            # use default synMode, DUAL_SYNS at last check
-            self.synapseRuleManager = _h.SynapseRuleManager(nrnPath, self.targetManager, nSynapseFiles)
-        else:
-            self.synapseRuleManager = _h.SynapseRuleManager(nrnPath, self.targetManager, nSynapseFiles, synMode)
+        self._synapse_manager = SynapseRuleManager(nrnPath, self.targetManager, nSynapseFiles, synMode)
         _h.timeit_add(timeID)
 
         if self.configParser.parsedConnects.count() == 0:
@@ -553,25 +560,26 @@ class Node:
 
             # check the pattern for special cases that are handled here.
             if stim.get("Pattern").s == "SynapseReplay":
-                _h.timeit_start(timeID)
-                # Note: maybe I should let the StimulusManager have a reference to the SynapseRuleManager.
-                # Then I can move all this into that obj. I could then have the logging.infoic of Delay/Duration added
-                # in a more appropriate place (for now, there is no delay/duration handling, but it might be nice
-                # to be able to allow only spikes that occur within a given window to be replayed)
-
-                # timeID = timeit_register("Replay init")
-                if stim.exists("Delay"):
-                    synReplay = _h.SynapseReplay(self.synapseRuleManager, stim.get("SpikeFile").s,
-                                                 stim.valueOf("Delay"), MPInfo.rank == 0 )
-                else:
-                    synReplay = _h.SynapseReplay(self.synapseRuleManager, stim.get("SpikeFile").s,
-                                                 0, MPInfo.rank == 0)
-                _h.timeit_add(timeID)
-
-                timeID = _h.timeit_register("Replay inject")
-                _h.timeit_start(timeID)
-                synReplay.replay(targetName)
-                _h.timeit_add(timeID)
+                raise NotImplementedError("Currently Synapse replay is not yet available in Python")
+                # _h.timeit_start(timeID)
+                # # Note: maybe I should let the StimulusManager have a reference to the SynapseRuleManager.
+                # # Then I can move all this into that obj. I could then have the logging.infoic of Delay/Duration added
+                # # in a more appropriate place (for now, there is no delay/duration handling, but it might be nice
+                # # to be able to allow only spikes that occur within a given window to be replayed)
+                #
+                # # timeID = timeit_register("Replay init")
+                # if stim.exists("Delay"):
+                #     synReplay = _h.SynapseReplay(self.synapseRuleManager, stim.get("SpikeFile").s,
+                #                                  stim.valueOf("Delay"), MPInfo.rank == 0 )
+                # else:
+                #     synReplay = _h.SynapseReplay(self.synapseRuleManager, stim.get("SpikeFile").s,
+                #                                  0, MPInfo.rank == 0)
+                # _h.timeit_add(timeID)
+                #
+                # timeID = _h.timeit_register("Replay inject")
+                # _h.timeit_start(timeID)
+                # synReplay.replay(targetName)
+                # _h.timeit_add(timeID)
             else:
                 # all other patterns the stim manager will interpret
                 self.stimManager.interpret(targetName, stim)

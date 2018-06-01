@@ -26,7 +26,7 @@ class _ConnectionManagerBase(object):
         self._syn_params = {}
         # Connections indexed by post-gid, then ordered by pre-gid
         self._connections = defaultdict(list)
-        self.creationMode = 1
+        self._creation_mode = True
 
         synapse_file = path.join(circuit_path, self.DATA_FILENAME)
         self._synapse_reader = self._init_synapse_reader(
@@ -46,6 +46,9 @@ class _ConnectionManagerBase(object):
                 target_manager.cellDistributor.getGidListForProcessor())
             Neuron.h.timeit_add(timeit_id)
         return _syn_reader
+
+    def disable_creation(self):
+        self._creation_mode = False
 
     # -
     def connect_all(self, gidvec, weight_factor=1):
@@ -150,7 +153,7 @@ class _ConnectionManagerBase(object):
                             existing_conn.stdp = stdp
                         pend_conn = None
                     else:
-                        if self.creationMode == 1:
+                        if self._creation_mode:
                             # What should happen if the initial group connect is given -1? Error?
                             if weight_factor is None:
                                 logging.warning("Invalid weight_factor for initial connection "
@@ -376,7 +379,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
     Once all synapses are preped with final weights, the netcons can be created.
     """
 
-    def __init__(self, circuit_path, target_manager, n_synapse_files, synapse_mode="DualSyns"):
+    def __init__(self, circuit_path, target_manager, n_synapse_files, synapse_mode=None):
         """ Constructor for SynapseRuleManager, checks that the nrn.h5 synapse file is available
         for reading
 
@@ -386,10 +389,11 @@ class SynapseRuleManager(_ConnectionManagerBase):
                 locations to points
             n_synapse_files: How many nrn.h5 files to expect (typically 1)
             synapse_mode: str dictating modifiers to what synapses are placed based on synType
-                (AmpaOnly vs DualSyns)
+                (AmpaOnly vs DualSyns). Default: DualSyns
         """
         _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
-
+        if synapse_mode is None:
+            synapse_mode = "DualSyns"
         # ! These two vars seem not used
         self._synapse_mode = SynapseMode.from_str(synapse_mode)
         #  self._rng_list = []
