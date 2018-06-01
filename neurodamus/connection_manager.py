@@ -5,7 +5,7 @@ from itertools import chain
 from os import path
 from .core import Neuron
 from .utils import ArrayCompat, bin_search
-from .connection import SynapseParameters, Connection, SYNAPSE_MODE, STDP_MODE
+from .connection import SynapseParameters, Connection, SynapseMode, STDPMode
 
 
 class _ConnectionManagerBase(object):
@@ -17,7 +17,7 @@ class _ConnectionManagerBase(object):
     # so the generic insertion validates against target.sgid if defined
     _circuit_target = None
     # Connection parameters which might not be used by all Managers
-    _synapse_mode = SYNAPSE_MODE.default
+    _synapse_mode = SynapseMode.default
 
     def __init__(self, circuit_path, target_manager, n_synapse_files):
         self._target_manager = target_manager
@@ -40,24 +40,24 @@ class _ConnectionManagerBase(object):
         Neuron.h.timeit_add(time_id)
 
         if n_synapse_files > 1:
-            timeID = Neuron.h.timeit_register("syn exchange")
-            Neuron.h.timeit_start(timeID)
+            timeit_id = Neuron.h.timeit_register("syn exchange")
+            Neuron.h.timeit_start(timeit_id)
             _syn_reader.exchangeSynapseLocations(
                 target_manager.cellDistributor.getGidListForProcessor())
-            Neuron.h.timeit_add(timeID)
+            Neuron.h.timeit_add(timeit_id)
         return _syn_reader
 
     # -
-    def connectAll(self, gidvec, weight_factor=1):
+    def connect_all(self, gidvec, weight_factor=1):
         """For every gid access its synapse parameters and instantiate all synapses.
 
         Args:
             gidvec: The array of local gids
-            weight: (Optional) factor to scale all synapse / neetcon weights
+            weight_factor: (Optional) factor to scale all netcon weights
         """
         logging.debug("iterate %d cells", len(gidvec))
         for tgid in gidvec:
-            synapses_params = self.loadSynapseParameters(tgid)
+            synapses_params = self.load_synapse_parameters(tgid)
             cur_conn = None
 
             logging.debug("connecting to post neuron a%d - %d items", tgid, len(synapses_params))
@@ -79,11 +79,11 @@ class _ConnectionManagerBase(object):
                 # placeSynapses( activeConnection, synParamsList.o(synIndex), synIndex+1 )
                 point = self._target_manager.locationToPoint(tgid, syn_params.isec,
                                                              syn_params.ipt, syn_params.offset)
-                cur_conn.append(point, syn_params, i)
+                cur_conn.add_synapse(point, syn_params, i)
 
     # -
-    def groupConnect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
-                     stdp_mode=None, spont_mini_rate=0, synapse_type_restrict=None):
+    def group_connect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
+                      stdp_mode=None, spont_mini_rate=0, synapse_type_restrict=None):
         """ Given some gidlists, connect those gids in the source list to those in the dest list
         Note: the cells in the source list are not limited by what is on this cpu whereas
         the dest list requires the cells be local
@@ -104,14 +104,14 @@ class _ConnectionManagerBase(object):
         # utility functions like 'contains'
         src_target = self._target_manager.getTarget(src_target)
         dst_target = self._target_manager.getTarget(dst_target)
-        stdp = STDP_MODE.from_str(stdp_mode) if stdp_mode is not None else None
+        stdp = STDPMode.from_str(stdp_mode) if stdp_mode is not None else None
 
         for tgid in gidvec:
             if not dst_target.contains(tgid):  # if tgid not in dst_target:
                 continue
 
             # this cpu owns some or all of the destination gid
-            syns_params = self.loadSynapseParameters(tgid)
+            syns_params = self.load_synapse_parameters(tgid)
             old_sgid = -1
             pend_conn = None
 
@@ -145,7 +145,7 @@ class _ConnectionManagerBase(object):
                         # Known pathway/connection -> just update params
                         if weight_factor is not None:
                             existing_conn.weight_factor = weight_factor
-                            existing_conn.appendSynapseConfiguration(configuration)
+                            existing_conn.add_synapse_configuration(configuration)
                         if stdp is not None:
                             existing_conn.stdp = stdp
                         pend_conn = None
@@ -163,14 +163,14 @@ class _ConnectionManagerBase(object):
                 if pend_conn is not None:
                     point = self._target_manager.locationToPoint(tgid, syn_params.isec,
                                                                  syn_params.ipt, syn_params.offset)
-                    pend_conn.append(point, syn_params, i)
+                    pend_conn.add_synapse(point, syn_params, i)
 
             # if we have a pending connection, make sure we store it
             if pend_conn is not None:
                 self.store_connection(pend_conn)
 
     # -
-    def loadSynapseParameters(self, gid):
+    def load_synapse_parameters(self, gid):
         """Access the specified dataset from the nrn.h5 file to get all synapse parameters for
         a post-synaptic cell
 
@@ -222,7 +222,7 @@ class _ConnectionManagerBase(object):
         return conn_syn_params
 
     # -
-    def group_post_config(self, src_target, dst_target, gidvec,
+    def apply_post_config(self, src_target, dst_target, gidvec,
                           configuration=None, weight=None, **syn_params):
         """ Given some gidlists, recover the connection objects for those gids involved and
         adjust params.
@@ -258,15 +258,15 @@ class _ConnectionManagerBase(object):
                 if conn is not None:
                     # change params for all synapses
                     if configuration is not None:
-                        conn.executeConfigure(configuration)
+                        conn.apply_configuration(configuration)
                     if syn_params:
                         conn.update_synapse_params(**syn_params)
                     # Change params for all netcons
                     if weight is not None:
-                        conn.updateWeights(weight)
+                        conn.update_weights(weight)
 
     # -
-    def apply_post_config(self, conn_parsed_config, gidvec):
+    def apply_post_config_parsed(self, conn_parsed_config, gidvec):
         """Change connections configuration after finalize, according to parsed config
 
         Args:
@@ -281,7 +281,20 @@ class _ConnectionManagerBase(object):
         config = conn_parsed_config.valueOf("SynapseConfigure") \
             if conn_parsed_config.exists("SynapseConfigure") else None
 
-        self.group_post_config(src_target, dst_target, gidvec, config, weight)
+        self.apply_post_config(src_target, dst_target, gidvec, config, weight)
+
+    # Global update Helpers
+    # ---------------------
+    def update_all_weights(self, new_weight, also_replay_netcons=False):
+        for conn in self.all_connections():  # type: Connection
+            conn.update_weights(new_weight, also_replay_netcons)
+
+    def update_parameters_all(self, **params):
+        for conn in self.all_connections():  # type: Connection
+            conn.update_synapse_params(**params)
+
+    def update_all_conductances(self, new_g):
+        self.update_parameters_all(g=new_g)
 
     # -----------------------------------------------------------------------------
     # THESE METHODS ARE HELPERS FOR HANDLING OBJECTS IN THE INTERNAL STRUCTURES
@@ -332,7 +345,7 @@ class _ConnectionManagerBase(object):
 
     # -
     def all_connections(self):
-        """Iterator over all the connections
+        """Iterator over all the connections.
         """
         return chain.from_iterable(self._connections.values())
 
@@ -378,7 +391,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
         _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
 
         # ! These two vars seem not used
-        self._synapse_mode = SYNAPSE_MODE.from_str(synapse_mode)
+        self._synapse_mode = SynapseMode.from_str(synapse_mode)
         #  self._rng_list = []
         self._replay_list = []
 
@@ -480,13 +493,6 @@ class GapJunctionManager(_ConnectionManagerBase):
         """
         for conn, synapse in self._iter_synapses():
             cell = self._target_manager.cellDistributor.getCell(conn.tgid)
-            synapse.finalizeGapJunctions(self._target_manager.cellDistributor.pnm, cell,
-                                         self._gj_offsets[conn.tgid-1],
-                                         self._gj_offsets[conn.sgid-1])
-
-    # -
-    def updateConductance(self, new_conductance):
-        """Updates all synapses for a certain conductance value.
-        """
-        for _, synapse in self._iter_synapses():
-            synapse.updateConductance(new_conductance)
+            synapse.finalize_gap_junctions(self._target_manager.cellDistributor.pnm, cell,
+                                           self._gj_offsets[conn.tgid-1],
+                                           self._gj_offsets[conn.sgid-1])

@@ -1,5 +1,4 @@
 from __future__ import absolute_import
-from collections import namedtuple
 import logging
 import numpy as np
 from .core import Neuron
@@ -30,7 +29,7 @@ class SynapseParameters(object):
         return npa.view(np.recarray)
 
 
-class SYNAPSE_MODE:
+class SynapseMode:
     # Note, these are constants provided for other objects (like SynapseRuleManager)
     AMPA_ONLY = 1
     DUAL_SYNS = 2
@@ -46,7 +45,7 @@ class SYNAPSE_MODE:
                          ". Possible values are Ampa% and Dual%")
 
 
-class STDP_MODE:
+class STDPMode:
     """Values for each STDP rule. Add more here as more rules are implemented
     """
     NO_STDP = 0
@@ -103,7 +102,7 @@ class Connection(object):
     def __init__(self, sgid, tgid, configuration=None,
                  stdp=None,
                  minis_spont_rate=0,
-                 synapse_mode=SYNAPSE_MODE.DUAL_SYNS,
+                 synapse_mode=SynapseMode.DUAL_SYNS,
                  weight_factor=1):
         """Creates a connection object
 
@@ -123,8 +122,8 @@ class Connection(object):
         self.doneReplayRegister = 0
         self.synOverride = None
         self.weight_factor = weight_factor
-        self.stdp = STDP_MODE.validate(stdp)
 
+        self._stdp = STDPMode.validate(stdp)
         self._minis_spont_rate = minis_spont_rate
         self._synapse_locations = Neuron.h.TPointList(tgid, 1)
         self._synapse_params = []
@@ -146,12 +145,12 @@ class Connection(object):
     def synapse_params(self):
         return self._synapse_params
 
-    def set_stdp(self, stdp):
-        assert stdp in vars(STDP_MODE).values()
-        self._stdp = stdp
+    def _set_stdp(self, stdp):
+        self._stdp = STDPMode.validate(stdp)
+    stdp = property(lambda self: self._stdp, _set_stdp)
 
     # -
-    def append(self, syn_tpoints, params_obj, syn_id=None):
+    def add_synapse(self, syn_tpoints, params_obj, syn_id=None):
         """Adds a location and synapse to this Connection so that netcons can later be generated
 
         Args:
@@ -171,7 +170,7 @@ class Connection(object):
             self._synapse_ids.append(self._synapse_locations.count())
 
     # -
-    def appendSynapseConfiguration(self, configuration):
+    def add_synapse_configuration(self, configuration):
         """Add a synapse configuration command to the list.  
         All commands are executed on synapse creation
         """
@@ -179,7 +178,7 @@ class Connection(object):
             self._configurations.append(configuration)
 
     # -
-    def placeSynapses(self, cell, params_obj, x, syn_id, base_seed):
+    def place_synapses(self, cell, params_obj, x, syn_id, base_seed):
         """Create one or more synapses, updating the self._synapses and TPointList in the supplied 
         Connection object. This is dependant on the location existing on the cpu.
     
@@ -247,7 +246,7 @@ class Connection(object):
                 continue
             x = self._synapse_locations.x[syn_i]
             active_params = self._synapse_params[syn_i]
-            self.placeSynapses(cell, active_params, x, self._synapse_ids.x[syn_i], base_seed)
+            self.place_synapses(cell, active_params, x, self._synapse_ids.x[syn_i], base_seed)
             cell_syn_list = cell.CellRef.synlist
             syn_obj = cell_syn_list.o(cell_syn_list.count()-1)
             self._synapses.append(syn_obj)
@@ -267,9 +266,9 @@ class Connection(object):
             # If the config has UseSTDP, do STDP stuff (can add more options later
             #   here and in Connection.init). Instantiates the appropriate StdpWA mod file
             if self._stdp:
-                if self._stdp == STDP_MODE.DOUBLET_STDP:
+                if self._stdp == STDPMode.DOUBLET_STDP:
                     weight_adjuster = Neuron.h.StdpWADoublet(x)
-                elif self._stdp == STDP_MODE.TRIPLET_STDP:
+                elif self._stdp == STDPMode.TRIPLET_STDP:
                     weight_adjuster = Neuron.h.StdpWATriplet(x)
                 else:
                     raise ValueError("Invalid STDP config")
@@ -348,10 +347,10 @@ class Connection(object):
 
             self._netcons.append(nc)
 
-        self.executeConfigureList(cell)
+        self._configure_cell(cell)
 
     # -
-    def finalizeGapJunctions(self, pnm, cell, offset, end_offset):
+    def finalize_gap_junctions(self, pnm, cell, offset, end_offset):
         """ When all parameters are set, create synapses and netcons
 
         Args:
@@ -381,7 +380,7 @@ class Connection(object):
             pnm.pc.source_var(sc.sec._ref_v(x), (end_offset + active_params.F))
             gap_junction.g = active_params.weight
             self._synapses.append(gap_junction)
-            self.executeConfigureList(cell)
+            self._configure_cell(cell)
 
     def update_conductance(self, new_g):
         """ Updates all synapses conductance
@@ -396,8 +395,8 @@ class Connection(object):
             for key, val in params:
                 setattr(syn, key, val)
 
-    @classmethod
-    def _apply_configuration(cls, configuration, synapse, context=None):
+    @staticmethod
+    def _apply_configuration(configuration, synapse, context=None):
         # In the future configurations should be Python functions?
         """ Executes a configuration against a (tuple of) synapse(s)
 
@@ -417,14 +416,14 @@ class Connection(object):
             except RuntimeError:
                 logging.warning("Failed to apply configuration to synapse: %s", hoc_cmd)
 
-    def executeConfigureList(self, cell):
-        """ Helper function to execute the SynapseConfigure statements on a given cell synapses
+    def _configure_cell(self, cell):
+        """ Helper function to apply the SynapseConfigure statements on a given cell synapses
         """
         for config in self._configurations:
             self._apply_configuration(config, tuple(cell.CellRef.synlist), cell.CellRef)
 
     # -
-    def executeConfigure(self, configuration):
+    def apply_configuration(self, configuration):
         """ Helper function to execute a configuration command on all created synapses.
         """
         # NOTE: After the simulation has run for some time we can't assume that the last synapse
@@ -432,12 +431,13 @@ class Connection(object):
         self._apply_configuration(configuration, tuple(self._synapses))
 
     # -
-    def updateWeights(self, weight, update_also_replay_netcons=False):
+    def update_weights(self, weight, update_also_replay_netcons=False):
         """ Change the weights of the netcons generated when connecting the source and target gids
         represented in this connection
 
         Args:
             weight: The new weight
+            update_also_replay_netcons: Whether weights shall be applied to replay netcons as well
         """
         for nc in self._netcons:
             nc.weight = weight
@@ -470,7 +470,8 @@ class Connection(object):
             local_i += 1
 
     # -
-    def registerEvents(self):
+    def register_events(self):
+        # TODO: DEPRECATED: this callback is unusable in the current form. Please replace
         """For each time vector registered with this connection object, iterate the spike times
         and queue up an event. To be invoked by FInitializeHandler.
         """
