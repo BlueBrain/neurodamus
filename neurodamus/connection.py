@@ -49,12 +49,12 @@ class SYNAPSE_MODE:
 class STDP_MODE:
     """Values for each STDP rule. Add more here as more rules are implemented
     """
-    NONE = 0
+    NO_STDP = 0
     DOUBLET_STDP = 1
     TRIPLET_STDP = 2
 
-    _str_repr = {
-        "stdpoff": NONE,
+    _str_val = {
+        "stdpoff": NO_STDP,
         "doublet": DOUBLET_STDP,
         "triplet": TRIPLET_STDP
     }
@@ -62,10 +62,18 @@ class STDP_MODE:
     @classmethod
     def from_str(cls, str_repr):
         try:
-            return cls._str_repr[str_repr]
+            return cls._str_val[str_repr.lower()]
         except KeyError:
             raise ValueError("Invalid STDP mode: " + str_repr +
                              ". Possible values are STDPoff, Doublet and Triplet")
+
+    @classmethod
+    def validate(cls, value):
+        if value is None:
+            return cls.NO_STDP
+        if value not in cls._str_val.values():
+            raise ValueError("Invalid STDP value: " + value)
+        return value
 
 
 class Connection(object):
@@ -93,7 +101,7 @@ class Connection(object):
     # public updateConductance # Oren
 
     def __init__(self, sgid, tgid, configuration=None,
-                 stdp=STDP_MODE.NONE,
+                 stdp=None,
                  minis_spont_rate=0,
                  synapse_mode=SYNAPSE_MODE.DUAL_SYNS,
                  weight_factor=1):
@@ -115,8 +123,8 @@ class Connection(object):
         self.doneReplayRegister = 0
         self.synOverride = None
         self.weight_factor = weight_factor
+        self.stdp = STDP_MODE.validate(stdp)
 
-        self._stdp = stdp
         self._minis_spont_rate = minis_spont_rate
         self._synapse_locations = Neuron.h.TPointList(tgid, 1)
         self._synapse_params = []
@@ -375,11 +383,18 @@ class Connection(object):
             self._synapses.append(gap_junction)
             self.executeConfigureList(cell)
 
-    def updateConductance(self, new_g):
+    def update_conductance(self, new_g):
         """ Updates all synapses conductance
         """
         for syn in self._synapses:
             syn.g = new_g
+
+    def update_synapse_params(self, **params):
+        """A generic function to update several parameters of all synapses
+        """
+        for syn in self._synapses:
+            for key, val in params:
+                setattr(syn, key, val)
 
     @classmethod
     def _apply_configuration(cls, configuration, synapse, context=None):
@@ -402,7 +417,6 @@ class Connection(object):
             except RuntimeError:
                 logging.warning("Failed to apply configuration to synapse: %s", hoc_cmd)
 
-    # -
     def executeConfigureList(self, cell):
         """ Helper function to execute the SynapseConfigure statements on a given cell synapses
         """
@@ -415,7 +429,6 @@ class Connection(object):
         """
         # NOTE: After the simulation has run for some time we can't assume that the last synapse
         # of the cell object is the target
-
         self._apply_configuration(configuration, tuple(self._synapses))
 
     # -

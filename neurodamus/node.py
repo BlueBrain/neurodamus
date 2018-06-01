@@ -747,7 +747,7 @@ class Node:
 
         Returns: list with synapse data for the gid
         """
-        return self.synapseRuleManager.getSynapseDataForGID(gid)
+        return self.synapseRuleManager.get_synapse_params_gid(gid)
 
     #
     def executeNeuronConfigures(self):

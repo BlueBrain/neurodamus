@@ -74,31 +74,29 @@ class _ConnectionManagerBase(object):
                 if cur_conn is None or cur_conn.sgid != sgid:
                     cur_conn = Connection(sgid, tgid, None, "STDPoff", 0, self._synapse_mode,
                                           weight_factor)
-                    self.storeConnection(cur_conn)
+                    self.store_connection(cur_conn)
 
                 # placeSynapses( activeConnection, synParamsList.o(synIndex), synIndex+1 )
                 point = self._target_manager.locationToPoint(tgid, syn_params.isec,
                                                              syn_params.ipt, syn_params.offset)
                 cur_conn.append(point, syn_params, i)
 
-
     # -
-    def groupConnect(self, src_target, dst_target, gidvec, weight=None, configuration=None,
-                     stdp_mode="STDPoff",
-                     spont_mini_rate=0, synapse_type_id_restrict=None):
+    def groupConnect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
+                     stdp_mode=None, spont_mini_rate=0, synapse_type_restrict=None):
         """ Given some gidlists, connect those gids in the source list to those in the dest list
-            Note: the cells in the source list are not limited by what is on this cpu whereas
-            the dest list requires the cells be local
+        Note: the cells in the source list are not limited by what is on this cpu whereas
+        the dest list requires the cells be local
 
         Args:
             src_target: Name of Source Target
             dst_target: Name of Destination Target
             gidvec: Vector of gids on the local cpu
-            weight: (optional) Scaling weight to apply to the synapses
+            weight_factor: (optional) Scaling weight to apply to the synapses
             configuration: (optional) SynapseConfiguration string
-            stdp_mode: (optional) Which STDP to use (Default: STDPoff)
+            stdp_mode: (optional) Which STDP to use. Default: None (=TDPoff for creating, no change)
             spont_mini_rate: (optional) For spontaneous minis trigger rate (default: 0)
-            synapse_type_id_restrict: (optional) to further restrict when the weight is applied
+            synapse_type_restrict: (optional) to further restrict when the weight is applied
         """
         # unlike connectAll, we must look through self._connections to see if sgid->tgid exists
         # because it may be getting weights updated.
@@ -106,7 +104,7 @@ class _ConnectionManagerBase(object):
         # utility functions like 'contains'
         src_target = self._target_manager.getTarget(src_target)
         dst_target = self._target_manager.getTarget(dst_target)
-        stdp = STDP_MODE.from_str(stdp_mode)
+        stdp = STDP_MODE.from_str(stdp_mode) if stdp_mode is not None else None
 
         for tgid in gidvec:
             if not dst_target.contains(tgid):  # if tgid not in dst_target:
@@ -114,47 +112,50 @@ class _ConnectionManagerBase(object):
 
             # this cpu owns some or all of the destination gid
             syns_params = self.loadSynapseParameters(tgid)
-
             old_sgid = -1
             pend_conn = None
+
             for i, syn_params in enumerate(syns_params):
-                sgid = int(syn_params.sgid)
+                if synapse_type_restrict is not None:
+                    if syn_params.synType != synapse_type_restrict:
+                        continue
 
                 # if this gid in the source target?
+                sgid = int(syn_params.sgid)
                 if not src_target.completeContains(sgid):
                     continue
 
                 # is this gid in the self._circuit_target (if defined)
-                if self._circuit_target is not None and self._circuit_target.completeContains(sgid):
-                    continue
-
-                # to reach here, 'source' target includes a cell that sends to the tgid and sgid
-                # should exist somewhere in the simulation - on or off node.  Don't care
+                if self._circuit_target is not None:
+                    if not self._circuit_target.completeContains(sgid):
+                        continue
 
                 # are we on a different sgid than the previous iteration?
                 if sgid != old_sgid:
                     # if we were putting things in a pending object, we can store that away now
                     if pend_conn is not None:
-                        self.storeConnection(pend_conn)
+                        self.store_connection(pend_conn)
+                        pend_conn = None
                     old_sgid = sgid
 
                     # determine what we will do with the new sgid:
                     # update weights if seen before, or prep for pending connections
-                    existing_conn = self.findConnection(sgid, tgid)
+                    existing_conn = self.find_connection(sgid, tgid)
                     if existing_conn is not None:
-                        # Known pathway/connection -> just update the weights
-                        if weight is not None:
-                            existing_conn.setWeightScalar(weight)
+                        # Known pathway/connection -> just update params
+                        if weight_factor is not None:
+                            existing_conn.weight_factor = weight_factor
                             existing_conn.appendSynapseConfiguration(configuration)
+                        if stdp is not None:
+                            existing_conn.stdp = stdp
                         pend_conn = None
                     else:
                         if self.creationMode == 1:
-                            # What should happen if the initial group connect is given -1?
-                            # I would think is is an error.  For now, emit a warning
-                            if weight is None:
-                                logging.warning("Invalid weight value for initial connection "
-                                                "creation")
-                            pend_conn = Connection(sgid, tgid, configuration, stdp,spont_mini_rate,
+                            # What should happen if the initial group connect is given -1? Error?
+                            if weight_factor is None:
+                                logging.warning("Invalid weight_factor for initial connection "
+                                                "creation. Assuming default 1")
+                            pend_conn = Connection(sgid, tgid, configuration, stdp, spont_mini_rate,
                                                    self._synapse_mode)
 
                 # if we are using an object for a pending connection, then it is new
@@ -166,9 +167,7 @@ class _ConnectionManagerBase(object):
 
             # if we have a pending connection, make sure we store it
             if pend_conn is not None:
-                self.storeConnection(pend_conn)
-
-
+                self.store_connection(pend_conn)
 
     # -
     def loadSynapseParameters(self, gid):
@@ -222,6 +221,68 @@ class _ConnectionManagerBase(object):
 
         return conn_syn_params
 
+    # -
+    def group_post_config(self, src_target, dst_target, gidvec,
+                          configuration=None, weight=None, **syn_params):
+        """ Given some gidlists, recover the connection objects for those gids involved and
+        adjust params.
+        NOTE: Keyword arguments override the same-name properties in the provided hoc configuration
+
+        Args:
+            src_target: Name of Source Target
+            dst_target: Name of Destination Target
+            gidvec: A list of gids to apply configuration
+            configuration: (optional) A hoc configuration to be executed over synapse objects
+            weight: (optional) new weights for the netcons
+            **syn_params: Keyword arguments of synapse properties to be changed, e.g. conductance(g)
+        """
+        if configuration is None and weight is None and not syn_params:
+            logging.warning("No parameters adjustement being made to synpases in Targets %s->%s",
+                            src_target, dst_target)
+            return
+
+        # unlike connectAll, we must look through self._connections to see if sgid->tgid exists
+        # because it may be getting weights updated. Note that it is better to get the whole target
+        # over just the gid vector, since then we can use utility functions like 'contains'
+        src_target = self._target_manager.getTarget(src_target)
+        dst_target = self._target_manager.getTarget(dst_target)
+
+        for tgid in gidvec:
+            if not dst_target.contains(tgid):
+                continue
+
+            sgids = src_target.completegids()
+            for sgid in sgids:
+                sgid = int(sgid)
+                conn = self.find_connection(sgid, tgid)
+                if conn is not None:
+                    # change params for all synapses
+                    if configuration is not None:
+                        conn.executeConfigure(configuration)
+                    if syn_params:
+                        conn.update_synapse_params(**syn_params)
+                    # Change params for all netcons
+                    if weight is not None:
+                        conn.updateWeights(weight)
+
+    # -
+    def apply_post_config(self, conn_parsed_config, gidvec):
+        """Change connections configuration after finalize, according to parsed config
+
+        Args:
+            conn_parsed_config: The parsed connection configuration object
+            gidvec: A list of gids to apply configuration
+        """
+        src_target = conn_parsed_config.get("Source").s
+        dst_target = conn_parsed_config.get("Destination").s
+
+        weight = conn_parsed_config.valueOf("Weight") \
+            if conn_parsed_config.exists("Weight") else None
+        config = conn_parsed_config.valueOf("SynapseConfigure") \
+            if conn_parsed_config.exists("SynapseConfigure") else None
+
+        self.group_post_config(src_target, dst_target, gidvec, config, weight)
+
     # -----------------------------------------------------------------------------
     # THESE METHODS ARE HELPERS FOR HANDLING OBJECTS IN THE INTERNAL STRUCTURES
     # -----------------------------------------------------------------------------
@@ -241,17 +302,16 @@ class _ConnectionManagerBase(object):
         return cell_conns, pos
 
     # -
-    def findConnection(self, sgid, tgid):
+    def find_connection(self, sgid, tgid):
         """Retrieves a connection from the pre and post gids.
-        Returns: A connection object if it exists. None otherwise.
+        Returns:
+            Connection: A connection object if it exists. None otherwise.
         """
         conn_lst, idx = self._find_connection(sgid, tgid)
-        if idx is None:
-            return None
-        return conn_lst[idx]
+        return None if idx is None else conn_lst[idx]
 
     # -
-    def storeConnection(self, conn):
+    def store_connection(self, conn):
         """When we have created a new connection (sgid->tgid), determine where to store it
         in our arrangement and store it for faster retrieval later
 
@@ -271,17 +331,22 @@ class _ConnectionManagerBase(object):
             cell_conns.append(conn)
 
     # -
+    def all_connections(self):
+        """Iterator over all the connections
+        """
+        return chain.from_iterable(self._connections.values())
+
     def _iter_synapses(self):
         """Iterator over all the connections synapses, yielding (conn, synapse) pairs
         """
         for conns in self._connections.values():
             for conn in conns:
-                n_synapses = int(conn.count())
-                for i in range(n_synapses):
+                for i in range(int(conn.count())):
                     yield conn, conn.o[i]
 
-    # -
-    def getSynapseDataForGID(self, target_gid):
+    def get_synapse_params_gid(self, target_gid):
+        """Retrieves an iterator over all the synapse parameters
+        """
         conns = self._connections[target_gid]
         return chain.from_iterable(c.synapseParamsList for c in conns)
 
@@ -315,6 +380,52 @@ class SynapseRuleManager(_ConnectionManagerBase):
         # ! These two vars seem not used
         self._synapse_mode = SYNAPSE_MODE.from_str(synapse_mode)
         #  self._rng_list = []
+        self._replay_list = []
+
+    # -
+    def finalize(self, base_seed=0):
+        """ Create the netcons.
+        All synapses must have been placed, all weight scalars should have their final values.
+
+        Args:
+            base_seed: optional argument to adjust synapse RNGs (default=0)
+        """
+        cell_distributor = self._target_manager.cellDistributor
+        for tgid, conns in self._connections:
+            metype = cell_distributor.getMEType(tgid)
+            spgid = cell_distributor.getSpGid(tgid)
+            for conn in conns:  # type: Connection
+                conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
+            logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
+
+    # -
+    def replay(self, target_name, spike_map):
+        """ After all synapses have been placed, we can create special netcons to trigger
+        events on those synapses
+
+        Args:
+            target_name: Target name whose gids should be replayed
+            spike_map: map of gids (pre-synaptic) with vector of spike times
+        """
+        target = self._target_manager.getTarget(target_name)
+        timeit_id = Neuron.h.timeit_register("searchNapply")
+
+        for tgid, conns in self._connections.items():
+            if not target.contains(tgid):
+                continue
+            Neuron.h.timeit_start(timeit_id)
+            cell = target.cellDistributor.getCell(tgid)
+
+            for conn in conns:
+                if spike_map.exists(conn.sgid):
+                    conn.replay(spike_map.get(conn.sgid), cell)
+                    self._replay_list.append(conn)
+            Neuron.h.timeit_add(timeit_id)
+
+    # -
+    def register_events(self):
+        raise DeprecationWarning("This function has been deprecated"
+                                 "and it's not compatible with Python Neurodamus")
 
 
 # ################################################################################################
@@ -362,42 +473,8 @@ class GapJunctionManager(_ConnectionManagerBase):
             self._gj_offsets.append(gj_sum)
             gj_sum += 2 * offset
 
-
-
-
     # -
-    def groupDelayedWeightAdjust(self, src_target, dst_target, weight, gidvec):
-        """ Given some gidlists, recover the connection objects for those gids involved and
-        adjust the weights.
-
-        Args:
-            src_target: Name of Source Target
-            dst_target: Name of Destination Target
-            weight: Scaling weight to apply to the synapses
-            gidvec: Vector of gids on the local cpu
-        """
-        # unlike connectAll, we must look through self._connections to see if sgid->tgid exists
-        # because it may be getting weights updated. Note that it is better to get the whole target
-        # over just the gid vector, since then we can use utility functions like 'contains'
-        src_target = self._target_manager.getTarget(src_target)
-        dst_target = self._target_manager.getTarget(dst_target)
-
-        for tgid in gidvec:
-            if not dst_target.contains(tgid):
-                continue
-
-            # is it better to iterate over the cell's presyn gids or the target's gids.
-            sgids = src_target.completegids()
-            for sgid in sgids:
-                sgid = int(sgid)
-                existing_conn = self.findConnection(sgid, tgid)
-                if existing_conn is not None:
-                    # change the weight for all those netcons
-                    existing_conn.updateWeights(weight)
-
-
-    # -
-    def finalizeGapJunctions(self):
+    def finalize(self):
         """Creates the netcons for all GapJunctions.
         Connections must have been places and all weight scalars should have their final values.
         """
