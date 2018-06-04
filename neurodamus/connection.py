@@ -1,9 +1,8 @@
 from __future__ import absolute_import
 import logging
 import numpy as np
-from .core import Neuron
+from .core import NeuronDamus as ND
 from .utils import ArrayCompat
-from . import init_neurodamus
 
 
 # SynapseParameters = namedtuple("SynapseParameters", _synapse_fields)
@@ -111,21 +110,20 @@ class Connection(object):
             tgid: postsynaptic gid
             configuration: Any synapse configurations that should be applied when the synapses
                 are instatiated (or nil for none)
-            stdp: STDP settings
+            stdp (str): STDP settings
             minis_spont_rate: rate for spontaneous minis
             synapse_mode: (optional) synapse mode. Default: DUAL_SYNS
         """
-        init_neurodamus()
+        h = ND.h
         self.sgid = sgid
         self.tgid = tgid
         self.synapse_mode = synapse_mode
         self.doneReplayRegister = 0
         self.synOverride = None
         self.weight_factor = weight_factor
-
         self._stdp = STDPMode.validate(stdp)
         self._minis_spont_rate = minis_spont_rate
-        self._synapse_locations = Neuron.h.TPointList(tgid, 1)
+        self._synapse_locations = h.TPointList(tgid, 1)
         self._synapse_params = []
         self._synapse_ids = ArrayCompat("i")
         self._configurations = []
@@ -162,7 +160,7 @@ class Connection(object):
         self._synapse_params.append(params_obj)
 
         # copy the location from the pointlist into the param item for easier debugging access
-        params_obj.location = syn_tpoints[0]
+        params_obj.location = syn_tpoints.x[0]
 
         if syn_id is not None:
             self._synapse_ids.append(syn_id)
@@ -193,18 +191,18 @@ class Connection(object):
         if self.synOverride is not None:
             # there should be a 'Helper' for that syntype in the hoc path.
             override_helper = self.synOverride.get("ModOverride") + "Helper"
-            Neuron.load_hoc(override_helper)
+            ND.load_hoc(override_helper)
             try:
-                cls = getattr(Neuron.h, override_helper)
+                cls = getattr(ND.h, override_helper)
                 syn_helper = cls(self.tgid, params_obj, x, syn_id, base_seed, self.synOverride)
             except Exception:
                 logging.error("Failed to create synapse from helper: '%s'", override_helper)
                 raise RuntimeError("Failed to execute override helper " + override_helper)
         else:
             if params_obj.synType < 100:
-                syn_helper = Neuron.h.GABAABHelper(self.tgid, params_obj, x, syn_id, base_seed)
+                syn_helper = ND.GABAABHelper(self.tgid, params_obj, x, syn_id, base_seed)
             else:
-                syn_helper = Neuron.h.AMPANMDAHelper(self.tgid, params_obj, x, syn_id, base_seed)
+                syn_helper = ND.AMPANMDAHelper(self.tgid, params_obj, x, syn_id, base_seed)
 
         cell.CellRef.synHelperList.append(syn_helper)
         cell.CellRef.synlist.append(syn_helper.synapse)
@@ -227,10 +225,10 @@ class Connection(object):
         weight_adjusts = []
         wa_netcon_pre = []
         wa_netcon_post = []
-        rng_info = Neuron.h.RNGSettings()
-        tbins_vec = Neuron.Vector(1)
+        rng_info = ND.RNGSettings()
+        tbins_vec = ND.Vector(1)
         tbins_vec.x[0] = 0.0
-        rate_vec = Neuron.Vector(1)
+        rate_vec = ND.Vector(1)
 
         # Initialize member lists
         self._synapses = []
@@ -260,16 +258,16 @@ class Connection(object):
                                      active_params.weight)
             nc = pnm.nclist.object(nc_index)  # Netcon object
             nc.delay = active_params.delay
-            nc.weight = active_params.weight * self.weight_factor
+            nc.weight[0] = active_params.weight * self.weight_factor
             nc.threshold = -30
 
             # If the config has UseSTDP, do STDP stuff (can add more options later
             #   here and in Connection.init). Instantiates the appropriate StdpWA mod file
             if self._stdp:
                 if self._stdp == STDPMode.DOUBLET_STDP:
-                    weight_adjuster = Neuron.h.StdpWADoublet(x)
+                    weight_adjuster = ND.StdpWADoublet(x)
                 elif self._stdp == STDPMode.TRIPLET_STDP:
-                    weight_adjuster = Neuron.h.StdpWATriplet(x)
+                    weight_adjuster = ND.StdpWATriplet(x)
                 else:
                     raise ValueError("Invalid STDP config")
 
@@ -280,38 +278,38 @@ class Connection(object):
                 #   with weights of 1 and -1, respectively
                 nc_wa_pre = pnm.pc.gid_connect(self.sgid, weight_adjuster)
                 nc_wa_pre.threshold = -30
-                nc_wa_pre.weight = 1
+                nc_wa_pre.weight[0] = 1
                 nc_wa_pre.delay = active_params.delay
 
                 nc_wa_post = pnm.pc.gid_connect(tgid, weight_adjuster)
                 nc_wa_post.threshold = -30
-                nc_wa_post.weight = -1
+                nc_wa_post.weight[0] = -1
                 nc_wa_post.delay = active_params.delay
 
                 # Set the pointer to the synapse netcon weight
-                Neuron.h.setpointer(nc._ref_weight, "wsyn", weight_adjuster)
+                ND.setpointer(nc._ref_weight, "wsyn", weight_adjuster)
 
                 weight_adjusts.append(weight_adjuster)
                 wa_netcon_pre.append(nc_wa_pre)
                 wa_netcon_post.append(nc_wa_post)
 
             if self._minis_spont_rate > 0.0:
-                ips = Neuron.h.InhPoissonStim(x)
+                ips = ND.InhPoissonStim(x)
                 # netconMini = pnm.pc.gid_connect(ips, finalgid)
 
                 # A simple NetCon will do, as the synapse and cell are local.
-                netcon_m = Neuron.h.NetCon(ips, syn_obj)
+                netcon_m = ND.NetCon(ips, syn_obj)
                 netcon_m.delay = 0.1
                 # TODO: better solution here to get the desired behaviour during
                 # delayed connection blocks
                 # Right now spontaneous minis should be unaffected by delays
-                netcon_m.weight = active_params.weight * self.weight_factor
+                netcon_m.weight[0] = active_params.weight * self.weight_factor
                 self._minis_netcons.append(netcon_m)
                 if rng_info.getRNGMode() == rng_info.RANDOM123:
                     ips.setRNGs(syn_obj.synapseID+200, tgid+250, rng_info.getMinisSeed()+300,
                                 syn_obj.synapseID+200, tgid+250, rng_info.getMinisSeed()+350)
                 else:
-                    exprng = Neuron.h.Random()
+                    exprng = ND.Random()
                     if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
                         exprng.MCellRan4(syn_obj.synapseID*100000 + 200,
                                          tgid + 250 + base_seed + rng_info.getMinisSeed())
@@ -320,7 +318,7 @@ class Connection(object):
                                          tgid + 250 + base_seed + rng_info.getMinisSeed())
 
                     exprng.negexp(1)
-                    uniformrng = Neuron.h.Random()
+                    uniformrng = ND.Random()
                     if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
                         uniformrng.MCellRan4(syn_obj.synapseID*100000 + 300,
                                              tgid + 250 + base_seed + rng_info.getMinisSeed())
@@ -370,7 +368,7 @@ class Connection(object):
                 continue
             x = self._synapse_locations.x[syn_i]
             active_params = self._synapse_params[syn_i]
-            gap_junction = Neuron.h.Gap(x)
+            gap_junction = ND.Gap(x)
 
             # Using computed offset
             logging.debug("connect %f to %f [D: %f + %f], [F: %f + %f] (weight: %f)",
@@ -407,12 +405,12 @@ class Connection(object):
             context: The context in which the command shall be executed
         """
         synapses = synapse if isinstance(synapse, tuple) else (synapse,)
-        Neuron.execute("objref _tmp")
+        ND.execute("objref _tmp")
         for syn in synapses:
-            Neuron.h._tmp = syn
+            ND._tmp = syn
             hoc_cmd = configuration.s.replace("%s", "_tmp")
             try:
-                Neuron.execute(hoc_cmd, context)
+                ND.execute(hoc_cmd, context)
             except RuntimeError:
                 logging.warning("Failed to apply configuration to synapse: %s", hoc_cmd)
 
@@ -440,11 +438,11 @@ class Connection(object):
             update_also_replay_netcons: Whether weights shall be applied to replay netcons as well
         """
         for nc in self._netcons:
-            nc.weight = weight
+            nc.weight[0] = weight
 
         if update_also_replay_netcons and self._replay_netcons:
             for nc in self._replay_netcons:
-                nc.weight = weight
+                nc.weight[0] = weight
 
     # -
     def replay(self, tvec):
@@ -464,8 +462,8 @@ class Connection(object):
                 continue
             active_params = self._synapse_params[syn_i]
 
-            nc = Neuron.h.NetCon(None, self._synapses[local_i], 10, 1, active_params.weight)
-            nc.weight = active_params.weight  * self.weight_factor
+            nc = ND.NetCon(None, self._synapses[local_i], 10, 1, active_params.weight)
+            nc.weight[0] = active_params.weight  * self.weight_factor
             self._replay_netcons.append(nc)
             local_i += 1
 

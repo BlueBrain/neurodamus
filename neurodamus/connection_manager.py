@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from itertools import chain
 from os import path
-from .core import Neuron
+from .core import NeuronDamus as ND
 from .utils import ArrayCompat, bin_search
 from .connection import SynapseParameters, Connection, SynapseMode, STDPMode
 
@@ -27,24 +27,28 @@ class _ConnectionManagerBase(object):
         # Connections indexed by post-gid, then ordered by pre-gid
         self._connections = defaultdict(list)
         self._creation_mode = True
+        self._synapse_reader = None
 
         synapse_file = path.join(circuit_path, self.DATA_FILENAME)
+        self.open_synapse_file(synapse_file, n_synapse_files)
+
+    def open_synapse_file(self, synapse_file, n_synapse_files):
         self._synapse_reader = self._init_synapse_reader(
-            target_manager, synapse_file, n_synapse_files)
+            self._target_manager, synapse_file, n_synapse_files)
 
     @staticmethod
     def _init_synapse_reader(target_manager, synapse_file, n_synapse_files):
-        time_id = Neuron.h.timeit_register("file read")
-        Neuron.h.timeit_start(time_id)
-        _syn_reader = Neuron.h.HDF5Reader(synapse_file, n_synapse_files)
-        Neuron.h.timeit_add(time_id)
+        time_id = ND.timeit_register("file read")
+        ND.timeit_start(time_id)
+        _syn_reader = ND.HDF5Reader(synapse_file, n_synapse_files)
+        ND.timeit_add(time_id)
 
         if n_synapse_files > 1:
-            timeit_id = Neuron.h.timeit_register("syn exchange")
-            Neuron.h.timeit_start(timeit_id)
+            timeit_id = ND.timeit_register("syn exchange")
+            ND.timeit_start(timeit_id)
             _syn_reader.exchangeSynapseLocations(
                 target_manager.cellDistributor.getGidListForProcessor())
-            Neuron.h.timeit_add(timeit_id)
+            ND.timeit_add(timeit_id)
         return _syn_reader
 
     def disable_creation(self):
@@ -66,7 +70,6 @@ class _ConnectionManagerBase(object):
             logging.debug("connecting to post neuron a%d - %d items", tgid, len(synapses_params))
             for i, syn_params in enumerate(synapses_params):
                 sgid = syn_params.sgid
-                logging.debug("connect pre a%d to post a%d", sgid, tgid)
                 if self._circuit_target and not self._circuit_target.completeContains(sgid):
                     continue
                 # should still need to check that the other side of the gap junction will
@@ -75,7 +78,7 @@ class _ConnectionManagerBase(object):
                 # low to high. This code therefore doesn't search or sort on its own.
                 # If the nrn.h5 file changes in the future we must update the code accordingly
                 if cur_conn is None or cur_conn.sgid != sgid:
-                    cur_conn = Connection(sgid, tgid, None, "STDPoff", 0, self._synapse_mode,
+                    cur_conn = Connection(sgid, tgid, None, STDPMode.NO_STDP, 0, self._synapse_mode,
                                           weight_factor)
                     self.store_connection(cur_conn)
 
@@ -195,7 +198,7 @@ class _ConnectionManagerBase(object):
             logging.warning("No synapses for %s. Skipping", cell_name)
             return []
 
-        dt = Neuron.h.dt
+        dt = ND.dt
         reader = self._synapse_reader
         nrn_version = reader.checkVersion()
         nrow = int(reader.numberofrows(cell_name))
@@ -269,7 +272,7 @@ class _ConnectionManagerBase(object):
                         conn.update_weights(weight)
 
     # -
-    def apply_post_config_parsed(self, conn_parsed_config, gidvec):
+    def apply_post_config_obj(self, conn_parsed_config, gidvec):
         """Change connections configuration after finalize, according to parsed config
 
         Args:
@@ -334,7 +337,7 @@ class _ConnectionManagerBase(object):
         Args:
             conn: The connection object to be stored
         """
-        logging.debug("store %d->%d amongst %d items", conn.tgid, conn.sgid,
+        logging.log(5, "store %d->%d amongst %d items", conn.tgid, conn.sgid,
                       len(self._connections))
         cell_conns, pos = self._find_connection(conn.sgid, conn.tgid, exact=False)
         if pos is not None:
@@ -408,7 +411,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
             base_seed: optional argument to adjust synapse RNGs (default=0)
         """
         cell_distributor = self._target_manager.cellDistributor
-        for tgid, conns in self._connections:
+        for tgid, conns in self._connections.items():
             metype = cell_distributor.getMEType(tgid)
             spgid = cell_distributor.getSpGid(tgid)
             for conn in conns:  # type: Connection
@@ -425,19 +428,19 @@ class SynapseRuleManager(_ConnectionManagerBase):
             spike_map: map of gids (pre-synaptic) with vector of spike times
         """
         target = self._target_manager.getTarget(target_name)
-        timeit_id = Neuron.h.timeit_register("searchNapply")
+        timeit_id = ND.timeit_register("searchNapply")
 
         for tgid, conns in self._connections.items():
             if not target.contains(tgid):
                 continue
-            Neuron.h.timeit_start(timeit_id)
+            ND.timeit_start(timeit_id)
             cell = target.cellDistributor.getCell(tgid)
 
             for conn in conns:
                 if spike_map.exists(conn.sgid):
                     conn.replay(spike_map.get(conn.sgid), cell)
                     self._replay_list.append(conn)
-            Neuron.h.timeit_add(timeit_id)
+            ND.timeit_add(timeit_id)
 
     # -
     def register_events(self):

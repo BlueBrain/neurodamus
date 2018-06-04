@@ -2,9 +2,16 @@ from __future__ import absolute_import
 from ..utils import classproperty
 from neurodamus.core.configuration import Neuron_Stdrun_Defaults
 from .configuration import GlobalConfig
+from six import add_metaclass
 
 
-class Neuron:
+class _NeuronMeta(type):
+    def __getattr__(self, item):
+        return getattr(self.h, item)
+
+
+@add_metaclass(_NeuronMeta)
+class Neuron(object):
     """
     A wrapper over the neuron simulator.
     """
@@ -27,17 +34,18 @@ class Neuron:
     @classmethod
     def _init(cls):
         """Initializes the Neuron simulator"""
-        if GlobalConfig.use_mpi:
-            _init_mpi()
-        from neuron import h
-        from neuron import nrn
-        cls.Section = nrn.Section
-        cls.Segment = nrn.Segment
-        cls._h = h
-        h.load_file("stdrun.hoc")
-        h("objref nil")
-        h.init()
-        return h
+        if cls._h is None:
+            if GlobalConfig.use_mpi:
+                _init_mpi()
+            from neuron import h
+            from neuron import nrn
+            cls.Section = nrn.Section
+            cls.Segment = nrn.Segment
+            cls._h = h
+            h.load_file("stdrun.hoc")
+            h("objref nil")
+            h.init()
+        return cls._h
 
     @classmethod
     def load_hoc(cls, mod_name):
@@ -66,13 +74,13 @@ class Neuron:
             raise RuntimeError("Cant load MOD dll {}. Please check if it can be loaded (LD path and dependencies)"
                                .format(dll_path))
 
-    @classmethod
-    def execute(cls, expression, hoc_context=None):
-        """Executes a given Hoc statement in Neuron.
-        By default statements are executed at top-level, unless a hoc object is given as context.
-        Raises RuntimeError in case the Hoc interpreter can't execute the command
-        """
-        cls.h.execute(expression, hoc_context)
+    # @classmethod
+    # def execute(cls, expression, hoc_context=None):
+    #     """Executes a given Hoc statement in Neuron.
+    #     By default statements are executed at top-level, unless a hoc object is given as context.
+    #     Raises RuntimeError in case the Hoc interpreter can't execute the command
+    #     """
+    #     cls.h.execute(expression, hoc_context)
 
     @classmethod
     def run_sim(cls, t_stop, *monitored_sections, **params):
@@ -94,9 +102,9 @@ class Neuron:
     Simulation = None  # type: Simulation
     Section = None
     Segment = None
-    # Datastucts coming from Neuron
-    Vector = classmethod(lambda cls, *args: cls.h.Vector(*args))
-    List = classmethod(lambda cls, *args: cls.h.List(*args))
+    # # Datastucts coming from Neuron
+    # Vector = classmethod(lambda cls, *args: cls.h.Vector(*args))
+    # List = classmethod(lambda cls, *args: cls.h.List(*args))
 
 
 def _init_mpi():

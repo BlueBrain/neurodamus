@@ -10,4 +10,5 @@ except Exception:
 __author__ = "Fernando Pereira <fernando.pereira@epfl.ch>"
 __copyright__ = "2018 Blue Brain Project, EPFL"
 
-from ._neurodamus import init_neurodamus, setup_node, run
+# Neurodamus node for setting up a neurodamus execution
+from .node import setup_node, run

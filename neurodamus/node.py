@@ -6,17 +6,11 @@ Copyright 2018 - Blue Brain Project, EPFL
 from __future__ import absolute_import
 from os import path
 import logging
-from .core import Neuron
+from .utils import setup_logging
 from .cell_distributor import CellDistributor
 from .core.configuration import GlobalConfig, MPInfo
+from .core import NeuronDamus as Nd
 from .connection_manager import SynapseRuleManager, GapJunctionManager
-
-LIB_PATH = path.realpath(path.join(path.dirname(__file__), "../../lib"))
-MOD_LIB = path.join(LIB_PATH, "modlib", "libnrnmech.so")
-HOC_LIB = path.join(LIB_PATH, "hoclib", "neurodamus")
-
-# Initialized h
-_h = None
 
 
 class ConfigurationError(Exception):
@@ -32,31 +26,16 @@ class Node:
     # targetManager, targetParser, cellDistributor, configParser, cellList, gidvec, stimList, reportList, gjManager
     # pnm, this, tmpCell, stimManager, elecManager, binReportHelper, synapseRuleManager, connectionWeightDelayList
 
-    @classmethod
-    def init_neuron(cls):
-        global _h
-        if _h is None:
-            _h = Neuron.h
-            Neuron.load_dll(MOD_LIB)
-            Neuron.load_hoc(HOC_LIB)
-
-            cls.pnm = _h.ParallelNetManager(0)
-            MPInfo.cpu_count = int(cls.pnm.nhost)
-            MPInfo.rank = int(cls.pnm.myid)
-
     def __init__(self, recipe):
         """ Creates a neurodamus executor
         Args:
             recipe: The BlueRecipe file
         """
-        self.init_neuron()
-        Neuron.execute("cvode = new CVode()")
-        if MPInfo.rank == 0:
-            _h.timeit_setVerbose(1)
-        else:
-            logging.disable(logging.WARN)
+        self.pnm = Nd.pnm
+        Nd.execute("cvode = new CVode()")
+
         self.configParser = self.openConfig(recipe)
-        _h.execute("celsius=34")
+        Nd.execute("celsius=34")
         self.connectionWeightDelayList = []
 
         # Instance Objects
@@ -66,11 +45,9 @@ class Node:
 
         self.runtime = 0
 
-        #self.synapseRuleManager = None; self.gjManager = None
+        #self._synapse_manager = None; self._gj_manager = None
         self._synapse_manager = None  # type: SynapseRuleManager
         self._gj_manager = None       # type: GapJunctionManager
-
-
 
     #
     def openConfig(self, recipe):
@@ -78,23 +55,24 @@ class Node:
         Args:
             recipe: Name of Config file to load
         """
-        configParser = _h.ConfigParser()
+        configParser = Nd.ConfigParser()
         configParser.open(recipe)
         if MPInfo.rank == 0:
             configParser.toggleVerbose()
 
         # set some basic information
         parsedRun = configParser.parsedRun
-        if not _h.object_id(parsedRun):
+        if not Nd.object_id(parsedRun):
             raise RuntimeError("No Run block parsed from BlueConfig %s", recipe)
 
         # Make sure Random Numbers are prepped
-        rngInfo = _h.RNGSettings()
+        rngInfo = Nd.RNGSettings()
         rngInfo.interpret(parsedRun)  # this sets a few global vars in hoc
 
-        _h.tstop = parsedRun.valueOf("Duration")
-        _h.dt = parsedRun.valueOf("Dt")
-        _h.steps_per_ms = 1.0 / _h.dt
+        h = Nd.h
+        h.tstop = parsedRun.valueOf("Duration")
+        h.dt = parsedRun.valueOf("Dt")
+        h.steps_per_ms = 1.0 / h.dt
         return configParser
 
     #
@@ -148,7 +126,7 @@ class Node:
 
         # rank 0 broadcasts the fact whether we need to generate loadbalancing data or not
         if GlobalConfig.use_mpi:
-            message = Neuron.Vector(1, doGenerate)
+            message = Nd.Vector(1, doGenerate)
             self.pnm.pc.broadcast(message, 0)
             doGenerate = message[0]
 
@@ -167,11 +145,11 @@ class Node:
         # Can we use an existing mcomplex.dat?  If mechanisms change, it needs to be regenerated.
         if not path.isfile("mcomplex.dat"):
             logging.info("Generating mcomplex.dat...")
-            _h.create_mcomplex()
+            Nd.create_mcomplex()
         else:
             logging.info("using existing mcomplex.dat")
-        loadbal = _h.LoadBalance()
-        _h.read_mcomplex(loadbal)
+        loadbal = Nd.LoadBalance()
+        Nd.read_mcomplex(loadbal)
 
         logging.info("instantiate cells Round Robin style")
         self.createCells("RR")
@@ -214,7 +192,7 @@ class Node:
         load any target files via a TargetParser.  Note that these will be moved into a TargetManager
         after the cells have been distributed, instantiated, and potentially split
         """
-        self.targetParser = _h.TargetParser()
+        self.targetParser = Nd.TargetParser()
         if MPInfo.rank == 0:
             self.targetParser.isVerbose = 1
 
@@ -242,7 +220,7 @@ class Node:
         if runMode is not None:
             logging.info("override RunMode")
             if not self.configParser.parsedRun.exists("RunMode"):
-                mode_obj = _h.String("RR")
+                mode_obj = Nd.String("RR")
                 self.configParser.parsedRun.put("RunMode", mode_obj)
             else:
                 mode_obj = self.configParser.parsedRun.get("RunMode")
@@ -262,7 +240,7 @@ class Node:
         self.targetParser.updateTargets(gidvec)
 
         # give a TargetManager the TargetParser's completed targetList
-        self.targetManager = _h.TargetManager(self.targetParser.targetList, self.cellDistributor)
+        self.targetManager = Nd.TargetManager(self.targetParser.targetList, self.cellDistributor)
 
         # Let the CellDistributor object have any final say in the cell objects
         self.cellDistributor.finalize(gidvec)
@@ -308,10 +286,10 @@ class Node:
             if spConnect.exists("Weight"):
                 weight = spConnect.valueOf("Weight")
 
-            self.synapseRuleManager.synOverride = None
+            self._synapse_manager.synOverride = None
             if spConnect.exists("ModOverride"):
                 # allows a helper object to grab any additional configuration values
-                self.synapseRuleManager.synOverride = spConnect
+                self._synapse_manager.synOverride = spConnect
 
             # print out a message on node 0 if SynapseConfigure option is included just to give user feedback
             synConfig = None
@@ -322,12 +300,14 @@ class Node:
 
             # finally we have all the options checked and can now invoke the SynapseRuleManager
             if spConnect.exists("SynapseID"):
-                self.synapseRuleManager.groupConnect(
-                    connSource, connDestination, weight, synConfig, self.cellDistributor.getGidListForProcessor(),
+                self._synapse_manager.group_connect(
+                    connSource, connDestination, weight, synConfig,
+                    self.cellDistributor.getGidListForProcessor(),
                     useSTDP, spontMiniRate, spConnect.valueOf("SynapseID"))
             else:
-                self.synapseRuleManager.groupConnect(
-                    connSource, connDestination, weight, synConfig, self.cellDistributor.getGidListForProcessor(),
+                self._synapse_manager.group_connect(
+                    connSource, connDestination, weight, synConfig,
+                    self.cellDistributor.getGidListForProcessor(),
                     useSTDP, spontMiniRate)
 
     #
@@ -347,22 +327,22 @@ class Node:
                 logging.info(nrnPath)
 
                 # use connectAll for gj_manager
-                if self.gjManager is not None:
+                if self._gj_manager is not None:
                     logging.info("Error: neurodamus can only support loading one gap junction file."
                              "Skipping loading...",
                              level=logging.WARNING)
                     break
 
-                self.gjManager = _h.GapJunctionManager(nrnPath, self.targetManager, 1, circuitTarget)
-                self.gjManager.connectAll(self.cellDistributor.getGidListForProcessor(), 1)
+                self._gj_manager = Nd.GapJunctionManager(nrnPath, self.targetManager, 1, circuitTarget)
+                self._gj_manager.connectAll(self.cellDistributor.getGidListForProcessor(), 1)
 
-        if self.gjManager is not None:
-            self.gjManager.finalizeGapJunctions()
+        if self._gj_manager is not None:
+            self._gj_manager.finalizeGapJunctions()
 
     #
     def updateGJcon(self, GJcon):
-        if self.gjManager is not None:
-            self.gjManager.updateCond(GJcon)
+        if self._gj_manager is not None:
+            self._gj_manager.updateCond(GJcon)
 
     #
     def createSynapses(self):
@@ -398,13 +378,17 @@ class Node:
                 raise ConfigurationError("nrn.h5 doesnt exist and BlueConfig does not specify"
                                          "NumSynapseFiles")
 
-        timeID = _h.timeit_register("Synapse init")
-        _h.timeit_start(timeID)
-        self._synapse_manager = SynapseRuleManager(nrnPath, self.targetManager, nSynapseFiles, synMode)
-        _h.timeit_add(timeID)
+        timeID = Nd.timeit_register("Synapse init")
+        Nd.timeit_start(timeID)
+        #self._synapse_manager = SynapseRuleManager(nrnPath, self.targetManager, nSynapseFiles, synMode)
+        if synMode is None:
+            synMode = "DualSyns"
+        self._synapse_manager = Nd.SynapseRuleManager(nrnPath, self.targetManager, nSynapseFiles,
+                                                      synMode)
+        Nd.timeit_add(timeID)
 
         if self.configParser.parsedConnects.count() == 0:
-            self.synapseRuleManager.connectAll(self.cellDistributor.getGidListForProcessor(), 1)
+            self._synapse_manager.connectAll(self.cellDistributor.getGidListForProcessor(), 1)
         else:
             # Do a quick scan for any ConnectionBlocks with 'Delay' keyword and put a reference on a separate list
             # to be adjusted until later.  Note that this requires that another connection
@@ -424,10 +408,10 @@ class Node:
             nSynapseFiles = 1
             if self.configParser.parsedRun.exists("NumBonusFiles"):
                 nSynapseFiles = int(self.configParser.parsedRun.valueOf("NumBonusFiles"))
-            self.synapseRuleManager.openSynapseFile(self.configParser.parsedRun.get("BonusSynapseFile").s, nSynapseFiles, 0)
+            self._synapse_manager.open_synapse_file(self.configParser.parsedRun.get("BonusSynapseFile").s, nSynapseFiles, 0)
 
             if self.configParser.parsedConnects.count() == 0:
-                self.synapseRuleManager.connectAll(self.cellDistributor.getGidListForProcessor())
+                self._synapse_manager.connectAll(self.cellDistributor.getGidListForProcessor())
             else:
                 # print "self.configParser.parsedConnects"
                 self.interpretConnections()
@@ -436,32 +420,32 @@ class Node:
         if self.configParser.parsedProjections.count() > 0:
             logging.info("Handle Projections")
 
-        for projIndex in range(int(self.configParser.parsedProjections.count())):
-            nSynapseFiles = 1
-            projection = self.configParser.parsedProjections.o(projIndex)
-            if projection.exists("NumSynapseFiles"):
-                nSynapseFiles = projection.valueOf("NumSynapseFiles")
+            for projIndex in range(int(self.configParser.parsedProjections.count())):
+                nSynapseFiles = 1
+                projection = self.configParser.parsedProjections.o(projIndex)
+                if projection.exists("NumSynapseFiles"):
+                    nSynapseFiles = projection.valueOf("NumSynapseFiles")
 
-            # check if this Projection block is for gap junctions
-            if projection.exists("Type") and projection.get("Type").s == "GapJunction":
-                continue
+                # check if this Projection block is for gap junctions
+                if projection.exists("Type") and projection.get("Type").s == "GapJunction":
+                    continue
 
-            nrnPath = self.findProjectionFiles(projection)
-            self.synapseRuleManager.openSynapseFile(nrnPath, nSynapseFiles, 0)
+                nrnPath = self.findProjectionFiles(projection)
+                self._synapse_manager.open_synapse_file(nrnPath, nSynapseFiles, 0)
 
-            # A 'Source' field is provided that indicates a target name that contains all the gids used by the
-            # presynaptic cells of the projection.  However, I don't need that at the moment
+                # A 'Source' field is provided that indicates a target name that contains all the gids used by the
+                # presynaptic cells of the projection.  However, I don't need that at the moment
 
-            # Go ahead and make all the Projection connections
-            self.synapseRuleManager.connectAll(self.cellDistributor.getGidListForProcessor())
+                # Go ahead and make all the Projection connections
+                self._synapse_manager.connectAll(self.cellDistributor.getGidListForProcessor())
 
-            self.interpretConnections()
+                self.interpretConnections()
 
         # Check if we need to override the base seed for synapse RNGs
         if self.configParser.parsedRun.exists("BaseSeed"):
-            self.synapseRuleManager.finalizeSynapses(self.configParser.parsedRun.valueOf("BaseSeed"))
+            self._synapse_manager.finalize(self.configParser.parsedRun.valueOf("BaseSeed"))
         else:
-            self.synapseRuleManager.finalizeSynapses()
+            self._synapse_manager.finalizeSynapses()
 
     #
     def findProjectionFiles(self, projection):
@@ -500,9 +484,9 @@ class Node:
             cell.CellRef.clear()
         del self.cellList[:]
 
-        # remove the self.synapseRuleManager to destroy all underlying synapses/connections
-        self.synapseRuleManager = None
-        self.gjManager = None
+        # remove the self._synapse_manager to destroy all underlying synapses/connections
+        self._synapse_manager = None
+        self._gj_manager = None
         self.connectionWeightDelayList = []
         # topologging.infoy()
 
@@ -522,14 +506,14 @@ class Node:
         # setup of Electrode objects part of enable stimulus
         if self.configParser.parsedRun.exists("ElectrodesPath"):
             elecPath = self.configParser.parsedRun.get("ElectrodesPath").s
-            self.elecManager = _h.ElectrodeManager(elecPath, self.configParser.parsedElectrodes)
+            self.elecManager = Nd.ElectrodeManager(elecPath, self.configParser.parsedElectrodes)
 
         # for each stimulus defined in the config file, request the stimmanager to instantiate
         if self.configParser.parsedRun.exists("BaseSeed"):
-            self.stimManager = _h.StimulusManager(self.targetManager, self.elecManager,
+            self.stimManager = Nd.StimulusManager(self.targetManager, self.elecManager,
                                                   self.configParser.parsedRun.valueOf("BaseSeed"))
         else:
-            self.stimManager = _h.StimulusManager(self.targetManager, self.elecManager)
+            self.stimManager = Nd.StimulusManager(self.targetManager, self.elecManager)
 
         # print what stims we have
         injRequests = self.configParser.parsedInjects
@@ -552,7 +536,7 @@ class Node:
         if hasExtraCellular:
             self.stimManager.interpretExtracellulars(injRequests, self.configParser.parsedStimuli)
 
-        timeID = _h.timeit_register("Replay init")
+        timeID = Nd.timeit_register("Replay init")
         for injIndex in range(int(injRequests.count())):
             targetName = injRequests.o(injIndex).get("Target").s
             stimName = injRequests.o(injIndex).get("Stimulus").s
@@ -561,7 +545,7 @@ class Node:
             # check the pattern for special cases that are handled here.
             if stim.get("Pattern").s == "SynapseReplay":
                 raise NotImplementedError("Currently Synapse replay is not yet available in Python")
-                # _h.timeit_start(timeID)
+                # Nd.timeit_start(timeID)
                 # # Note: maybe I should let the StimulusManager have a reference to the SynapseRuleManager.
                 # # Then I can move all this into that obj. I could then have the logging.infoic of Delay/Duration added
                 # # in a more appropriate place (for now, there is no delay/duration handling, but it might be nice
@@ -569,17 +553,17 @@ class Node:
                 #
                 # # timeID = timeit_register("Replay init")
                 # if stim.exists("Delay"):
-                #     synReplay = _h.SynapseReplay(self.synapseRuleManager, stim.get("SpikeFile").s,
+                #     synReplay = Nd.SynapseReplay(self._synapse_manager, stim.get("SpikeFile").s,
                 #                                  stim.valueOf("Delay"), MPInfo.rank == 0 )
                 # else:
-                #     synReplay = _h.SynapseReplay(self.synapseRuleManager, stim.get("SpikeFile").s,
+                #     synReplay = Nd.SynapseReplay(self._synapse_manager, stim.get("SpikeFile").s,
                 #                                  0, MPInfo.rank == 0)
-                # _h.timeit_add(timeID)
+                # Nd.timeit_add(timeID)
                 #
-                # timeID = _h.timeit_register("Replay inject")
-                # _h.timeit_start(timeID)
+                # timeID = Nd.timeit_register("Replay inject")
+                # Nd.timeit_start(timeID)
                 # synReplay.replay(targetName)
-                # _h.timeit_add(timeID)
+                # Nd.timeit_add(timeID)
             else:
                 # all other patterns the stim manager will interpret
                 self.stimManager.interpret(targetName, stim)
@@ -591,7 +575,7 @@ class Node:
         the hoc directly, but rather access a library of already available Modifications
         """
         # local:modIndex  # localobj: modificationManager
-        modificationManager = _h.ModificationManager(self.targetManager)
+        modificationManager = Nd.ModificationManager(self.targetManager)
         for modIndex in range(int(self.configParser.parsedModifications.count())):
             modificationManager.interpret(self.configParser.parsedModifications.o(modIndex))
 
@@ -606,7 +590,7 @@ class Node:
 
         # need bin report helper to handle MPI communication
         simDt = self.configParser.parsedRun.valueOf("Dt")
-        self.binReportHelper = _h.BinReportHelper(simDt)
+        self.binReportHelper = Nd.BinReportHelper(simDt)
 
         # other useful fields from main Run object
         outputDir = self.configParser.parsedRun.get("OutputRoot").s
@@ -614,7 +598,7 @@ class Node:
 
         # confirm outputDir exists and is usable -> use utility.mod
         if MPInfo.rank == 0:
-            execResult = _h.checkDirectory(outputDir)
+            execResult = Nd.checkDirectory(outputDir)
             if execResult < 0:
                 error = True
                 logging.info("Error with OutputRoot %s. Terminating", outputDir, level=logging.ERROR)
@@ -653,10 +637,10 @@ class Node:
                 iscParam = ""
 
             if electrodeName is None:
-                report = _h.Report(reportName, type_, reportOn, unit, format, repDt, startTime, endTime, outputDir,
+                report = Nd.Report(reportName, type_, reportOn, unit, format, repDt, startTime, endTime, outputDir,
                                    None, scalingOption, iscParam)
             else:
-                report = _h.Report(reportName, type_, reportOn, unit, format, repDt, startTime, endTime, outputDir,
+                report = Nd.Report(reportName, type_, reportOn, unit, format, repDt, startTime, endTime, outputDir,
                                    self.elecManager.getElectrode(electrodeName), scalingOption, iscParam)
 
             # Go through the target members, one cell at a time. We give a cell reference along with the
@@ -713,13 +697,13 @@ class Node:
         """
         # local:i   # localobj: outf, memUsage
         # Note - MemUsage constructor will do a group communication, so must be instantiated before pc.runworker
-        memUsage = _h.MemUsage()
-        _h.timeit_init(self.pnm.pc)  # need a parallel context reference before doing final gather of timing data
+        memUsage = Nd.MemUsage()
+        Nd.timeit_init(self.pnm.pc)  # need a parallel context reference before doing final gather of timing data
 
         self.pnm.pc.runworker()
         # don't use the built in gather spikes function as this will overload node 0 with events
         # self.pnm.gatherspikes()
-        _h.prtime(self.pnm.pc)
+        Nd.prtime(self.pnm.pc)
         memUsage.print_node_mem_usage()
         self.pnm.pc.done()
 
@@ -755,7 +739,7 @@ class Node:
 
         Returns: list with synapse data for the gid
         """
-        return self.synapseRuleManager.get_synapse_params_gid(gid)
+        return self._synapse_manager.get_synapse_params_gid(gid)
 
     #
     def executeNeuronConfigures(self):
@@ -783,7 +767,7 @@ class Node:
                         tstr = activeConfig.get("Configure").s
 
                         # keep checking the string for '%s'; as long as one is there, rebuild the string around it
-                        tstr = tstr.replace("%s", _h.secname(cell=x))
+                        tstr = tstr.replace("%s", Nd.secname(cell=x))
                         tstr = tstr.replace("%g", "%g" % (x,))
 
                         logging.info(tstr, level=logging.DEBUG)
@@ -795,7 +779,7 @@ class Node:
         # local:timeID, spike_compress, cacheeffic, forwardSkip, saveDt, flushIndex, delayIndex
         # localobj: progressIndicator, spConnect
         if show_progress:
-            progress = _h.ShowProgress(_h.cvode, MPInfo.rank)
+            progress = Nd.ShowProgress(Nd.cvode, MPInfo.rank)
 
         self.pnm.pc.setup_transfer()
         spike_compress = 3
@@ -804,67 +788,67 @@ class Node:
         # LFP calculation requires WholeCell balancing and extracellular mechanism.
         # This is incompatible with efficient caching atm.
         if self.configParser.parsedRun.exists("ElectrodesPath"):
-            _h.cvode.cache_efficient(0)
+            Nd.cvode.cache_efficient(0)
         else:
-            _h.cvode.cache_efficient(1)
+            Nd.cvode.cache_efficient(1)
 
         self.want_all_spikes()
         self.pnm.pc.set_maxstep(4)
-        self.runtime = _h.startsw()
+        self.runtime = Nd.startsw()
 
         # Returned timings
         tdat = [0] * 7
         tdat[0] = self.pnm.pc.wait_time()
 
-        timeID = _h.timeit_register("stdinit")
-        _h.timeit_start(timeID)
-        _h.stdinit()
-        _h.timeit_add(timeID)
+        timeID = Nd.timeit_register("stdinit")
+        Nd.timeit_start(timeID)
+        Nd.stdinit()
+        Nd.timeit_add(timeID)
 
         # check for optional argument "ForwardSkip"
         forwardSkip = 0
         if self.configParser.parsedRun.exists("ForwardSkip"):
             forwardSkip = self.configParser.parsedRun.valueOf("ForwardSkip")
         if forwardSkip > 0:
-            _h.t = -1e9
-            saveDt = _h.dt
-            _h.dt = forwardSkip * 0.1
+            Nd.t = -1e9
+            saveDt = Nd.dt
+            Nd.dt = forwardSkip * 0.1
             for flushIndex in range(9):
-                _h.fadvance()
-            _h.dt = saveDt
-            _h.t = 0
-            _h.frecord_init()
+                Nd.fadvance()
+            Nd.dt = saveDt
+            Nd.t = 0
+            Nd.frecord_init()
 
         # increase timeout by 10x
         self.pnm.pc.timeout(200)
 
-        timeID = _h.timeit_register("psolve")
-        _h.timeit_start(timeID)
+        timeID = Nd.timeit_register("psolve")
+        Nd.timeit_start(timeID)
 
         # I think I must use continuerun?
         if len(self.connectionWeightDelayList) == 0:
-            self.pnm.psolve(_h.tstop)
+            self.pnm.psolve(Nd.tstop)
         else:
             spConnect = self.connectionWeightDelayList[0]
             logging.info("will stop after %d", spConnect.valueOf("Delay"), level=logging.DEBUG)
             self.pnm.psolve(spConnect.valueOf("Delay"))
-            self.synapseRuleManager.applyDelayedConnection(spConnect, self.cellDistributor.getGidListForProcessor())
+            self._synapse_manager.apply_post_config_obj(spConnect, self.cellDistributor.getGidListForProcessor())
 
             # handle any additional delayed blocks
             for spConnect in self.connectionWeightDelayList:
                 logging.info("will stop again after %d", spConnect.valueOf("Delay"), level=logging.DEBUG)
                 self.pnm.psolve(spConnect.valueOf("Delay"))
-                self.synapseRuleManager.applyDelayedConnection(spConnect, self.cellDistributor.getGidListForProcessor())
+                self._synapse_manager.apply_post_config_obj(spConnect, self.cellDistributor.getGidListForProcessor())
 
-            logging.info("run til the end %d", _h.tstop, level=logging.DEBUG)
-            self.pnm.psolve(_h.tstop)
-            _h.timeit_add(timeID)
+            logging.info("run til the end %d", Nd.tstop, level=logging.DEBUG)
+            self.pnm.psolve(Nd.tstop)
+            Nd.timeit_add(timeID)
 
         # final flush for reports
         self.binReportHelper.flush()
 
         tdat[0] = self.pnm.pc.wait_time() - tdat[0]
-        self.runtime = _h.startsw() - self.runtime
+        self.runtime = Nd.startsw() - self.runtime
         tdat[1] = self.pnm.pc.step_time()
         tdat[2] = self.pnm.pc.send_time()
         tdat[3] = self.pnm.pc.vtransfer_time()
@@ -876,3 +860,40 @@ class Node:
     @property
     def gidvec(self):
         return self.cellDistributor.getGidListForProcessor()
+
+
+###################################################
+# Helpers
+###################################################
+
+def setup_node(recipe_file):
+    setup_logging(GlobalConfig.verbosity)
+    node = Node(recipe_file)
+    node.loadTargets()
+    node.computeLB()
+    node.createCells()
+    node.executeNeuronConfigures()
+    return node
+
+
+def run(recipe_file):
+    node = setup_node(recipe_file)
+    logging.info("Create connections")
+    node.createSynapses()
+    node.createGapJunctions()
+
+    logging.info("Enable Stimulus")
+    node.enableStimulus()
+
+    logging.info("Enable Modifications")
+    node.enableModifications()
+
+    logging.info("Enable Reports")
+    node.enableReports()
+
+    logging.info("Run")
+    node.prun(True)
+
+    logging.info("\nsimulation finished. Gather spikes then clean up.")
+    node.spike2file("out.dat")
+    node.cleanup()
