@@ -9,6 +9,16 @@ class _NeuronMeta(type):
     def __getattr__(self, item):
         return getattr(self.h, item)
 
+    def __setattr__(self, key, value):
+        if key in vars(self):
+            dctr = self.__dict__[key]
+            if hasattr(dctr, "__set__"):
+                # By default type doesnt honour descriptors. We do
+                dctr.__set__(self, value)
+            type.__setattr__(self, key, value)
+        else:
+            setattr(self.h, key, value)
+
 
 @add_metaclass(_NeuronMeta)
 class Neuron(object):

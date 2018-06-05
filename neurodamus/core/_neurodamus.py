@@ -17,13 +17,13 @@ class NeuronDamus(Neuron):
     A wrapper class representing an instance of Neuron with the required neurodamus hoc and mod
     modules loaded
     """
-    _h = None
+    _ndh = None
     _pnm = None
 
     @classmethod
     def _init(cls):
-        if cls._h is None:
-            cls._h = h = Neuron._init()
+        if cls._ndh is None:
+            cls._ndh = h = Neuron._init()
             cls.load_dll(MOD_LIB)
             cls.load_hoc(HOC_LIB)
 
@@ -37,11 +37,11 @@ class NeuronDamus(Neuron):
                 setup_logging(1)
             else:
                 setup_logging(0)
-        return cls._h
+        return cls._ndh
 
     @classproperty
     def h(cls):
-        return cls._h or cls._init()
+        return cls._ndh or cls._init()
 
     @classproperty
     def pnm(cls):

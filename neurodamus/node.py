@@ -720,6 +720,7 @@ class Node:
             logging.info("Create file %s", outfile)
             with open(outfile, "w") as f:
                 f.write("/scatter\n")  # what am I forgetting for this thing?
+                logging.debug("Rank0 writing %d spikes", int(self.pnm.idvec.size()))
                 for i in range(int(self.pnm.idvec.size())):
                     f.write("%.3f\t%d\n" % (self.pnm.spikevec.x[i], self.pnm.idvec.x[i]))
 

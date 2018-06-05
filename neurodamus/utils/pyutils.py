@@ -29,6 +29,9 @@ class classproperty(object):
     def __get__(self, instance, owner):
         return self.getter(owner)
 
+    def __set__(self, instance, value):
+        raise AttributeError("Class properties can't be override")
+
 
 def dict_filter(dic, filter):
     # type: (dict, lambda) -> lambda
