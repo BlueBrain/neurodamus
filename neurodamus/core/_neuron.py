@@ -20,6 +20,7 @@ class _NeuronMeta(type):
             setattr(self.h, key, value)
 
 
+# TODO: Instead of using classmethods, this class can probably be changed to a normal singleton
 @add_metaclass(_NeuronMeta)
 class Neuron(object):
     """
@@ -68,7 +69,8 @@ class Neuron(object):
         rc = cls.h.load_file(mod_filename)
         cls._mods_loaded.add(mod_name)
         if rc == 0:
-            raise RuntimeError("Cant load HOC library {}. Consider checking HOC_LIBRARY_PATH".format(mod_filename))
+            raise RuntimeError("Cant load HOC library {}. Consider checking HOC_LIBRARY_PATH"
+                               .format(mod_filename))
 
     @classmethod
     def require(cls, *hoc_mods):
@@ -81,16 +83,8 @@ class Neuron(object):
         """Loads a Neuron mod file (typically an .so file in linux)"""
         rc = cls._h.nrn_load_dll(dll_path)
         if rc == 0:
-            raise RuntimeError("Cant load MOD dll {}. Please check if it can be loaded (LD path and dependencies)"
+            raise RuntimeError("Cant load MOD dll {}. Please check LD path and dependencies"
                                .format(dll_path))
-
-    # @classmethod
-    # def execute(cls, expression, hoc_context=None):
-    #     """Executes a given Hoc statement in Neuron.
-    #     By default statements are executed at top-level, unless a hoc object is given as context.
-    #     Raises RuntimeError in case the Hoc interpreter can't execute the command
-    #     """
-    #     cls.h.execute(expression, hoc_context)
 
     @classmethod
     def run_sim(cls, t_stop, *monitored_sections, **params):
@@ -112,9 +106,7 @@ class Neuron(object):
     Simulation = None  # type: Simulation
     Section = None
     Segment = None
-    # # Datastucts coming from Neuron
-    # Vector = classmethod(lambda cls, *args: cls.h.Vector(*args))
-    # List = classmethod(lambda cls, *args: cls.h.List(*args))
+    # Datastucts coming from Neuron: Vector, List
 
 
 def _init_mpi():
@@ -216,6 +208,8 @@ class Simulation:
 
 
 class LoadBalance(object):
+    """Wrapper of the load balance Hoc Module.
+    """
     def __init__(self):
         self._lb = Neuron.h.LoadBalance()
 
