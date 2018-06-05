@@ -659,7 +659,7 @@ class Node:
                 _h.timeit_add(timeID)
             else:
                 # all other patterns the stim manager will interpret
-                self.stimManager.interpret(_h.String(targetName), stim)
+                self.stimManager.interpret(targetName, stim)
 
     #
     def enableModifications(self):
