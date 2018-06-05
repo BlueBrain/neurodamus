@@ -7,7 +7,7 @@ import logging  # active only in rank 0 (init)
 from os import path
 from .core import Neuron
 from .metype import METype, METypeManager
-from .utils import progressbar, ArrayCompat
+from .utils import progressbar, compat
 from .core.configuration import MPInfo
 
 _h = None
@@ -106,7 +106,7 @@ class CellDistributor(object):
             self.binfo = _h.BalanceInfo(cxPath, MPInfo.rank, MPInfo.cpu_count)
 
             # self.binfo has gidlist, but gids can appear multiple times
-            self._gidvec = ArrayCompat("I")
+            self._gidvec = compat.List("I")
             _seen = set()
             for gid in self.binfo.gids:
                 gid = int(gid)
@@ -114,7 +114,7 @@ class CellDistributor(object):
                     self._gidvec.append(gid)
                     _seen.add(gid)
 
-            self.spgidvec = ArrayCompat("I")
+            self.spgidvec = compat.List("I")
 
             # TODO: do we have any way of knowing that a CircuitTarget found definitively matches the cells in the balance files?
             #  for now, assume the user is being honest
@@ -126,7 +126,7 @@ class CellDistributor(object):
             # circuit target, so distribute those cells that are members in round-robin style
             circuitTarget = targetParser.getTarget(parsedRun.get("CircuitTarget").s)
             self._completeCellCount = int(circuitTarget.completegids().size())
-            self._gidvec = ArrayCompat("I")
+            self._gidvec = compat.List("I")
 
             c_gids = circuitTarget.completegids()
             for i, gid in enumerate(c_gids):
@@ -220,7 +220,7 @@ class CellDistributor(object):
         ncsIn.readline()  # skip the '{'
 
         if reassign_RR:
-            gidvec = ArrayCompat("I")
+            gidvec = compat.List("I")
             for cellIndex, gid, metype in get_next_cell(ncsIn):
                 if cellIndex % MPInfo.cpu_count == MPInfo.rank:
                     gidvec.append(gid)
@@ -251,7 +251,7 @@ class CellDistributor(object):
         if reassign_RR:
             mecombo_ds = mvdFile["/cells/properties/me_combo"]
             self._completeCellCount = len(mecombo_ds)
-            gidvec = ArrayCompat("I")
+            gidvec = compat.List("I")
 
             #  the circuit.mvd3 uses intrinsic gids starting from 1; this might change in the future
             cellIndex = MPInfo.rank
@@ -262,7 +262,7 @@ class CellDistributor(object):
         else:
             gidvec = self._gidvec
 
-        indexes = ArrayCompat("i", np.frombuffer(gidvec, dtype="i4") - 1)
+        indexes = compat.List("i", np.frombuffer(gidvec, dtype="i4") - 1)
         morphIDVec = mvdFile["/cells/properties/morphology"][indexes]
         comboIDVec = mvdFile["/cells/properties/me_combo"][indexes]
 
@@ -385,8 +385,8 @@ class CellDistributor(object):
 
     def cell_complexity(self, with_total=True):
         # local i, gid, ncell  localobj cx_cell, id_cell
-        cx_cell = ArrayCompat("f")
-        id_cell = ArrayCompat("I")
+        cx_cell = compat.List("f")
+        id_cell = compat.List("I")
         ncell = self._gidvec.size()
 
         for gid in self._gidvec:

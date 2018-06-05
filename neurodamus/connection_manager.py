@@ -4,7 +4,7 @@ from collections import defaultdict
 from itertools import chain
 from os import path
 from .core import NeuronDamus as ND
-from .utils import ArrayCompat, bin_search
+from .utils import compat, bin_search
 from .connection import SynapseParameters, Connection, SynapseMode, STDPMode
 
 
@@ -78,8 +78,8 @@ class _ConnectionManagerBase(object):
                 # low to high. This code therefore doesn't search or sort on its own.
                 # If the nrn.h5 file changes in the future we must update the code accordingly
                 if cur_conn is None or cur_conn.sgid != sgid:
-                    cur_conn = Connection(sgid, tgid, None, STDPMode.NO_STDP, 0, self._synapse_mode,
-                                          weight_factor)
+                    cur_conn = Connection(sgid, tgid, None, STDPMode.NO_STDP,
+                                          0, self._synapse_mode, weight_factor)
                     self.store_connection(cur_conn)
 
                 # placeSynapses( activeConnection, synParamsList.o(synIndex), synIndex+1 )
@@ -484,7 +484,7 @@ class GapJunctionManager(_ConnectionManagerBase):
         _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
 
         self._circuit_target = circuit_target
-        self._gj_offsets = ArrayCompat("d")
+        self._gj_offsets = compat.List("d")
         gjfname = path.join(circuit_path, "gjinfo.txt")
         gj_sum = 0
 

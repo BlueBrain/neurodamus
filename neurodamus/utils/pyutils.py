@@ -79,17 +79,6 @@ class ConfigT(object):
                 and key not in excludes and (subset is None or key in subset)}
 
 
-class ArrayCompat(array):
-    __slots__ = ()
-
-    def size(self):
-        return len(self)
-
-    @property
-    def x(self):
-        return self
-
-
 def bin_search(container, key, keyf=None):
     """Performs binary search in a container, retrieving the index where key should be inserted
     to keep ordering. Accepts a key function to be applied to each element of the container.

@@ -2,7 +2,7 @@ from __future__ import absolute_import
 import logging
 import numpy as np
 from .core import NeuronDamus as ND
-from .utils import ArrayCompat
+from .utils import compat
 
 
 # SynapseParameters = namedtuple("SynapseParameters", _synapse_fields)
@@ -125,7 +125,7 @@ class Connection(object):
         self._minis_spont_rate = minis_spont_rate
         self._synapse_locations = h.TPointList(tgid, 1)
         self._synapse_params = []
-        self._synapse_ids = ArrayCompat("i")
+        self._synapse_ids = compat.List("i")
         self._configurations = []
         if configuration is not None:
             self._configurations.append(configuration)
