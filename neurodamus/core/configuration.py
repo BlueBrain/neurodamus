@@ -47,3 +47,8 @@ class Neuron_Stdrun_Defaults:
     nstep_steprun = 1
     global_ra = 35.4
     v_init = -65
+
+
+class ConfigurationError(Exception):
+    """Error due to invalid settings in BlueConfig"""
+    pass

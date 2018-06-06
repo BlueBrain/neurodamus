@@ -16,7 +16,7 @@ class _Neuron(object):
     _h = None
     _mods_loaded = set()
 
-    # No new attributes. Just get a ref to _lh to know whether we did _init
+    # No new attributes. __setattr__ can rely on it
     __slots__ = ()
 
     @classproperty

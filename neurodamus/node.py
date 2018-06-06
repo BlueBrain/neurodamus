@@ -6,16 +6,11 @@ Copyright 2018 - Blue Brain Project, EPFL
 from __future__ import absolute_import
 from os import path
 import logging
-from collections import namedtuple
 from .utils import setup_logging, compat
 from .cell_distributor import CellDistributor
-from .core.configuration import GlobalConfig, MPInfo
+from .core.configuration import GlobalConfig, MPInfo, ConfigurationError
 from .core import NeuronDamus as Nd
 from .connection_manager import SynapseRuleManager, GapJunctionManager
-
-
-class ConfigurationError(Exception):
-    pass
 
 
 class Node:
