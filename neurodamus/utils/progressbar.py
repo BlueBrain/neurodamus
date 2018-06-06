@@ -104,6 +104,7 @@ class AnimatedProgressBar(ProgressBar):
     def __init__(self, *args, **kwargs):
         super(AnimatedProgressBar, self).__init__(*args, **kwargs)
         self.stdout = kwargs.get('stdout', sys.stdout)
+        self._show_percent_on = (self.end // 10, 1)
 
     def show_progress(self):
         if hasattr(self.stdout, 'isatty') and self.stdout.isatty():
@@ -111,17 +112,18 @@ class AnimatedProgressBar(ProgressBar):
             self.stdout.write(str(self))
         else:
             self.stdout.write('.')
-            self.show_percentage_n(10)
+            self._show_percentage()
         self.stdout.flush()
 
-    def show_percentage_n(self, n=10):
-        step = self.end // n
-        n_steps = self.progress // step
-        add = self.end % n
-        cp = n_steps * step + (n_steps + 1) * add // n
-        percentage = self.progress * 100 // self.end
-        if self.progress > 0 and self.progress == cp:
-            print("%d%%" % percentage, end="")
+    def _show_percentage(self):
+        if self.progress >= self._show_percent_on[0]:
+            n = self._show_percent_on[1] + 1
+            self._show_percent_on = (self.end * n // 10, n)
+            percentage = self.progress * 100.0 / self.end
+            print("[%d%%]" % percentage, end="")
+
+    def __del__(self):
+        print("\r", end=" " * (self.width + 8) + "\r")
 
 
 if __name__ == '__main__':
