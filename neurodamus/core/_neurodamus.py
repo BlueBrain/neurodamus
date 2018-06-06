@@ -4,7 +4,7 @@ Neurodamus execution main class
 from __future__ import absolute_import
 from os import path
 from ..utils import setup_logging, classproperty
-from ._neuron import Neuron
+from ._neuron import _Neuron
 from .configuration import MPInfo
 
 LIB_PATH = path.realpath(path.join(path.dirname(__file__), "../../../lib"))
@@ -12,21 +12,28 @@ MOD_LIB = path.join(LIB_PATH, "modlib", "libnrnmech.so")
 HOC_LIB = path.join(LIB_PATH, "hoclib", "neurodamus")
 
 
-class NeuronDamus(Neuron):
+class NeuronDamus(_Neuron):
     """
     A wrapper class representing an instance of Neuron with the required neurodamus hoc and mod
     modules loaded
     """
-    _ndh = None
-    _pnm = None
+    __slots__ = ()
+    _pnm = None  # ParallelNetManager (used as well to verify init)
+
+    @classproperty
+    def h(cls):
+        """The neuron hoc interpreter, initializing if needed
+        """
+        if cls._pnm is None:
+            return cls._init()
+        return cls._h
 
     @classmethod
     def _init(cls):
-        if cls._ndh is None:
-            cls._ndh = h = Neuron._init()
+        h = _Neuron._init()  # if needed, sets cls._h
+        if cls._pnm is None:
             cls.load_dll(MOD_LIB)
             cls.load_hoc(HOC_LIB)
-
             cls._pnm = pnm = h.ParallelNetManager(0)
             MPInfo.cpu_count = int(pnm.nhost)
             MPInfo.rank = int(pnm.myid)
@@ -37,13 +44,13 @@ class NeuronDamus(Neuron):
                 setup_logging(1)
             else:
                 setup_logging(0)
-        return cls._ndh
+        return h
 
-    @classproperty
-    def h(cls):
-        return cls._ndh or cls._init()
+    @property
+    def pnm(self):
+        self._pnm or self._init()
+        return self._pnm
 
-    @classproperty
-    def pnm(cls):
-        cls._init()
-        return cls._pnm
+
+# Singleton
+NeuronDamus = NeuronDamus()

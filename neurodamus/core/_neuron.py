@@ -1,44 +1,27 @@
 from __future__ import absolute_import
-from ..utils import classproperty
-from neurodamus.core.configuration import Neuron_Stdrun_Defaults
+from .configuration import Neuron_Stdrun_Defaults
 from .configuration import GlobalConfig
-from six import add_metaclass
+from ..utils import classproperty
 
 
-class _NeuronMeta(type):
-    def __getattr__(self, item):
-        return getattr(self.h, item)
-
-    def __setattr__(self, key, value):
-        if key in vars(self):
-            dctr = self.__dict__[key]
-            if hasattr(dctr, "__set__"):
-                # By default type doesnt honour descriptors. We do
-                dctr.__set__(self, value)
-            type.__setattr__(self, key, value)
-        else:
-            setattr(self.h, key, value)
-
-
-# TODO: Instead of using classmethods, this class can probably be changed to a normal singleton
-@add_metaclass(_NeuronMeta)
-class Neuron(object):
+#
+# Singleton, instantiated right below
+#
+class _Neuron(object):
     """
     A wrapper over the neuron simulator.
     """
     # The neuron hoc interpreter
-    # Is it a global var since only one can exist and thus can be imported anywhere
     # We dont import it at module-level to avoid starting neuron
     _h = None
-    """The Neuron hoc interpreter.
-    Be sure to use after having called init() before.
-    """
     _mods_loaded = set()
-    """A list of modules already loaded"""
+
+    # No new attributes. Just get a ref to _lh to know whether we did _init
+    __slots__ = ()
 
     @classproperty
     def h(cls):
-        """Initializes neuron and its hoc interpreter which is returned
+        """The neuron hoc interpreter, initializing if needed
         """
         return cls._h or cls._init()
 
@@ -50,9 +33,9 @@ class Neuron(object):
                 _init_mpi()
             from neuron import h
             from neuron import nrn
+            cls._h = h
             cls.Section = nrn.Section
             cls.Segment = nrn.Segment
-            cls._h = h
             h.load_file("stdrun.hoc")
             h("objref nil")
             h.init()
@@ -66,11 +49,10 @@ class Neuron(object):
         if mod_name in cls._mods_loaded:
             return
         mod_filename = mod_name + ".hoc"
-        rc = cls.h.load_file(mod_filename)
-        cls._mods_loaded.add(mod_name)
-        if rc == 0:
+        if not cls._h.load_file(mod_filename):
             raise RuntimeError("Cant load HOC library {}. Consider checking HOC_LIBRARY_PATH"
                                .format(mod_filename))
+        cls._mods_loaded.add(mod_name)
 
     @classmethod
     def require(cls, *hoc_mods):
@@ -96,17 +78,33 @@ class Neuron(object):
 
         Returns: A simulation object
         """
+        cls._h or cls._init()
         sim = Simulation(**params)
         for sec in monitored_sections:
             sim.record_activity(sec)
         sim.run(t_stop)
         return sim
 
+    # Properties that are not found here are get / set
+    # directly in neuron.h
+    def __getattr__(self, item):
+        return getattr(self.h, item)
+
+    def __setattr__(self, key, value):
+        try:
+            object.__setattr__(self, key, value)
+        except AttributeError:
+            setattr(self.h, key, value)
+
+    # public shortcuts
     HocEntity = None   # type: HocEntity
     Simulation = None  # type: Simulation
     Section = None
     Segment = None
-    # Datastucts coming from Neuron: Vector, List
+
+
+# The singleton
+Neuron = _Neuron()
 
 
 def _init_mpi():
@@ -224,5 +222,5 @@ class LoadBalance(object):
 
 
 # shortcuts
-Neuron.HocEntity = HocEntity
-Neuron.Simulation = Simulation
+_Neuron.HocEntity = HocEntity
+_Neuron.Simulation = Simulation
