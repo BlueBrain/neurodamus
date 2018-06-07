@@ -2,55 +2,63 @@ from __future__ import absolute_import, print_function
 from os import path
 import logging
 from collections import defaultdict
-from .core import Neuron
-from .utils import ConfigT
+from .core import NeuronDamus as Nrn
 
 
 class METype:
-    # public init, printInfo, AddMorphNL, delete_axon,  getCell, biophys, hardcode_biophys, connect2target
-    # public gid, CCell, CellRef, locateSite, locateSites, getLongestBranch, getThreshold, setThreshold, getHypAmp, setHypAmp
-    # public synlist, synHelperList, ASCIIrpt, HDF5rpt, re_init_rng
-    # objref this, CellRef, CCell, synlist, synHelperList, ASCIIrpt, HDF5rpt
-    # public getVersion, connect2target
+    """
+    Class representing an METype. Will instantiate a Hoc-level cell as well
+    """
 
     def __init__(self, gid, etype_path, emodel, morpho_path, morpho_name=None):
-        """
-        Instantite a new Cell from METype
+        """Instantite a new Cell from METype
+
         Args:
             gid: Cell gid
             etype_path: path for etypes
             emodel: Emodel name
             morpho_path: path for morphologies
-            morpho_file: morphology file (optional)
+            morpho_name: morphology name to be loaded from
         """
-        # local ret  localobj morphPath
-        # strdef tstr
-        h = Neuron.h
         self._thresholdCurrent = None
         self._hypAmpCurrent = None
         self._netcons = []
+        self._ccell = None
+        self._synlist = None
+        self._syn_helper_list = None
 
         if morpho_name is not None:
-            # SSCx v6
-            etype_mod = path.join(etype_path, emodel)
-            rc = Neuron.load_hoc(etype_mod)
-            if rc == 0:
-                raise ValueError("Unable to load METype file %s" % etype_mod + ".hoc")
-            EModel = getattr(h, emodel)
-            self.ccell = EModel(gid, path.join(morpho_path, "ascii"), morpho_name + ".asc")
-            self.synlist = h.List()
-            self.synHelperList = h.List()
+            self._instantiate_cell_v6(gid, etype_path, emodel, morpho_path, morpho_name)
         else:
-            # Used by v5 and earlier
-            EModel = getattr(h, emodel)
-            self.ccell = ccell = EModel(gid, path.join(morpho_path, "ascii"))
-            CellRef = ccell.CellRef
-            self.synlist = CellRef.synlist
-            self.synHelperList = CellRef.synHelperList
-            self._thresholdCurrent = ccell.getThreshold()
-            ret = h.execute1("{getHypAmp()}", ccell, 0)
-            if ret != 0:
-                self._hypAmpCurrent = ccell.getHypAmp()
+            self._instantiate_cell_v5(gid, emodel, morpho_path)
+
+    def _instantiate_cell_v6(self, gid, etype_path, emodel, morpho_path, morpho_name):
+        """Instantiates a SSCx v6 cell
+        """
+        etype_mod = path.join(etype_path, emodel)
+        rc = Nrn.load_hoc(etype_mod)
+        if rc == 0:
+            raise ValueError("Unable to load METype file %s" % etype_mod + ".hoc")
+        EModel = getattr(Nrn, emodel)
+        self._ccell = EModel(gid, path.join(morpho_path, "ascii"), morpho_name + ".asc")
+        self._synlist = Nrn.List()
+        self._syn_helper_list = Nrn.List()
+
+    def _instantiate_cell_v5(self, gid, emodel, morpho_path):
+        """Instantiates a cell v5 or before. Asssumes emodel hoc templates are loaded
+        """
+        EModel = getattr(Nrn, emodel)
+        self._ccell = ccell = EModel(gid, path.join(morpho_path, "ascii"))
+        self._synlist = ccell.CellRef.synlist
+        self._syn_helper_list = ccell.CellRef.synHelperList
+        self._thresholdCurrent = ccell.getThreshold()
+        ret = Nrn.execute1("{getHypAmp()}", ccell, 0)
+        if ret != 0:
+            self._hypAmpCurrent = ccell.getHypAmp()
+
+    @property
+    def synlist(self):
+        return self._synlist
 
     def getThreshold(self):
         return self._thresholdCurrent
@@ -64,12 +72,13 @@ class METype:
     def setHypAmp(self, value):
         self._hypAmpCurrent = value
 
-    def getVersion(self):
+    @staticmethod
+    def getVersion():
         return 3
 
     @property
     def CellRef(self):
-        return self.ccell.CellRef
+        return self._ccell.CellRef
 
     def connect2target(self, target_pp):
         """ Connects MEtype cell to target
@@ -79,14 +88,14 @@ class METype:
 
         Returns: NetCon obj
         """
-        h = Neuron.h
-        netcon = h.NetCon(self.CellRef.soma[0](1)._ref_v, target_pp, sec=self.CellRef.soma[0])
+        netcon = Nrn.NetCon(self.CellRef.soma[0](1)._ref_v, target_pp,
+                            sec=self.CellRef.soma[0])
         netcon.threshold = -30
         self._netcons.append(netcon)
         return netcon
 
     def re_init_rng(self, _):
-        Neuron.h.execute1( "re_init_rng()", self.ccell, 0)
+        Nrn.execute1("re_init_rng()", self._ccell, 0)
 
 
 class METypeItem(object):
@@ -108,40 +117,42 @@ class METypeItem(object):
 class METypeManager(object):
     """ Class to read file with specific METype info and manage the containers for data retrieval
     """
+    __slots__ = ['_me_map']
+
     def __init__(self):
         self._me_map = {}
 
-    def loadInfo(self, runInfo, gidvec, comboList, morphList):
+    def load_info(self, run_conf, gidvec, combo_list, morph_list):
         """ Read file with mecombo info, retaining only those that are local to this node
         Args:
-            runInfo: Run info from config parse
+            run_conf: Run info from config parse
             gidvec: gidvec local gids
-            comboList: comboList Combos corresponding to local gids
-            morphList: morphList Morpholgies corresponding to local gids
+            combo_list: comboList Combos corresponding to local gids
+            morph_list: morphList Morpholgies corresponding to local gids
         """
-        if not runInfo.exists("MEComboInfoFile"):
+        if not run_conf.exists("MEComboInfoFile"):
             logging.error("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel.")
             raise ValueError("MEComboInfoFile not specified")
 
-        comboFile = runInfo.get("MEComboInfoFile").s
-        f = open(comboFile)
-        next(f)  # Skip Header
-
         # Optimization: index combos
         combo_ids = defaultdict(list)
-        for i, c in enumerate(comboList):
+        for i, c in enumerate(combo_list):
             combo_ids[c].append(i)
+
+        combo_file = run_conf.get("MEComboInfoFile").s
+        f = open(combo_file)
+        next(f)  # Skip Header
 
         for tstr in f:
             vals = tstr.strip().split()
             if len(vals) not in (6, 8):
                 wmsg = ("Could not parse line %s from MEComboInfoFile %s."
                         "Expecting 6 (hippocampus) or 8 (somatosensory) fields")
-                logging.warning(wmsg, tstr, comboFile)
+                logging.warning(wmsg, tstr, combo_file)
             meitem = METypeItem(*vals)
 
             for i in combo_ids[meitem.combo_name]:
-                if morphList[i] == meitem.morph_name:
+                if morph_list[i] == meitem.morph_name:
                     self._me_map[gidvec[i]] = meitem
 
         # confirm that all gids have been matched.
@@ -153,6 +164,6 @@ class METypeManager(object):
                 nerr += 1
         return -nerr
 
-    def retrieveInfo(self, gid):
+    def retrieve_info(self, gid):
         return self._me_map.get(gid) \
                or logging.warning("No info for gid %d found.", gid)

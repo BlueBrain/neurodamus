@@ -79,24 +79,6 @@ class Connection(object):
     A Connection object serves as a container for synapses formed from a presynaptic and a
     postsynaptic gid, including Points where those synapses are placed (stored in TPointList)
     """
-    # HOC members
-    # -----------
-    # objref synapseLocations, synapseParamsList, synapseIDs, synapseList, netconList,
-    # configureList, this, synOverride, synapseHelper(?local)
-    # objref replayNetconList, tVecList  # /Synapse replay
-    # objref weightAdjusterList, waNetConPreList, waNetConPostList  # /Plasticity
-    # objref miniNetConList, miniRNGList  # /Spontaneous Minis
-
-    # public members
-    # --------------
-    # public init, tgid, sgid, append, setWeightScalar, finalize, AMPA_ONLY, DUAL_SYNS,
-    # spontMiniRate, finalizeGapJunctions, updateWeights # for delayed connection blocks
-    # public replay, registerEvents, doneReplayRegister # for synapse replay
-    # public UseSTDP, NO_STDP, DOUBLET_STDP, TRIPLET_STDP # for plasticity
-    # public appendSynapseConfiguration # for synapse configuration
-    # public synapseParamsList, synOverride
-    # public executeConfigure
-    # public updateConductance # Oren
 
     def __init__(self, sgid, tgid, configuration=None,
                  stdp=None,
@@ -126,10 +108,8 @@ class Connection(object):
         self._synapse_locations = h.TPointList(tgid, 1)
         self._synapse_params = []
         self._synapse_ids = compat.List("i")
-        self._configurations = []
-        if configuration is not None:
-            self._configurations.append(configuration)
-
+        self._configurations = [configuration] \
+            if configuration is not None else []
         # Lists defined in finalize
         self._netcons = None
         self._synapses = None

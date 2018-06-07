@@ -147,7 +147,7 @@ class CellDistributor(object):
         for gid in self._gidvec:
             MPInfo.rank == 0 and pbar.show_progress()
             if self._useMVD3:
-                meinfo = me_infos.retrieveInfo(gid)
+                meinfo = me_infos.retrieve_info(gid)
                 cell = METype(gid, mepath, meinfo.emodel, morpho_path, meinfo.morph_name)
                 self._gid2metype[gid] = meinfo.emodel  # Added for compat
                 cell.setThreshold(meinfo.threshold_current)
@@ -256,10 +256,7 @@ class CellDistributor(object):
 
         # now we can open the combo file and get the emodel + additional info
         meinfo = METypeManager()
-        if MPInfo.rank == 0:
-            meinfo.verbose = 1
-
-        res = meinfo.loadInfo(run_conf, gidvec, combo_names, morpho_names)
+        res = meinfo.load_info(run_conf, gidvec, combo_names, morpho_names)
 
         if MPInfo.cpu_count > 1:
             res = Nrn.pnm.pc.allreduce(res, 1)
