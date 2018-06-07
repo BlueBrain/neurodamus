@@ -1,10 +1,8 @@
-from neurodamus.node import Node
-from neurodamus.utils import setup_logging
+from neurodamus import Node
 import logging
 
 
 def test_node_run():
-    setup_logging(2)
     node = Node("/home/leite/dev/TestData/build/circuitBuilding_1000neurons/BlueConfig")
     node.loadTargets()
     node.computeLB()
@@ -27,7 +25,7 @@ def test_node_run():
     logging.info("Run")
     node.prun(True)
 
-    logging.info("\nsimulation finished. Gather spikes then clean up.")
+    logging.info("Simulation finished. Gather spikes then clean up.")
     node.spike2file("out.dat")
     node.cleanup()
 

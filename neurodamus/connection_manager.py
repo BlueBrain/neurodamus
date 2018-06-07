@@ -397,7 +397,6 @@ class SynapseRuleManager(_ConnectionManagerBase):
         _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
         if synapse_mode is None:
             synapse_mode = "DualSyns"
-        # ! These two vars seem not used
         self._synapse_mode = SynapseMode.from_str(synapse_mode)
         #  self._rng_list = []
         self._replay_list = []

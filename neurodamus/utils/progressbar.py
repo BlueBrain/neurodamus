@@ -103,7 +103,7 @@ class AnimatedProgressBar(ProgressBar):
     """
     def __init__(self, *args,  **kwargs):
         super(AnimatedProgressBar, self).__init__(*args, **kwargs)
-        self._stream = kwargs.get('stdout', sys.stderr)
+        self._stream = kwargs.get('stdout', sys.stdout)
         self._prev_bar_len = 0
         self._tty_mode = hasattr(self._stream, 'isatty') and self._stream.isatty()
         if not self._tty_mode:
