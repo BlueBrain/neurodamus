@@ -222,9 +222,12 @@ class Connection(object):
         for syn_i, sc in enumerate(self._synapse_locations.sclst):
             if not sc.exists():
                 continue
+            # Put the section in the stack, so generic hoc instructions apply to the right section
+            sc.sec.push()
+
             x = self._synapse_locations.x[syn_i]
             active_params = self._synapse_params[syn_i]
-            self.place_synapses(cell, active_params, x, self._synapse_ids.x[syn_i], base_seed)
+            self.place_synapses(cell, active_params, x, self._synapse_ids[syn_i], base_seed)
             cell_syn_list = cell.CellRef.synlist
             syn_obj = cell_syn_list.o(cell_syn_list.count()-1)
             self._synapses.append(syn_obj)
@@ -324,6 +327,7 @@ class Connection(object):
                 ips.setRate(rate_vec)
 
             self._netcons.append(nc)
+            ND.pop_section()  # clear selection
 
         self._configure_cell(cell)
 

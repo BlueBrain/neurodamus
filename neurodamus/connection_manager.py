@@ -25,7 +25,7 @@ class _ConnectionManagerBase(object):
         # The map of the parameters (original name: loadedMap)
         self._syn_params = {}
         # Connections indexed by post-gid, then ordered by pre-gid
-        self._connections = defaultdict(list)
+        self._connections_map = defaultdict(list)
         self._creation_mode = True
         self._synapse_reader = None
 
@@ -64,12 +64,12 @@ class _ConnectionManagerBase(object):
         """
         logging.debug("iterate %d cells", len(gidvec))
         for tgid in gidvec:
-            synapses_params = self.load_synapse_parameters(tgid)
+            synapses_params = self.get_synapse_parameters(tgid)
             cur_conn = None
 
             logging.debug("connecting to post neuron a%d - %d items", tgid, len(synapses_params))
             for i, syn_params in enumerate(synapses_params):
-                sgid = syn_params.sgid
+                sgid = int(syn_params.sgid)
                 if self._circuit_target and not self._circuit_target.completeContains(sgid):
                     continue
                 # should still need to check that the other side of the gap junction will
@@ -86,6 +86,9 @@ class _ConnectionManagerBase(object):
                 point = self._target_manager.locationToPoint(tgid, syn_params.isec,
                                                              syn_params.ipt, syn_params.offset)
                 cur_conn.add_synapse(point, syn_params, i)
+
+    # compat
+    connectAll = connect_all
 
     # -
     def group_connect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
@@ -104,7 +107,7 @@ class _ConnectionManagerBase(object):
             spont_mini_rate: (optional) For spontaneous minis trigger rate (default: 0)
             synapse_type_restrict: (optional) to further restrict when the weight is applied
         """
-        # unlike connectAll, we must look through self._connections to see if sgid->tgid exists
+        # unlike connectAll, we must look through self._connections_map to see if sgid->tgid exists
         # because it may be getting weights updated.
         # Note: it is better to get the whole target over just the gid vector since then we can use
         # utility functions like 'contains'
@@ -117,7 +120,7 @@ class _ConnectionManagerBase(object):
                 continue
 
             # this cpu owns some or all of the destination gid
-            syns_params = self.load_synapse_parameters(tgid)
+            syns_params = self.get_synapse_parameters(tgid)
             old_sgid = -1
             pend_conn = None
 
@@ -176,7 +179,7 @@ class _ConnectionManagerBase(object):
                 self.store_connection(pend_conn)
 
     # -
-    def load_synapse_parameters(self, gid):
+    def get_synapse_parameters(self, gid):
         """Access the specified dataset from the nrn.h5 file to get all synapse parameters for
         a post-synaptic cell
 
@@ -247,7 +250,7 @@ class _ConnectionManagerBase(object):
                             src_target, dst_target)
             return
 
-        # unlike connectAll, we must look through self._connections to see if sgid->tgid exists
+        # unlike connectAll, we must look through self._connections_map to see if sgid->tgid exists
         # because it may be getting weights updated. Note that it is better to get the whole target
         # over just the gid vector, since then we can use utility functions like 'contains'
         src_target = self._target_manager.getTarget(src_target)
@@ -309,7 +312,7 @@ class _ConnectionManagerBase(object):
         """Finds a connection, given its source and destination gids.
         Returns: None if it doesnt exist, or (when exact is False) the possible insertion index
         """
-        cell_conns = self._connections[tgid]
+        cell_conns = self._connections_map[tgid]
         if not cell_conns:
             return cell_conns, None
         pos = bin_search(cell_conns, sgid, lambda x: x.sgid)
@@ -331,14 +334,14 @@ class _ConnectionManagerBase(object):
 
     # -
     def store_connection(self, conn):
-        """When we have created a new connection (sgid->tgid), determine where to store it
-        in our arrangement and store it for faster retrieval later
+        """When we have created a new connection (sgid->tgid), store it in order in
+        our structure for faster retrieval later
 
         Args:
             conn: The connection object to be stored
         """
         logging.log(5, "store %d->%d amongst %d items", conn.tgid, conn.sgid,
-                      len(self._connections))
+                    len(self._connections_map))
         cell_conns, pos = self._find_connection(conn.sgid, conn.tgid, exact=False)
         if pos is not None:
             if cell_conns[pos].sgid == conn.sgid:
@@ -353,12 +356,12 @@ class _ConnectionManagerBase(object):
     def all_connections(self):
         """Iterator over all the connections.
         """
-        return chain.from_iterable(self._connections.values())
+        return chain.from_iterable(self._connections_map.values())
 
     def _iter_synapses(self):
         """Iterator over all the connections synapses, yielding (conn, synapse) pairs
         """
-        for conns in self._connections.values():
+        for conns in self._connections_map.values():
             for conn in conns:
                 for i in range(int(conn.count())):
                     yield conn, conn.o[i]
@@ -366,7 +369,7 @@ class _ConnectionManagerBase(object):
     def get_synapse_params_gid(self, target_gid):
         """Retrieves an iterator over all the synapse parameters
         """
-        conns = self._connections[target_gid]
+        conns = self._connections_map[target_gid]
         return chain.from_iterable(c.synapseParamsList for c in conns)
 
 
@@ -395,9 +398,9 @@ class SynapseRuleManager(_ConnectionManagerBase):
                 (AmpaOnly vs DualSyns). Default: DualSyns
         """
         _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
-        if synapse_mode is None:
-            synapse_mode = "DualSyns"
-        self._synapse_mode = SynapseMode.from_str(synapse_mode)
+        self._synapse_mode = SynapseMode.from_str(synapse_mode) \
+            if synapse_mode is not None else SynapseMode.default
+
         #  self._rng_list = []
         self._replay_list = []
 
@@ -410,12 +413,15 @@ class SynapseRuleManager(_ConnectionManagerBase):
             base_seed: optional argument to adjust synapse RNGs (default=0)
         """
         cell_distributor = self._target_manager.cellDistributor
-        for tgid, conns in self._connections.items():
+        for tgid, conns in self._connections_map.items():
             metype = cell_distributor.getMEType(tgid)
             spgid = cell_distributor.getSpGid(tgid)
             for conn in conns:  # type: Connection
                 conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
             logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
+
+    # Backwards compat
+    finalizeSynapses = finalize
 
     # -
     def replay(self, target_name, spike_map):
@@ -429,7 +435,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
         target = self._target_manager.getTarget(target_name)
         timeit_id = ND.timeit_register("searchNapply")
 
-        for tgid, conns in self._connections.items():
+        for tgid, conns in self._connections_map.items():
             if not target.contains(tgid):
                 continue
             ND.timeit_start(timeit_id)
@@ -458,7 +464,7 @@ class GapJunctionManager(_ConnectionManagerBase):
 
     # HOC member variables
     # --------------------
-    # objref self._synapse_reader, self._target_manager, self._connections, self._syn_params, this
+    # objref self._synapse_reader, self._target_manager, self._connections_map, self._syn_params, this
     # objref self._circuit_target, self._gj_offsets
 
     # Public HOC members

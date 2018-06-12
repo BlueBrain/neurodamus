@@ -99,7 +99,7 @@ def bin_search(container, key, keyf=None):
 
     while binsrch_low < binsrch_high:
         binsrch_mid = int((binsrch_low + binsrch_high) * 0.5)
-        if key < keyf(container[binsrch_mid]):
+        if key > keyf(container[binsrch_mid]):
             binsrch_low = binsrch_mid + 1
         else:
             binsrch_high = binsrch_mid

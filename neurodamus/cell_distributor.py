@@ -552,3 +552,4 @@ class CellDistributor(object):
     def delayedSplit(self):
         if self._lb_flag:
             self._pnm.pc.multisplit()
+

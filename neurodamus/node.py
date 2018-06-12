@@ -379,6 +379,7 @@ class Node:
         Nd.timeit_start(tid)
         self._synapse_manager = SynapseRuleManager(nrn_path, self._target_manager,
                                                    n_synapse_files, synapse_mode)
+
         # if synapse_mode is None:
         #     synapse_mode = "DualSyns"
         # self._synapse_manager = Nd.SynapseRuleManager(nrn_path, self._target_manager,
@@ -386,7 +387,7 @@ class Node:
         Nd.timeit_add(tid)
 
         if self._config_parser.parsedConnects.count() == 0:
-            self._synapse_manager.connect_all(self._cell_distributor.getGidListForProcessor(), 1)
+            self._synapse_manager.connectAll(self._cell_distributor.getGidListForProcessor(), 1)
         else:
             # Do a quick scan for any ConnectionBlocks with 'Delay' keyword and put a reference on
             # a separate list to be adjusted until later. Note that this requires that another
@@ -410,7 +411,7 @@ class Node:
                 n_synapse_files, 0)
 
             if self._config_parser.parsedConnects.count() == 0:
-                self._synapse_manager.connect_all(self._cell_distributor.getGidListForProcessor())
+                self._synapse_manager.connectAll(self._cell_distributor.getGidListForProcessor())
             else:
                 self.interpretConnections()
 
@@ -436,9 +437,9 @@ class Node:
 
         # Check if we need to override the base seed for synapse RNGs
         if self._config_parser.parsedRun.exists("BaseSeed"):
-            self._synapse_manager.finalize(self._config_parser.parsedRun.valueOf("BaseSeed"))
+            self._synapse_manager.finalizeSynapses(self._config_parser.parsedRun.valueOf("BaseSeed"))
         else:
-            self._synapse_manager.finalize()
+            self._synapse_manager.finalizeSynapses()
 
     #
     def findProjectionFiles(self, projection):
@@ -446,7 +447,7 @@ class Node:
         ProjectionPath field in Run, finally use CircuitPath.
 
         Params:
-            projection - Reference to active projection block being defessed
+            projection - Reference to active projection block being processed
         """
         nrn_path = projection.get("Path").s
         helper = projection.get("Path").s
@@ -825,6 +826,11 @@ class Node:
                 .getPointList(self._cell_distributor)
         else:
             return target.getPointList(self._cell_distributor)
+
+    #
+    def dump_circuit_config(self, suffix=""):
+        for gid in self.gidvec:
+            self._pnm.pc.prcellstate(gid, suffix)
 
 
 ###################################################
