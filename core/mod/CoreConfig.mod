@@ -140,7 +140,6 @@ PROCEDURE psolve_core() {
         #else
             if(nrnmpi_myid == 0) {
                 fprintf(stderr, "%s", "ERROR : CoreNEURON library not linked with NEURODAMUS!\n");
-                abort();
             }
         #endif
     ENDVERBATIM
