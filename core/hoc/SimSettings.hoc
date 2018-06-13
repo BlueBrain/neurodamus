@@ -43,6 +43,13 @@ proc interpret() { localobj runInfo, pc, rng, commandString
     runInfo = $o1
     pc = new ParallelContext()
 
+    if( runInfo.exists( "Simulator" ) ) {
+        if( pc.id == 0 ) {
+            print "Taking Simulator mode from BlueConfig"
+        }
+        simulator = runInfo.get( "Simulator" ).s
+    }
+
     // check if simulator option is set in BlueConfig, abort if invalid
     if( strcmp( simulator, "NEURON" ) == 0 ) {
         simulatorMode = NEURON
