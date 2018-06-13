@@ -1,6 +1,6 @@
 from __future__ import absolute_import
 import logging
-from collections import defaultdict
+from .utils import OrderedDefaultDict
 from itertools import chain
 from os import path
 from .core import NeuronDamus as ND
@@ -25,7 +25,7 @@ class _ConnectionManagerBase(object):
         # The map of the parameters (original name: loadedMap)
         self._syn_params = {}
         # Connections indexed by post-gid, then ordered by pre-gid
-        self._connections_map = defaultdict(list)
+        self._connections_map = OrderedDefaultDict()
         self._creation_mode = True
         self._synapse_reader = None
 
@@ -63,11 +63,13 @@ class _ConnectionManagerBase(object):
             weight_factor: (Optional) factor to scale all netcon weights
         """
         logging.debug("iterate %d cells", len(gidvec))
+        _debug_conn = None
+
         for tgid in gidvec:
             synapses_params = self.get_synapse_parameters(tgid)
             cur_conn = None
 
-            logging.debug("connecting to post neuron a%d - %d items", tgid, len(synapses_params))
+            logging.debug("Connecting post neuron a%d: %d synapses", tgid, len(synapses_params))
             for i, syn_params in enumerate(synapses_params):
                 sgid = int(syn_params.sgid)
                 if self._circuit_target and not self._circuit_target.completeContains(sgid):
@@ -77,17 +79,24 @@ class _ConnectionManagerBase(object):
                 # Note: The sgids in any given dataset from nrn.h5 will come in sorted order,
                 # low to high. This code therefore doesn't search or sort on its own.
                 # If the nrn.h5 file changes in the future we must update the code accordingly
+                if cur_conn is None:
+                    logging.debug("connection %d->%d", sgid, tgid)
+                    _debug_conn = tgid
                 if cur_conn is None or cur_conn.sgid != sgid:
-                    cur_conn = Connection(sgid, tgid, None, STDPMode.NO_STDP,
-                                          0, self._synapse_mode, weight_factor)
+                    cur_conn = Connection(
+                        sgid, tgid, None, STDPMode.NO_STDP, 0, self._synapse_mode, weight_factor)
                     self.store_connection(cur_conn)
 
-                # placeSynapses( activeConnection, synParamsList.o(synIndex), synIndex+1 )
-                point = self._target_manager.locationToPoint(tgid, syn_params.isec,
-                                                             syn_params.ipt, syn_params.offset)
+                # placeSynapses() called from connection.finalize
+                point = self._target_manager.locationToPoint(
+                    tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
                 cur_conn.add_synapse(point, syn_params, i)
 
-    # compat
+                if _debug_conn == tgid:
+                    logging.debug(" > %d %d %d %f",
+                                  syn_params.sgid, syn_params.D, syn_params.F, syn_params.location)
+
+    # Compatibility
     connectAll = connect_all
 
     # -
@@ -417,7 +426,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
             metype = cell_distributor.getMEType(tgid)
             spgid = cell_distributor.getSpGid(tgid)
             for conn in conns:  # type: Connection
-                conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
+                conn.finalize(cell_distributor.pnm, metype, base_seed, spgid, tgid==10)
             logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
 
     # Backwards compat

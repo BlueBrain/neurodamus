@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 import logging
 import sys
-from array import array
+from collections import OrderedDict
 from bisect import bisect_left
 
 
@@ -12,6 +12,7 @@ def setup_logging(loglevel, stream=sys.stdout):
       loglevel (int): minimum loglevel for emitting messages
       stream: The output stream of log messages (default stdout)
     """
+    loglevel = min(loglevel, 2)
     verbosity_levels = {
         0: logging.WARNING,
         1: logging.INFO,
@@ -104,3 +105,11 @@ def bin_search(container, key, keyf=None):
         else:
             binsrch_high = binsrch_mid
     return binsrch_low
+
+
+class OrderedDefaultDict(OrderedDict):
+    factory = list
+
+    def __missing__(self, key):
+        self[key] = value = self.factory()
+        return value

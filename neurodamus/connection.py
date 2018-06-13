@@ -13,7 +13,7 @@ class SynapseParameters(object):
     _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F", "DTC",
                        "synType", "nrrp", "location")  # total: 13
     _dtype = np.dtype({"names": _synapse_fields,
-                       "formats": ["f4"] * len(_synapse_fields)})
+                       "formats": ["f8"] * len(_synapse_fields)})
 
     def __new__(cls, params):
         npa = np.empty(1, cls._dtype)
@@ -105,7 +105,7 @@ class Connection(object):
         self.weight_factor = weight_factor
         self._stdp = STDPMode.validate(stdp)
         self._minis_spont_rate = minis_spont_rate
-        self._synapse_locations = h.TPointList(tgid, 1)
+        self._tpoint_man = h.TPointList(tgid, 1)
         self._synapse_params = []
         self._synapse_ids = compat.List("i")
         self._configurations = [configuration] \
@@ -136,7 +136,7 @@ class Connection(object):
             params_obj: Parameters object for the Synapse to be placed
             syn_id: Optional id for the synapse to be used for seeding rng if applicable
         """
-        self._synapse_locations.append(syn_tpoints)
+        self._tpoint_man.append(syn_tpoints)
         self._synapse_params.append(params_obj)
 
         # copy the location from the pointlist into the param item for easier debugging access
@@ -145,7 +145,7 @@ class Connection(object):
         if syn_id is not None:
             self._synapse_ids.append(syn_id)
         else:
-            self._synapse_ids.append(self._synapse_locations.count())
+            self._synapse_ids.append(self._tpoint_man.count())
 
     # -
     def add_synapse_configuration(self, configuration):
@@ -173,17 +173,14 @@ class Connection(object):
             override_helper = self.synOverride.get("ModOverride") + "Helper"
             ND.load_hoc(override_helper)
             try:
-                cls = getattr(ND.h, override_helper)
-                syn_helper = cls(self.tgid, params_obj, x, syn_id, base_seed, self.synOverride)
-            except Exception:
-                logging.error("Failed to create synapse from helper: '%s'", override_helper)
-                raise RuntimeError("Failed to execute override helper " + override_helper)
+                helper_cls = getattr(ND.h, override_helper)
+            except AttributeError:
+                raise RuntimeError("Failed to load override helper " + override_helper)
         else:
-            if params_obj.synType < 100:
-                syn_helper = ND.GABAABHelper(self.tgid, params_obj, x, syn_id, base_seed)
-            else:
-                syn_helper = ND.AMPANMDAHelper(self.tgid, params_obj, x, syn_id, base_seed)
+            helper_cls = ND.GABAABHelper if params_obj.synType < 100 \
+                else ND.AMPANMDAHelper
 
+        syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, self.synOverride)
         cell.CellRef.synHelperList.append(syn_helper)
         cell.CellRef.synlist.append(syn_helper.synapse)
 
@@ -198,9 +195,6 @@ class Connection(object):
             tgid_override: optional argument which overrides the tgid in the event of loadbalancing
 
         """
-        # local x, baseSeed, finalgid, synIndex, ncIndex \
-        # localobj nc, pnm, cellObj, activeParams, ncWAPre, ncWAPost, weightAdjuster, synobj,
-        #          tbins_vec, rate_vec, exprng, uniformrng, ips, netconMini, rngInfo
         tgid = tgid_override if tgid_override is not None else self.tgid
         weight_adjusts = []
         wa_netcon_pre = []
@@ -219,13 +213,13 @@ class Connection(object):
         # Note that synapseLocation.SPLIT = 1
         # All locations, on and off node should be in this list, but only synapses/netcons on-node
         # should get instantiated
-        for syn_i, sc in enumerate(self._synapse_locations.sclst):
+        for syn_i, sc in enumerate(self._tpoint_man.sclst):
             if not sc.exists():
                 continue
             # Put the section in the stack, so generic hoc instructions apply to the right section
             sc.sec.push()
 
-            x = self._synapse_locations.x[syn_i]
+            x = self._tpoint_man.x[syn_i]
             active_params = self._synapse_params[syn_i]
             self.place_synapses(cell, active_params, x, self._synapse_ids[syn_i], base_seed)
             cell_syn_list = cell.CellRef.synlist
@@ -347,10 +341,10 @@ class Connection(object):
 
         # Note that synapseLocation.SPLIT = 1
         # All locations should be in this list, but only synapses/netcons on-node get instantiated
-        for syn_i, sc in enumerate(self._synapse_locations.sclst):
+        for syn_i, sc in enumerate(self._tpoint_man.sclst):
             if not sc.exists():
                 continue
-            x = self._synapse_locations.x[syn_i]
+            x = self._tpoint_man.x[syn_i]
             active_params = self._synapse_params[syn_i]
             gap_junction = ND.Gap(x)
 
@@ -441,7 +435,7 @@ class Connection(object):
         # All locations, on and off node should be in this list, but only synapses/netcons on-node
         # will receive the events
         local_i = 0
-        for syn_i, sc in enumerate(self._synapse_locations.sclst):
+        for syn_i, sc in enumerate(self._tpoint_man.sclst):
             if not sc.exists():
                 continue
             active_params = self._synapse_params[syn_i]
@@ -464,7 +458,7 @@ class Connection(object):
 
         for tvec in self._tvecs:
             local_i = 0
-            for syn_i, sc in enumerate(self._synapse_locations.sclst):
+            for syn_i, sc in enumerate(self._tpoint_man.sclst):
                 if not sc.exists():
                     continue
                 active_params = self._synapse_params[syn_i]

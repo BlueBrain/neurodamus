@@ -6,7 +6,7 @@ from collections import OrderedDict
 import logging  # active only in rank 0 (init)
 from os import path
 import numpy as np
-from .core import NeuronDamus as Nrn
+from .core import NeuronDamus as Nd
 from .metype import METype, METypeManager
 from .utils import progressbar, compat
 from .core.configuration import ConfigurationError, MPInfo
@@ -18,9 +18,6 @@ class CellDistributor(object):
     then to distribute the cell gids to the proper cpus.
     This class does not instantiate cell objects, that task is left to the Node object.
     """
-    # finalize will require a placeholder object for calling connect2target
-    Nrn.execute("objref nc_")
-    Nrn.execute("strdef tstr_")
 
     def __init__(self, config_parser, target_parser, pnm):
         """Constructor for CellDistributor object, takes information loaded from start.ncs to know
@@ -45,7 +42,12 @@ class CellDistributor(object):
         self._ionchannel_seed = 0
         self._spgidvec = None
         # Public
-        self.msfactor = 0.8   
+        self.msfactor = 0.8
+
+        if not hasattr(Nd, "nc_"):
+            # finalize will require a placeholder object for calling connect2target
+            Nd.execute("objref nc_")
+            Nd.execute("strdef tstr_")
 
         self._setup(config_parser.parsedRun, target_parser)
 
@@ -59,7 +61,7 @@ class CellDistributor(object):
 
         # for testing if xopen bcast is in use (NEURON 7.3).
         # We will be loading different templates on different cpus, so it must be disabled for now
-        Nrn.execute("xopen_broadcast_ = 0")
+        Nd.execute("xopen_broadcast_ = 0")
 
         # determine if we should get metype info from start.ncs (current default) or circuit.mvd3
         if run_conf.exists("CellLibraryFile"):
@@ -89,7 +91,7 @@ class CellDistributor(object):
                 cx_path = path.join(run_conf.get("CWD").s, cx_path)
 
             # self.binfo reads the files that have the predistributed cells (and pieces)
-            self.binfo = Nrn.BalanceInfo(cx_path, MPInfo.rank, MPInfo.cpu_count)
+            self.binfo = Nd.BalanceInfo(cx_path, MPInfo.rank, MPInfo.cpu_count)
 
             # self.binfo has gidlist, but gids can appear multiple times
             _seen = set()
@@ -259,12 +261,12 @@ class CellDistributor(object):
         res = meinfo.load_info(run_conf, gidvec, combo_names, morpho_names)
 
         if MPInfo.cpu_count > 1:
-            res = Nrn.pnm.pc.allreduce(res, 1)
+            res = Nd.pnm.pc.allreduce(res, 1)
         if res < 0:
             if MPInfo.rank == 0:
                 logging.error("errors while processing mecombo file. Terminating")
                 raise RuntimeError("Could not process mecombo file. Error {}".format(res))
-            Nrn.pnm.pc.barrier()
+            Nd.pnm.pc.barrier()
 
         return total_cells, gidvec, meinfo
 
@@ -294,7 +296,7 @@ class CellDistributor(object):
                 if line.startswith("begintemplate"):
                     tpl_name = line.split()[1]
                     break
-        Nrn.load_hoc(tpl_mod)
+        Nd.load_hoc(tpl_mod)
         return tpl_name
 
     def getMEType(self, gid):
@@ -398,7 +400,7 @@ class CellDistributor(object):
         Params:
             prospective_hosts: How many cpus we want running with our LoadBalanced circuit
         """
-        Nrn.mymetis3("cx_%d" % prospective_hosts, prospective_hosts)
+        Nd.mymetis3("cx_%d" % prospective_hosts, prospective_hosts)
 
     #
     def printMSloadBalance(self, filename, prospective_hosts):
@@ -413,7 +415,7 @@ class CellDistributor(object):
             filename += ".dat"
 
         ms_list = []
-        ms   = Nrn.Vector()
+        ms   = Nd.Vector()
         b = self._load_balance
 
         for i, gid in enumerate(self):
@@ -479,7 +481,7 @@ class CellDistributor(object):
         """
         raise NotImplementedError("rngForStochKvInit")
         #  quick check to verify this object contains StochKv
-        # hasStochKv = Nrn.ismembrane("StochKv", sec=ccell.CellRef.soma)
+        # hasStochKv = Nd.ismembrane("StochKv", sec=ccell.CellRef.soma)
         # if not hasStochKv:
         #     return
 
@@ -494,7 +496,7 @@ class CellDistributor(object):
         # First, we need each section of a cell to assign its index value to the voltage field
         # (crazy, huh?) at this moment, this is used later during synapse creation so that sections
         # can be serialized into a single array for random acess.
-        rng_info = Nrn.RNGSettings()
+        rng_info = Nd.RNGSettings()
         self._global_seed = rng_info.getGlobalSeed()
         self._ionchannel_seed = rng_info.getIonChannelSeed()
 
@@ -508,24 +510,24 @@ class CellDistributor(object):
                 # for v5 circuits and earlier check if cell has re_init function.
                 # Instantiate random123 or mcellran4 as appropriate
                 # Note: should CellDist be aware that metype has CCell member?
-                ret = Nrn.name_declared("re_init_rng", 1, c=metype.CCell)
+                ret = Nd.name_declared("re_init_rng", 1, c=metype.CCell)
 
                 if ret:
                     if rng_info.getRNGMode() == rng_info.RANDOM123:
-                        Nrn.rng123ForStochKvInit(metype.CCell)
+                        Nd.rng123ForStochKvInit(metype.CCell)
                     else:
                         if metype.gid > 400000:
                             logging.warning("mcellran4 cannot initialize properly with large gids")
-                        Nrn.rngForStochKvInit(metype.CCell)
+                        Nd.rngForStochKvInit(metype.CCell)
 
             # TODO: CCell backwards compatibility
             # if we drop support for older versions use simply cell.CCellRef.connect2target(nil, nc)
             version = metype.getVersion()
             if version < 2:
-                nc = Nrn.nc_
-                metype.CellRef.connect2target(Nrn.nil, nc)
+                nc = Nd.nc_
+                metype.CellRef.connect2target(Nd.nil, nc)
             else:
-                nc = metype.connect2target(Nrn.nil)
+                nc = metype.connect2target(Nd.nil)
 
             if self._lb_flag:
                 ic = int(self.binfo.gids.indwhere("==", gid))

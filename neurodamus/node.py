@@ -828,7 +828,7 @@ class Node:
             return target.getPointList(self._cell_distributor)
 
     #
-    def dump_circuit_config(self, suffix=""):
+    def dump_circuit_config(self, suffix=None):
         for gid in self.gidvec:
             self._pnm.pc.prcellstate(gid, suffix)
 
