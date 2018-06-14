@@ -426,7 +426,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
             metype = cell_distributor.getMEType(tgid)
             spgid = cell_distributor.getSpGid(tgid)
             for conn in conns:  # type: Connection
-                conn.finalize(cell_distributor.pnm, metype, base_seed, spgid, tgid==10)
+                conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
             logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
 
     # Backwards compat
