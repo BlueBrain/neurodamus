@@ -3,6 +3,9 @@ import logging
 import sys
 from collections import OrderedDict
 from bisect import bisect_left
+import numpy
+from itertools import islice
+from six.moves import zip
 
 
 def setup_logging(loglevel, stream=sys.stdout):
@@ -108,8 +111,70 @@ def bin_search(container, key, keyf=None):
 
 
 class OrderedDefaultDict(OrderedDict):
+    """A simple though elegant Ordered and Default dict
+    """
     factory = list
 
     def __missing__(self, key):
         self[key] = value = self.factory()
         return value
+
+
+class OrderedMap(object):
+    """A memory-efficient map, which accepts duplicates
+    """
+    __slots__ = ("keys", "_values", "_indirect_idx")
+
+    def __init__(self, np_keys, values, presorted=False):
+        """Constructor for OrderedMap
+
+        Args:
+            np_keys: The numpy array of the keys. Can be empty
+            values: The array of the values, can be any indexable, but better if numpy
+        """
+        if presorted:
+            self.keys = np_keys
+            self._values = values
+            self._indirect_idx = None
+            return
+        sort_idxs = np_keys.argsort()
+        self.keys = np_keys[sort_idxs]
+        if isinstance(values, numpy.ndarray):
+            self._values = values[sort_idxs]
+            self._indirect_idx = None
+        else:
+            self._indirect_idx = sort_idxs
+            self._values = values
+
+    def find(self, key):
+        return numpy.searchsorted(self.keys, key)
+
+    def get_items(self, key):
+        """An iterator over all the values of a key
+        """
+        idx = self.find(key)
+        for k, v in zip(self.keys[idx:], islice(self.values, idx)):
+            if k == key:
+                yield v
+
+    def __getitem__(self, key):
+        idx = self.find(key)
+        if idx == len(self.keys) or self.keys[idx] != key:
+            raise KeyError("{} does not exist".format(key))
+        if self._indirect_idx is None:
+            return self._values[idx]
+        return self._values[self._indirect_idx[idx]]
+
+    def __setitem__(self, key, value):
+        raise NotImplementedError("Setitem is not allowed for performance reasons. "
+                                  "Please create new keys and values and rebuild the dict")
+
+    @property
+    def values(self):
+        return self._values if self._indirect_idx is None \
+            else (self._values[idx] for idx in self._indirect_idx)
+
+    def items(self):
+        if self._indirect_idx is None:
+            return zip(self.keys, self._values)
+        return zip(self.keys, self.values)

@@ -14,6 +14,7 @@ class GlobalConfig:
 class MPInfo:
     cpu_count = 1
     rank = 0
+    comm = None  # type: MPI.Comm
 
 
 class RNGConfig(ConfigT):

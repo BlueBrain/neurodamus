@@ -46,7 +46,7 @@ import time
 class ProgressBar(object):
     """ProgressBar class holds the options of the progress bar.
     """
-    def __init__(self, start=0, end=10, width=12, fill='=', blank='.',
+    def __init__(self, start=0, end=10, width=60, fill='=', blank='.',
                  format='[%(fill)s>%(blank)s] %(progress)s%%'):
         """ Creates a progress bar
 

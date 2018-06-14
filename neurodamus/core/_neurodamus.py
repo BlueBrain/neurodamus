@@ -34,9 +34,7 @@ class NeuronDamus(_Neuron):
         if cls._pnm is None:
             cls.load_dll(MOD_LIB)
             cls.load_hoc(HOC_LIB)
-            cls._pnm = pnm = h.ParallelNetManager(0)
-            MPInfo.cpu_count = int(pnm.nhost)
-            MPInfo.rank = int(pnm.myid)
+            cls._pnm = h.ParallelNetManager(0)
 
             # default logging (if set previously this wont have any effect)
             if MPInfo.rank == 0:

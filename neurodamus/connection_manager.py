@@ -158,7 +158,7 @@ class _ConnectionManagerBase(object):
 
                     # determine what we will do with the new sgid:
                     # update weights if seen before, or prep for pending connections
-                    existing_conn = self.find_connection(sgid, tgid)
+                    existing_conn = self.get_connection(sgid, tgid)
                     if existing_conn is not None:
                         # Known pathway/connection -> just update params
                         if weight_factor is not None:
@@ -272,7 +272,7 @@ class _ConnectionManagerBase(object):
             sgids = src_target.completegids()
             for sgid in sgids:
                 sgid = int(sgid)
-                conn = self.find_connection(sgid, tgid)
+                conn = self.get_connection(sgid, tgid)
                 if conn is not None:
                     # change params for all synapses
                     if configuration is not None:
@@ -319,21 +319,21 @@ class _ConnectionManagerBase(object):
     # -----------------------------------------------------------------------------
     def _find_connection(self, sgid, tgid, exact=True):
         """Finds a connection, given its source and destination gids.
-        Returns: None if it doesnt exist, or (when exact is False) the possible insertion index
+        Returns:
+            tuple: connection list and index. If the element doesnt exist, index depends on the
+            exact flag: None if exact=True, otherwise the possible insertion index.
         """
         cell_conns = self._connections_map[tgid]
         if not cell_conns:
             return cell_conns, None
         pos = bin_search(cell_conns, sgid, lambda x: x.sgid)
-        if pos == len(cell_conns):
-            # Not found and pos index is invalid
-            return cell_conns, None
-        if exact and cell_conns[pos].sgid != sgid:
+        if exact and (pos == len(cell_conns) or cell_conns[pos].sgid != sgid):
+            # Not found
             return cell_conns, None
         return cell_conns, pos
 
     # -
-    def find_connection(self, sgid, tgid):
+    def get_connection(self, sgid, tgid):
         """Retrieves a connection from the pre and post gids.
         Returns:
             Connection: A connection object if it exists. None otherwise.
@@ -352,34 +352,26 @@ class _ConnectionManagerBase(object):
         logging.log(5, "store %d->%d amongst %d items", conn.tgid, conn.sgid,
                     len(self._connections_map))
         cell_conns, pos = self._find_connection(conn.sgid, conn.tgid, exact=False)
-        if pos is not None:
-            if cell_conns[pos].sgid == conn.sgid:
-                logging.warning("Attempting to store a connection twice: %d->%d",
-                                conn.sgid, conn.tgid)
-            else:
-                cell_conns.insert(pos, conn)
-        else:
-            cell_conns.append(conn)
+        cell_conns.insert(pos, conn)
+        if cell_conns[pos].sgid == conn.sgid:
+            logging.error("Storing a connection twice: %d->%d", conn.sgid, conn.tgid)
 
     # -
     def all_connections(self):
-        """Iterator over all the connections.
+        """Get an iterator over all the connections.
         """
         return chain.from_iterable(self._connections_map.values())
 
-    def _iter_synapses(self):
-        """Iterator over all the connections synapses, yielding (conn, synapse) pairs
+    def get_connections(self, target_gid):
+        """Get an iterator over all the connections of a target cell
         """
-        for conns in self._connections_map.values():
-            for conn in conns:
-                for i in range(int(conn.count())):
-                    yield conn, conn.o[i]
+        return self._connections_map[target_gid]
 
     def get_synapse_params_gid(self, target_gid):
-        """Retrieves an iterator over all the synapse parameters
+        """Get an iterator over all the synapse parameters of a target cell
         """
         conns = self._connections_map[target_gid]
-        return chain.from_iterable(c.synapseParamsList for c in conns)
+        return chain.from_iterable(c.synapse_params for c in conns)
 
 
 # ################################################################################################
@@ -471,18 +463,6 @@ class GapJunctionManager(_ConnectionManagerBase):
     """
     DATA_FILENAME = "nrn_gj.h5"
 
-    # HOC member variables
-    # --------------------
-    # objref self._synapse_reader, self._target_manager, self._connections_map, self._syn_params, this
-    # objref self._circuit_target, self._gj_offsets
-
-    # Public HOC members
-    # ------------------
-    # public updateCond # Oren
-    # public creationMode
-    # public init, connectAll, groupConnect, finalizeSynapses, replay, groupDelayedWeightAdjust,
-    # openSynapseFile, finalizeGapJunctions
-
     def __init__(self, circuit_path, target_manager, n_synapse_files, circuit_target=None):
         """Constructor for GapJunctionManager, checks that the nrn_gj.h5 synapse file is available
         for reading
@@ -498,7 +478,7 @@ class GapJunctionManager(_ConnectionManagerBase):
         _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
 
         self._circuit_target = circuit_target
-        self._gj_offsets = compat.List("d")
+        self._gj_offsets = compat.Vector("d")
         gjfname = path.join(circuit_path, "gjinfo.txt")
         gj_sum = 0
 
@@ -512,8 +492,7 @@ class GapJunctionManager(_ConnectionManagerBase):
         """Creates the netcons for all GapJunctions.
         Connections must have been places and all weight scalars should have their final values.
         """
-        for conn, synapse in self._iter_synapses():
+        for conn in self.all_connections:  # type: Connection
             cell = self._target_manager.cellDistributor.getCell(conn.tgid)
-            synapse.finalize_gap_junctions(self._target_manager.cellDistributor.pnm, cell,
-                                           self._gj_offsets[conn.tgid-1],
-                                           self._gj_offsets[conn.sgid-1])
+            conn.finalize_gap_junctions(
+                ND.pnm, cell, self._gj_offsets[conn.tgid-1], self._gj_offsets[conn.sgid-1])

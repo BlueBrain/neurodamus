@@ -380,10 +380,6 @@ class Node:
         self._synapse_manager = SynapseRuleManager(nrn_path, self._target_manager,
                                                    n_synapse_files, synapse_mode)
 
-        # if synapse_mode is None:
-        #     synapse_mode = "DualSyns"
-        # self._synapse_manager = Nd.SynapseRuleManager(nrn_path, self._target_manager,
-        #                                               n_synapse_files, synapse_mode)
         Nd.timeit_add(tid)
 
         if self._config_parser.parsedConnects.count() == 0:

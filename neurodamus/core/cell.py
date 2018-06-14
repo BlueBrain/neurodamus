@@ -215,7 +215,7 @@ endtemplate {cls_name}"""
                 """
                 sec = self.get_root()  # type: self.__class__
                 if sec.parent is None:
-                    raise RuntimeError("Disconnected subtree. Attach to a CellBuilder root node")
+                    raise CellCreationError("Disconnected subtree. Attach to a CellBuilder root node")
                 # If parent is True we must create the cell. Otherwise use it
                 c = Cell() if sec.parent is True else sec.parent
                 c.h.all.wholetree(sec=sec.this)
@@ -243,7 +243,7 @@ endtemplate {cls_name}"""
 
             def _ensure_soma(self):
                 if self.sec_type is not self.SOMA:
-                    raise RuntimeError("Dendrites must start on the soma")
+                    raise CellCreationError("Dendrites must start on the soma")
 
         class DendriteSection(Section):
             def __init__(self, name, length, n_segments=None, apical=False, **params):
@@ -343,3 +343,8 @@ class SectionList(object):
 
     def __iter__(self):
         return iter(self._hlist)
+
+
+class CellCreationError(Exception):
+    """ An exception for errors in instantiating a cell
+    """

@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from .configuration import Neuron_Stdrun_Defaults
 from .configuration import GlobalConfig
+from .configuration import MPInfo
 from ..utils import classproperty
 
 
@@ -118,6 +119,11 @@ def _init_mpi():
         MPI.COMM_WORLD.Abort(1)
 
     sys.excepthook = mpi_excepthook
+
+    MPInfo.comm = comm = MPI.COMM_WORLD  # type: MPI.Comm
+    MPInfo.cpu_count = comm.Get_size()
+    MPInfo.rank = comm.Get_rank()
+
 
 
 class HocEntity(object):

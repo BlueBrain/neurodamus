@@ -5,8 +5,8 @@ from __future__ import absolute_import
 from array import array
 
 
-class List(array):
-    """Behavior similar to Hoc List
+class Vector(array):
+    """Behavior similar to Hoc Vector
     """
     __slots__ = ()
 
@@ -38,8 +38,6 @@ class Map(object):
         return (self._hoc_map.o(i) for i in range(self._size))
 
     keys = __iter__
-
-
 
     @property
     def hoc_map(self):

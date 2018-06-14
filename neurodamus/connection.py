@@ -107,7 +107,7 @@ class Connection(object):
         self._minis_spont_rate = minis_spont_rate
         self._tpoint_man = h.TPointList(tgid, 1)
         self._synapse_params = []
-        self._synapse_ids = compat.List("i")
+        self._synapse_ids = compat.Vector("i")
         self._configurations = [configuration] \
             if configuration is not None else []
         # Lists defined in finalize

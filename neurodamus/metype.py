@@ -2,6 +2,7 @@ from __future__ import absolute_import, print_function
 from os import path
 import logging
 from collections import defaultdict
+from .core.configuration import ConfigurationError
 from .core import NeuronDamus as Nrn
 
 
@@ -132,7 +133,7 @@ class METypeManager(object):
         """
         if not run_conf.exists("MEComboInfoFile"):
             logging.error("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel.")
-            raise ValueError("MEComboInfoFile not specified")
+            raise ConfigurationError("MEComboInfoFile not specified")
 
         # Optimization: index combos
         combo_ids = defaultdict(list)

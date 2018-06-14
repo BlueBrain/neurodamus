@@ -81,8 +81,8 @@ class CellDistributor(object):
         if run_conf.exists("RunMode") \
                 and run_conf.get("RunMode").s in ("LoadBalance", "WholeCell"):
             self._lb_flag = True
-            self._gidvec = compat.List("I")
-            self._spgidvec = compat.List("I")
+            self._gidvec = compat.Vector("I")
+            self._spgidvec = compat.Vector("I")
 
             # read the cx_* files to build the gidvec
             cx_path = "cx_%d" % MPInfo.cpu_count
@@ -111,7 +111,7 @@ class CellDistributor(object):
             # circuit target, so distribute those cells that are members in round-robin style
             target = targets_conf.getTarget(run_conf.get("CircuitTarget").s)
             self._total_cells = int(target.completegids().size())
-            self._gidvec = compat.List("I")
+            self._gidvec = compat.Vector("I")
 
             c_gids = target.completegids()
             for i, gid in enumerate(c_gids):
@@ -143,7 +143,7 @@ class CellDistributor(object):
         mepath = run_conf.get("METypePath").s
 
         logging.info("Loading cells...")
-        pbar = progressbar.AnimatedProgressBar(end=len(self._gidvec), width=80) \
+        pbar = progressbar.AnimatedProgressBar(end=len(self._gidvec)) \
             if MPInfo.rank == 0 else 0  # Dummy
 
         for gid in self._gidvec:
@@ -163,13 +163,6 @@ class CellDistributor(object):
             self.gid2meobj[gid] = cell
             self._pnm.cells.append(cell.CellRef)
             pbar += 1
-
-        # can I create a dummy section, reference it, then delte it to keep a null SectionRef for
-        # insertion into pointlists?
-        # TODO: Check this PY
-        # access dummy
-        # nilSecRef = new SectionRef()
-        # delete_section()
 
     #
     @staticmethod
@@ -210,7 +203,7 @@ class CellDistributor(object):
 
         if gidvec is None:
             # Reassign Round-Robin
-            gidvec = compat.List("I")
+            gidvec = compat.Vector("I")
             for cellIndex, gid, metype in get_next_cell(ncs):
                 if cellIndex % MPInfo.cpu_count == MPInfo.rank:
                     gidvec.append(gid)
@@ -239,7 +232,7 @@ class CellDistributor(object):
             # Reassign Round-Robin
             mecombo_ds = mvd["/cells/properties/me_combo"]
             total_cells = len(mecombo_ds)
-            gidvec = compat.List("I")
+            gidvec = compat.Vector("I")
 
             # circuit.mvd3 uses intrinsic gids starting from 1
             cell_i = MPInfo.rank
@@ -248,7 +241,7 @@ class CellDistributor(object):
                 gidvec.append(cell_i + 1)
                 cell_i += incr
 
-        indexes = compat.List("i", np.frombuffer(gidvec, dtype="i4") - 1)
+        indexes = compat.Vector("i", np.frombuffer(gidvec, dtype="i4") - 1)
         morph_ids = mvd["/cells/properties/morphology"][indexes]
         combo_ids = mvd["/cells/properties/me_combo"][indexes]
         morpho_ds = mvd["/library/morphology"]
@@ -362,8 +355,8 @@ class CellDistributor(object):
 
     def cell_complexity(self, with_total=True):
         # local i, gid, ncell  localobj cx_cell, id_cell
-        cx_cell = compat.List("f")
-        id_cell = compat.List("I")
+        cx_cell = compat.Vector("f")
+        id_cell = compat.Vector("I")
         ncell = self._gidvec.size()
 
         for gid in self._gidvec:
