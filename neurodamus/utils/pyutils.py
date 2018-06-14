@@ -123,7 +123,7 @@ class OrderedDefaultDict(OrderedDict):
 class OrderedMap(object):
     """A memory-efficient map, which accepts duplicates
     """
-    __slots__ = ("keys", "_values", "_indirect_idx")
+    __slots__ = ("keys", "values")
 
     def __init__(self, np_keys, values, presorted=False):
         """Constructor for OrderedMap
@@ -134,17 +134,31 @@ class OrderedMap(object):
         """
         if presorted:
             self.keys = np_keys
-            self._values = values
-            self._indirect_idx = None
-            return
-        sort_idxs = np_keys.argsort()
-        self.keys = np_keys[sort_idxs]
-        if isinstance(values, numpy.ndarray):
-            self._values = values[sort_idxs]
-            self._indirect_idx = None
+            self.values = values
         else:
-            self._indirect_idx = sort_idxs
-            self._values = values
+            self.keys, self.values = self.sort_together(np_keys, values)
+	
+    @classmethod
+    def create_duplicates_as_list(cls, np_keys, values, presorted=False):
+        if not presorted:
+            np_keys, values = cls.sort_together(np_keys, values)
+        np_keys, indexes = numpy.unique(np_keys, return_index=True)
+        # Create list of subarrays
+        beg_it = iter(indexes)
+        end_it = iter(indexes)
+        next(end_it)
+        values = [values[next(beg_it):end] for end in end_it] + [values[indexes[-1]:]]
+        return cls(np_keys, values, presorted=True)
+
+    @staticmethod
+    def sort_together(np_keys, values):
+        sort_idxs = np_keys.argsort()
+        keys = np_keys[sort_idxs]
+        if isinstance(values, numpy.ndarray):
+            values = values[sort_idxs]
+        else:
+            values = [values[i] for i in sort_idxs]
+        return keys, values
 
     def find(self, key):
         return numpy.searchsorted(self.keys, key)
@@ -153,28 +167,19 @@ class OrderedMap(object):
         """An iterator over all the values of a key
         """
         idx = self.find(key)
-        for k, v in zip(self.keys[idx:], islice(self.values, idx)):
-            if k == key:
-                yield v
+        for k, v in zip(self.keys[idx:], self.values[idx:]):
+            if k != key: break
+            yield v
 
     def __getitem__(self, key):
         idx = self.find(key)
         if idx == len(self.keys) or self.keys[idx] != key:
             raise KeyError("{} does not exist".format(key))
-        if self._indirect_idx is None:
-            return self._values[idx]
-        return self._values[self._indirect_idx[idx]]
+        return self.values[idx]
 
     def __setitem__(self, key, value):
         raise NotImplementedError("Setitem is not allowed for performance reasons. "
                                   "Please create new keys and values and rebuild the dict")
 
-    @property
-    def values(self):
-        return self._values if self._indirect_idx is None \
-            else (self._values[idx] for idx in self._indirect_idx)
-
     def items(self):
-        if self._indirect_idx is None:
-            return zip(self.keys, self._values)
         return zip(self.keys, self.values)

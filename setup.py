@@ -16,11 +16,12 @@ def setup_package():
         setup_requires=['six'] + sphinx,
         install_requires=[
             'NEURON',
-            'h5py'
+            'h5py',
             'enum34;python_version<"3.4"',
             'lazy-property',
             'pyyaml',
             'docopt',
+            'six',
         ],
         tests_require=[
             "pytest"
