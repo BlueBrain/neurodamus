@@ -149,7 +149,7 @@ class Connection(object):
 
     # -
     def add_synapse_configuration(self, configuration):
-        """Add a synapse configuration command to the list.  
+        """Add a synapse configuration command to the list.
         All commands are executed on synapse creation
         """
         if configuration is not None:
@@ -157,9 +157,9 @@ class Connection(object):
 
     # -
     def place_synapses(self, cell, params_obj, x, syn_id, base_seed):
-        """Create one or more synapses, updating the self._synapses and TPointList in the supplied 
+        """Create one or more synapses, updating the self._synapses and TPointList in the supplied
         Connection object. This is dependant on the location existing on the cpu.
-    
+
         Args:
             cell: The cell object
             params_obj: SynapseParameters object for the synapse to be placed at a single location
@@ -167,7 +167,7 @@ class Connection(object):
             syn_id: Synapse id (determined by row number in the nrn.h5 dataset)
             base_seed: base seed to adjust synapse RNG - added to MCellRan4's low index parameter
 
-        """ 
+        """
         if self.synOverride is not None:
             # there should be a 'Helper' for that syntype in the hoc path.
             override_helper = self.synOverride.get("ModOverride") + "Helper"
