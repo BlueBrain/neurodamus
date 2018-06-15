@@ -3,8 +3,9 @@ import logging
 import sys
 from collections import OrderedDict
 from bisect import bisect_left
-import numpy
+import numpy as np
 from itertools import islice
+from operator import add
 from six.moves import zip
 
 
@@ -120,7 +121,7 @@ class OrderedDefaultDict(OrderedDict):
         return value
 
 
-class OrderedMap(object):
+class MultiMap(object):
     """A memory-efficient map, which accepts duplicates
     """
     __slots__ = ("keys", "values")
@@ -132,36 +133,28 @@ class OrderedMap(object):
             np_keys: The numpy array of the keys. Can be empty
             values: The array of the values, can be any indexable, but better if numpy
         """
+        assert len(np_keys) == len(values), "Keys and values must have the same length"
         if presorted:
             self.keys = np_keys
             self.values = values
         else:
             self.keys, self.values = self.sort_together(np_keys, values)
-	
-    @classmethod
-    def create_duplicates_as_list(cls, np_keys, values, presorted=False):
-        if not presorted:
-            np_keys, values = cls.sort_together(np_keys, values)
-        np_keys, indexes = numpy.unique(np_keys, return_index=True)
-        # Create list of subarrays
-        beg_it = iter(indexes)
-        end_it = iter(indexes)
-        next(end_it)
-        values = [values[next(beg_it):end] for end in end_it] + [values[indexes[-1]:]]
-        return cls(np_keys, values, presorted=True)
 
     @staticmethod
     def sort_together(np_keys, values):
         sort_idxs = np_keys.argsort()
         keys = np_keys[sort_idxs]
-        if isinstance(values, numpy.ndarray):
+        if isinstance(values, np.ndarray):
             values = values[sort_idxs]
         else:
             values = [values[i] for i in sort_idxs]
         return keys, values
 
     def find(self, key):
-        return numpy.searchsorted(self.keys, key)
+        idx = np.searchsorted(self.keys, key)
+        if idx == len(self.keys) or self.keys[idx] != key:
+            return None
+        return idx
 
     def get_items(self, key):
         """An iterator over all the values of a key
@@ -173,7 +166,7 @@ class OrderedMap(object):
 
     def __getitem__(self, key):
         idx = self.find(key)
-        if idx == len(self.keys) or self.keys[idx] != key:
+        if idx is None:
             raise KeyError("{} does not exist".format(key))
         return self.values[idx]
 
@@ -183,3 +176,47 @@ class OrderedMap(object):
 
     def items(self):
         return zip(self.keys, self.values)
+
+    def __contains__(self, key):
+        return self.find(key) is not None
+
+    def __iadd__(self, other):
+        """inplace add (incorporate other)"""
+        self.keys, self.values = self.sort_together(np.concatenate((self.keys, other.keys)),
+                                                    self.concat(self.values, other.values))
+        return self
+
+    @staticmethod
+    def concat(v1, v2):
+        if isinstance(v1, np.ndarray) and isinstance(v2, np.ndarray):
+            return np.concatenate((v1, v2))
+        return (v1 if isinstance(v1, (list, tuple)) else list(v1)) + \
+               (v2 if isinstance(v2, (list, tuple)) else list(v2))
+
+
+class GroupedMultiMap(MultiMap):
+    """ A Multimap which groups values by key in a list
+    """
+    def __init__(self, np_keys, values, presorted=False):
+        MultiMap.__init__(self, np_keys, values, presorted)
+        self.keys, self.values = self._duplicates_to_list(self.keys, self.values)
+
+    @staticmethod
+    def _duplicates_to_list(np_keys, values):
+        np_keys, indexes = np.unique(np_keys, return_index=True)
+        if len(indexes) == 0:
+            return np_keys, []
+        beg_it = iter(indexes)
+        end_it = iter(indexes)
+        next(end_it)
+        values = [values[next(beg_it):end] for end in end_it] + [values[indexes[-1]:]]
+        return np_keys, values
+
+    def get_items(self, key):
+        return self[key]
+
+    def __iadd__(self, other):
+        MultiMap.__iadd__(self, other)
+        self.keys, v_list = self._duplicates_to_list(self.keys, self.values)
+        self.values = [reduce(add, subl) for subl in v_list]
+        return self

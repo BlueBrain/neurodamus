@@ -9,7 +9,7 @@ from collections import OrderedDict
 import numpy as np
 from .core import NeuronDamus as Nd
 from .core.configuration import MPInfo
-from .utils import compat, OrderedMap
+from .utils import compat, MultiMap
 
 
 class SynapseReplay(object):
@@ -38,7 +38,7 @@ class SynapseReplay(object):
         Nd.distributedSpikes = 0  # Wonder the effects of this
         self.open_spike_file(spike_filename, delay)
 
-
+    #
     def open_spike_file(self, filename, delay):
         """Opens a given spike file
         Args:
@@ -124,13 +124,13 @@ class SynapseReplay(object):
         # There was code here to print stats on the time/mem usage. Do we really need that?
         self._store_events(tvec, gidvec)
 
-
+    #
     def _store_events(self, tvec, gidvec):
         if isinstance(tvec, compat.Vector):
             tvec = np.frombuffer(tvec)
             gidvec = np.frombuffer(gidvec)
 
-        map = OrderedMap.create_duplicates_as_list(gidvec, tvec)
+        map = MultiMap.create_duplicates_as_list(gidvec, tvec)
         if self._gid_fire_events is None:
             self._gid_fire_events = map
         else:
