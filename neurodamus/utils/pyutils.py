@@ -4,9 +4,9 @@ import sys
 from collections import OrderedDict
 from bisect import bisect_left
 import numpy as np
-from itertools import islice
+from collections import Mapping
 from operator import add
-from six.moves import zip
+from six.moves import zip, reduce
 
 
 def setup_logging(loglevel, stream=sys.stdout):
@@ -121,10 +121,10 @@ class OrderedDefaultDict(OrderedDict):
         return value
 
 
-class MultiMap(object):
+class MultiMap(Mapping):
     """A memory-efficient map, which accepts duplicates
     """
-    __slots__ = ("keys", "values")
+    __slots__ = ("_keys", "_values")
 
     def __init__(self, np_keys, values, presorted=False):
         """Constructor for OrderedMap
@@ -135,10 +135,10 @@ class MultiMap(object):
         """
         assert len(np_keys) == len(values), "Keys and values must have the same length"
         if presorted:
-            self.keys = np_keys
-            self.values = values
+            self._keys = np_keys
+            self._values = values
         else:
-            self.keys, self.values = self.sort_together(np_keys, values)
+            self._keys, self._values = self.sort_together(np_keys, values)
 
     @staticmethod
     def sort_together(np_keys, values):
@@ -151,16 +151,34 @@ class MultiMap(object):
         return keys, values
 
     def find(self, key):
-        idx = np.searchsorted(self.keys, key)
-        if idx == len(self.keys) or self.keys[idx] != key:
+        idx = np.searchsorted(self._keys, key)
+        if idx == len(self._keys) or self._keys[idx] != key:
             return None
         return idx
+
+    def keys(self):
+        return self._keys
+
+    def values(self):
+        return self._values
+
+    def __iter__(self):
+        return iter(self._keys)
+
+    def __len__(self):
+        return len(self._keys)
+
+    def get(self, key, default=None):
+        idx = self.find(key)
+        if idx is None:
+            return default
+        return self._values[idx]
 
     def get_items(self, key):
         """An iterator over all the values of a key
         """
         idx = self.find(key)
-        for k, v in zip(self.keys[idx:], self.values[idx:]):
+        for k, v in zip(self._keys[idx:], self._values[idx:]):
             if k != key: break
             yield v
 
@@ -168,22 +186,24 @@ class MultiMap(object):
         idx = self.find(key)
         if idx is None:
             raise KeyError("{} does not exist".format(key))
-        return self.values[idx]
+        return self._values[idx]
 
     def __setitem__(self, key, value):
         raise NotImplementedError("Setitem is not allowed for performance reasons. "
-                                  "Please create new keys and values and rebuild the dict")
+                                  "Please build and add-inplace another MultiMap")
 
     def items(self):
-        return zip(self.keys, self.values)
+        return zip(self._keys, self._values)
 
     def __contains__(self, key):
         return self.find(key) is not None
 
+    exists = __contains__  # Compat. w Hoc map
+
     def __iadd__(self, other):
         """inplace add (incorporate other)"""
-        self.keys, self.values = self.sort_together(np.concatenate((self.keys, other.keys)),
-                                                    self.concat(self.values, other.values))
+        self._keys, self._values = self.sort_together(
+            np.concatenate((self._keys, other._keys)), self.concat(self._values, other._values))
         return self
 
     @staticmethod
@@ -199,7 +219,7 @@ class GroupedMultiMap(MultiMap):
     """
     def __init__(self, np_keys, values, presorted=False):
         MultiMap.__init__(self, np_keys, values, presorted)
-        self.keys, self.values = self._duplicates_to_list(self.keys, self.values)
+        self._keys, self._values = self._duplicates_to_list(self._keys, self._values)
 
     @staticmethod
     def _duplicates_to_list(np_keys, values):
@@ -212,11 +232,17 @@ class GroupedMultiMap(MultiMap):
         values = [values[next(beg_it):end] for end in end_it] + [values[indexes[-1]:]]
         return np_keys, values
 
+    def get(self, key, default=()):
+        return MultiMap.get(self, key, default)
+
     def get_items(self, key):
-        return self[key]
+        return self.get(key)
 
     def __iadd__(self, other):
         MultiMap.__iadd__(self, other)
-        self.keys, v_list = self._duplicates_to_list(self.keys, self.values)
-        self.values = [reduce(add, subl) for subl in v_list]
+        self._keys, v_list = self._duplicates_to_list(self._keys, self._values)
+        self._values = [reduce(add, subl) for subl in v_list]
         return self
+
+    def flat_values(self):
+        return reduce(self.concat, self._values)

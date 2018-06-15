@@ -14,20 +14,20 @@ def test_node_run():
         logging.root.setLevel(5)
 
     node = Node("/home/leite/dev/TestData/build/circuitBuilding_1000neurons/BlueConfig")
-    node.loadTargets()
-    node.computeLB()
-    node.createCells()
-    node.executeNeuronConfigures()
+    node.load_targets()
+    node.compute_loadbal()
+    node.create_cells()
+    node.execute_neuron_configures()
 
     logging.info("Create connections")
-    node.createSynapses()
-    node.createGapJunctions()
+    node.create_synapses()
+    node.create_gap_junctions()
 
     logging.info("Enable Stimulus")
-    node.enableStimulus()
+    node.enable_stimulus()
 
     logging.info("Enable Modifications")
-    node.enableModifications()
+    node.enable_modifications()
 
     if DEBUG:
         logging.info("Dumping config")
@@ -35,7 +35,7 @@ def test_node_run():
         node.dump_circuit_config("")
 
     logging.info("Enable Reports")
-    node.enableReports()
+    node.enable_reports()
 
     logging.info("Run")
     node.prun(True)

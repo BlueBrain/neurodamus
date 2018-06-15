@@ -443,8 +443,8 @@ class SynapseRuleManager(_ConnectionManagerBase):
             cell = target.cellDistributor.getCell(tgid)
 
             for conn in conns:
-                if spike_map.exists(conn.sgid):
-                    conn.replay(spike_map.get(conn.sgid), cell)
+                if conn.sgid in spike_map:
+                    conn.replay(spike_map[conn.sgid], cell)
                     self._replay_list.append(conn)
             ND.timeit_add(timeit_id)
 
