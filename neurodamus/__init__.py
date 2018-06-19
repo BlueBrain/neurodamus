@@ -11,4 +11,4 @@ __author__ = "Fernando Pereira <fernando.pereira@epfl.ch>"
 __copyright__ = "2018 Blue Brain Project, EPFL"
 
 # Neurodamus node for setting up a neurodamus execution
-from .node import Node, setup_node, run
+from .node import Node, Neurodamus

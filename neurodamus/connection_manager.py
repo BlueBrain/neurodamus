@@ -26,6 +26,7 @@ class _ConnectionManagerBase(object):
         self._syn_params = {}
         # Connections indexed by post-gid, then ordered by pre-gid
         self._connections_map = OrderedDefaultDict()
+        self._disabled_conns = OrderedDefaultDict()
         self._creation_mode = True
         self._synapse_reader = None
 
@@ -79,7 +80,7 @@ class _ConnectionManagerBase(object):
                 # Note: The sgids in any given dataset from nrn.h5 will come in sorted order,
                 # low to high. This code therefore doesn't search or sort on its own.
                 # If the nrn.h5 file changes in the future we must update the code accordingly
-                if cur_conn is None:
+                if _debug_conn is None:
                     logging.debug("connection %d->%d", sgid, tgid)
                     _debug_conn = tgid
                 if cur_conn is None or cur_conn.sgid != sgid:
@@ -324,9 +325,9 @@ class _ConnectionManagerBase(object):
             exact flag: None if exact=True, otherwise the possible insertion index.
         """
         cell_conns = self._connections_map[tgid]
-        if not cell_conns:
-            return cell_conns, None
-        pos = bin_search(cell_conns, sgid, lambda x: x.sgid)
+        pos = 0
+        if cell_conns:
+            pos = bin_search(cell_conns, sgid, lambda x: x.sgid)
         if exact and (pos == len(cell_conns) or cell_conns[pos].sgid != sgid):
             # Not found
             return cell_conns, None
@@ -349,12 +350,11 @@ class _ConnectionManagerBase(object):
         Args:
             conn: The connection object to be stored
         """
-        logging.log(5, "store %d->%d amongst %d items", conn.tgid, conn.sgid,
-                    len(self._connections_map))
         cell_conns, pos = self._find_connection(conn.sgid, conn.tgid, exact=False)
+        if pos < len(cell_conns) and cell_conns[pos].sgid == conn.sgid:
+            logging.error("Attempt to store existing connection: %d->%d", conn.sgid, conn.tgid)
+            return
         cell_conns.insert(pos, conn)
-        if cell_conns[pos].sgid == conn.sgid:
-            logging.error("Storing a connection twice: %d->%d", conn.sgid, conn.tgid)
 
     # -
     def all_connections(self):
@@ -372,6 +372,75 @@ class _ConnectionManagerBase(object):
         """
         conns = self._connections_map[target_gid]
         return chain.from_iterable(c.synapse_params for c in conns)
+
+    # == Disabing / enabling ==
+
+    def disable(self, sgid, tgid, also_zero_conductance=False):
+        """Disable a connection, all of its netcons and optionally synapses.
+
+        Args:
+            sgid: The pre-gid of the cell
+            tgid: The post-gid of the cell
+            also_zero_conductance: (bool) Besides deactivating the netcon, will set synapses'
+                conductances to zero. Default: False
+        """
+        conn_lst, idx = self._find_connection(sgid, tgid)
+        if idx is None:
+            logging.warning("Non-existing connection to disable: %d->%d", sgid, tgid)
+        else:
+            c = conn_lst.pop(idx)  # type: Connection
+            self._disabled_conns[tgid].append(c)
+            c.disable(also_zero_conductance)
+
+    def enable(self, sgid, tgid):
+        """(Re)enable a connection
+        """
+        tgid_conns = self._disabled_conns[tgid]
+        for i, c in enumerate(tgid_conns):  # type: Connection
+            if c.sgid == sgid:
+                self.store_connection(c)
+                del tgid_conns[i]
+                c.enable()
+                break
+        else:
+            logging.warning("Non-existing connection to enable: %d->%d", sgid, tgid)
+
+    @staticmethod
+    def _find_group_in(conn_map, post_gids, pre_gids=None):
+        # type: (dict, list, list) -> []
+        for tgid, conns in conn_map.items():
+            if post_gids is not None and tgid not in post_gids:
+                continue
+            for i, c in enumerate(conns):  # type: Connection
+                if pre_gids is not None and c.sgid not in pre_gids:
+                    continue
+                yield c, conns, i
+
+    def disable_group(self, post_gids, pre_gids=None, also_zero_conductance=False):
+        """Disable a number of connections given lists of pre and post gids.
+        Note: None will match all gids.
+
+        Args:
+            post_gids: The target gids of the connections to be disabled. None for all
+            pre-gids: idem for pre-gids. [Default: None -> all)
+        """
+        for conn, lst, idx in self._find_group_in(self._connections_map, post_gids, pre_gids):
+            self._disabled_conns[conn.tgid].append(lst.pop(idx))
+            conn.disable(also_zero_conductance)
+
+    def enable_group(self, post_gids, pre_gids=None):
+        """Enable a number of connections given lists of pre and post gids.
+        Note: None will match all gids.
+        """
+        for conn, lst, idx in self._find_group_in(self._disabled_conns, post_gids, pre_gids):
+            self.store_connection(lst.pop(idx))
+            conn.enable()
+
+    def all_disabled(self):
+        return chain.from_iterable(self._disabled_conns.values())
+
+    def get_disabled(self, post_gid):
+        return self._disabled_conns[post_gid]
 
 
 # ################################################################################################
@@ -492,7 +561,7 @@ class GapJunctionManager(_ConnectionManagerBase):
         """Creates the netcons for all GapJunctions.
         Connections must have been places and all weight scalars should have their final values.
         """
-        for conn in self.all_connections:  # type: Connection
+        for conn in self.all_connections():  # type: Connection
             cell = self._target_manager.cellDistributor.getCell(conn.tgid)
             conn.finalize_gap_junctions(
                 ND.pnm, cell, self._gj_offsets[conn.tgid-1], self._gj_offsets[conn.sgid-1])

@@ -3,6 +3,7 @@ import logging
 import numpy as np
 from .core import NeuronDamus as ND
 from .utils import compat
+from six.moves import zip
 
 
 # SynapseParameters = namedtuple("SynapseParameters", _synapse_fields)
@@ -79,6 +80,7 @@ class Connection(object):
     A Connection object serves as a container for synapses formed from a presynaptic and a
     postsynaptic gid, including Points where those synapses are placed (stored in TPointList)
     """
+    __slots__ = ("sgid", "tgid", "weight_factor", "__dict__")
 
     def __init__(self, sgid, tgid, configuration=None,
                  stdp=None,
@@ -113,15 +115,14 @@ class Connection(object):
         # Lists defined in finalize
         self._netcons = None
         self._synapses = None
+        self._conductances_bk = None  # Store conductances for re-ebaling
         self._replay_netcons = None
         self._minis_netcons = None
         self._minis_RNGs = None
         # Used for replay
         self._tvecs = []
 
-    @property
-    def synapse_params(self):
-        return self._synapse_params
+    synapse_params = property(lambda self: self._synapse_params)
 
     def _set_stdp(self, stdp):
         self._stdp = STDPMode.validate(stdp)
@@ -474,3 +475,28 @@ class Connection(object):
                     logging.debug("%d->%d event at %f",
                                   self.sgid, self.tgid, t + active_params.delay)
                 local_i += 1
+
+    # -
+    def disable(self, set_zero_conductance=False):
+        """Deactivates a synapse by disabling the netcon. Additionally can also set conductance
+        to zero so that the point process has no contribution whatsoever to the simulation.
+
+        Args:
+            set_zero_conductance: (bool) Sets synapses' conductance to zero [default: False]
+
+        """
+        for nc in self._netcons:
+            nc.active(False)
+        if set_zero_conductance:
+            self._conductances_bk = compat.Vector("d", (syn.g for syn in self._synapses))
+            self.update_conductance(.0)
+
+    def enable(self):
+        """(Re)enables connections. It will activate all netcons and restore conductance values
+        had they been set to zero"""
+        for nc in self._netcons:
+            nc.active(True)
+        if self._conductances_bk:
+            for syn, cond in zip(self._synapses, self._conductances_bk):
+                syn.g = cond
+            self._conductances_bk = None

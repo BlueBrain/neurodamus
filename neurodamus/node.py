@@ -734,7 +734,7 @@ class Node:
         """
         run_conf = self._config_parser.parsedRun
         if show_progress:
-            Nd.ShowProgress(Nd.cvode, MPInfo.rank)
+            _ = Nd.ShowProgress(Nd.cvode, MPInfo.rank)
 
         self._pnm.pc.setup_transfer()
         spike_compress = 3
@@ -833,43 +833,40 @@ class Node:
             self._pnm.pc.prcellstate(gid, suffix)
 
 
-###################################################
-# Helpers
-###################################################
-
-def setup_node(recipe_file):
-    """Creates and initializes a neurodamus run node"""
-    setup_logging(GlobalConfig.verbosity)
-    node = Node(recipe_file)
-    node.load_targets()
-    node.compute_loadbal()
-    node.create_cells()
-    node.execute_neuron_configures()
-    return node
-
-
-def run(recipe_file):
-    """Launches a Neurodamus run
-    Args:
-        recipe_file: The path of the recipe file
+# Helper class
+class Neurodamus(Node):
+    """A high level interface to Neurodamus
     """
-    node = setup_node(recipe_file)
-    logging.info("Create connections")
-    node.create_synapses()
-    node.create_gap_junctions()
+    def __init__(self, recipe_file):
+        """Creates and initializes a neurodamus run node
+        """
+        setup_logging(GlobalConfig.verbosity)
+        Node.__init__(recipe_file)
+        self.load_targets()
+        self.compute_loadbal()
+        self.create_cells()
+        self.execute_neuron_configures()
 
-    logging.info("Enable Stimulus")
-    node.enable_stimulus()
+        logging.info("Create connections")
+        self.create_synapses()
+        self.create_gap_junctions()
 
-    logging.info("Enable Modifications")
-    node.enable_modifications()
+        logging.info("Enable Stimulus")
+        self.enable_stimulus()
 
-    logging.info("Enable Reports")
-    node.enable_reports()
+        logging.info("Enable Modifications")
+        self.enable_modifications()
 
-    logging.info("Run")
-    node.prun(True)
+        logging.info("Enable Reports")
+        self.enable_reports()
 
-    logging.info("Simulation finished. Gather spikes then clean up.")
-    node.spike2file("out.dat")
-    node.cleanup()
+    def run(self):
+        """Starts the Simulation
+        """
+        logging.info("Run")
+        self.prun(True)
+        logging.info("Simulation finished. Gather spikes then clean up.")
+        self.spike2file("out.dat")
+
+    def __del__(self):
+        self.cleanup()
