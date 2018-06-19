@@ -2,15 +2,15 @@ from __future__ import print_function
 from neurodamus import Node
 from neurodamus.core import NeuronDamus as Nd
 from neurodamus.utils import setup_logging
+import sys
 import logging
 
-DEBUG = True
-"""WIll dump extensive logging information"""
 
-
-def test_node_run():
+def test_node_run(trace=False):
     setup_logging(2)
-    if DEBUG:
+    if trace:
+        # Some additional logging is available at special level 5
+        print("TRACE mode is ON")
         logging.root.setLevel(5)
 
     node = Node("/home/leite/dev/TestData/build/circuitBuilding_1000neurons/BlueConfig")
@@ -29,7 +29,7 @@ def test_node_run():
     logging.info("Enable Modifications")
     node.enable_modifications()
 
-    if DEBUG:
+    if trace:
         logging.info("Dumping config")
         Nd.stdinit()
         node.dump_circuit_config("")
@@ -46,4 +46,4 @@ def test_node_run():
 
 
 if __name__ == "__main__":
-    test_node_run()
+    test_node_run("trace" in sys.argv)

@@ -16,11 +16,12 @@ def setup_logging(loglevel, stream=sys.stdout):
       loglevel (int): minimum loglevel for emitting messages
       stream: The output stream of log messages (default stdout)
     """
+    assert isinstance(loglevel, int)
     loglevel = min(loglevel, 2)
     verbosity_levels = {
         0: logging.WARNING,
         1: logging.INFO,
-        2: logging.DEBUG
+        2: logging.DEBUG,
     }
     logformat = "(%(asctime)s) [%(levelname)s] %(message)s"
     logging.basicConfig(level=verbosity_levels[loglevel], stream=stream,

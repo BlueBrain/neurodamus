@@ -4,16 +4,20 @@
 import sys
 from setuptools import setup
 
-VERSION = 0.1
+VERSION = "0.2.1"
 
 
 def setup_package():
     needs_sphinx = {'build_sphinx', 'upload_docs'}.intersection(sys.argv)
-    sphinx = ['sphinx'] if needs_sphinx else []
+    maybe_sphinx = ['sphinx'] if needs_sphinx else []
+
     setup(
-        name='pyNeurodamus',
+        name='neurodamus',
         version=VERSION,
-        setup_requires=['six'] + sphinx,
+        packages=[
+            "neurodamus",
+            "neurodamus.core"
+        ],
         install_requires=[
             'NEURON',
             'h5py',
@@ -23,6 +27,7 @@ def setup_package():
             'docopt',
             'six',
         ],
+        setup_requires=maybe_sphinx,
         tests_require=[
             "pytest"
         ],

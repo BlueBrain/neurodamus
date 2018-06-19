@@ -837,11 +837,20 @@ class Node:
 class Neurodamus(Node):
     """A high level interface to Neurodamus
     """
-    def __init__(self, recipe_file):
+    def __init__(self, recipe_file, logging_level=None):
         """Creates and initializes a neurodamus run node
+        Args:
+            recipe_file: The BlueConfig recipe file
+            logging_level: (int) Redefine the global logging level.
+                0 - Only warnings / errors
+                1 - Info messages (default)
+                2 - Debug messages
         """
+        if logging_level is not None:
+            GlobalConfig.verbosity = logging_level
         setup_logging(GlobalConfig.verbosity)
-        Node.__init__(recipe_file)
+
+        Node.__init__(self, recipe_file)
         self.load_targets()
         self.compute_loadbal()
         self.create_cells()
