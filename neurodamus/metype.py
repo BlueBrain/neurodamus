@@ -78,6 +78,10 @@ class METype:
         return 3
 
     @property
+    def CCell(self):
+        return self._ccell
+
+    @property
     def CellRef(self):
         return self._ccell.CellRef
 

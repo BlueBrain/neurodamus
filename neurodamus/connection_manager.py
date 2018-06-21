@@ -5,6 +5,7 @@ from itertools import chain
 from os import path
 from .core import NeuronDamus as ND
 from .utils import compat, bin_search
+from .utils.progressbar import ProgressBar
 from .connection import SynapseParameters, Connection, SynapseMode, STDPMode
 
 
@@ -102,8 +103,8 @@ class _ConnectionManagerBase(object):
 
     # -
     def group_connect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
-                      stdp_mode=None, spont_mini_rate=0, synapse_type_restrict=None):
-        """ Given some gidlists, connect those gids in the source list to those in the dest list
+                      stdp_mode=None, spont_mini_rate=0, synapse_types=None):
+        """Given source and destination targets, create all connections for post-gids in gidvec.
         Note: the cells in the source list are not limited by what is on this cpu whereas
         the dest list requires the cells be local
 
@@ -111,11 +112,11 @@ class _ConnectionManagerBase(object):
             src_target: Name of Source Target
             dst_target: Name of Destination Target
             gidvec: Vector of gids on the local cpu
-            weight_factor: (optional) Scaling weight to apply to the synapses
-            configuration: (optional) SynapseConfiguration string
-            stdp_mode: (optional) Which STDP to use. Default: None (=TDPoff for creating, no change)
-            spont_mini_rate: (optional) For spontaneous minis trigger rate (default: 0)
-            synapse_type_restrict: (optional) to further restrict when the weight is applied
+            weight_factor: (float) Scaling weight to apply to the synapses. Default: dont change
+            configuration: (str) SynapseConfiguration Default: None
+            stdp_mode: Which STDP to use. Default: None (=TDPoff for creating, wont change existing)
+            spont_mini_rate: (float) For spontaneous minis trigger rate (default: 0)
+            synapse_types: (tuple) To restrict which synapse types are created. Default: None
         """
         # unlike connectAll, we must look through self._connections_map to see if sgid->tgid exists
         # because it may be getting weights updated.
@@ -124,6 +125,9 @@ class _ConnectionManagerBase(object):
         src_target = self._target_manager.getTarget(src_target)
         dst_target = self._target_manager.getTarget(dst_target)
         stdp = STDPMode.from_str(stdp_mode) if stdp_mode is not None else None
+        synapses_restrict = synapse_types is not None
+        if synapses_restrict and not isinstance(synapse_types, (tuple, list)):
+            synapse_types = (synapse_types,)
 
         for tgid in gidvec:
             if not dst_target.contains(tgid):  # if tgid not in dst_target:
@@ -131,13 +135,12 @@ class _ConnectionManagerBase(object):
 
             # this cpu owns some or all of the destination gid
             syns_params = self.get_synapse_parameters(tgid)
-            old_sgid = -1
+            prev_sgid = None
             pend_conn = None
 
             for i, syn_params in enumerate(syns_params):
-                if synapse_type_restrict is not None:
-                    if syn_params.synType != synapse_type_restrict:
-                        continue
+                if synapses_restrict and syn_params.synType not in synapse_types:
+                    continue
 
                 # if this gid in the source target?
                 sgid = int(syn_params.sgid)
@@ -145,46 +148,43 @@ class _ConnectionManagerBase(object):
                     continue
 
                 # is this gid in the self._circuit_target (if defined)
-                if self._circuit_target is not None:
-                    if not self._circuit_target.completeContains(sgid):
-                        continue
+                if self._circuit_target and not self._circuit_target.completeContains(sgid):
+                    continue
 
                 # are we on a different sgid than the previous iteration?
-                if sgid != old_sgid:
+                if sgid != prev_sgid:
                     # if we were putting things in a pending object, we can store that away now
-                    if pend_conn is not None:
+                    if pend_conn:
                         self.store_connection(pend_conn)
                         pend_conn = None
-                    old_sgid = sgid
+                    prev_sgid = sgid
 
-                    # determine what we will do with the new sgid:
-                    # update weights if seen before, or prep for pending connections
+                    # determine what we will do with the new sgid
+                    # update params if seen before, or create connection
                     existing_conn = self.get_connection(sgid, tgid)
                     if existing_conn is not None:
-                        # Known pathway/connection -> just update params
                         if weight_factor is not None:
                             existing_conn.weight_factor = weight_factor
+                        if configuration is not None:
                             existing_conn.add_synapse_configuration(configuration)
                         if stdp is not None:
                             existing_conn.stdp = stdp
                         pend_conn = None
                     else:
                         if self._creation_mode:
-                            # What should happen if the initial group connect is given -1? Error?
                             if weight_factor is None:
-                                logging.warning("Invalid weight_factor for initial connection "
-                                                "creation. Assuming default 1")
+                                logging.warning("Invalid weight_factor for connection creation. "
+                                                "Assuming 1.0")
                             pend_conn = Connection(sgid, tgid, configuration, stdp, spont_mini_rate,
-                                                   self._synapse_mode)
+                                                   self._synapse_mode, weight_factor)
 
-                # if we are using an object for a pending connection, then it is new
-                # and requires we place the synapse(s) for the current index
+                # if we have a pending connection we place the current synapse(s)
                 if pend_conn is not None:
                     point = self._target_manager.locationToPoint(tgid, syn_params.isec,
                                                                  syn_params.ipt, syn_params.offset)
                     pend_conn.add_synapse(point, syn_params, i)
 
-            # if we have a pending connection, make sure we store it
+            # store any remaining pending connection
             if pend_conn is not None:
                 self.store_connection(pend_conn)
 
@@ -483,7 +483,9 @@ class SynapseRuleManager(_ConnectionManagerBase):
             base_seed: optional argument to adjust synapse RNGs (default=0)
         """
         cell_distributor = self._target_manager.cellDistributor
-        for tgid, conns in self._connections_map.items():
+        pbar = ProgressBar(len(self._connections_map))
+
+        for tgid, conns in pbar(self._connections_map.items()):
             metype = cell_distributor.getMEType(tgid)
             spgid = cell_distributor.getSpGid(tgid)
             for conn in conns:  # type: Connection
@@ -509,7 +511,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
             if not target.contains(tgid):
                 continue
             ND.timeit_start(timeit_id)
-            cell = target.cellDistributor.getCell(tgid)
+            cell = self._target_manager.cellDistributor.getCell(tgid)
 
             for conn in conns:
                 if conn.sgid in spike_map:

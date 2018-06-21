@@ -41,12 +41,13 @@ And here another example with different options:
 from __future__ import print_function
 import sys
 import time
+from itertools import islice
 
 
-class ProgressBar(object):
+class Progress(object):
     """ProgressBar class holds the options of the progress bar.
     """
-    def __init__(self, start=0, end=10, width=60, fill='=', blank='.',
+    def __init__(self, end, start=0, width=60, fill='=', blank='.',
                  format='[%(fill)s>%(blank)s] %(progress)s%%'):
         """ Creates a progress bar
 
@@ -66,7 +67,6 @@ class ProgressBar(object):
         self._blank = blank
         self._format = format + " "
         self._init_time = time.time()
-        self.progress = .0
         self.reset()
 
     def __iadd__(self, increment):
@@ -88,27 +88,40 @@ class ProgressBar(object):
         percentage = int(self.progress * 100.0 / self._end)
         return self._format % {'fill': fill, 'blank': blank, 'progress': percentage}
 
-    __repr__ = __str__
+    def __repr__(self):
+        return "<Progress: %d/%d>" % (self.progress, self._end)
 
     def reset(self):
         """Resets the current progress to the start point"""
         self.progress = self._start
-        return self
+
+    def __call__(self, iterable, start=0, stop=None):
+        self.progress = start
+        for elem in islice(iterable, start, stop):
+            yield elem
+            self.__iadd__(1)
+
+    def _set_progress(self, val):
+        self._progress = val
+
+    progress = property(lambda self: self._progress, _set_progress)
 
 
-class AnimatedProgressBar(ProgressBar):
+class ProgressBar(Progress):
     """Extends ProgressBar to allow you to use it straighforward on a script.
     Accepts an extra keyword argument named `stdout` (by default use sys.stdout)
     and may be any file-object to which send the progress status.
     """
-    def __init__(self, *args,  **kwargs):
-        super(AnimatedProgressBar, self).__init__(*args, **kwargs)
+    _no_tty_bar = "-------20%-------40%-------60%-------80%------100%"  # len 50
+
+    def __init__(self, end, **kwargs):
         self._stream = kwargs.get('stdout', sys.stdout)
         self._prev_bar_len = 0
         self._tty_mode = hasattr(self._stream, 'isatty') and self._stream.isatty()
         if not self._tty_mode:
-            self._width = 50
-            self._stream.write('|-------20%-------40%-------60%-------80%------100%|\n|')
+            self._stream.write('|')
+            kwargs["width"] = 50
+        super(ProgressBar, self).__init__(end, **kwargs)
 
     def show_progress(self):
         if self._tty_mode:
@@ -120,8 +133,13 @@ class AnimatedProgressBar(ProgressBar):
 
     def _show_incremental_bar(self):
         bar_len = self.cur_width
+        if bar_len < self._prev_bar_len:
+            # We need to produce a new bar.
+            self._stream.write("\r|")
+            self._prev_bar_len = 0
+
         if bar_len > self._prev_bar_len:
-            self._stream.write('#' * (bar_len - self._prev_bar_len))
+            self._stream.write(self._no_tty_bar[self._prev_bar_len:bar_len])
             self._prev_bar_len = bar_len
 
     def __del__(self):
@@ -131,16 +149,33 @@ class AnimatedProgressBar(ProgressBar):
         out_str = "[Done] Time taken: %d sec." % (time.time() - self._init_time)
         self._stream.write("\r{}{}\n".format(out_str, " "*(self._width + 8 - len(out_str))))
 
+    def _set_progress(self, val):
+        Progress._set_progress(self, val)
+        self.show_progress()
+
+    progress = property(lambda self: self._progress, _set_progress)
+
 
 if __name__ == '__main__':
-    p = AnimatedProgressBar(end=100, width=80)
+    p = ProgressBar(100, width=80)
 
     while p.progress < 100:
-        p += 5
-        p.show_progress()
         time.sleep(0.1)
+        p += 5
 
     for i in range(80, -1, -20):
         time.sleep(0.5)
         p.progress = i
-        p.show_progress()
+
+    del p
+
+    # progressbars can also be used as a consumer-generators to monitor loop progress
+    l1 = range(0, 100, 10)
+    p = ProgressBar(len(l1))
+
+    for j in p(l1):
+        # Do something with j
+        time.sleep(0.2)
+
+    # Can be reused and work even in comprehension, and sub-selection
+    l2 = [time.sleep(0.2) for x in p(l1, 5)]

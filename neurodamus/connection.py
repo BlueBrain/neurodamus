@@ -86,7 +86,7 @@ class Connection(object):
                  stdp=None,
                  minis_spont_rate=0,
                  synapse_mode=SynapseMode.DUAL_SYNS,
-                 weight_factor=1):
+                 weight_factor=1.0):
         """Creates a connection object
 
         Args:
@@ -373,7 +373,7 @@ class Connection(object):
                 setattr(syn, key, val)
 
     @staticmethod
-    def _apply_configuration(configuration, synapse, context=None):
+    def _apply_configuration(configuration, synapse):
         # In the future configurations should be Python functions?
         """ Executes a configuration against a (tuple of) synapse(s)
 
@@ -389,19 +389,20 @@ class Connection(object):
             ND._tmp = syn
             hoc_cmd = configuration.s.replace("%s", "_tmp")
             try:
-                ND.execute(hoc_cmd, context)
+                ND.execute(hoc_cmd)
             except RuntimeError:
-                logging.warning("Failed to apply configuration to synapse: %s", hoc_cmd)
+                logging.error("Failed to apply configuration to synapse: %s", hoc_cmd)
+                raise
 
     def _configure_cell(self, cell):
         """ Helper function to apply the SynapseConfigure statements on a given cell synapses
         """
         for config in self._configurations:
-            self._apply_configuration(config, tuple(cell.CellRef.synlist), cell.CellRef)
+            self._apply_configuration(config, tuple(cell.CellRef.synlist))
 
     # -
     def apply_configuration(self, configuration):
-        """ Helper function to execute a configuration command on all created synapses.
+        """ Helper function to execute a configuration command on all connection synapses.
         """
         # NOTE: After the simulation has run for some time we can't assume that the last synapse
         # of the cell object is the target

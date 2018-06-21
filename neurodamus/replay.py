@@ -117,8 +117,8 @@ class SpikeManager(object):
     #
     def _store_events(self, tvec, gidvec):
         if isinstance(tvec, compat.Vector):
-            tvec = np.frombuffer(tvec)
-            gidvec = np.frombuffer(gidvec)
+            tvec = np.frombuffer(tvec, dtype="d")
+            gidvec = np.frombuffer(gidvec, dtype="uint32")
 
         map = GroupedMultiMap(gidvec, tvec)
         if self._gid_fire_events is None:

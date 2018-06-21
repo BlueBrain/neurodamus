@@ -7,6 +7,7 @@ from __future__ import absolute_import
 from os import path
 import logging
 from .utils import setup_logging, compat
+from .utils.progressbar import ProgressBar
 from .cell_distributor import CellDistributor
 from .core.configuration import GlobalConfig, MPInfo, ConfigurationError
 from .core import NeuronDamus as Nd
@@ -33,6 +34,7 @@ class Node:
         Nd.execute("celsius=34")
 
         self._config_parser = self._open_config(recipe)
+        self._blueconfig_path = path.dirname(recipe)
         self._connection_weight_delay_list = []
 
         # Instance Objects
@@ -214,14 +216,16 @@ class Node:
         TargetManager after the cells have been distributed, instantiated, and potentially split.
         """
         self._target_parser = Nd.TargetParser()
+        run_conf = self._config_parser.parsedRun
         if MPInfo.rank == 0:
             self._target_parser.isVerbose = 1
 
-        target_f = path.join(self._config_parser.parsedRun.get("nrnPath").s, "start.target")
+        target_f = path.join(run_conf.get("nrnPath").s, "start.target")
         self._target_parser.open(target_f)
 
         if self._config_parser.parsedRun.exists("TargetFile"):
-            self._target_parser.open(self._config_parser.parsedRun.get("TargetFile").s)
+            user_target = self._find_config_file(run_conf.get("TargetFile").s)
+            self._target_parser.open(user_target)
 
     #
     def export_loadbal(self, lb):
@@ -272,17 +276,16 @@ class Node:
             mode_obj.s = old_mode
 
     #
-    def interpret_connections(self):
-        for connectIndex in range(int(self._config_parser.parsedConnects.count())):
-            conn_conf = self._config_parser.parsedConnects.o(connectIndex)
-
-            # Connection blocks using a 'Delay' option are handled later
+    def _interpret_connections(self):
+        progress = ProgressBar(self._config_parser.parsedConnects.count())
+        for conn_conf in progress(compat.Map(self._config_parser.parsedConnects).values()):
             if conn_conf.exists("Delay"):
+                # Connection blocks using a 'Delay' option are handled later
                 continue
 
             conn_src = conn_conf.get("Source").s
             conn_dst = conn_conf.get("Destination").s
-            logging.log(5, "connect %s -> %s ", conn_src, conn_dst)
+            logging.debug("connect %s -> %s ", conn_src, conn_dst)
 
             # check if we are supposed to disable creation
             # -> i.e. only change weights for existing connections
@@ -290,40 +293,29 @@ class Node:
                 self._synapse_manager.disable_creation()
 
             # Check for STDP flag in config file, or default to no STDP
-            if conn_conf.exists("UseSTDP"):
-                stdp_mode = conn_conf.get("UseSTDP").s
-            else:
-                stdp_mode = "STDPoff"
+            stdp_mode = conn_conf.get("UseSTDP").s \
+                if conn_conf.exists("UseSTDP") else "STDPoff"
 
-            mini_spont_rate = 0.0
-            if conn_conf.exists("SpontMinis"):
-                mini_spont_rate = conn_conf.valueOf("SpontMinis")
+            mini_spont_rate = conn_conf.valueOf("SpontMinis") \
+                if conn_conf.exists("SpontMinis") else .0
 
-            # weight is now an optional argument, -1 indicates no change
-            weight = -1
-            if conn_conf.exists("Weight"):
-                weight = conn_conf.valueOf("Weight")
+            # weight is now an optional argument, None indicates no change
+            weight = conn_conf.valueOf("Weight") \
+                if conn_conf.exists("Weight") else None
 
-            self._synapse_manager.synOverride = None
-            if conn_conf.exists("ModOverride"):
-                # allows a helper object to grab any additional configuration values
-                self._synapse_manager.synOverride = conn_conf
+            # allows a helper object to grab any additional configuration values
+            self._synapse_manager.synOverride = conn_conf \
+                if conn_conf.exists("ModOverride") else None
 
-            synapse_conf = None
-            if conn_conf.exists("SynapseConfigure"):
-                synapse_conf = conn_conf.get("SynapseConfigure")
-                logging.info("Pathway %s -> %s: configure with '%s'",
-                             conn_src, conn_dst, conn_conf.get("SynapseConfigure").s)
+            syn_config = conn_conf.get("SynapseConfigure") \
+                if conn_conf.exists("SynapseConfigure") else None
+
+            syn_t = conn_conf.valueOf("SynapseID") \
+                if conn_conf.exists("SynapseID") else None
 
             # finally we have all the options checked and can now invoke the SynapseRuleManager
-            if conn_conf.exists("SynapseID"):
-                self._synapse_manager.group_connect(
-                    conn_src, conn_dst, weight, synapse_conf, self.gidvec,
-                    stdp_mode, mini_spont_rate, conn_conf.valueOf("SynapseID"))
-            else:
-                self._synapse_manager.group_connect(
-                    conn_src, conn_dst, weight, synapse_conf, self.gidvec,
-                    stdp_mode, mini_spont_rate)
+            self._synapse_manager.group_connect(conn_src, conn_dst, self.gidvec, weight,
+                                                syn_config, stdp_mode, mini_spont_rate, syn_t)
 
     #
     def create_gap_junctions(self):
@@ -399,7 +391,7 @@ class Node:
                     self._connection_weight_delay_list.append(conn)
 
             # Now handle the connection blocks as normal
-            self.interpret_connections()
+            self._interpret_connections()
 
         # Check for additional synapse files.  Now requires a connection block.
         # Continue support for compatibility, but new BlueConfigs should use Projection blocks
@@ -415,7 +407,7 @@ class Node:
             if self._config_parser.parsedConnects.count() == 0:
                 self._synapse_manager.connectAll(self.gidvec)
             else:
-                self.interpret_connections()
+                self._interpret_connections()
 
         # Check for Projection blocks
         if self._config_parser.parsedProjections.count() > 0:
@@ -434,7 +426,7 @@ class Node:
 
                 # Go ahead and make all the Projection connections
                 self._synapse_manager.connect_all(self.gidvec)
-                self.interpret_connections()
+                self._interpret_connections()
 
         # Check if we need to override the base seed for synapse RNGs
         if run_conf.exists("BaseSeed"):
@@ -477,6 +469,16 @@ class Node:
             raise ConfigurationError("Could not find file %s", filename)
         logging.info("data file %s path: %s", filename, nrn_path)
         return nrn_path
+
+    def _find_config_file(self, filepath):
+        if not path.isabs(filepath):
+            path_ = path.join(self._blueconfig_path, filepath)
+            if not path.isfile(path_):
+                path_ = path.join(self._blueconfig_path, file)
+            filepath = path_
+        if not path.isfile(filepath):
+            raise ConfigurationError("Config file not found: %s", filepath)
+        return filepath
 
     #
     def clear_model(self):
@@ -551,7 +553,8 @@ class Node:
             # check the pattern for special cases that are handled here.
             if stim.get("Pattern").s == "SynapseReplay":
                 delay = stim.valueOf("Delay") if stim.exists("Delay") else 0
-                spike_manager = SpikeManager(stim.get("SpikeFile").s, delay)
+                spike_filepath = self._find_config_file(stim.get("SpikeFile").s)
+                spike_manager = SpikeManager(spike_filepath, delay)
                 spike_manager.replay(self._synapse_manager, target_name)
                 Nd.timeit_add(tid)
             else:

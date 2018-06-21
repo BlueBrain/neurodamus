@@ -8,7 +8,8 @@ from os import path
 import numpy as np
 from .core import NeuronDamus as Nd
 from .metype import METype, METypeManager
-from .utils import progressbar, compat
+from .utils import compat
+from .utils.progressbar import ProgressBar
 from .core.configuration import ConfigurationError, MPInfo
 
 
@@ -143,11 +144,10 @@ class CellDistributor(object):
         mepath = run_conf.get("METypePath").s
 
         logging.info("Loading cells...")
-        pbar = progressbar.AnimatedProgressBar(end=len(self._gidvec)) \
+        pbar = ProgressBar(len(self._gidvec)) \
             if MPInfo.rank == 0 else 0  # Dummy
 
         for gid in self._gidvec:
-            MPInfo.rank == 0 and pbar.show_progress()
             if self._useMVD3:
                 meinfo = me_infos.retrieve_info(gid)
                 cell = METype(gid, mepath, meinfo.emodel, morpho_path, meinfo.morph_name)
@@ -494,7 +494,7 @@ class CellDistributor(object):
         self._ionchannel_seed = rng_info.getIonChannelSeed()
 
         for i, gid in enumerate(gids):
-            metype = self.cellList[i]
+            metype = self.cellList[i]  # type: METype
 
             #  for v6 and beyond - we can just try to invoke rng initialization
             if self._useMVD3 or rng_info.getRNGMode() == rng_info.COMPATIBILITY:
@@ -503,7 +503,7 @@ class CellDistributor(object):
                 # for v5 circuits and earlier check if cell has re_init function.
                 # Instantiate random123 or mcellran4 as appropriate
                 # Note: should CellDist be aware that metype has CCell member?
-                ret = Nd.name_declared("re_init_rng", 1, c=metype.CCell)
+                ret = hasattr(metype.CCell, "re_init_rng")
 
                 if ret:
                     if rng_info.getRNGMode() == rng_info.RANDOM123:
