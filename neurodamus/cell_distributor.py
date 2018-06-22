@@ -143,7 +143,7 @@ class CellDistributor(object):
 
         mepath = run_conf.get("METypePath").s
 
-        logging.info("Loading cells...")
+        logging.info("Loading %d cells..." % len(self._gidvec))
         pbar = ProgressBar(len(self._gidvec)) \
             if MPInfo.rank == 0 else 0  # Dummy
 

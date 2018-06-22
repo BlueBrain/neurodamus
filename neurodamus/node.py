@@ -258,8 +258,6 @@ class Node:
         # instantiate full cells -> should this be in CellDistributor object?
         self._cell_list = self._cell_distributor.cellList
 
-        logging.info("Created %d cells", self._pnm.cells.count())
-
         # localize targets, give to target manager
         self._target_parser.updateTargets(self.gidvec)
 
@@ -304,8 +302,7 @@ class Node:
                 if conn_conf.exists("Weight") else None
 
             # allows a helper object to grab any additional configuration values
-            self._synapse_manager.synOverride = conn_conf \
-                if conn_conf.exists("ModOverride") else None
+            syn_override = conn_conf if conn_conf.exists("ModOverride") else None
 
             syn_config = conn_conf.get("SynapseConfigure") \
                 if conn_conf.exists("SynapseConfigure") else None
@@ -314,8 +311,9 @@ class Node:
                 if conn_conf.exists("SynapseID") else None
 
             # finally we have all the options checked and can now invoke the SynapseRuleManager
-            self._synapse_manager.group_connect(conn_src, conn_dst, self.gidvec, weight,
-                                                syn_config, stdp_mode, mini_spont_rate, syn_t)
+            self._synapse_manager.group_connect(
+                conn_src, conn_dst, self.gidvec, weight, syn_config, stdp_mode,
+                mini_spont_rate, syn_t, syn_override)
 
     #
     def create_gap_junctions(self):
@@ -429,11 +427,11 @@ class Node:
                 self._interpret_connections()
 
         # Check if we need to override the base seed for synapse RNGs
-        if run_conf.exists("BaseSeed"):
-            self._synapse_manager.finalizeSynapses(run_conf.valueOf("BaseSeed"))
-        else:
-            self._synapse_manager.finalizeSynapses()
+        base_seed = run_conf.valueOf("BaseSeed") if run_conf.exists("BaseSeed") else 0
 
+        self._synapse_manager.finalizeSynapses(base_seed)
+
+    #
     def _find_projection_file(self, projection):
         """Determine where to find the synapse projection files"""
         return self._find_input_file("proj_nrn.h5", projection.get("Path").s, ("ProjectionPath",))

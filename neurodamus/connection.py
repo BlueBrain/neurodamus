@@ -86,7 +86,8 @@ class Connection(object):
                  stdp=None,
                  minis_spont_rate=0,
                  synapse_mode=SynapseMode.DUAL_SYNS,
-                 weight_factor=1.0):
+                 weight_factor=1.0,
+                 synapse_override=None):
         """Creates a connection object
 
         Args:
@@ -101,10 +102,10 @@ class Connection(object):
         h = ND.h
         self.sgid = sgid
         self.tgid = tgid
-        self.synapse_mode = synapse_mode
-        self.doneReplayRegister = 0
-        self.synOverride = None
         self.weight_factor = weight_factor
+        self._synapse_mode = synapse_mode
+        self._synapse_override = synapse_override
+        self._done_replay_register = False
         self._stdp = STDPMode.validate(stdp)
         self._minis_spont_rate = minis_spont_rate
         self._tpoint_man = h.TPointList(tgid, 1)
@@ -122,13 +123,21 @@ class Connection(object):
         # Used for replay
         self._tvecs = []
 
+    # read-only properties
     synapse_params = property(lambda self: self._synapse_params)
+    synapse_mode = property(lambda self: self._synapse_mode)
 
+    # Read-write
     def _set_stdp(self, stdp):
         self._stdp = STDPMode.validate(stdp)
+
     stdp = property(lambda self: self._stdp, _set_stdp)
 
-    # -
+    def override_synapse(self, synapse_conf):
+        self._synapse_override = synapse_conf
+
+    # ---------------------
+
     def add_synapse(self, syn_tpoints, params_obj, syn_id=None):
         """Adds a location and synapse to this Connection so that netcons can later be generated
 
@@ -155,35 +164,6 @@ class Connection(object):
         """
         if configuration is not None:
             self._configurations.append(configuration)
-
-    # -
-    def place_synapses(self, cell, params_obj, x, syn_id, base_seed):
-        """Create one or more synapses, updating the self._synapses and TPointList in the supplied
-        Connection object. This is dependant on the location existing on the cpu.
-
-        Args:
-            cell: The cell object
-            params_obj: SynapseParameters object for the synapse to be placed at a single location
-            x: distance into the currently accessed section (cas)
-            syn_id: Synapse id (determined by row number in the nrn.h5 dataset)
-            base_seed: base seed to adjust synapse RNG - added to MCellRan4's low index parameter
-
-        """
-        if self.synOverride is not None:
-            # there should be a 'Helper' for that syntype in the hoc path.
-            override_helper = self.synOverride.get("ModOverride") + "Helper"
-            ND.load_hoc(override_helper)
-            try:
-                helper_cls = getattr(ND.h, override_helper)
-            except AttributeError:
-                raise RuntimeError("Failed to load override helper " + override_helper)
-        else:
-            helper_cls = ND.GABAABHelper if params_obj.synType < 100 \
-                else ND.AMPANMDAHelper
-
-        syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, self.synOverride)
-        cell.CellRef.synHelperList.append(syn_helper)
-        cell.CellRef.synlist.append(syn_helper.synapse)
 
     # -
     def finalize(self, pnm, cell, base_seed=None, tgid_override=None):
@@ -221,10 +201,9 @@ class Connection(object):
             sc.sec.push()
 
             x = self._tpoint_man.x[syn_i]
-            active_params = self._synapse_params[syn_i]
-            self.place_synapses(cell, active_params, x, self._synapse_ids[syn_i], base_seed)
+            syn_params = self._synapse_params[syn_i]
+            syn_obj = self._create_synapse(cell, syn_params, x, self._synapse_ids[syn_i], base_seed)
             cell_syn_list = cell.CellRef.synlist
-            syn_obj = cell_syn_list.o(cell_syn_list.count()-1)
             self._synapses.append(syn_obj)
 
             # see also pc.gid_connect
@@ -232,11 +211,11 @@ class Connection(object):
             # if sgid not exist, creates an input PreSyn to receive spikes transited over the net.
             # PreSyn is the source to the NetCon, cannot ask netcon about the preloc, but srcgid ok
 
-            nc_index = pnm.nc_append(self.sgid, tgid, cell_syn_list.count()-1, active_params.delay,
-                                     active_params.weight)
+            nc_index = pnm.nc_append(self.sgid, tgid, cell_syn_list.count()-1,
+                                     syn_params.delay, syn_params.weight)
             nc = pnm.nclist.object(nc_index)  # Netcon object
-            nc.delay = active_params.delay
-            nc.weight[0] = active_params.weight * self.weight_factor
+            nc.delay = syn_params.delay
+            nc.weight[0] = syn_params.weight * self.weight_factor
             nc.threshold = -30
 
             # If the config has UseSTDP, do STDP stuff (can add more options later
@@ -257,12 +236,12 @@ class Connection(object):
                 nc_wa_pre = pnm.pc.gid_connect(self.sgid, weight_adjuster)
                 nc_wa_pre.threshold = -30
                 nc_wa_pre.weight[0] = 1
-                nc_wa_pre.delay = active_params.delay
+                nc_wa_pre.delay = syn_params.delay
 
                 nc_wa_post = pnm.pc.gid_connect(tgid, weight_adjuster)
                 nc_wa_post.threshold = -30
                 nc_wa_post.weight[0] = -1
-                nc_wa_post.delay = active_params.delay
+                nc_wa_post.delay = syn_params.delay
 
                 # Set the pointer to the synapse netcon weight
                 ND.setpointer(nc._ref_weight, "wsyn", weight_adjuster)
@@ -281,7 +260,7 @@ class Connection(object):
                 # TODO: better solution here to get the desired behaviour during
                 # delayed connection blocks
                 # Right now spontaneous minis should be unaffected by delays
-                netcon_m.weight[0] = active_params.weight * self.weight_factor
+                netcon_m.weight[0] = syn_params.weight * self.weight_factor
                 self._minis_netcons.append(netcon_m)
                 if rng_info.getRNGMode() == rng_info.RANDOM123:
                     ips.setRNGs(syn_obj.synapseID+200, tgid+250, rng_info.getMinisSeed()+300,
@@ -324,7 +303,39 @@ class Connection(object):
             self._netcons.append(nc)
             ND.pop_section()  # clear selection
 
-        self._configure_cell(cell)
+        # Apply configurations to the synapses
+        self._configure_synapses()
+
+    # -
+    def _create_synapse(self, cell, params_obj, x, syn_id, base_seed):
+        """Create synapse (GABBAB inhibitory, AMPANMDA excitatory, or another type defined by
+        self._synapse_override) passing the creation helper the params.
+        It also appends the synapse to the corresponding cell lists.
+
+        Args:
+            cell: The cell object
+            params_obj: SynapseParameters object for the synapse to be placed at a single location
+            x: distance into the currently accessed section (cas)
+            syn_id: Synapse id (determined by row number in the nrn.h5 dataset)
+            base_seed: base seed to adjust synapse RNG - added to MCellRan4's low index parameter
+
+        """
+        if self._synapse_override is not None:
+            # there should be a 'Helper' for that syntype in the hoc path.
+            override_helper = self._synapse_override.get("ModOverride") + "Helper"
+            ND.load_hoc(override_helper)
+            try:
+                helper_cls = getattr(ND.h, override_helper)
+            except AttributeError:
+                raise RuntimeError("Failed to load override helper " + override_helper)
+        else:
+            helper_cls = ND.GABAABHelper if params_obj.synType < 100 \
+                else ND.AMPANMDAHelper  # excitatory
+
+        syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, self._synapse_override)
+        cell.CellRef.synHelperList.append(syn_helper)
+        cell.CellRef.synlist.append(syn_helper.synapse)
+        return syn_helper.synapse
 
     # -
     def finalize_gap_junctions(self, pnm, cell, offset, end_offset):
@@ -385,20 +396,25 @@ class Connection(object):
         """
         synapses = synapse if isinstance(synapse, tuple) else (synapse,)
         ND.execute("objref _tmp")
+        hoc_cmd = configuration.s.replace("%s", "_tmp")
         for syn in synapses:
             ND._tmp = syn
-            hoc_cmd = configuration.s.replace("%s", "_tmp")
-            try:
-                ND.execute(hoc_cmd)
-            except RuntimeError:
-                logging.error("Failed to apply configuration to synapse: %s", hoc_cmd)
-                raise
+            # Some properties are not accepted by some point processes. Dont raise excpt
+            rc = ND.execute1("{%s}" % hoc_cmd)
+            if rc == 0:
+                logging.debug("Failed to apply configuration to synapse: %s", hoc_cmd)
 
     def _configure_cell(self, cell):
         """ Helper function to apply the SynapseConfigure statements on a given cell synapses
         """
         for config in self._configurations:
             self._apply_configuration(config, tuple(cell.CellRef.synlist))
+
+    def _configure_synapses(self):
+        """ Helper function to apply all the connection configurations to the created synapses
+        """
+        for config in self._configurations:
+            self.apply_configuration(config)
 
     # -
     def apply_configuration(self, configuration):
@@ -454,9 +470,9 @@ class Connection(object):
         and queue up an event. To be invoked by FInitializeHandler.
         """
         # only need to register events once per Connection
-        if self.doneReplayRegister == 1:
+        if self._done_replay_register:
             return
-        self.doneReplayRegister = 1
+        self._done_replay_register = True
 
         for tvec in self._tvecs:
             local_i = 0

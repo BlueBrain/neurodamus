@@ -103,7 +103,7 @@ class _ConnectionManagerBase(object):
 
     # -
     def group_connect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
-                      stdp_mode=None, spont_mini_rate=0, synapse_types=None):
+                      stdp_mode=None, spont_mini_rate=0, synapse_types=None, synapse_override=None):
         """Given source and destination targets, create all connections for post-gids in gidvec.
         Note: the cells in the source list are not limited by what is on this cpu whereas
         the dest list requires the cells be local
@@ -117,6 +117,7 @@ class _ConnectionManagerBase(object):
             stdp_mode: Which STDP to use. Default: None (=TDPoff for creating, wont change existing)
             spont_mini_rate: (float) For spontaneous minis trigger rate (default: 0)
             synapse_types: (tuple) To restrict which synapse types are created. Default: None
+            synapse_override: An alternative point process configuration.
         """
         # unlike connectAll, we must look through self._connections_map to see if sgid->tgid exists
         # because it may be getting weights updated.
@@ -161,22 +162,25 @@ class _ConnectionManagerBase(object):
 
                     # determine what we will do with the new sgid
                     # update params if seen before, or create connection
-                    existing_conn = self.get_connection(sgid, tgid)
-                    if existing_conn is not None:
+                    cur_conn = self.get_connection(sgid, tgid)  # type: Connection
+                    if cur_conn is not None:
                         if weight_factor is not None:
-                            existing_conn.weight_factor = weight_factor
+                            cur_conn.weight_factor = weight_factor
                         if configuration is not None:
-                            existing_conn.add_synapse_configuration(configuration)
+                            cur_conn.add_synapse_configuration(configuration)
                         if stdp is not None:
-                            existing_conn.stdp = stdp
+                            cur_conn.stdp = stdp
+                        if synapse_override is not None:
+                            cur_conn.override_synapse(synapse_override)
                         pend_conn = None
                     else:
                         if self._creation_mode:
                             if weight_factor is None:
                                 logging.warning("Invalid weight_factor for connection creation. "
                                                 "Assuming 1.0")
-                            pend_conn = Connection(sgid, tgid, configuration, stdp, spont_mini_rate,
-                                                   self._synapse_mode, weight_factor)
+                            pend_conn = Connection(
+                                sgid, tgid, configuration, stdp, spont_mini_rate,
+                                self._synapse_mode, weight_factor, synapse_override)
 
                 # if we have a pending connection we place the current synapse(s)
                 if pend_conn is not None:
@@ -476,8 +480,8 @@ class SynapseRuleManager(_ConnectionManagerBase):
 
     # -
     def finalize(self, base_seed=0):
-        """ Create the netcons.
-        All synapses must have been placed, all weight scalars should have their final values.
+        """Create the actual synapses and netcons.
+        All weight scalars should have their final values.
 
         Args:
             base_seed: optional argument to adjust synapse RNGs (default=0)
