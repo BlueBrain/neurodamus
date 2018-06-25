@@ -6,8 +6,8 @@ Copyright 2018 - Blue Brain Project, EPFL
 from __future__ import absolute_import
 from os import path
 import logging
-from .utils import setup_logging, compat
-from .utils.progressbar import ProgressBar
+from .utils import setup_logging, compat, STAGE_LOGLEVEL
+from .core import ProgressBarRank0 as ProgressBar
 from .cell_distributor import CellDistributor
 from .core.configuration import GlobalConfig, MPInfo, ConfigurationError
 from .core import NeuronDamus as Nd
@@ -275,8 +275,8 @@ class Node:
 
     #
     def _interpret_connections(self):
-        progress = ProgressBar(self._config_parser.parsedConnects.count())
-        for conn_conf in progress(compat.Map(self._config_parser.parsedConnects).values()):
+        logging.info("Creating connections from BlueConfig...")
+        for conn_conf in ProgressBar.itervalues(compat.Map(self._config_parser.parsedConnects)):
             if conn_conf.exists("Delay"):
                 # Connection blocks using a 'Delay' option are handled later
                 continue
@@ -526,15 +526,11 @@ class Node:
         # while we are at it, check if any stims are using extracellular
         has_extra_cellular = False
         stim_dict = {}
-        logging.info("Build Stim Dictionary")
-
-        for i in range(int(conf.parsedStimuli.count())):
-            stim_name = conf.parsedStimuli.key(i)
-            stim = conf.parsedStimuli.o(i)
-            stim_dict.setdefault(stim_name.s, stim)
-
-            if stim.get("Mode").s == "Extracellular":
-                has_extra_cellular = 1
+        logging.info("Building Stim Dictionary...")
+        for stim_name, stim in ProgressBar.iteritems(compat.Map(conf.parsedStimuli)):
+            stim_dict.setdefault(stim_name, stim)
+            if stim.get("Mode").s == "Extracellular`":
+                has_extra_cellular = True
 
         # Treat extracellular stimuli
         if has_extra_cellular:
@@ -687,20 +683,19 @@ class Node:
 
         # root node opens file for writing, all others append
         if MPInfo.rank == 0:
-            logging.info("Create file %s", outfile)
+            logging.info("Writing spikes to %s", outfile)
             with open(outfile, "w") as f:
-                f.write("/scatter\n")  # what am I forgetting for this thing?
-                logging.debug("Rank0 writing %d spikes", int(self._pnm.idvec.size()))
-                for i in range(int(self._pnm.idvec.size())):
-                    f.write("%.3f\t%d\n" % (self._pnm.spikevec.x[i], self._pnm.idvec.x[i]))
+                f.write("/scatter\n")
+                for i, gid in enumerate(self._pnm.idvec):
+                    f.write("%.3f\t%d\n" % (self._pnm.spikevec.x[i], gid))
 
         # Write other nodes' result in order
-        for nodeIndex in range(1, int(self._pnm.pc.nhost())):
+        for nodeIndex in range(1, MPInfo.cpu_count):
             self._pnm.pc.barrier()
             if MPInfo.rank == nodeIndex:
                 with open(outfile, "a") as f:
-                    for i in range(int(self._pnm.idvec.size())):
-                        f.write("%.3f\t%d\n" % (self._pnm.spikevec.x[i], self._pnm.idvec.x[i]))
+                    for i, gid in enumerate(self._pnm.idvec):
+                        f.write("%.3f\t%d\n" % (self._pnm.spikevec.x[i], gid))
 
     #
     def get_synapse_data_gid(self, gid):
@@ -852,30 +847,32 @@ class Neurodamus(Node):
         setup_logging(GlobalConfig.verbosity)
 
         Node.__init__(self, recipe_file)
+        logging.log(STAGE_LOGLEVEL, "INITIALIZING")
         self.load_targets()
         self.compute_loadbal()
+        logging.log(STAGE_LOGLEVEL, "BUILDING CIRCUIT")
         self.create_cells()
         self.execute_neuron_configures()
 
-        logging.info("Create connections")
+        # Create connections
         self.create_synapses()
         self.create_gap_junctions()
 
-        logging.info("Enable Stimulus")
+        # Enable Stimulus
         self.enable_stimulus()
 
-        logging.info("Enable Modifications")
+        # Enable Modifications
         self.enable_modifications()
 
-        logging.info("Enable Reports")
+        # Enable Reports
         self.enable_reports()
 
     def run(self):
         """Starts the Simulation
         """
-        logging.info("Run")
+        logging.log(STAGE_LOGLEVEL, "RUNNING SIMULATION")
         self.prun(True)
-        logging.info("Simulation finished. Gather spikes then clean up.")
+        logging.info("Simulation finished.")
         self.spike2file("out.dat")
 
     def __del__(self):

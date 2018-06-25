@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-import logging
+import logging as _logging
 import sys
 from collections import OrderedDict
 from bisect import bisect_left
@@ -8,24 +8,8 @@ from collections import Mapping
 from operator import add
 from six.moves import zip, reduce
 
-
-def setup_logging(loglevel, stream=sys.stdout):
-    """Setup basic logging
-
-    Args:
-      loglevel (int): minimum loglevel for emitting messages
-      stream: The output stream of log messages (default stdout)
-    """
-    assert isinstance(loglevel, int)
-    loglevel = min(loglevel, 2)
-    verbosity_levels = {
-        0: logging.WARNING,
-        1: logging.INFO,
-        2: logging.DEBUG,
-    }
-    logformat = "(%(asctime)s) [%(levelname)s] %(message)s"
-    logging.basicConfig(level=verbosity_levels[loglevel], stream=stream,
-                        format=logformat, datefmt="%Y-%m-%d %H:%M:%S")
+_logging_initted = False
+STAGE_LOGLEVEL = 25
 
 
 class classproperty(object):
@@ -247,3 +231,80 @@ class GroupedMultiMap(MultiMap):
 
     def flat_values(self):
         return reduce(self.concat, self._values)
+
+
+# ********** LOGGING *************
+
+class ConsoleColors:
+    BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, _, DEFAULT = range(10)
+    NORMAL, BOLD, DIM, UNDERLINED, BLINK, INVERTED, HIDDEN = [a << 4 for a in range(7)]
+
+    # These are the sequences needed to control output
+    _CHANGE_SEQ = "\033[{}m"
+    _RESET_SEQ = "\033[0m"
+
+    @classmethod
+    def reset(cls):
+        return cls._RESET_SEQ
+
+    @classmethod
+    def set_text_color(cls, color):
+        return cls._CHANGE_SEQ.format(color + 30)
+
+    @classmethod
+    def format_text(cls, text, color, style=None):
+        if color > 7:
+            style = (color >> 4)
+            color = color & 0xf
+        format_seq = "" if style is None else cls._CHANGE_SEQ.format(style)
+
+        return format_seq + cls.set_text_color(color) + text + cls._RESET_SEQ
+
+
+class _ColoredFormatter(_logging.Formatter):
+    COLORS = {
+        'WARNING': ConsoleColors.YELLOW,
+        'INFO': ConsoleColors.DEFAULT,
+        'DEBUG': ConsoleColors.DIM,
+        'ERROR': ConsoleColors.RED,
+        'CRITICAL': ConsoleColors.RED,
+        'STAGE': ConsoleColors.BLUE + ConsoleColors.BOLD
+    }
+
+    def format(self, record):
+        levelname = record.levelname
+        msg = super(_ColoredFormatter, self).format(record)
+        if levelname == "WARNING":
+            msg = "[WARNING] " + msg
+        if levelname in self.COLORS:
+            msg = ConsoleColors.format_text(msg, self.COLORS[levelname])
+        return msg
+
+
+def setup_logging(loglevel, stream=sys.stdout):
+    """Setup basic logging
+
+    Args:
+      loglevel (int): minimum loglevel for emitting messages
+      stream: The output stream of log messages (default stdout)
+    """
+    if getattr(setup_logging, "logging_initted", False):
+        return
+    setup_logging.logging_initted = True
+    assert isinstance(loglevel, int)
+    loglevel = min(loglevel, 2)
+    verbosity_levels = {
+        0: _logging.WARNING,
+        1: _logging.INFO,
+        2: _logging.DEBUG,
+    }
+
+    _logging.addLevelName(STAGE_LOGLEVEL, "STAGE")
+    _logging.NEW_STAGE = STAGE_LOGLEVEL
+
+    logformat = "(%(asctime)s) [%(levelname)s] %(message)s"
+    datefmt = "%b-%d %H:%M:%S"
+    hdlr = _logging.StreamHandler(stream)
+    hdlr.setFormatter(_ColoredFormatter(logformat, datefmt))
+    _logging.root.setLevel(verbosity_levels[loglevel])
+    _logging.root.addHandler(hdlr)

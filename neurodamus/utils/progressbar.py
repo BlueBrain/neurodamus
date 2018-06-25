@@ -106,6 +106,18 @@ class Progress(object):
 
     progress = property(lambda self: self._progress, _set_progress)
 
+    @classmethod
+    def iter(cls, iterable):
+        return cls(len(iterable))(iterable)
+
+    @classmethod
+    def itervalues(cls, iterable):
+        return cls(len(iterable))(iterable.values())
+
+    @classmethod
+    def iteritems(cls, iterable):
+        return cls(len(iterable))(iterable.items())
+
 
 class ProgressBar(Progress):
     """Extends ProgressBar to allow you to use it straighforward on a script.

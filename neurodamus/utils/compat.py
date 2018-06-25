@@ -3,6 +3,7 @@
 """
 from __future__ import absolute_import
 from array import array
+from collections import Mapping
 
 
 class Vector(array):
@@ -18,7 +19,7 @@ class Vector(array):
         return self
 
 
-class Map(object):
+class Map(Mapping):
     """Class which bring Python map API to hoc Maps
     """
     __slots__ = ('_hoc_map', '_size')
@@ -38,6 +39,15 @@ class Map(object):
         return (self._hoc_map.o(i) for i in range(self._size))
 
     keys = __iter__
+
+    def __getitem__(self, item):
+        return self._hoc_map.get(item)
+
+    def __contains__(self, item):
+        return self._hoc_map.exists(item) > 0
+
+    def __len__(self):
+        return self._size
 
     @property
     def hoc_map(self):

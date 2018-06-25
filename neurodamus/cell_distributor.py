@@ -9,8 +9,8 @@ import numpy as np
 from .core import NeuronDamus as Nd
 from .metype import METype, METypeManager
 from .utils import compat
-from .utils.progressbar import ProgressBar
 from .core.configuration import ConfigurationError, MPInfo
+from .core import ProgressBarRank0 as ProgressBar
 
 
 class CellDistributor(object):
@@ -143,11 +143,8 @@ class CellDistributor(object):
 
         mepath = run_conf.get("METypePath").s
 
-        logging.info("Loading %d cells..." % len(self._gidvec))
-        pbar = ProgressBar(len(self._gidvec)) \
-            if MPInfo.rank == 0 else 0  # Dummy
-
-        for gid in self._gidvec:
+        logging.info("Loading cells...")
+        for gid in ProgressBar.iter(self._gidvec):
             if self._useMVD3:
                 meinfo = me_infos.retrieve_info(gid)
                 cell = METype(gid, mepath, meinfo.emodel, morpho_path, meinfo.morph_name)
@@ -162,7 +159,6 @@ class CellDistributor(object):
             self.cellList.append(cell)
             self.gid2meobj[gid] = cell
             self._pnm.cells.append(cell.CellRef)
-            pbar += 1
 
     #
     @staticmethod
@@ -185,8 +181,6 @@ class CellDistributor(object):
             total_cells = int(tstr.split()[1])
         except IndexError:
             raise ConfigurationError("NCS file contains invalid config: " + tstr)
-
-        logging.info("read {} cells from start.ncs".format(total_cells))
 
         def get_next_cell(f):
             for cell_i, line in enumerate(f):
@@ -547,4 +541,3 @@ class CellDistributor(object):
     def delayedSplit(self):
         if self._lb_flag:
             self._pnm.pc.multisplit()
-

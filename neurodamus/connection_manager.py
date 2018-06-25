@@ -1,11 +1,11 @@
 from __future__ import absolute_import
 import logging
-from .utils import OrderedDefaultDict
 from itertools import chain
 from os import path
 from .core import NeuronDamus as ND
+from .core import ProgressBarRank0 as ProgressBar
 from .utils import compat, bin_search
-from .utils.progressbar import ProgressBar
+from .utils import OrderedDefaultDict
 from .connection import SynapseParameters, Connection, SynapseMode, STDPMode
 
 
@@ -64,10 +64,10 @@ class _ConnectionManagerBase(object):
             gidvec: The array of local gids
             weight_factor: (Optional) factor to scale all netcon weights
         """
-        logging.debug("iterate %d cells", len(gidvec))
         _debug_conn = None
 
-        for tgid in gidvec:
+        logging.info("Creating connections from synapse params file (nrn)...")
+        for tgid in ProgressBar.iter(gidvec):
             synapses_params = self.get_synapse_parameters(tgid)
             cur_conn = None
 
@@ -487,9 +487,9 @@ class SynapseRuleManager(_ConnectionManagerBase):
             base_seed: optional argument to adjust synapse RNGs (default=0)
         """
         cell_distributor = self._target_manager.cellDistributor
-        pbar = ProgressBar(len(self._connections_map))
 
-        for tgid, conns in pbar(self._connections_map.items()):
+        logging.info("Instantiating synapses...")
+        for tgid, conns in ProgressBar.iteritems(self._connections_map):
             metype = cell_distributor.getMEType(tgid)
             spgid = cell_distributor.getSpGid(tgid)
             for conn in conns:  # type: Connection
