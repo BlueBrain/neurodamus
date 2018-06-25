@@ -164,15 +164,15 @@ class Node:
                 raise RuntimeError("Invalid CPU count. See log")
 
         logging.info("Generating loadbalancing data. Reason: %s", generate_reason)
+        loadbal = Nd.LoadBalance()
 
         # Can we use an existing mcomplex.dat?  If mechanisms change, it needs to be regenerated.
         if not path.isfile("mcomplex.dat"):
             logging.info("Generating mcomplex.dat...")
-            Nd.create_mcomplex()
+            loadbal.create_mcomplex()
         else:
             logging.info("using existing mcomplex.dat")
-        loadbal = Nd.LoadBalance()
-        Nd.read_mcomplex(loadbal)
+        loadbal.read_mcomplex()
 
         logging.info("instantiate cells Round Robin style")
         self.create_cells("RR")
@@ -183,7 +183,7 @@ class Node:
         if run_mode == "WholeCell":
             self._cell_distributor.msfactor = 1e6
 
-        self._cell_distributor.printLBInfo(loadbal, prospective_hosts)
+        self._cell_distributor.load_balance_cells(loadbal, prospective_hosts)
 
         # balancing calculations done, we can save the cxinfo file now for future usage
         if MPInfo.rank == 0:
@@ -223,13 +223,13 @@ class Node:
         target_f = path.join(run_conf.get("nrnPath").s, "start.target")
         self._target_parser.open(target_f)
 
-        if self._config_parser.parsedRun.exists("TargetFile"):
+        if run_conf.exists("TargetFile"):
             user_target = self._find_config_file(run_conf.get("TargetFile").s)
             self._target_parser.open(user_target)
 
     #
     def export_loadbal(self, lb):
-        self._cell_distributor.printLBInfo(lb, self._pnm.pc.nhost())
+        self._cell_distributor.load_balance_cells(lb, self._pnm.pc.nhost())
 
     #
     def create_cells(self, run_mode=None):
@@ -256,7 +256,7 @@ class Node:
             self._config_parser, self._target_parser, self._pnm)
 
         # instantiate full cells -> should this be in CellDistributor object?
-        self._cell_list = self._cell_distributor.cellList
+        self._cell_list = self._cell_distributor._cell_list
 
         # localize targets, give to target manager
         self._target_parser.updateTargets(self.gidvec)
@@ -267,7 +267,7 @@ class Node:
 
         # Let the CellDistributor object have any final say in the cell objects
         self._cell_distributor.finalize(self.gidvec)
-        self._cell_distributor.delayedSplit()
+        self._cell_distributor.delayed_split()
 
         # restore original if there was any override
         if run_mode is not None:

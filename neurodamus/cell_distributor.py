@@ -35,13 +35,20 @@ class CellDistributor(object):
         self._pnm = pnm
         self._load_balance = None
         self._lb_flag = False
+        # These structs are None to mark as un-init'ed
         self._gidvec = None
-        self._gid2metype = {}
         self._total_cells = None
+        # These wont ever be init'ed if not using lb
+        self._spgidvec = None
+        self._binfo = None        
         self._useMVD3 = False
         self._global_seed = 0
         self._ionchannel_seed = 0
-        self._spgidvec = None
+
+        self._cell_list = []
+        self._gid2meobj = {}
+        self._gid2metype = {}
+
         # Public
         self.msfactor = 0.8
 
@@ -55,6 +62,10 @@ class CellDistributor(object):
     @property
     def pnm(self):
         return self._pnm
+
+    @property
+    def cell_list(self):
+        return self._cell_list
 
     #
     def _setup(self, run_conf, targets_conf):
@@ -92,11 +103,11 @@ class CellDistributor(object):
                 cx_path = path.join(run_conf.get("CWD").s, cx_path)
 
             # self.binfo reads the files that have the predistributed cells (and pieces)
-            self.binfo = Nd.BalanceInfo(cx_path, MPInfo.rank, MPInfo.cpu_count)
+            self._binfo = Nd.BalanceInfo(cx_path, MPInfo.rank, MPInfo.cpu_count)
 
             # self.binfo has gidlist, but gids can appear multiple times
             _seen = set()
-            for gid in self.binfo.gids:
+            for gid in self._binfo.gids:
                 gid = int(gid)
                 if gid not in _seen:
                     self._gidvec.append(gid)
@@ -124,11 +135,11 @@ class CellDistributor(object):
 
         #  Determine metype; apply round-robin assignment if necessary
         if self._useMVD3:
-            total_cells, self._gidvec, me_infos = self.loadMVD3(run_conf, self._gidvec)
+            total_cells, self._gidvec, me_infos = self._load_mvd3(run_conf, self._gidvec)
             logging.info("done loading cells and all mecombo info from mvd3")
         else:
             total_cells, self._gidvec, me_infos = \
-                self.loadNCS(run_conf.get("nrnPath").s, self._gidvec)
+                self._load_ncs(run_conf.get("nrnPath").s, self._gidvec)
             logging.info("done loading cells from NCS")
         if self._total_cells is None and total_cells is not None:
             self._total_cells = total_cells
@@ -137,9 +148,6 @@ class CellDistributor(object):
         self._pnm.ncell = self._total_cells
         logging.info("Done gid assignment: %d cells in network, %d cells in rank 0",
                      self._total_cells, len(self._gidvec))
-
-        self.cellList = []
-        self.gid2meobj = {}
 
         mepath = run_conf.get("METypePath").s
 
@@ -153,16 +161,16 @@ class CellDistributor(object):
                 cell.setHypAmp(meinfo.holding_current)
             else:
                 # In NCS, me_infos is a plain map from gid to me_file
-                melabel = self._gid2metype[gid] = self.loadTemplate(me_infos[gid], mepath)
+                melabel = self._gid2metype[gid] = self._load_template(me_infos[gid], mepath)
                 cell = METype(gid, mepath, melabel, morpho_path)
 
-            self.cellList.append(cell)
-            self.gid2meobj[gid] = cell
+            self._cell_list.append(cell)
+            self._gid2meobj[gid] = cell
             self._pnm.cells.append(cell.CellRef)
 
     #
     @staticmethod
-    def loadNCS(nrnPath, gidvec):
+    def _load_ncs(nrnPath, gidvec):
         """ Load start.ncs getting the gids and the metypes for all cells in the base circuit
         (note that we may simulate less if there is a circuit target in the BlueConfig file)
 
@@ -214,7 +222,7 @@ class CellDistributor(object):
 
     #
     @staticmethod
-    def loadMVD3(run_conf, gidvec):
+    def _load_mvd3(run_conf, gidvec):
         """Load cells from MVD3, required for v6 circuits
         """
         import h5py  # Can be heavy so loaded on demand
@@ -258,7 +266,7 @@ class CellDistributor(object):
         return total_cells, gidvec, meinfo
 
     @staticmethod
-    def loadTemplate(tpl_filename, tpl_location=None):
+    def _load_template(tpl_filename, tpl_location=None):
         """Helper function which loads the template into NEURON and returns its name.
         The actual template name will have any hyphens (e.g.: R-C261296A-P1_repaired)
         replaced with underscores as hyphens must not appear in template names.
@@ -287,7 +295,7 @@ class CellDistributor(object):
         return tpl_name
 
     def getMEType(self, gid):
-        return self.gid2meobj.get(gid)
+        return self._gid2meobj.get(gid)
 
     def getMETypeFromGid(self, gid):
         """ Provide the name of the metype which corresponds to a gid \n
@@ -302,7 +310,7 @@ class CellDistributor(object):
         Returns: String with the mefile or nil
         """
         raise NotImplementedError("This function is not portable since it makes no sense for v6")
-        return self._gid2mefile.get(gid)
+        # return self._gid2mefile.get(gid)
 
     def getGidListForProcessor(self):
         """Get list containing the gids on this cpu.  Note that these gids may be virtual gids.
@@ -317,7 +325,7 @@ class CellDistributor(object):
         """
         # are we in load balance mode? must replace gid with spgid
         if self._lb_flag:
-            gid = self.binfo.thishost_gid(gid)
+            gid = self._binfo.thishost_gid(gid)
         return self._pnm.pc.gid2obj(gid)
 
     def getSpGid(self, gid):
@@ -330,24 +338,26 @@ class CellDistributor(object):
         then that is the soma piece)
         """
         if self._lb_flag:
-            return self.binfo.thishost_gid(gid)
+            return self._binfo.thishost_gid(gid)
         else:
             return gid
 
-    def printLBInfo(self, lb_obj, nhost):
+    # ### Routines to actually compute load balance
+
+    def load_balance_cells(self, lb_obj, nhost):
         """Calculate cell complexity and write data to file
-        Params:
+        Args:
             lb_obj: loadbal neuron object
             nhost: Number of hosts to compute for load balancing
         """
         self._load_balance = lb_obj
-        self.printMSloadBalance("cx", nhost)
+        self._compute_save_load_balance("cx", nhost)
 
     def __iter__(self):
         """Iterator over this node GIDs"""
         return iter(self._gidvec)
 
-    def cell_complexity(self, with_total=True):
+    def _compute_cell_complexity(self, with_total=True):
         # local i, gid, ncell  localobj cx_cell, id_cell
         cx_cell = compat.Vector("f")
         id_cell = compat.Vector("I")
@@ -363,11 +373,11 @@ class CellDistributor(object):
         else:
             return cx_cell, id_cell
 
-    def getTotal_MaxMSCellcomplexity(self, ):
+    def _cell_complexity_total_max(self, ):
         """
         Returns: Tuple of (TotalComplexity, max_complexity)
         """
-        cx_cells, id_cells = self.cell_complexity(with_total=False)
+        cx_cells, id_cells = self._compute_cell_complexity(with_total=False)
         local_max = max(cx_cells)
         local_sum = sum(cx_cells)
 
@@ -375,25 +385,30 @@ class CellDistributor(object):
         global_max = self._pnm.pc.allreduce(local_max, 1)
         return global_total, global_max
 
-    def getOptimalMSPieceComplexity(self, total_cx, max_cx, nhost):
-        #  $1 Total complexity
-        #  $2 Maximum cell complexity
-        #  $3 Prospective no of hosts
-        lps = total_cx/nhost * self.msfactor
+    def _get_optimal_piece_complexity(self, total_cx, max_cx, nhost):
+        """
+        Args:
+            total_cx: Total complexity
+            max_cx: Maximum cell complexity
+            nhost: Prospective no of hosts
+
+        Returns:
+        """
+        lps = total_cx * self.msfactor / nhost
         return int(lps+1)
 
-    def cpuAssign(self, prospective_hosts):
+    def _cpu_assign(self, prospective_hosts):
         """
-        Params:
+        Args:
             prospective_hosts: How many cpus we want running with our LoadBalanced circuit
         """
         Nd.mymetis3("cx_%d" % prospective_hosts, prospective_hosts)
 
     #
-    def printMSloadBalance(self, filename, prospective_hosts):
+    def _compute_save_load_balance(self, filename, prospective_hosts):
         if prospective_hosts > 0:
-            total_cx, max_cx = self.getTotal_MaxMSCellcomplexity()
-            lcx = self.getOptimalMSPieceComplexity(total_cx, max_cx, prospective_hosts)
+            total_cx, max_cx = self._cell_complexity_total_max()
+            lcx = self._get_optimal_piece_complexity(total_cx, max_cx, prospective_hosts)
             # print_load_balance_info(3, lcx, $s1)
             filename = "%s_%d.dat" % (filename, prospective_hosts)
         else:
@@ -421,16 +436,16 @@ class CellDistributor(object):
             if j == MPInfo.rank:
                 with open(filename, "a") as fp:
                     for ms in ms_list:
-                        self.write_msdat(fp, ms)
+                        self._write_msdat(fp, ms)
             self._pnm.pc.barrier()
 
         # now assign to the various cpus - use node 0 to do it
         if MPInfo.rank == 0:
-            self.cpuAssign(prospective_hosts)
+            self._cpu_assign(prospective_hosts)
         self._pnm.pc.barrier()
 
     @staticmethod
-    def write_msdat(fp, ms):
+    def _write_msdat(fp, ms):
         """Writes load balancing info to an output stream"""
         tcx = 0
         fp.write("%d" % ms.x[0])   # gid
@@ -488,7 +503,7 @@ class CellDistributor(object):
         self._ionchannel_seed = rng_info.getIonChannelSeed()
 
         for i, gid in enumerate(gids):
-            metype = self.cellList[i]  # type: METype
+            metype = self._cell_list[i]  # type: METype
 
             #  for v6 and beyond - we can just try to invoke rng initialization
             if self._useMVD3 or rng_info.getRNGMode() == rng_info.COMPATIBILITY:
@@ -517,8 +532,8 @@ class CellDistributor(object):
                 nc = metype.connect2target(Nd.nil)
 
             if self._lb_flag:
-                ic = int(self.binfo.gids.indwhere("==", gid))
-                cb = self.binfo.bilist.object(self.binfo.cbindex.x[ic])
+                ic = int(self._binfo.gids.indwhere("==", gid))
+                cb = self._binfo.bilist.object(self._binfo.cbindex.x[ic])
 
                 if cb.subtrees.count() == 0:
                     #  whole cell, normal creation
@@ -526,7 +541,7 @@ class CellDistributor(object):
                     self._pnm.pc.cell(gid, nc)
                     self._spgidvec.append(gid)
                 else:
-                    spgid = cb.multisplit(nc, self.binfo.msgid, self._pnm.pc, MPInfo.rank)
+                    spgid = cb.multisplit(nc, self._binfo.msgid, self._pnm.pc, MPInfo.rank)
                     self._spgidvec.append(spgid)
 
             else:
@@ -534,10 +549,10 @@ class CellDistributor(object):
                 self._pnm.pc.cell(gid, nc)
 
         # TODO: on bbplinsrv, calling pc.multisplit function now causes problem, but if it is called
-        #  in a separate function after return, then it is fine.  Maybe contact Michael for advice?
+        #  in a separate function after return, then it is fine. Maybe contact Michael for advice?
         if self._lb_flag:
-            "self._pnm.pc.multisplit()"
+            self._pnm.pc.multisplit()
 
-    def delayedSplit(self):
+    def delayed_split(self):
         if self._lb_flag:
             self._pnm.pc.multisplit()

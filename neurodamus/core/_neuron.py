@@ -100,6 +100,7 @@ class _Neuron(object):
     # public shortcuts
     HocEntity = None   # type: HocEntity
     Simulation = None  # type: Simulation
+    LoadBalance = None  # type: type
     Section = None
     Segment = None
 
@@ -224,9 +225,10 @@ class LoadBalance(object):
         self._lb.read_mcomplex()
 
     def __getattr__(self, item):
-        return object.__getattribute__(self._lb, item)
+        return getattr(self._lb, item)
 
 
 # shortcuts
 _Neuron.HocEntity = HocEntity
 _Neuron.Simulation = Simulation
+_Neuron.LoadBalance = LoadBalance

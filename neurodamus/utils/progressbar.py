@@ -106,6 +106,8 @@ class Progress(object):
 
     progress = property(lambda self: self._progress, _set_progress)
 
+    # Helpers to monitor/show progress while consuming an iterable
+    # ------------------------------------------------------------
     @classmethod
     def iter(cls, iterable):
         return cls(len(iterable))(iterable)
