@@ -21,5 +21,5 @@ def neurodamus():
     if options["no_mpi"]:
         GlobalConfig.use_mpi = False
 
-    Neurodamus(options["BlueConfig"]).prun()
+    Neurodamus(options["BlueConfig"]).run()
 

@@ -724,7 +724,7 @@ class Node:
                     Nd.execute1(tstr, sec=sc.sec)
 
     #
-    def prun(self, show_progress=False):
+    def run(self, show_progress=False):
         """ Runs the simulation
         """
         run_conf = self._config_parser.parsedRun
@@ -873,11 +873,11 @@ class Neurodamus(Node):
         self.enable_modifications()
         self.enable_reports()
 
-    def prun(self, *args):
+    def run(self, *args):
         """Starts the Simulation
         """
         logging.log(STAGE_LOGLEVEL, "RUNNING SIMULATION")
-        Node.prun(self, True)
+        Node.run(self, True)
         logging.info("Simulation finished.")
         self.spike2file("out.dat")
 
