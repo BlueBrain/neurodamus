@@ -5,6 +5,7 @@ Copyright 2018 - Blue Brain Project, EPFL
 """
 from __future__ import absolute_import
 from os import path
+import sys
 import logging
 from .utils import setup_logging, compat, STAGE_LOGLEVEL
 from .core import ProgressBarRank0 as ProgressBar
@@ -159,8 +160,8 @@ class Node:
             if MPInfo.cpu_count == prospective_hosts:
                 return
             else:
-                logging.info("Relaunch on a partition of %d cpus (as per ProspectiveHosts)",
-                             prospective_hosts)
+                logging.error("Requires  on a partition of %d cpus (as per ProspectiveHosts)",
+                              prospective_hosts)
                 raise RuntimeError("Invalid CPU count. See log")
 
         logging.info("Generating loadbalancing data. Reason: %s", generate_reason)
@@ -202,9 +203,9 @@ class Node:
 
         # if loadbalance was calculated for different number of cpus, then we are done
         if prospective_hosts != MPInfo.cpu_count:
-            logging.info("Loadbalancing computed for %d cpus. Relaunch on a partition of that size",
+            logging.info("Loadbalancing computed for %d CPUs. Launch on a partition of that size",
                          prospective_hosts)
-            raise RuntimeError("Invalid CPU count. See log")
+            sys.exit()
 
         logging.info("clearing model")
         self.clear_model()
@@ -256,7 +257,7 @@ class Node:
             self._config_parser, self._target_parser, self._pnm)
 
         # instantiate full cells -> should this be in CellDistributor object?
-        self._cell_list = self._cell_distributor._cell_list
+        self._cell_list = self._cell_distributor.cell_list
 
         # localize targets, give to target manager
         self._target_parser.updateTargets(self.gidvec)
@@ -858,13 +859,8 @@ class Neurodamus(Node):
         self.create_synapses()
         self.create_gap_junctions()
 
-        # Enable Stimulus
         self.enable_stimulus()
-
-        # Enable Modifications
         self.enable_modifications()
-
-        # Enable Reports
         self.enable_reports()
 
     def run(self):
