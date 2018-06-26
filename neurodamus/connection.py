@@ -81,25 +81,26 @@ class Connection(object):
     postsynaptic gid, including Points where those synapses are placed (stored in TPointList)
     """
     __slots__ = ("sgid", "tgid", "weight_factor", "__dict__")
+    _AMPAMDA_Helper = None
+    _GABAAB_Helper = None
 
-    def __init__(self, sgid, tgid, configuration=None,
-                 stdp=None,
-                 minis_spont_rate=0,
-                 synapse_mode=SynapseMode.DUAL_SYNS,
-                 weight_factor=1.0,
-                 synapse_override=None):
+    def __init__(self, sgid, tgid, weight_factor=1.0, configuration=None, stdp=None,
+                 minis_spont_rate=0, synapse_mode=SynapseMode.DUAL_SYNS, synapse_override=None):
         """Creates a connection object
 
         Args:
             sgid: presynaptic gid
             tgid: postsynaptic gid
+            weight_factor: the weight factor to be applied to the connection. Default: 1
             configuration: Any synapse configurations that should be applied when the synapses
-                are instatiated (or nil for none)
-            stdp (str): STDP settings
-            minis_spont_rate: rate for spontaneous minis
-            synapse_mode: (optional) synapse mode. Default: DUAL_SYNS
+                are instantiated (or None)
+            stdp: The STDP mode. Default: None (NO_STDP)
+            minis_spont_rate: rate for spontaneous minis. Default: 0
+            synapse_mode: synapse mode. Default: DUAL_SYNS
+            synapse_override: If a specific synapse class shall be used instead of standard Inh/Exc
+                Default: None (use standard Inh/Exc)
         """
-        h = ND.h
+        h = self._init_hmod()
         self.sgid = sgid
         self.tgid = tgid
         self.weight_factor = weight_factor
@@ -116,12 +117,21 @@ class Connection(object):
         # Lists defined in finalize
         self._netcons = None
         self._synapses = None
-        self._conductances_bk = None  # Store conductances for re-ebaling
+        self._conductances_bk = None  # Store conductances for re-enabling
         self._replay_netcons = None
         self._minis_netcons = None
         self._minis_RNGs = None
         # Used for replay
         self._tvecs = []
+
+    @classmethod
+    def _init_hmod(cls):
+        if cls._AMPAMDA_Helper is None:
+            h = ND.require("AMPANMDAHelper", "GABAABHelper")
+            cls._AMPAMDA_Helper = h.AMPANMDAHelper
+            cls._GABAABHelper = h.GABAABHelper
+            return h
+        return ND.h
 
     # read-only properties
     synapse_params = property(lambda self: self._synapse_params)

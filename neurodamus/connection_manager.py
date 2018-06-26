@@ -85,8 +85,8 @@ class _ConnectionManagerBase(object):
                     logging.debug("connection %d->%d", sgid, tgid)
                     _debug_conn = tgid
                 if cur_conn is None or cur_conn.sgid != sgid:
-                    cur_conn = Connection(
-                        sgid, tgid, None, STDPMode.NO_STDP, 0, self._synapse_mode, weight_factor)
+                    cur_conn = Connection(sgid, tgid, weight_factor, None, STDPMode.NO_STDP, 0,
+                                          self._synapse_mode)
                     self.store_connection(cur_conn)
 
                 # placeSynapses() called from connection.finalize
@@ -178,9 +178,9 @@ class _ConnectionManagerBase(object):
                             if weight_factor is None:
                                 logging.warning("Invalid weight_factor for connection creation. "
                                                 "Assuming 1.0")
-                            pend_conn = Connection(
-                                sgid, tgid, configuration, stdp, spont_mini_rate,
-                                self._synapse_mode, weight_factor, synapse_override)
+                            pend_conn = Connection(sgid, tgid, weight_factor, configuration, stdp,
+                                                   spont_mini_rate, self._synapse_mode,
+                                                   synapse_override)
 
                 # if we have a pending connection we place the current synapse(s)
                 if pend_conn is not None:

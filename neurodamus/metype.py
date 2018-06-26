@@ -10,6 +10,9 @@ class METype:
     """
     Class representing an METype. Will instantiate a Hoc-level cell as well
     """
+    __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons', '_ccell',
+                 '_synapses', '_syn_helper_list', '_emodel_name')
+
 
     def __init__(self, gid, etype_path, emodel, morpho_path, morpho_name=None):
         """Instantite a new Cell from METype
@@ -21,12 +24,13 @@ class METype:
             morpho_path: path for morphologies
             morpho_name: morphology name to be loaded from
         """
-        self._thresholdCurrent = None
-        self._hypAmpCurrent = None
+        self._threshold_current = None
+        self._hypAmp_current = None
         self._netcons = []
         self._ccell = None
-        self._synlist = None
+        self._synapses = None
         self._syn_helper_list = None
+        self._emodel_name = emodel
 
         if morpho_name is not None:
             self._instantiate_cell_v6(gid, etype_path, emodel, morpho_path, morpho_name)
@@ -42,7 +46,7 @@ class METype:
             raise ValueError("Unable to load METype file %s" % etype_mod + ".hoc")
         EModel = getattr(Nrn, emodel)
         self._ccell = EModel(gid, path.join(morpho_path, "ascii"), morpho_name + ".asc")
-        self._synlist = Nrn.List()
+        self._synapses = Nrn.List()
         self._syn_helper_list = Nrn.List()
 
     def _instantiate_cell_v5(self, gid, emodel, morpho_path):
@@ -50,28 +54,30 @@ class METype:
         """
         EModel = getattr(Nrn, emodel)
         self._ccell = ccell = EModel(gid, path.join(morpho_path, "ascii"))
-        self._synlist = ccell.CellRef.synlist
+        self._synapses = ccell.CellRef.synlist
         self._syn_helper_list = ccell.CellRef.synHelperList
-        self._thresholdCurrent = ccell.getThreshold()
+        self._threshold_current = ccell.getThreshold()
         ret = Nrn.execute1("{getHypAmp()}", ccell, 0)
         if ret != 0:
-            self._hypAmpCurrent = ccell.getHypAmp()
+            self._hypAmp_current = ccell.getHypAmp()
 
     @property
     def synlist(self):
-        return self._synlist
+        return self._synapses
 
     def getThreshold(self):
-        return self._thresholdCurrent
+        return self._threshold_current
 
     def setThreshold(self, value):
-        self._thresholdCurrent = value
+        self._threshold_current = value
 
     def getHypAmp(self):
-        return self._hypAmpCurrent
+        if self._hypAmp_current is None:
+            logging.warning("EModel %s doesnt define HypAmp current" % self._emodel_name)
+        return self._hypAmp_current
 
     def setHypAmp(self, value):
-        self._hypAmpCurrent = value
+        self._hypAmp_current = value
 
     @staticmethod
     def getVersion():

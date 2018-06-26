@@ -19,7 +19,8 @@ from .replay import SpikeManager
 class Node:
     """
     The Node class is the main entity for a distributed neurodamus execution.
-    It internally instantiates parallel structures and distributes the cells among all the nodes
+    It internally instantiates parallel structures and distributes the cells among all the nodes.
+    It is relatively low-level, for a standard run consider using the Neurodamus class instead.
     """
 
     _pnm = None
@@ -527,8 +528,7 @@ class Node:
         # while we are at it, check if any stims are using extracellular
         has_extra_cellular = False
         stim_dict = {}
-        logging.info("Building Stim Dictionary...")
-        for stim_name, stim in ProgressBar.iteritems(compat.Map(conf.parsedStimuli)):
+        for stim_name, stim in compat.Map(conf.parsedStimuli).items():
             stim_dict.setdefault(stim_name, stim)
             if stim.get("Mode").s == "Extracellular`":
                 has_extra_cellular = True
@@ -537,9 +537,7 @@ class Node:
         if has_extra_cellular:
             self._stim_manager.interpretExtracellulars(conf.parsedInjects, conf.parsedStimuli)
 
-        tid = Nd.timeit_register("Replay setup")
-        Nd.timeit_start(tid)
-
+        logging.info("Instantiating stimulus...")
         for inject in compat.Map(conf.parsedInjects).values():
             target_name = inject.get("Target").s
             stim_name = inject.get("Stimulus").s
@@ -551,11 +549,9 @@ class Node:
                 spike_filepath = self._find_config_file(stim.get("SpikeFile").s)
                 spike_manager = SpikeManager(spike_filepath, delay)
                 spike_manager.replay(self._synapse_manager, target_name)
-                Nd.timeit_add(tid)
             else:
                 # all other patterns the stim manager will interpret
                 self._stim_manager.interpret(target_name, stim)
-                Nd.timeit_add(tid)
 
     #
     def enable_modifications(self):
@@ -564,6 +560,7 @@ class Node:
         expected to write the hoc directly, but rather access a library of already available mods.
         """
         mod_manager = Nd.ModificationManager(self._target_manager)
+        logging.info("Enabling modifications...")
         for mod in compat.Map(self._config_parser.parsedModifications).values():
             mod_manager.interpret(mod)
 
@@ -572,6 +569,7 @@ class Node:
         """Iterate over reports defined in the config file given to the simulation and
         instantiate them.
         """
+        logging.info("Enabling reports...")
         # need bin report helper to handle MPI communication
         sim_dt = self._config_parser.parsedRun.valueOf("Dt")
         self._binreport_helper = Nd.BinReportHelper(sim_dt)
@@ -590,7 +588,7 @@ class Node:
         reports_conf = compat.Map(self._config_parser.parsedReports)
         self._report_list = []
 
-        for rep_name, rep_conf in reports_conf.items():
+        for rep_name, rep_conf in ProgressBar.iteritems(reports_conf):
             rep_type = rep_conf.get("Type").s
             end_time = rep_conf.valueOf("EndTime")
             if end_time > sim_end:
@@ -598,7 +596,7 @@ class Node:
 
             report = Nd.Report(
                 rep_name,
-                rep_type,
+                rep_type,  # rep type is case sensitive/!\
                 rep_conf.get("ReportOn").s,
                 rep_conf.get("Unit").s,
                 rep_conf.get("Format").s,
@@ -606,8 +604,8 @@ class Node:
                 rep_conf.valueOf("StartTime"),
                 end_time,
                 output_path,
-                self._elec_manager.getElectrode(
-                    rep_conf.get("Electrode").s) if rep_conf.exists("Electrode") else None,
+                self._elec_manager.getElectrode(rep_conf.get("Electrode").s)
+                    if rep_conf.exists("Electrode") else None,
                 rep_conf.get("Scaling") if rep_conf.exists("Scaling") else None,
                 rep_conf.get("ISC").s if rep_conf.exists("ISC") else ""
             )
@@ -619,7 +617,7 @@ class Node:
             # For summation targets - check if we were given a Cell target because we really want
             # all points of the cell which will ultimately be collapsed to a single value
             # on the soma. Otherwise, get target points as normal.
-            points = self.get_target_points(target)
+            points = self.get_target_points(target, rep_type.lower() == "summation")
 
             for point in points:
                 gid = point.gid
@@ -627,11 +625,11 @@ class Node:
                 spgid = self._cell_distributor.getSpGid(gid)
 
                 # may need to take different actions based on report type
-                if rep_type == "compartment":
+                if rep_type.lower() == "compartment":
                     report.addCompartmentReport(cell, point, spgid)
-                elif rep_type == "Summation":
+                elif rep_type.lower() == "summation":
                     report.addSummationReport(cell, point, target.isCellTarget(), spgid)
-                elif rep_type == "Synapse":
+                elif rep_type.lower() == "synapse":
                     report.addSynapseReport(cell, point, spgid)
                 else:
                     logging.warning("unsupported report type: %s", rep_type)
@@ -806,23 +804,24 @@ class Node:
     def gidvec(self):
         return self._cell_distributor.getGidListForProcessor()
 
-    def get_target_points(self, target):
+    def get_target_points(self, target, cell_use_compartment_cast=True):
         """Helper to retrieve the points of a target.
         If target is a cell then uses compartmentCast to obtain its points.
         Otherwise returns the result of calling getPointList directly on the target.
 
         Args:
             target: The target name or object (faster)
+            cell_use_compartment_cast: if enabled (default) will use target_manager.compartmentCast
+                to get the point list.
 
         Returns: The target list of points
         """
         if isinstance(target, str):
             target = self._target_manager.getTarget(target)
-        if target.isCellTarget():
+        if target.isCellTarget() and cell_use_compartment_cast:
             return self._target_manager.compartmentCast(target, "") \
                 .getPointList(self._cell_distributor)
-        else:
-            return target.getPointList(self._cell_distributor)
+        return target.getPointList(self._cell_distributor)
 
     #
     def dump_circuit_config(self, suffix=None):
@@ -831,6 +830,7 @@ class Node:
 
 
 # Helper class
+# ------------
 class Neurodamus(Node):
     """A high level interface to Neurodamus
     """
@@ -848,9 +848,19 @@ class Neurodamus(Node):
         setup_logging(GlobalConfig.verbosity)
 
         Node.__init__(self, recipe_file)
+
+        # If an exception is raised, log it
+        try:
+            self._instantiate_simulation()
+        except Exception as e:
+            logging.error(str(e))
+            raise
+
+    def _instantiate_simulation(self):
         logging.log(STAGE_LOGLEVEL, "INITIALIZING")
         self.load_targets()
         self.compute_loadbal()
+
         logging.log(STAGE_LOGLEVEL, "BUILDING CIRCUIT")
         self.create_cells()
         self.execute_neuron_configures()
@@ -863,11 +873,11 @@ class Neurodamus(Node):
         self.enable_modifications()
         self.enable_reports()
 
-    def run(self):
+    def prun(self, *args):
         """Starts the Simulation
         """
         logging.log(STAGE_LOGLEVEL, "RUNNING SIMULATION")
-        self.prun(True)
+        Node.prun(self, True)
         logging.info("Simulation finished.")
         self.spike2file("out.dat")
 

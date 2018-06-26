@@ -303,7 +303,7 @@ def setup_logging(loglevel, stream=sys.stdout):
     _logging.NEW_STAGE = STAGE_LOGLEVEL
 
     logformat = "(%(asctime)s) [%(levelname)s] %(message)s"
-    datefmt = "%b-%d %H:%M:%S"
+    datefmt = "%b.%d %H:%M:%S"
     hdlr = _logging.StreamHandler(stream)
     hdlr.setFormatter(_ColoredFormatter(logformat, datefmt))
     _logging.root.setLevel(verbosity_levels[loglevel])
