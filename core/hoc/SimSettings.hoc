@@ -75,10 +75,24 @@ proc interpret() { localobj runInfo, pc, rng, commandString
         if( pc.id() == 0 ) {
             commandString = new String()
             execResult = 0
-            sprint( commandString.s, "%s.execResult = checkDirectory( \"%s\" )", this, coreneuronDataDir.s )
+            sprint( commandString.s, "%s.execResult = checkDirectory( \"%s\" )", this, coreneuronOutputDir.s )
             execute( commandString.s )
             if( execResult < 0 ) {
+                execerror( "Error while creating directory '", coreneuronOutputDir.s, "'.  Terminating." )
+            }
+            
+            // if we are Restoring, then we will reuse the datadirectory
+            if( runInfo.exists( "Restore" ) ) {
+                nrnpython( "import os" )
+                sprint( commandString.s, "os.symlink( \"%s/../coreneuron_input\", \"%s\" )", runInfo.get( "Restore" ).s, coreneuronDataDir.s )
+                print commandString.s
+                nrnpython( commandString.s )
+            } else {
+              sprint( commandString.s, "%s.execResult = checkDirectory( \"%s\" )", this, coreneuronDataDir.s )
+              execute( commandString.s )
+              if( execResult < 0 ) {
                 execerror( "Error while creating directory '", coreneuronDataDir.s, "'.  Terminating." )
+              }
             }
         }
     }
