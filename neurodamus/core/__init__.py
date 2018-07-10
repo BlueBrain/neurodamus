@@ -11,7 +11,7 @@ from ..utils import progressbar
 class ProgressBarRank0(progressbar.Progress):
     """Rank dependant progressbar.
     """
-    def __new__(cls, end, **kwargs):
+    def __new__(cls, end, *args, **kwargs):
         if MPInfo.rank == 0:
-            return progressbar.ProgressBar(end, **kwargs)
-        return progressbar.Progress(end, **kwargs)
+            return progressbar.ProgressBar(end, *args, **kwargs)
+        return progressbar.Progress(end, *args, **kwargs)
