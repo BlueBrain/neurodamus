@@ -3,7 +3,6 @@ from ._neuron import Neuron
 from ._neurodamus import NeuronDamus
 from .cell import Cell
 from .stimuli import CurrentSource
-from .mechanisms import Mechanism
 from .configuration import MPInfo
 from ..utils import progressbar
 

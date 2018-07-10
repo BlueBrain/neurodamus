@@ -3,6 +3,7 @@ Neurodamus execution main class
 """
 from __future__ import absolute_import
 from os import path
+import logging
 from ..utils import setup_logging, classproperty
 from ._neuron import _Neuron
 from .configuration import MPInfo
@@ -32,6 +33,8 @@ class NeuronDamus(_Neuron):
     def _init(cls):
         h = _Neuron._init()  # if needed, sets cls._h
         if cls._pnm is None:
+            logging.debug("Loading mods from: " + MOD_LIB)
+            logging.debug("Loading master Hoc: " + HOC_LIB)
             cls.load_dll(MOD_LIB)
             cls.load_hoc(HOC_LIB)
             cls._pnm = h.ParallelNetManager(0)

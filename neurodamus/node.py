@@ -227,7 +227,7 @@ class Node:
 
         if run_conf.exists("TargetFile"):
             user_target = self._find_config_file(run_conf.get("TargetFile").s)
-            self._target_parser.open(user_target)
+            self._target_parser.open(user_target, 1)
 
     #
     def export_loadbal(self, lb):
@@ -873,11 +873,11 @@ class Neurodamus(Node):
         self.enable_modifications()
         self.enable_reports()
 
-    def run(self, *args):
+    def run(self, show_progress=True):
         """Starts the Simulation
         """
         logging.log(STAGE_LOGLEVEL, "RUNNING SIMULATION")
-        Node.run(self, True)
+        Node.run(self, show_progress)
         logging.info("Simulation finished.")
         self.spike2file("out.dat")
 

@@ -3,6 +3,8 @@
 from neurodamus.core import Cell
 from neurodamus.core import CurrentSource
 from neurodamus.core import Neuron
+from neurodamus.core import mechanisms
+
 
 # Change v_init globally
 # Alternatively v_init can be configured per simulation in run_sim(**kw)
@@ -34,7 +36,7 @@ def test_tut1(quick=True):
          .add_dendrite("dend2", 400, 9, diam=2, Ra=100)
          .create())
 
-    Mechanism.HH(el=-70, gl=5e-4, gkbar=.0, gnabar=.0).apply(c.dendrites)
+    mechanisms.HH(el=-70, gl=5e-4, gkbar=.0, gnabar=.0).apply(c.dendrites)
     Neuron.run_sim(50, c.dendrites[0]).plot()
 
     Cell.show_topology()
