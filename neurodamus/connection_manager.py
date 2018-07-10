@@ -377,7 +377,20 @@ class _ConnectionManagerBase(object):
         conns = self._connections_map[target_gid]
         return chain.from_iterable(c.synapse_params for c in conns)
 
-    # == Disabing / enabling ==
+    # == Delete, Disable / Enable ==
+
+    def delete(self, sgid, tgid):
+        """Deletes a connection given source and target gids.
+        This action can't be undone. To have the connection again it must be recreated.
+        For temporarily ignoring a connection see disable()
+        NOTE: Contrary to disable(), deleting a connection will effectively remove them
+        from the model, saving computational resources during simulation.
+        """
+        conn_lst, idx = self._find_connection(sgid, tgid)
+        if idx is None:
+            logging.warning("Non-existing connection to disable: %d->%d", sgid, tgid)
+            return
+        del conn_lst[idx]
 
     def disable(self, sgid, tgid, also_zero_conductance=False):
         """Disable a connection, all of its netcons and optionally synapses.
@@ -420,13 +433,25 @@ class _ConnectionManagerBase(object):
                     continue
                 yield c, conns, i
 
+    def delete_group(self, post_gids, pre_gids=None):
+        """Delete a number of connections given lists of pre and post gids.
+           Note: None is neutral and will match all gids.
+
+        Args:
+            post_gids: The target gids of the connections to be disabled. None for all
+            pre_gids: idem for pre-gids. [Default: None -> all)
+        """
+        for _, lst, idx in self._find_group_in(self._connections_map, post_gids, pre_gids):
+            del lst[idx]
+
     def disable_group(self, post_gids, pre_gids=None, also_zero_conductance=False):
         """Disable a number of connections given lists of pre and post gids.
         Note: None will match all gids.
 
         Args:
             post_gids: The target gids of the connections to be disabled. None for all
-            pre-gids: idem for pre-gids. [Default: None -> all)
+            pre_gids: idem for pre-gids. [Default: None -> all)
+            also_zero_conductance: Besides disabling the netcon, sets synapse conductance to 0
         """
         for conn, lst, idx in self._find_group_in(self._connections_map, post_gids, pre_gids):
             self._disabled_conns[conn.tgid].append(lst.pop(idx))
