@@ -1,6 +1,3 @@
-"""
-Handle assignment of cells to processors, instantiate cell objects and store locally and inself._pnm
-"""
 from __future__ import absolute_import, print_function
 from collections import OrderedDict
 import logging  # active only in rank 0 (init)
@@ -15,9 +12,7 @@ from .core import ProgressBarRank0 as ProgressBar
 
 class CellDistributor(object):
     """
-    The CellDistributor object encapsulates the steps needed to load cell information (start.ncs)
-    then to distribute the cell gids to the proper cpus.
-    This class does not instantiate cell objects, that task is left to the Node object.
+    Handle assignment of cells to processors, instantiate and store them (locally and in _pnm)
     """
 
     def __init__(self, config_parser, target_parser, pnm):

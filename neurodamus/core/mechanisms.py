@@ -1,5 +1,5 @@
 """
-Class defining cell mechanisms
+Module defining cell mechanisms
 """
 from __future__ import absolute_import
 from ._neuron import Neuron
