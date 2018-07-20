@@ -28,7 +28,8 @@ ASSIGNED {
 }
 
 INITIAL {
-    closeFile()
+    : 20.07.2018 - For multicycle Model Generation using GluSynapse, I stopped closing the file during stdinit.  Should revist this in the future
+    :closeFile()
 }
 
 NET_RECEIVE(w) {
