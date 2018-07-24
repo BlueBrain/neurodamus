@@ -46,8 +46,8 @@ class Node:
         self._cell_list = None
         self._stim_list = None
         self._report_list = None
-        self._stim_manager = None 
-        self._elec_manager = None 
+        self._stim_manager = None
+        self._elec_manager = None
         self._binreport_helper = None
         self._runtime = 0
         self._synapse_manager = None  # type: SynapseRuleManager
@@ -873,13 +873,13 @@ class Neurodamus(Node):
         self.enable_modifications()
         self.enable_reports()
 
-    def run(self, show_progress=True):
-        """Starts the Simulation
+    def run(self, spike_filaname='spikes.dat', show_progress=True):
+        """Runs the Simulation, writing the spikes to the given file
         """
         logging.log(STAGE_LOGLEVEL, "RUNNING SIMULATION")
         Node.run(self, show_progress)
         logging.info("Simulation finished.")
-        self.spike2file("out.dat")
+        self.spike2file(spike_filaname)
 
     def __del__(self):
         self.cleanup()
