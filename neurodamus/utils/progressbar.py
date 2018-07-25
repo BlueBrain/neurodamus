@@ -23,8 +23,8 @@ And here another example with different options:
 
     >>> from progressbar import ProgressBar
     >>> custom_options = {
-    ...     'end': 100, 
-    ...     'width': 20, 
+    ...     'end': 100,
+    ...     'width': 20,
     ...     'fill': '#',
     ...     'format': '%(progress)s%% [%(fill)s%(blank)s]'
     ... }
@@ -199,7 +199,7 @@ class ProgressBar(Progress):
         if not self._tty_mode:
             self._show_incremental_bar()
         out_str = "[Done] Time taken: %d sec." % (time.time() - self._init_time)
-        self._stream.write("\r{}{}\n".format(out_str, " "*(self._width + 8 - len(out_str))))
+        self._stream.write("\r{}{}\n".format(out_str, " " * (self._width + 8 - len(out_str))))
 
     def _set_progress(self, val):
         Progress._set_progress(self, val)

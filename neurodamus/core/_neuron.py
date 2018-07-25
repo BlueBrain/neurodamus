@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from .configuration import Neuron_Stdrun_Defaults
 from .configuration import GlobalConfig
-from .configuration import MPInfo
 from ..utils import classproperty
 
 
@@ -31,7 +30,10 @@ class _Neuron(object):
         """Initializes the Neuron simulator"""
         if cls._h is None:
             if GlobalConfig.use_mpi:
-                _init_mpi()
+                pass
+                # Currently _init_mpi is based on MPI4Py which is problematic in bbp5
+                # Please start with nrniv -mpi -python
+                # _init_mpi()
             from neuron import h
             from neuron import nrn
             cls._h = h
@@ -49,8 +51,9 @@ class _Neuron(object):
         """
         if mod_name in cls._mods_loaded:
             return
+        h = (cls._h or cls._init())
         mod_filename = mod_name + ".hoc"
-        if not cls._h.load_file(mod_filename):
+        if not h.load_file(mod_filename):
             raise RuntimeError("Cant load HOC library {}. Consider checking HOC_LIBRARY_PATH"
                                .format(mod_filename))
         cls._mods_loaded.add(mod_name)
@@ -64,7 +67,8 @@ class _Neuron(object):
     @classmethod
     def load_dll(cls, dll_path):
         """Loads a Neuron mod file (typically an .so file in linux)"""
-        rc = cls._h.nrn_load_dll(dll_path)
+        h = (cls._h or cls._init())
+        rc = h.nrn_load_dll(dll_path)
         if rc == 0:
             raise RuntimeError("Cant load MOD dll {}. Please check LD path and dependencies"
                                .format(dll_path))
@@ -109,22 +113,43 @@ class _Neuron(object):
 Neuron = _Neuron()
 
 
-def _init_mpi():
-    # Override default excepthook so that exceptions terminate all ranks
-    from mpi4py import MPI
-    import sys
-    sys_excepthook = sys.excepthook
+class _MPI:
+    _size = 1
+    _rank = 0
+    _pnm = None
 
-    def mpi_excepthook(v, t, tb):
-        sys_excepthook(v, t, tb)
-        MPI.COMM_WORLD.Abort(1)
+    @classmethod
+    def _init_pnm(cls):
+        if cls._pnm is not None:
+            return
+        Neuron.load_hoc("netparmpi")
+        cls._pnm = pnm = Neuron.ParallelNetManager(0)
+        cls._rank = int(pnm.pc.id())
+        cls._size = int(pnm.pc.nhost())
 
-    sys.excepthook = mpi_excepthook
+    @property
+    def pnm(self):
+        self._init_pnm()
+        return self._pnm
 
-    MPInfo.comm = comm = MPI.COMM_WORLD  # type: MPI.Comm
-    MPInfo.cpu_count = comm.Get_size()
-    MPInfo.rank = comm.Get_rank()
+    @property
+    def size(self):
+        self._init_pnm()
+        return self._size
 
+    cpu_count = size
+
+    @property
+    def rank(self):
+        self._init_pnm()
+        return self._rank
+
+    #def __getattr__(self, name):
+    #    return getattr(self._pnm.pc, name)
+
+
+# A singleton
+MPI = _MPI()
 
 
 class HocEntity(object):

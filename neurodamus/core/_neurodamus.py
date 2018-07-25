@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from os import path
 import logging
 from ..utils import setup_logging, classproperty
-from ._neuron import _Neuron
-from .configuration import MPInfo
+from .configuration import GlobalConfig
+from ._neuron import _Neuron, MPI
 
 LIB_PATH = path.realpath(path.join(path.dirname(__file__), "../../../lib"))
 MOD_LIB = path.join(LIB_PATH, "modlib", "libnrnmech.so")
@@ -22,8 +22,7 @@ class NeuronDamus(_Neuron):
     def h(cls):
         """The neuron hoc interpreter, initializing if needed
         """
-        if cls._pnm is None:
-            return cls._init()
+        cls._pnm or cls._init()
         return cls._h
 
     @classmethod
@@ -34,15 +33,14 @@ class NeuronDamus(_Neuron):
             logging.debug("Loading master Hoc: " + HOC_LIB)
             cls.load_dll(MOD_LIB)
             cls.load_hoc(HOC_LIB)
-            cls._pnm = h.ParallelNetManager(0)
+            cls._pnm = MPI.pnm
 
             # default logging (if set previously this wont have any effect)
-            if MPInfo.rank == 0:
+            if MPI.rank == 0:
                 h.timeit_setVerbose(1)
-                setup_logging(1)
+                setup_logging(GlobalConfig.verbosity)
             else:
                 setup_logging(0)
-        return h
 
     @property
     def pnm(self):

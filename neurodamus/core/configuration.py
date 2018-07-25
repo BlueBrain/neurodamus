@@ -11,12 +11,6 @@ class GlobalConfig:
     use_mpi = True
 
 
-class MPInfo:
-    cpu_count = 1
-    rank = 0
-    comm = None  # type: MPI.Comm
-
-
 class RNGConfig(ConfigT):
     Modes = Enum("Mode", "COMPATIBILITY RANDOM123 UPMCELLRAN4")
     mode = Modes.COMPATIBILITY

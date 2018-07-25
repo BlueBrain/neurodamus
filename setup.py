@@ -33,8 +33,7 @@ def setup_package():
         ],
         extras_require={
             'plotting': ['matplotlib'],
-            'mp': ['mpi4py'],
-            'full': ['matplotlib', 'mpi4py']
+            'full': ['matplotlib']
         },
         entry_points={
             'console_scripts': [

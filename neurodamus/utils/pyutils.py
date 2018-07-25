@@ -1,4 +1,4 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 import logging as _logging
 import sys
 from collections import OrderedDict
@@ -290,7 +290,6 @@ def setup_logging(loglevel, stream=sys.stdout):
     """
     if getattr(setup_logging, "logging_initted", False):
         return
-    setup_logging.logging_initted = True
     assert isinstance(loglevel, int)
     loglevel = min(loglevel, 2)
     verbosity_levels = {
@@ -307,4 +306,6 @@ def setup_logging(loglevel, stream=sys.stdout):
     hdlr = _logging.StreamHandler(stream)
     hdlr.setFormatter(_ColoredFormatter(logformat, datefmt))
     _logging.root.setLevel(verbosity_levels[loglevel])
+    del _logging.root.handlers[:]
     _logging.root.addHandler(hdlr)
+    setup_logging.logging_initted = True

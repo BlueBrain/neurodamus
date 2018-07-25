@@ -8,10 +8,11 @@ from os import path
 import sys
 import logging
 from .utils import setup_logging, compat, STAGE_LOGLEVEL
-from .core import ProgressBarRank0 as ProgressBar
-from .cell_distributor import CellDistributor
-from .core.configuration import GlobalConfig, MPInfo, ConfigurationError
+from .core import MPI
 from .core import NeuronDamus as Nd
+from .core import ProgressBarRank0 as ProgressBar
+from .core.configuration import GlobalConfig, ConfigurationError
+from .cell_distributor import CellDistributor
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
 
@@ -31,7 +32,7 @@ class Node:
         Args:
             recipe: The BlueRecipe file
         """
-        self._pnm = Nd.pnm
+        self._pnm = Nd.pnm  # Also inits core ND
         Nd.execute("cvode = new CVode()")
         Nd.execute("celsius=34")
 
@@ -82,7 +83,7 @@ class Node:
         """
         config_parser = Nd.ConfigParser()
         config_parser.open(recipe)
-        if MPInfo.rank == 0:
+        if MPI.rank == 0:
             config_parser.toggleVerbose()
 
         # set some basic information
@@ -119,7 +120,7 @@ class Node:
         if self._config_parser.parsedRun.exists("ProspectiveHosts"):
             prospective_hosts = self._config_parser.parsedRun.valueOf("ProspectiveHosts")
         else:
-            prospective_hosts = MPInfo.cpu_count
+            prospective_hosts = MPI.cpu_count
 
         # determine if we need to regen load balance info, or if it already exists for this config
         # to prevent excessive messages when the file is not there, have rank 0 handle file access
@@ -127,7 +128,7 @@ class Node:
         generate_reason = None
         cxinfo_filename = "cxinfo_%d.txt" % (prospective_hosts,)
 
-        if MPInfo.rank == 0:
+        if MPI.rank == 0:
             if path.isfile(cxinfo_filename):
                 with open(cxinfo_filename, "r") as cxinfo:
                     cx_nrnpath = cxinfo.readline().strip()
@@ -158,7 +159,7 @@ class Node:
         # pre-existing load balance info is good. We can reuse it, so return now or quit
         if not do_generate:
             logging.info("Using existing load balancing info")
-            if MPInfo.cpu_count == prospective_hosts:
+            if MPI.cpu_count == prospective_hosts:
                 return
             else:
                 logging.error("Requires  on a partition of %d cpus (as per ProspectiveHosts)",
@@ -188,7 +189,7 @@ class Node:
         self._cell_distributor.load_balance_cells(loadbal, prospective_hosts)
 
         # balancing calculations done, we can save the cxinfo file now for future usage
-        if MPInfo.rank == 0:
+        if MPI.rank == 0:
             cxinfo = open(cxinfo_filename, "w")
             cxinfo.write(self._config_parser.parsedRun.get("nrnPath").s + "\n")
             if self._config_parser.parsedRun.exists("CircuitTarget"):
@@ -203,7 +204,7 @@ class Node:
             cxinfo.close()
 
         # if loadbalance was calculated for different number of cpus, then we are done
-        if prospective_hosts != MPInfo.cpu_count:
+        if prospective_hosts != MPI.cpu_count:
             logging.info("Loadbalancing computed for %d CPUs. Launch on a partition of that size",
                          prospective_hosts)
             sys.exit()
@@ -219,7 +220,7 @@ class Node:
         """
         self._target_parser = Nd.TargetParser()
         run_conf = self._config_parser.parsedRun
-        if MPInfo.rank == 0:
+        if MPI.rank == 0:
             self._target_parser.isVerbose = 1
 
         target_f = path.join(run_conf.get("nrnPath").s, "start.target")
@@ -579,7 +580,7 @@ class Node:
         sim_end = self._config_parser.parsedRun.valueOf("Duration")
 
         # confirm output_path exists and is usable -> use utility.mod
-        if MPInfo.rank == 0:
+        if MPI.rank == 0:
             if Nd.checkDirectory(output_path) < 0:
                 logging.error("Error with OutputRoot %s. Terminating", output_path)
                 raise RuntimeError("Output directory error")
@@ -681,7 +682,7 @@ class Node:
         outfile = path.join(self._config_parser.parsedRun.get("OutputRoot").s, outfile)
 
         # root node opens file for writing, all others append
-        if MPInfo.rank == 0:
+        if MPI.rank == 0:
             logging.info("Writing spikes to %s", outfile)
             with open(outfile, "w") as f:
                 f.write("/scatter\n")
@@ -689,9 +690,9 @@ class Node:
                     f.write("%.3f\t%d\n" % (self._pnm.spikevec.x[i], gid))
 
         # Write other nodes' result in order
-        for nodeIndex in range(1, MPInfo.cpu_count):
+        for nodeIndex in range(1, MPI.cpu_count):
             self._pnm.pc.barrier()
-            if MPInfo.rank == nodeIndex:
+            if MPI.rank == nodeIndex:
                 with open(outfile, "a") as f:
                     for i, gid in enumerate(self._pnm.idvec):
                         f.write("%.3f\t%d\n" % (self._pnm.spikevec.x[i], gid))
@@ -729,7 +730,7 @@ class Node:
         """
         run_conf = self._config_parser.parsedRun
         if show_progress:
-            _ = Nd.ShowProgress(Nd.cvode, MPInfo.rank)
+            _ = Nd.ShowProgress(Nd.cvode, MPI.rank)
 
         self._pnm.pc.setup_transfer()
         spike_compress = 3
@@ -845,7 +846,6 @@ class Neurodamus(Node):
         """
         if logging_level is not None:
             GlobalConfig.verbosity = logging_level
-        setup_logging(GlobalConfig.verbosity)
 
         Node.__init__(self, recipe_file)
 

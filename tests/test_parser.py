@@ -1,4 +1,4 @@
-from __future__ import absolute_import 
+from __future__ import absolute_import
 from neurodamus.lib.configparser import BlueConfig
 from os import path
 

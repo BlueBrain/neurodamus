@@ -3,10 +3,10 @@ from collections import OrderedDict
 import logging  # active only in rank 0 (init)
 from os import path
 import numpy as np
-from .core import NeuronDamus as Nd
+from .core import NeuronDamus as Nd, MPI
 from .metype import METype, METypeManager
 from .utils import compat
-from .core.configuration import ConfigurationError, MPInfo
+from .core.configuration import ConfigurationError
 from .core import ProgressBarRank0 as ProgressBar
 
 
@@ -92,13 +92,13 @@ class CellDistributor(object):
             self._spgidvec = compat.Vector("I")
 
             # read the cx_* files to build the gidvec
-            cx_path = "cx_%d" % MPInfo.cpu_count
+            cx_path = "cx_%d" % MPI.cpu_count
             if run_conf.exists("CWD"):
                 # Should we allow for another path to facilitate reusing cx* files?
                 cx_path = path.join(run_conf.get("CWD").s, cx_path)
 
             # self.binfo reads the files that have the predistributed cells (and pieces)
-            self._binfo = Nd.BalanceInfo(cx_path, MPInfo.rank, MPInfo.cpu_count)
+            self._binfo = Nd.BalanceInfo(cx_path, MPI.rank, MPI.cpu_count)
 
             # self.binfo has gidlist, but gids can appear multiple times
             _seen = set()
@@ -123,7 +123,7 @@ class CellDistributor(object):
             c_gids = target.completegids()
             for i, gid in enumerate(c_gids):
                 gid = int(gid)
-                if i % MPInfo.cpu_count == MPInfo.rank:
+                if i % MPI.cpu_count == MPI.rank:
                     self._gidvec.append(gid)
         # else:
         #    distribute all the cells round robin style. readNCS handles this
@@ -202,7 +202,7 @@ class CellDistributor(object):
             # Reassign Round-Robin
             gidvec = compat.Vector("I")
             for cellIndex, gid, metype in get_next_cell(ncs):
-                if cellIndex % MPInfo.cpu_count == MPInfo.rank:
+                if cellIndex % MPI.cpu_count == MPI.rank:
                     gidvec.append(gid)
                     gid2mefile[gid] = metype
         else:
@@ -232,8 +232,8 @@ class CellDistributor(object):
             gidvec = compat.Vector("I")
 
             # circuit.mvd3 uses intrinsic gids starting from 1
-            cell_i = MPInfo.rank
-            incr = MPInfo.cpu_count
+            cell_i = MPI.rank
+            incr = MPI.cpu_count
             while cell_i < total_cells:
                 gidvec.append(cell_i + 1)
                 cell_i += incr
@@ -250,10 +250,10 @@ class CellDistributor(object):
         meinfo = METypeManager()
         res = meinfo.load_info(run_conf, gidvec, combo_names, morpho_names)
 
-        if MPInfo.cpu_count > 1:
+        if MPI.cpu_count > 1:
             res = Nd.pnm.pc.allreduce(res, 1)
         if res < 0:
-            if MPInfo.rank == 0:
+            if MPI.rank == 0:
                 logging.error("errors while processing mecombo file. Terminating")
                 raise RuntimeError("Could not process mecombo file. Error {}".format(res))
             Nd.pnm.pc.barrier()
@@ -421,21 +421,21 @@ class CellDistributor(object):
             b.multisplit(gid, lcx, ms)
             ms_list.append(ms.c())
 
-        if MPInfo.rank == 0:
+        if MPI.rank == 0:
             with open(filename, "w") as fp:
                 fp.write("1\n%d\n" % self._pnm.ncell)
             logging.info("LB Info : TC=%.3f MC=%.3f OptimalCx=%.3f FileName=%s" %
                          (total_cx, max_cx, lcx, filename))
 
-        for j in range(MPInfo.cpu_count):
-            if j == MPInfo.rank:
+        for j in range(MPI.cpu_count):
+            if j == MPI.rank:
                 with open(filename, "a") as fp:
                     for ms in ms_list:
                         self._write_msdat(fp, ms)
             self._pnm.pc.barrier()
 
         # now assign to the various cpus - use node 0 to do it
-        if MPInfo.rank == 0:
+        if MPI.rank == 0:
             self._cpu_assign(prospective_hosts)
         self._pnm.pc.barrier()
 
@@ -532,11 +532,11 @@ class CellDistributor(object):
 
                 if cb.subtrees.count() == 0:
                     #  whole cell, normal creation
-                    self._pnm.set_gid2node(gid, MPInfo.rank)
+                    self._pnm.set_gid2node(gid, MPI.rank)
                     self._pnm.pc.cell(gid, nc)
                     self._spgidvec.append(gid)
                 else:
-                    spgid = cb.multisplit(nc, self._binfo.msgid, self._pnm.pc, MPInfo.rank)
+                    spgid = cb.multisplit(nc, self._binfo.msgid, self._pnm.pc, MPI.rank)
                     self._spgidvec.append(spgid)
 
             else:
