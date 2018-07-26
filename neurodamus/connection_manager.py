@@ -30,13 +30,15 @@ class _ConnectionManagerBase(object):
         self._disabled_conns = OrderedDefaultDict()
         self._creation_mode = True
         self._synapse_reader = None
+        self._nrn_version = None
 
         synapse_file = path.join(circuit_path, self.DATA_FILENAME)
         self.open_synapse_file(synapse_file, n_synapse_files)
 
     def open_synapse_file(self, synapse_file, n_synapse_files):
-        self._synapse_reader = self._init_synapse_reader(
+        self._synapse_reader = reader = self._init_synapse_reader(
             self._target_manager, synapse_file, n_synapse_files)
+        self._nrn_version = reader.checkVersion()
 
     @staticmethod
     def _init_synapse_reader(target_manager, synapse_file, n_synapse_files):
@@ -217,7 +219,6 @@ class _ConnectionManagerBase(object):
 
         dt = ND.dt
         reader = self._synapse_reader
-        nrn_version = reader.checkVersion()
         nrow = int(reader.numberofrows(cell_name))
         conn_syn_params = SynapseParameters.create_array(nrow)
         self._syn_params[gid] = conn_syn_params
@@ -235,7 +236,7 @@ class _ConnectionManagerBase(object):
             params[8] = reader.getData(cell_name, i, 11)  # F
             params[9] = reader.getData(cell_name, i, 12)  # DTC
             params[10] = reader.getData(cell_name, i, 13)  # isynType
-            if nrn_version > 4:
+            if self._nrn_version > 4:
                 params[11] = reader.getData(cell_name, i, 17)  # nrrp
             else:
                 params[11] = -1
@@ -596,3 +597,9 @@ class GapJunctionManager(_ConnectionManagerBase):
             cell = self._target_manager.cellDistributor.getCell(conn.tgid)
             conn.finalize_gap_junctions(
                 ND.pnm, cell, self._gj_offsets[conn.tgid-1], self._gj_offsets[conn.sgid-1])
+
+
+def test(msg):
+    MPI.barrier()
+    print(msg)
+    time.sleep(1)

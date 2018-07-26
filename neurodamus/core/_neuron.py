@@ -144,8 +144,8 @@ class _MPI:
         self._init_pnm()
         return self._rank
 
-    #def __getattr__(self, name):
-    #    return getattr(self._pnm.pc, name)
+    def __getattr__(self, name):
+        return getattr(self._pnm.pc, name)
 
 
 # A singleton

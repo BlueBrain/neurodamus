@@ -376,8 +376,8 @@ class Node:
 
         tid = Nd.timeit_register("Synapse init")
         Nd.timeit_start(tid)
-        self._synapse_manager = SynapseRuleManager(
-            nrn_path, self._target_manager, n_synapse_files, synapse_mode)
+        self._synapse_manager = SynapseRuleManager(nrn_path, self._target_manager,
+                                                   n_synapse_files, synapse_mode)
 
         Nd.timeit_add(tid)
 
@@ -583,8 +583,8 @@ class Node:
         if MPI.rank == 0:
             if Nd.checkDirectory(output_path) < 0:
                 logging.error("Error with OutputRoot %s. Terminating", output_path)
-                raise RuntimeError("Output directory error")
-        self._pnm.pc.barrier()
+                Nd.execerror("Output directory error")
+        MPI.barrier()
 
         reports_conf = compat.Map(self._config_parser.parsedReports)
         self._report_list = []
@@ -862,13 +862,16 @@ class Neurodamus(Node):
         self.compute_loadbal()
 
         logging.log(STAGE_LOGLEVEL, "BUILDING CIRCUIT")
+        MPI.barrier()
         self.create_cells()
         self.execute_neuron_configures()
 
         # Create connections
+        MPI.barrier()
         self.create_synapses()
         self.create_gap_junctions()
 
+        MPI.barrier()
         self.enable_stimulus()
         self.enable_modifications()
         self.enable_reports()
