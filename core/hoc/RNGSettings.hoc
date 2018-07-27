@@ -35,7 +35,7 @@ proc init() {
 proc interpret() { localobj runInfo, pc, rng
     strdef rngModeField
     runInfo = $o1
-    
+
     rngMode = COMPATIBILITY
     if( runInfo.exists( "RNGMode" ) ) {
         rngModeField = runInfo.get( "RNGMode" ).s
@@ -54,7 +54,7 @@ proc interpret() { localobj runInfo, pc, rng
             quit()
         }
     }
-    
+
     if( runInfo.exists("BaseSeed") ) {
         globalSeed = runInfo.valueOf( "BaseSeed" )
 
@@ -64,7 +64,7 @@ proc interpret() { localobj runInfo, pc, rng
             rng.Random123_globalindex( globalSeed )
         }
     }
-    
+
     // don't search for indicidual seeds if we are in compatibility mode
     if( rngMode == COMPATIBILITY ) {
         return
@@ -109,4 +109,122 @@ func getGlobalSeed() {
 }
 
 endtemplate RNGSettings
+
+
+
+///////////////////////////////////////////////////////////////////////
+///
+///  These are legacy functions to keep compaltibility
+///
+///////////////////////////////////////////////////////////////////////
+
+/*!
+ * In place of using a CCell's re_init_rng function, we will check for cells that define the re_init_rng function,
+ * but then setRNG using global seed as well
+ *
+ * @param $o1 CCell which is to be checked for setRNG
+ */
+func rngForStochKvInit() {  local channelID, hasStochKv  localobj CCell, rng, rngInfo, rngList
+    CCell = $o1
+    //print "Replace rng for stochKv in gid ", CCell.CellRef.gid
+
+    // quick check to verify this object contains StochKv
+    hasStochKv = 0
+    CCell.CellRef.soma {
+        if( ismembrane( "StochKv" ) ) {
+            hasStochKv = 1
+        }
+    }
+
+    if( !hasStochKv ) {
+        return
+    }
+
+    rngList = new List()
+
+    channelID = 0
+    forsec CCell.CellRef.somatic {
+        for (x, 0) {
+            setdata_StochKv(x)
+            rng = new Random()
+            rng.MCellRan4( channelID*10000+100, globalSeed + ionchannelSeed + CCell.CellRef.gid*10000+250+1 )
+            channelID = channelID + 1
+            rng.uniform(0,1)
+            setRNG_StochKv(rng)
+            rngList.append(rng)
+        }
+    }
+    forsec CCell.CellRef.basal {
+        for (x, 0) {
+            setdata_StochKv(x)
+            rng = new Random()
+            rng.MCellRan4( channelID*10000+100, globalSeed + ionchannelSeed + CCell.CellRef.gid*10000+250+1 )
+            channelID = channelID + 1
+            rng.uniform(0,1)
+            setRNG_StochKv(rng)
+            rngList.append(rng)
+        }
+    }
+    forsec CCell.CellRef.apical {
+        for (x, 0) {
+            setdata_StochKv(x)
+            rng = new Random()
+            rng.MCellRan4( channelID*10000+100, globalSeed + ionchannelSeed + CCell.CellRef.gid*10000+250+1 )
+            channelID = channelID + 1
+            rng.uniform(0,1)
+            setRNG_StochKv(rng)
+            rngList.append(rng)
+        }
+    }
+
+    return rngList
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * In place of using a CCell's re_init_rng function, we will check for cells that define the re_init_rng function,
+ * but then setRNG using random123
+ *
+ * @param $o1 CCell which is to be checked for setRNG
+ */
+proc rng123ForStochKvInit() {  local channelID, hasStochKv  localobj CCell
+    CCell = $o1
+    //print "Replace rng for stochKv in gid ", CCell.CellRef.gid
+
+    // quick check to verify this object contains StochKv
+    hasStochKv = 0
+    CCell.CellRef.soma {
+        if( ismembrane( "StochKv" ) ) {
+            hasStochKv = 1
+        }
+    }
+
+    if( !hasStochKv ) {
+        return
+    }
+
+    channelID = 0
+    forsec CCell.CellRef.somatic {
+        for (x, 0) {
+            setdata_StochKv(x)
+            setRNG_StochKv(ionchannelSeed, channelID, CCell.CellRef.gid + 1)
+            channelID = channelID + 1
+        }
+    }
+    forsec CCell.CellRef.basal {
+        for (x, 0) {
+            setdata_StochKv(x)
+            setRNG_StochKv(ionchannelSeed, channelID, CCell.CellRef.gid + 1)
+            channelID = channelID + 1
+        }
+    }
+    forsec CCell.CellRef.apical {
+        for (x, 0) {
+            setdata_StochKv(x)
+            setRNG_StochKv(ionchannelSeed, channelID, CCell.CellRef.gid + 1)
+            channelID = channelID + 1
+        }
+    }
+}
 
