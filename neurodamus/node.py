@@ -106,14 +106,15 @@ class Node:
         """This function has the simulator instantiate the circuit (cells & synapses) to determine
         the best way to split cells and balance those pieces across the available cpus.
         """
-        run_mode = self._config_parser.parsedRun.get("RunMode").s
+        run_cfg = self._config_parser.parsedRun
+        run_mode = run_cfg.get("RunMode").s if run_cfg.exists("RunMode") else None
+
         if run_mode == "LoadBalance":
             logging.info("LoadBalancing enabled with multisplit capability")
         elif run_mode == "WholeCell":
             logging.info("Whole Cell balancing enabled")
         else:
-            logging.info("RunMode  not used for load balancing. Will use Round-Robin distribution"
-                         .format(run_mode.s))
+            logging.info("RunMode not used for load balancing. Will use Round-Robin distribution")
             return
 
         # Is there a cpu count override in the BlueConfig?
@@ -671,6 +672,7 @@ class Node:
         # don't use the built in gather spikes function as this will overload node 0 with events
         # self.pnm.gatherspikes()
         Nd.prtime(self._pnm.pc)
+        self.clear_model()
         mem_usage.print_node_mem_usage()
         self._pnm.pc.done()
 
