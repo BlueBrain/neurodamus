@@ -6,13 +6,12 @@ from .core.configuration import ConfigurationError
 from .core import NeuronDamus as Nrn
 
 
-class METype:
+class METype(object):
     """
     Class representing an METype. Will instantiate a Hoc-level cell as well
     """
-    __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons', '_ccell',
+    __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons', '_ccell', '_cellref',
                  '_synapses', '_syn_helper_list', '_emodel_name')
-
 
     def __init__(self, gid, etype_path, emodel, morpho_path, morpho_name=None):
         """Instantite a new Cell from METype
@@ -28,6 +27,7 @@ class METype:
         self._hypAmp_current = None
         self._netcons = []
         self._ccell = None
+        self._cellref = None
         self._synapses = None
         self._syn_helper_list = None
         self._emodel_name = emodel
@@ -45,7 +45,8 @@ class METype:
         if rc == 0:
             raise ValueError("Unable to load METype file %s" % etype_mod + ".hoc")
         EModel = getattr(Nrn, emodel)
-        self._ccell = EModel(gid, path.join(morpho_path, "ascii"), morpho_name + ".asc")
+        self._cellref = EModel(gid, path.join(morpho_path, "ascii"), morpho_name + ".asc")
+        self._ccell = self._cellref
         self._synapses = Nrn.List()
         self._syn_helper_list = Nrn.List()
 
@@ -54,17 +55,18 @@ class METype:
         """
         EModel = getattr(Nrn, emodel)
         self._ccell = ccell = EModel(gid, path.join(morpho_path, "ascii"))
+        self._cellref = ccell.CellRef
         self._synapses = ccell.CellRef.synlist
         self._syn_helper_list = ccell.CellRef.synHelperList
         self._threshold_current = ccell.getThreshold()
-        ret = Nrn.execute1("{getHypAmp()}", ccell, 0)
-        if ret != 0:
-            self._hypAmp_current = ccell.getHypAmp()
+        try: self._hypAmp_current = ccell.getHypAmp()
+        except Exception: pass
 
     @property
     def synlist(self):
         return self._synapses
 
+    # Named for compat with still existing HOC modules
     def getThreshold(self):
         return self._threshold_current
 
@@ -89,7 +91,7 @@ class METype:
 
     @property
     def CellRef(self):
-        return self._ccell.CellRef
+        return self._cellref
 
     def connect2target(self, target_pp):
         """ Connects MEtype cell to target
@@ -105,8 +107,13 @@ class METype:
         self._netcons.append(netcon)
         return netcon
 
-    def re_init_rng(self, _):
-        Nrn.execute1("re_init_rng()", self._ccell, 0)
+    def re_init_rng(self, ion_seed):
+        """Re-Init RNG for cell
+
+        Args:
+            ion_seed: ion channel seed
+        """
+        Nrn.execute1("re_init_rng(%d)" % ion_seed, self._ccell, 0)
 
 
 class METypeItem(object):

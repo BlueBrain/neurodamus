@@ -175,10 +175,10 @@ class Node:
             logging.info("Generating mcomplex.dat...")
             loadbal.create_mcomplex()
         else:
-            logging.info("using existing mcomplex.dat")
+            logging.info("Using existing mcomplex.dat")
         loadbal.read_mcomplex()
 
-        logging.info("instantiate cells Round Robin style")
+        logging.info("Instantiating cells Round Robin style")
         self.create_cells("RR")
         self.create_synapses()
         self.create_gap_junctions()
@@ -575,6 +575,7 @@ class Node:
         # need bin report helper to handle MPI communication
         sim_dt = self._config_parser.parsedRun.valueOf("Dt")
         self._binreport_helper = Nd.BinReportHelper(sim_dt)
+        n_errors = 0
 
         # other useful fields from main Run object
         output_path = self._config_parser.parsedRun.get("OutputRoot").s
@@ -592,13 +593,19 @@ class Node:
 
         for rep_name, rep_conf in ProgressBar.iteritems(reports_conf):
             rep_type = rep_conf.get("Type").s
+            start_time = rep_conf.valueOf("StartTime")
             end_time = rep_conf.valueOf("EndTime")
             if end_time > sim_end:
                 end_time = sim_end
+            if start_time > end_time:
+                logging.error("Report %s: Bad start/end times. Start (%g) > End (%s)",
+                              rep_name, start_time, end_time)
+                n_errors += 1
+                continue
 
             report = Nd.Report(
                 rep_name,
-                rep_type,  # rep type is case sensitive/!\
+                rep_type,  # rep type is case sensitive !!
                 rep_conf.get("ReportOn").s,
                 rep_conf.get("Unit").s,
                 rep_conf.get("Format").s,
@@ -639,6 +646,14 @@ class Node:
             # keep report object? Who has the ascii/hdf5 object? (1 per cell)
             # the bin object? (1 per report)
             self._report_list.append(report)
+
+        if n_errors > 0:
+            raise ConfigurationError("%d reporting errors detected. Terminating" % (n_errors,))
+
+        # Report Buffer Size hint in MB.
+        if self._configParser.parsedRun.exists("ReportingBufferSize"):
+            self._binreport_helper.set_max_buffer_size_hint(
+                configParser.parsedRun.valueOf("ReportingBufferSize"))
 
         # once all reports are created, we finalize the communicator for any bin reports
         self._binreport_helper.make_comm()

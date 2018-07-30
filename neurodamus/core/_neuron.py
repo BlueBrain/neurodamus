@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+import sys
 from .configuration import Neuron_Stdrun_Defaults
 from .configuration import GlobalConfig
 from ..utils import classproperty
@@ -126,6 +127,15 @@ class _MPI:
         cls._pnm = pnm = Neuron.ParallelNetManager(0)
         cls._rank = int(pnm.pc.id())
         cls._size = int(pnm.pc.nhost())
+
+        if cls._size <= 1:
+            return  # done
+
+        # When using MPI (and more than 1 rank) we need to MPIAbort on exception to avoid deadlocks
+        def excepthook(type, exception, traceback):
+            Neuron.execerror(str(exception))
+            sys.__excepthook__(type, exception, traceback)
+        sys.excepthook = excepthook
 
     @property
     def pnm(self):

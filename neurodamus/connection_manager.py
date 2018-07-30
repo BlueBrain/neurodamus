@@ -594,9 +594,9 @@ class GapJunctionManager(_ConnectionManagerBase):
         Connections must have been places and all weight scalars should have their final values.
         """
         for conn in self.all_connections():  # type: Connection
-            cell = self._target_manager.cellDistributor.getCell(conn.tgid)
+            metype = self._target_manager.cellDistributor.getMEType(conn.tgid)
             conn.finalize_gap_junctions(
-                ND.pnm, cell, self._gj_offsets[conn.tgid-1], self._gj_offsets[conn.sgid-1])
+                ND.pnm, metype, self._gj_offsets[conn.tgid-1], self._gj_offsets[conn.sgid-1])
 
 
 def test(msg):
