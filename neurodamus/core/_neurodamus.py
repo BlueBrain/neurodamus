@@ -29,9 +29,9 @@ class NeuronDamus(_Neuron):
     def _init(cls):
         h = _Neuron._init()  # if needed, sets cls._h
         if cls._pnm is None:
-            logging.debug("Loading mods from: " + MOD_LIB)
+            # logging.debug("Loading mods from: " + MOD_LIB)
+            # cls.load_dll(MOD_LIB)  # While py neuron doesnt support mpi init use linked special
             logging.debug("Loading master Hoc: " + HOC_LIB)
-            cls.load_dll(MOD_LIB)
             cls.load_hoc(HOC_LIB)
             cls._pnm = MPI.pnm
 
@@ -41,6 +41,8 @@ class NeuronDamus(_Neuron):
                 setup_logging(GlobalConfig.verbosity)
             else:
                 setup_logging(0)
+
+            logging.info("Neurodamus Mod & Hoc lib initialized.")
 
     @property
     def pnm(self):

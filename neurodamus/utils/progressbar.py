@@ -50,13 +50,17 @@ class Progress(object):
     It can be managed manually, via '+=' and -= operators, or automatically by consuming
     iterables.
     """
+
+    _last_time_taken = None
+    """We keep a reference to the last execution time"""
+
     def __init__(self, end, start=0):
         """ Creates a progress bar
 
         Args:
+            end:   State in which the progress has terminated. False for unknown (-> spinner)
             start: State from which start the progress. For example, if start is
                    5 and the end is 10, the progress of this state is 50%
-            end:   State in which the progress has terminated. False for unknown (-> spinner)
         """
         if start < 0 or start > end:
             raise ValueError("Invalid Start value. Must be a non-negative smaller than end")
@@ -96,6 +100,13 @@ class Progress(object):
         self._progress = val
 
     progress = property(lambda self: self._progress, _set_progress)
+
+    @property
+    def time_taken(self):
+        return time.time() - self._init_time
+
+    def __del__(self):
+        self.__class__._last_time_taken = self.time_taken
 
     def __call__(self, iterable, end=None, start=0):
         for elem in islice(iterable, start, end):
@@ -198,7 +209,7 @@ class ProgressBar(Progress):
         # Since some streams might not support \r we finish the bar
         if not self._tty_mode:
             self._show_incremental_bar()
-        out_str = "[Done] Time taken: %d sec." % (time.time() - self._init_time)
+        out_str = "[Done] Time taken: %d sec." % (self.time_taken,)
         self._stream.write("\r{}{}\n".format(out_str, " " * (self._width + 8 - len(out_str))))
 
     def _set_progress(self, val):

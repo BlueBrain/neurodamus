@@ -280,14 +280,14 @@ class Node:
     #
     def _interpret_connections(self):
         logging.info("Creating connections from BlueConfig...")
-        for conn_conf in ProgressBar.itervalues(compat.Map(self._config_parser.parsedConnects)):
+        for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
             if conn_conf.exists("Delay"):
                 # Connection blocks using a 'Delay' option are handled later
                 continue
 
             conn_src = conn_conf.get("Source").s
             conn_dst = conn_conf.get("Destination").s
-            logging.debug("connect %s -> %s ", conn_src, conn_dst)
+            logging.info(" > Configuring Pathway %s -> %s ", conn_src, conn_dst)
 
             # check if we are supposed to disable creation
             # -> i.e. only change weights for existing connections
@@ -591,7 +591,8 @@ class Node:
         reports_conf = compat.Map(self._config_parser.parsedReports)
         self._report_list = []
 
-        for rep_name, rep_conf in ProgressBar.iteritems(reports_conf):
+        for rep_name, rep_conf in reports_conf.items():
+            logging.info(" > " + rep_name)
             rep_type = rep_conf.get("Type").s
             start_time = rep_conf.valueOf("StartTime")
             end_time = rep_conf.valueOf("EndTime")
