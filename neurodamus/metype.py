@@ -13,7 +13,7 @@ class METype(object):
     __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons', '_ccell', '_cellref',
                  '_synapses', '_syn_helper_list', '_emodel_name')
 
-    def __init__(self, gid, etype_path, emodel, morpho_path, morpho_name=None):
+    def __init__(self, gid, etype_path, emodel, morpho_path, meinfos_v6=None):
         """Instantite a new Cell from METype
 
         Args:
@@ -32,23 +32,26 @@ class METype(object):
         self._syn_helper_list = None
         self._emodel_name = emodel
 
-        if morpho_name is not None:
-            self._instantiate_cell_v6(gid, etype_path, emodel, morpho_path, morpho_name)
+        if meinfos_v6 is not None:
+            self._instantiate_cell_v6(gid, etype_path, emodel, morpho_path, meinfos_v6)
         else:
             self._instantiate_cell_v5(gid, emodel, morpho_path)
 
-    def _instantiate_cell_v6(self, gid, etype_path, emodel, morpho_path, morpho_name):
+    def _instantiate_cell_v6(self, gid, etype_path, emodel, morpho_path, meinfos_v6):
         """Instantiates a SSCx v6 cell
         """
         etype_mod = path.join(etype_path, emodel)
         rc = Nrn.load_hoc(etype_mod)
         if rc == 0:
             raise ValueError("Unable to load METype file %s" % etype_mod + ".hoc")
+
         EModel = getattr(Nrn, emodel)
-        self._cellref = EModel(gid, path.join(morpho_path, "ascii"), morpho_name + ".asc")
+        self._cellref = EModel(gid, path.join(morpho_path, "ascii"), meinfos_v6.morph_name + ".asc")
         self._ccell = self._cellref
         self._synapses = Nrn.List()
         self._syn_helper_list = Nrn.List()
+        self._threshold_current = meinfos_v6.threshold_current
+        self._hypAmp_current = meinfos_v6.holding_current
 
     def _instantiate_cell_v5(self, gid, emodel, morpho_path):
         """Instantiates a cell v5 or before. Asssumes emodel hoc templates are loaded
@@ -76,6 +79,7 @@ class METype(object):
     def getHypAmp(self):
         if self._hypAmp_current is None:
             logging.warning("EModel %s doesnt define HypAmp current" % self._emodel_name)
+            return 0
         return self._hypAmp_current
 
     def setHypAmp(self, value):
@@ -128,8 +132,8 @@ class METypeItem(object):
         self.etype = etype
         self.emodel = emodel
         self.combo_name = combo_name
-        self.threshold_current = threshold_current
-        self.holding_current = holding_current
+        self.threshold_current = float(threshold_current)
+        self.holding_current = float(holding_current)
 
 
 class METypeManager(object):

@@ -148,7 +148,7 @@ class ProgressBar(Progress):
     _no_tty_bar = "-------20%-------40%-------60%-------80%------100%"  # len 50
 
     def __init__(self, end, start=0, width=60, fill='=', blank='.', stream=sys.stdout,
-                 fmt='[%(fill)s>%(blank)s] %(progress)s'):
+                 fmt='[%(fill)s>%(blank)s] %(progress)s', tty_bar=None):
         """
         Args:
             end:   State in which the progress has terminated. False for unknown (-> spinner)
@@ -159,8 +159,11 @@ class ProgressBar(Progress):
             blank: String to use for "filled" used to represent remaining space.
             stream: the destination stream (default: stdout)
             fmt: Bar format string
+            tty_mode: Controls whether the bar should be enhanced for text terminals.
+                      Default: None (auto-detect), False, True
         """
-        self._tty_mode = hasattr(stream, 'isatty') and stream.isatty()
+        self._tty_mode = (hasattr(stream, 'isatty') and stream.isatty()) \
+            if tty_bar is None else tty_bar
         if not self._tty_mode:
             stream.write('|')
             width = 50

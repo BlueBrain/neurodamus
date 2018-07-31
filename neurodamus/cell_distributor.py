@@ -151,16 +151,15 @@ class CellDistributor(object):
 
         for gid in ProgressBar.iter(self._gidvec):
             if self._useMVD3:
-                meinfo = me_infos.retrieve_info(gid)
-                cell = METype(gid, mepath, meinfo.emodel, morpho_path, meinfo.morph_name)
-                self._gid2metype[gid] = meinfo.emodel  # Added for compat
-                cell.setThreshold(meinfo.threshold_current)
-                cell.setHypAmp(meinfo.holding_current)
+                meinfo_v6 = me_infos.retrieve_info(gid)
+                melabel = meinfo_v6.emodel
+                cell = METype(gid, mepath, melabel, morpho_path, meinfo_v6)
             else:
                 # In NCS, me_infos is a plain map from gid to me_file
-                melabel = self._gid2metype[gid] = self._load_template(me_infos[gid], mepath)
+                melabel = self._load_template(me_infos[gid], mepath)
                 cell = METype(gid, mepath, melabel, morpho_path)
 
+            self._gid2metype[gid] = melabel
             self._cell_list.append(cell)
             self._gid2meobj[gid] = cell
             self._pnm.cells.append(cell.CellRef)
@@ -173,8 +172,7 @@ class CellDistributor(object):
 
         Returns: A tuple of (gids and the metypes
         """
-        nrn_path = run_conf.get("nrnPath").s
-        ncs = open(path.join(nrnPath, "start.ncs"), "r")
+        ncs = open(path.join(run_conf.get("nrnPath").s, "start.ncs"), "r")
         gid2mefile = OrderedDict()
 
         # first lines might be comments. Skip '#'
@@ -303,7 +301,7 @@ class CellDistributor(object):
         return tpl_name
 
     def getMEType(self, gid):
-        return self._gid2meobj.get(gid)
+        return self._gid2meobj[gid]
 
     def getMETypeFromGid(self, gid):
         """ Provide the name of the metype which corresponds to a gid \n

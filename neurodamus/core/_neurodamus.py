@@ -41,8 +41,7 @@ class NeuronDamus(_Neuron):
                 setup_logging(GlobalConfig.verbosity)
             else:
                 setup_logging(0)
-
-            logging.info("Neurodamus Mod & Hoc lib initialized.")
+            logging.info("Neurodamus Mod & Hoc lib loaded.")
 
     @property
     def pnm(self):
