@@ -421,22 +421,22 @@ static void bbcore_write(double* dArray, int* iArray, int* doffset, int* ioffset
         if (iArray) {
                 uint32_t* ia = ((uint32_t*)iArray) + *ioffset;
                 nrnran123_State** pv = (nrnran123_State**)(&_p_exp_rng);
-                nrnran123_getids(*pv, ia, ia+1);
+                nrnran123_getids3(*pv, ia, ia+1, ia+2);
 
                 // for stream sequence
                 unsigned char which;
 
-                nrnran123_getseq(*pv, ia+2, &which);
-                ia[3] = (int)which;
+                nrnran123_getseq(*pv, ia+3, &which);
+                ia[4] = (int)which;
 
-                ia = ia + 4;
+                ia = ia + 5;
                 pv = (nrnran123_State**)(&_p_uniform_rng);
-                nrnran123_getids(*pv, ia, ia+1);
+                nrnran123_getids3( *pv, ia, ia+1, ia+2);
 
-                nrnran123_getseq(*pv, ia+2, &which);
-                ia[3] = (int)which;
+                nrnran123_getseq(*pv, ia+3, &which);
+                ia[4] = (int)which;
 
-                ia = ia + 4;
+                ia = ia + 5;
                 void* vec = _p_vecRate;
                 ia[0] = dsize;
 
@@ -463,7 +463,7 @@ static void bbcore_write(double* dArray, int* iArray, int* doffset, int* ioffset
                   da[iInt] = dv[iInt];
                 }
         }
-        *ioffset += 9;
+        *ioffset += 11;
         *doffset += 2*dsize;
 
 }
@@ -478,21 +478,21 @@ static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset,
         if (ia[0] != 0 || ia[1] != 0)
         {
           pv = (nrnran123_State**)(&_p_exp_rng);
-          *pv = nrnran123_newstream(ia[0], ia[1]);
-          nrnran123_setseq(*pv, ia[2], (char)ia[3]);
+          *pv = nrnran123_newstream3(ia[0], ia[1], ia[2] );
+          nrnran123_setseq(*pv, ia[3], (char)ia[4]);
         }
 
-        ia = ia + 4;
+        ia = ia + 5;
         if (ia[0] != 0 || ia[1] != 0)
         {
           pv = (nrnran123_State**)(&_p_uniform_rng);
-          *pv = nrnran123_newstream(ia[0], ia[1]);
+          *pv = nrnran123_newstream3(ia[0], ia[1], ia[2] );
           nrnran123_setseq(*pv, ia[2], (char)ia[3]);
         }
 
-        ia = ia + 4;
+        ia = ia + 5;
         int dsize = ia[0];
-        *ioffset += 9;
+        *ioffset += 11;
 
         double *da = dArray + *doffset;
         _p_vecRate = vector_new1(dsize);  /* works for dsize=0 */
