@@ -256,7 +256,7 @@ class _ConnectionManagerBase(object):
             src_target: Name of Source Target
             dst_target: Name of Destination Target
             gidvec: A list of gids to apply configuration
-            configuration: (optional) A hoc configuration to be executed over synapse objects
+            configuration: (optional) A hoc configuration str to be executed over synapse objects
             weight: (optional) new weights for the netcons
             **syn_params: Keyword arguments of synapse properties to be changed, e.g. conductance(g)
         """
@@ -302,7 +302,7 @@ class _ConnectionManagerBase(object):
 
         weight = conn_parsed_config.valueOf("Weight") \
             if conn_parsed_config.exists("Weight") else None
-        config = conn_parsed_config.valueOf("SynapseConfigure") \
+        config = conn_parsed_config.get("SynapseConfigure").s \
             if conn_parsed_config.exists("SynapseConfigure") else None
 
         self.apply_post_config(src_target, dst_target, gidvec, config, weight)

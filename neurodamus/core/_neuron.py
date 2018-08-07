@@ -30,6 +30,7 @@ class _Neuron(object):
     def _init(cls):
         """Initializes the Neuron simulator"""
         if cls._h is None:
+            cls.__cache = {}
             if GlobalConfig.use_mpi:
                 pass
                 # Currently _init_mpi is based on MPI4Py which is problematic in bbp5
@@ -94,7 +95,13 @@ class _Neuron(object):
     # Properties that are not found here are get / set
     # directly in neuron.h
     def __getattr__(self, item):
-        return getattr(self.h, item)
+        # We use a cache since going down to hoc costs at least 10us
+        # Cache is not expected to grow very large. Unbounded for the moment
+        cache = self.__class__.__cache
+        obj = cache.get(item)
+        if obj is None:
+            obj = cache[item] = getattr(self.h, item)
+        return obj
 
     def __setattr__(self, key, value):
         try:

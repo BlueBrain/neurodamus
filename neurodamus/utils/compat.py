@@ -18,6 +18,17 @@ class Vector(array):
     def x(self):
         return self
 
+class List(list):
+    """Behavior similar to Hoc List
+    """
+    __slots__ = ()
+
+    def count(self):
+        return len(self)
+
+    def o(self, idx):
+        return self[int(idx)]
+
 
 class Map(Mapping):
     """Class which bring Python map API to hoc Maps

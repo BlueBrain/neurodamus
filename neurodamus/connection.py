@@ -17,16 +17,16 @@ class SynapseParameters(object):
                        "formats": ["f8"] * len(_synapse_fields)})
 
     def __new__(cls, params):
-        npa = np.empty(1, cls._dtype)
-        npa["location"] = 0.5
+        rec = np.recarray(1, cls._dtype)[0]
+        rec.location = 0.5
         # Return record object
-        return npa.view(np.recarray)[0]
+        return rec
 
     @classmethod
     def create_array(cls, length):
-        npa = np.empty(length, cls._dtype)
-        npa["location"] = 0.5
-        return npa.view(np.recarray)
+        npa = np.recarray(length, cls._dtype)
+        npa.location = 0.5
+        return npa
 
 
 class SynapseMode:
@@ -83,6 +83,17 @@ class Connection(object):
     __slots__ = ("sgid", "tgid", "weight_factor", "__dict__")
     _AMPAMDA_Helper = None
     _GABAAB_Helper = None
+    ConnUtils = None  # Collection of hoc routines to speedup execution
+    
+    @classmethod
+    def _init_hmod(cls):
+        if cls._AMPAMDA_Helper is not None:
+            return ND.h
+        h = ND.require("AMPANMDAHelper", "GABAABHelper")
+        cls._AMPAMDA_Helper = h.AMPANMDAHelper
+        cls._GABAABHelper = h.GABAABHelper
+        cls.ConnUtils = h.ConnectionUtils()
+        return h
 
     def __init__(self, sgid, tgid, weight_factor=1.0, configuration=None, stdp=None,
                  minis_spont_rate=0, synapse_mode=SynapseMode.DUAL_SYNS, synapse_override=None):
@@ -123,15 +134,6 @@ class Connection(object):
         self._minis_RNGs = None
         # Used for replay
         self._tvecs = []
-
-    @classmethod
-    def _init_hmod(cls):
-        if cls._AMPAMDA_Helper is None:
-            h = ND.require("AMPANMDAHelper", "GABAABHelper")
-            cls._AMPAMDA_Helper = h.AMPANMDAHelper
-            cls._GABAABHelper = h.GABAABHelper
-            return h
-        return ND.h
 
     # read-only properties
     synapse_params = property(lambda self: self._synapse_params)
@@ -196,7 +198,7 @@ class Connection(object):
         rate_vec = ND.Vector(1)
 
         # Initialize member lists
-        self._synapses = []
+        self._synapses = compat.List()  # Used by ConnUtils
         self._netcons = []
         self._minis_netcons = []
         self._minis_RNGs = []
@@ -358,7 +360,7 @@ class Connection(object):
             end_offset: offset for the other cell's gap junctions
 
         """
-        self._synapses = []
+        self._synapses = compat.List()
         self._netcons = []
 
         # Note that synapseLocation.SPLIT = 1
@@ -393,32 +395,11 @@ class Connection(object):
             for key, val in params:
                 setattr(syn, key, val)
 
-    @staticmethod
-    def _apply_configuration(configuration, synapse):
-        # In the future configurations should be Python functions?
-        """ Executes a configuration against a (tuple of) synapse(s)
-
-        Args:
-            configuration: The configuration to be applied
-            synapse: The synapse to be applied the configuration. If synapse is a tuple the
-                configuration is applied to each element.
-            context: The context in which the command shall be executed
-        """
-        synapses = synapse if isinstance(synapse, tuple) else (synapse,)
-        ND.execute("objref _tmp")
-        hoc_cmd = configuration.s.replace("%s", "_tmp")
-        for syn in synapses:
-            ND._tmp = syn
-            # Some properties are not accepted by some point processes. Dont raise excpt
-            rc = ND.execute1("{%s}" % hoc_cmd)
-            if rc == 0:
-                logging.debug("Failed to apply configuration to synapse: %s", hoc_cmd)
-
     def _configure_cell(self, cell):
         """ Helper function to apply the SynapseConfigure statements on a given cell synapses
         """
         for config in self._configurations:
-            self._apply_configuration(config, tuple(cell.CellRef.synlist))
+            self.ConnUtils.executeConfigure(cell.CellRef.synlist, config)
 
     def _configure_synapses(self):
         """ Helper function to apply all the connection configurations to the created synapses
@@ -430,9 +411,7 @@ class Connection(object):
     def apply_configuration(self, configuration):
         """ Helper function to execute a configuration command on all connection synapses.
         """
-        # NOTE: After the simulation has run for some time we can't assume that the last synapse
-        # of the cell object is the target
-        self._apply_configuration(configuration, tuple(self._synapses))
+        self.ConnUtils.executeConfigure(self._synapses, configuration)
 
     # -
     def update_weights(self, weight, update_also_replay_netcons=False):

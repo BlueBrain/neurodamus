@@ -308,7 +308,7 @@ class Node:
             # allows a helper object to grab any additional configuration values
             syn_override = conn_conf if conn_conf.exists("ModOverride") else None
 
-            syn_config = conn_conf.get("SynapseConfigure") \
+            syn_config = conn_conf.get("SynapseConfigure").s \
                 if conn_conf.exists("SynapseConfigure") else None
 
             syn_t = conn_conf.valueOf("SynapseID") \

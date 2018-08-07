@@ -1,0 +1,542 @@
+Timer unit: 1e-06 s
+
+Total time: 97.4397 s
+File: /gpfs/bbp.cscs.ch/home/leite/dev/neurodamus/python/neurodamus/cell_distributor.py
+Function: _setup at line 66
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    66                                               def _setup(self, run_conf, targets_conf):
+    67         1         17.0     17.0      0.0          morpho_path = run_conf.get("MorphologyPath").s
+    68                                           
+    69                                                   # for testing if xopen bcast is in use (NEURON 7.3).
+    70                                                   # We will be loading different templates on different cpus, so it must be disabled for now
+    71         1         26.0     26.0      0.0          Nd.execute("xopen_broadcast_ = 0")
+    72                                           
+    73                                                   # determine if we should get metype info from start.ncs (current default) or circuit.mvd3
+    74         1         10.0     10.0      0.0          if run_conf.exists("CellLibraryFile"):
+    75         1          4.0      4.0      0.0              celldb_filename = run_conf.get("CellLibraryFile").s
+    76         1          2.0      2.0      0.0              if celldb_filename == "circuit.mvd3":
+    77         1        183.0    183.0      0.0                  logging.info("Reading gid:METype info from circuit.mvd3")
+    78         1          2.0      2.0      0.0                  self._useMVD3 = True
+    79                                           
+    80                                                       elif celldb_filename != "start.ncs":
+    81                                                           logging.error("Invalid CellLibraryFile %s. Terminating", celldb_filename)
+    82                                                           raise ConfigurationError("Invalid CellLibFile".format(celldb_filename))
+    83                                                   # Default
+    84         1          1.0      1.0      0.0          if not self._useMVD3:
+    85                                                       logging.info("Reading gid:METype info from start.ncs")
+    86                                           
+    87         1          1.0      1.0      0.0          gidvec = None       # Gids handled by this cpu
+    88         1          1.0      1.0      0.0          total_cells = None  # total cells in this simulation (can be a subset, e.g.: target)
+    89                                           
+    90                                                   #  are we using load balancing? If yes, init structs accordingly
+    91         1         14.0     14.0      0.0          if run_conf.exists("RunMode") \
+    92         1          4.0      4.0      0.0                  and run_conf.get("RunMode").s in ("LoadBalance", "WholeCell"):
+    93         1         98.0     98.0      0.0              logging.info("  > Distributing cells according to load-balance")
+    94         1          2.0      2.0      0.0              self._lb_flag = True
+    95         1          9.0      9.0      0.0              self._spgidvec = compat.Vector("I")
+    96         1          2.0      2.0      0.0              gidvec = compat.Vector("I")
+    97                                           
+    98                                                       # read the cx_* files to build the gidvec
+    99         1          8.0      8.0      0.0              cx_path = "cx_%d" % MPI.cpu_count
+   100         1         11.0     11.0      0.0              if run_conf.exists("CWD"):
+   101                                                           # Should we allow for another path to facilitate reusing cx* files?
+   102                                                           cx_path = path.join(run_conf.get("CWD").s, cx_path)
+   103                                           
+   104                                                       # self.binfo reads the files that have the predistributed cells (and pieces)
+   105         1       8038.0   8038.0      0.0              self._binfo = Nd.BalanceInfo(cx_path, MPI.rank, MPI.cpu_count)
+   106                                           
+   107                                                       # self.binfo has gidlist, but gids can appear multiple times
+   108         1          4.0      4.0      0.0              _seen = set()
+   109       126        153.0      1.2      0.0              for gid in self._binfo.gids:
+   110       125        176.0      1.4      0.0                  gid = int(gid)
+   111       125        158.0      1.3      0.0                  if gid not in _seen:
+   112       125        180.0      1.4      0.0                      gidvec.append(gid)
+   113       125        156.0      1.2      0.0                      _seen.add(gid)
+   114                                           
+   115                                                       # TODO: do we have any way of knowing that a CircuitTarget found definitively matches
+   116                                                       #       the cells in the balance files? for now, assume the user is being honest
+   117         1         15.0     15.0      0.0              if run_conf.exists("CircuitTarget"):
+   118         1         14.0     14.0      0.0                  target = targets_conf.getTarget(run_conf.get("CircuitTarget").s)
+   119         1         11.0     11.0      0.0                  total_cells = int(target.completegids().size())
+   120                                                       else:
+   121                                                           total_cells = len(_seen)
+   122                                           
+   123                                                   elif run_conf.exists("CircuitTarget"):
+   124                                                       logging.info("  > Distributing target circuit cells round-robin")
+   125                                                       target = targets_conf.getTarget(run_conf.get("CircuitTarget").s)
+   126                                                       gidvec = compat.Vector("I")
+   127                                                       _target_gids = target.completegids()
+   128                                                       total_cells = int(_target_gids.size())
+   129                                           
+   130                                                       for i, gid in enumerate(_target_gids):
+   131                                                           if i % MPI.cpu_count == MPI.rank:
+   132                                                               gidvec.append(int(gid))
+   133                                                   else:
+   134                                                       # Otherwise distribute all the cells round robin style. readNCS / readMVD3 handle this
+   135                                                       logging.info("  > Distributing all cells round-robin")
+   136                                           
+   137                                                   # Determine metype; apply round-robin assignment if necessary
+   138         1          1.0      1.0      0.0          if self._useMVD3:
+   139         1          3.0      3.0      0.0              self._total_cells, self._gidvec, me_infos = self._load_mvd3(
+   140         1    2494714.0 2494714.0      2.6                  run_conf, total_cells, gidvec)
+   141                                                   else:
+   142                                                       self._total_cells, self._gidvec, me_infos = self._load_ncs(
+   143                                                           run_conf, total_cells, gidvec)
+   144                                           
+   145         1          3.0      3.0      0.0          logging.info("Done gid assignment: %d cells in network, %d cells in rank 0",
+   146         1        491.0    491.0      0.0                       self._total_cells, len(self._gidvec))
+   147                                           
+   148         1          9.0      9.0      0.0          self._pnm.ncell = self._total_cells
+   149         1         27.0     27.0      0.0          mepath = run_conf.get("METypePath").s
+   150         1        140.0    140.0      0.0          logging.info("Loading cells...")
+   151                                           
+   152       126       8092.0     64.2      0.0          for gid in ProgressBar.iter(self._gidvec):
+   153       125        246.0      2.0      0.0              if self._useMVD3:
+   154       125        760.0      6.1      0.0                  meinfo_v6 = me_infos.retrieve_info(gid)
+   155       125        265.0      2.1      0.0                  melabel = meinfo_v6.emodel
+   156       125   94922859.0 759382.9     97.4                  cell = METype(gid, mepath, melabel, morpho_path, meinfo_v6)
+   157                                                       else:
+   158                                                           # In NCS, me_infos is a plain map from gid to me_file
+   159                                                           melabel = self._load_template(me_infos[gid], mepath)
+   160                                                           cell = METype(gid, mepath, melabel, morpho_path)
+   161                                           
+   162       125        685.0      5.5      0.0              self._gid2metype[gid] = melabel
+   163       125        386.0      3.1      0.0              self._cell_list.append(cell)
+   164       125        282.0      2.3      0.0              self._gid2meobj[gid] = cell
+   165       125       1464.0     11.7      0.0              self._pnm.cells.append(cell.CellRef)
+
+Total time: 0.254238 s
+File: /gpfs/bbp.cscs.ch/home/leite/dev/neurodamus/python/neurodamus/cell_distributor.py
+Function: finalize at line 496
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   496                                               def finalize(self, gids):
+   497                                                   """Do final steps to setup the network. For example, multisplit will handle gids depending
+   498                                                   on additional info from self.binfo object. Otherwise, normal cells do their finalization
+   499                                           
+   500                                                   Args:
+   501                                                       gids: The gids of the cells to finalize
+   502                                           
+   503                                                   """
+   504                                                   # First, we need each section of a cell to assign its index value to the voltage field
+   505                                                   # (crazy, huh?) at this moment, this is used later during synapse creation so that sections
+   506                                                   # can be serialized into a single array for random acess.
+   507         1         17.0     17.0      0.0          rng_info = Nd.RNGSettings()
+   508         1          4.0      4.0      0.0          self._global_seed = rng_info.getGlobalSeed()
+   509         1          3.0      3.0      0.0          self._ionchannel_seed = rng_info.getIonChannelSeed()
+   510                                           
+   511       126        180.0      1.4      0.1          for i, gid in enumerate(gids):
+   512       125        165.0      1.3      0.1              metype = self._cell_list[i]  # type: METype
+   513                                           
+   514                                                       #  for v6 and beyond - we can just try to invoke rng initialization
+   515       125        151.0      1.2      0.1              if self._useMVD3 or rng_info.getRNGMode() == rng_info.COMPATIBILITY:
+   516       125      36846.0    294.8     14.5                  metype.re_init_rng(self._ionchannel_seed)
+   517                                                       else:
+   518                                                           # for v5 circuits and earlier check if cell has re_init function.
+   519                                                           # Instantiate random123 or mcellran4 as appropriate
+   520                                                           # Note: should CellDist be aware that metype has CCell member?
+   521                                                           ret = hasattr(metype.CCell, "re_init_rng")
+   522                                           
+   523                                                           if ret:
+   524                                                               if rng_info.getRNGMode() == rng_info.RANDOM123:
+   525                                                                   Nd.rng123ForStochKvInit(metype.CCell)
+   526                                                               else:
+   527                                                                   if metype.gid > 400000:
+   528                                                                       logging.warning("mcellran4 cannot initialize properly with large gids")
+   529                                                                   Nd.rngForStochKvInit(metype.CCell)
+   530                                           
+   531                                                       # TODO: CCell backwards compatibility
+   532                                                       # if we drop support for older versions use simply cell.CCellRef.connect2target(nil, nc)
+   533       125        220.0      1.8      0.1              version = metype.getVersion()
+   534       125        144.0      1.2      0.1              if version < 2:
+   535                                                           nc = Nd.nc_
+   536                                                           metype.CellRef.connect2target(Nd.nil, nc)
+   537                                                       else:
+   538       125       5357.0     42.9      2.1                  nc = metype.connect2target(Nd.nil)
+   539                                           
+   540       125        165.0      1.3      0.1              if self._lb_flag:
+   541       125        549.0      4.4      0.2                  ic = int(self._binfo.gids.indwhere("==", gid))
+   542       125        543.0      4.3      0.2                  cb = self._binfo.bilist.object(self._binfo.cbindex.x[ic])
+   543                                           
+   544       125        380.0      3.0      0.1                  if cb.subtrees.count() == 0:
+   545                                                               #  whole cell, normal creation
+   546       125       1318.0     10.5      0.5                      self._pnm.set_gid2node(gid, MPI.rank)
+   547       125        402.0      3.2      0.2                      self._pnm.pc.cell(gid, nc)
+   548       125        211.0      1.7      0.1                      self._spgidvec.append(gid)
+   549                                                           else:
+   550                                                               spgid = cb.multisplit(nc, self._binfo.msgid, self._pnm.pc, MPI.rank)
+   551                                                               self._spgidvec.append(spgid)
+   552                                           
+   553                                                       else:
+   554                                                           self._pnm.set_gid2node(gid, self._pnm.myid)
+   555                                                           self._pnm.pc.cell(gid, nc)
+   556                                           
+   557                                                   # TODO: on bbplinsrv, calling pc.multisplit function now causes problem, but if it is called
+   558                                                   #  in a separate function after return, then it is fine. Maybe contact Michael for advice?
+   559         1          1.0      1.0      0.0          if self._lb_flag:
+   560         1     207582.0 207582.0     81.6              self._pnm.pc.multisplit()
+
+Total time: 152.794 s
+File: /gpfs/bbp.cscs.ch/home/leite/dev/neurodamus/python/neurodamus/connection.py
+Function: finalize at line 179
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   179                                               def finalize(self, pnm, cell, base_seed=None, tgid_override=None):
+   180                                                   """ When all parameters are set, create synapses and netcons
+   181                                           
+   182                                                   Args:
+   183                                                       pnm: parallelNetManager object which manages cells (& netcons) for NEURON
+   184                                                       cell: cell provided directly rather than via pnm to avoid loadbalance issues
+   185                                                       base_seed: base seed value (leave default None in case no adjustment is needed)
+   186                                                       tgid_override: optional argument which overrides the tgid in the event of loadbalancing
+   187                                           
+   188                                                   """
+   189     76506     132887.0      1.7      0.1          tgid = tgid_override if tgid_override is not None else self.tgid
+   190     76506     125192.0      1.6      0.1          weight_adjusts = []
+   191     76506     112287.0      1.5      0.1          wa_netcon_pre = []
+   192     76506     110822.0      1.4      0.1          wa_netcon_post = []
+   193     76506     710812.0      9.3      0.5          rng_info = ND.RNGSettings()
+   194     76506    1966921.0     25.7      1.3          tbins_vec = ND.Vector(1)
+   195     76506     235767.0      3.1      0.2          tbins_vec.x[0] = 0.0
+   196     76506    1851327.0     24.2      1.2          rate_vec = ND.Vector(1)
+   197                                           
+   198                                                   # Initialize member lists
+   199     76506     142527.0      1.9      0.1          self._synapses = []
+   200     76506     137662.0      1.8      0.1          self._netcons = []
+   201     76506     126729.0      1.7      0.1          self._minis_netcons = []
+   202     76506     125739.0      1.6      0.1          self._minis_RNGs = []
+   203                                           
+   204                                                   # Note that synapseLocation.SPLIT = 1
+   205                                                   # All locations, on and off node should be in this list, but only synapses/netcons on-node
+   206                                                   # should get instantiated
+   207    397260    1165125.0      2.9      0.8          for syn_i, sc in enumerate(self._tpoint_man.sclst):
+   208    320754     903326.0      2.8      0.6              if not sc.exists():
+   209                                                           continue
+   210                                                       # Put the section in the stack, so generic hoc instructions apply to the right section
+   211    320754     970746.0      3.0      0.6              sc.sec.push()
+   212                                           
+   213    320754     828817.0      2.6      0.5              x = self._tpoint_man.x[syn_i]
+   214    320754     561046.0      1.7      0.4              syn_params = self._synapse_params[syn_i]
+   215    320754   46132438.0    143.8     30.2              syn_obj = self._create_synapse(cell, syn_params, x, self._synapse_ids[syn_i], base_seed)
+   216    320754     958095.0      3.0      0.6              cell_syn_list = cell.CellRef.synlist
+   217    320754     622446.0      1.9      0.4              self._synapses.append(syn_obj)
+   218                                           
+   219                                                       # see also pc.gid_connect
+   220                                                       # if sgid exists (i.e. both gids are local), makes netcon connection (c/c++) immediately
+   221                                                       # if sgid not exist, creates an input PreSyn to receive spikes transited over the net.
+   222                                                       # PreSyn is the source to the NetCon, cannot ask netcon about the preloc, but srcgid ok
+   223                                           
+   224    320754    1039066.0      3.2      0.7              nc_index = pnm.nc_append(self.sgid, tgid, cell_syn_list.count()-1,
+   225    320754   11359487.0     35.4      7.4                                       syn_params.delay, syn_params.weight)
+   226    320754    1218098.0      3.8      0.8              nc = pnm.nclist.object(nc_index)  # Netcon object
+   227    320754    5254215.0     16.4      3.4              nc.delay = syn_params.delay
+   228    320754    5292110.0     16.5      3.5              nc.weight[0] = syn_params.weight * self.weight_factor
+   229    320754     806932.0      2.5      0.5              nc.threshold = -30
+   230                                           
+   231                                                       # If the config has UseSTDP, do STDP stuff (can add more options later
+   232                                                       #   here and in Connection.init). Instantiates the appropriate StdpWA mod file
+   233    320754     555035.0      1.7      0.4              if self._stdp:
+   234                                                           if self._stdp == STDPMode.DOUBLET_STDP:
+   235                                                               weight_adjuster = ND.StdpWADoublet(x)
+   236                                                           elif self._stdp == STDPMode.TRIPLET_STDP:
+   237                                                               weight_adjuster = ND.StdpWATriplet(x)
+   238                                                           else:
+   239                                                               raise ValueError("Invalid STDP config")
+   240                                           
+   241                                                           # The synapse ID is useful for synapse reporting
+   242                                                           weight_adjuster.synapseID = syn_obj.synapseID
+   243                                           
+   244                                                           # Create netcons for the pre and post synaptic cells
+   245                                                           #   with weights of 1 and -1, respectively
+   246                                                           nc_wa_pre = pnm.pc.gid_connect(self.sgid, weight_adjuster)
+   247                                                           nc_wa_pre.threshold = -30
+   248                                                           nc_wa_pre.weight[0] = 1
+   249                                                           nc_wa_pre.delay = syn_params.delay
+   250                                           
+   251                                                           nc_wa_post = pnm.pc.gid_connect(tgid, weight_adjuster)
+   252                                                           nc_wa_post.threshold = -30
+   253                                                           nc_wa_post.weight[0] = -1
+   254                                                           nc_wa_post.delay = syn_params.delay
+   255                                           
+   256                                                           # Set the pointer to the synapse netcon weight
+   257                                                           ND.setpointer(nc._ref_weight, "wsyn", weight_adjuster)
+   258                                           
+   259                                                           weight_adjusts.append(weight_adjuster)
+   260                                                           wa_netcon_pre.append(nc_wa_pre)
+   261                                                           wa_netcon_post.append(nc_wa_post)
+   262                                           
+   263    320754     567684.0      1.8      0.4              if self._minis_spont_rate > 0.0:
+   264    320754    8456235.0     26.4      5.5                  ips = ND.InhPoissonStim(x)
+   265                                                           # netconMini = pnm.pc.gid_connect(ips, finalgid)
+   266                                           
+   267                                                           # A simple NetCon will do, as the synapse and cell are local.
+   268    320754    8666804.0     27.0      5.7                  netcon_m = ND.NetCon(ips, syn_obj)
+   269    320754     786233.0      2.5      0.5                  netcon_m.delay = 0.1
+   270                                                           # TODO: better solution here to get the desired behaviour during
+   271                                                           # delayed connection blocks
+   272                                                           # Right now spontaneous minis should be unaffected by delays
+   273    320754    5698036.0     17.8      3.7                  netcon_m.weight[0] = syn_params.weight * self.weight_factor
+   274    320754     678649.0      2.1      0.4                  self._minis_netcons.append(netcon_m)
+   275    320754    1278706.0      4.0      0.8                  if rng_info.getRNGMode() == rng_info.RANDOM123:
+   276    320754    1317179.0      4.1      0.9                      ips.setRNGs(syn_obj.synapseID+200, tgid+250, rng_info.getMinisSeed()+300,
+   277    320754    1580034.0      4.9      1.0                                  syn_obj.synapseID+200, tgid+250, rng_info.getMinisSeed()+350)
+   278                                                           else:
+   279                                                               exprng = ND.Random()
+   280                                                               if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
+   281                                                                   exprng.MCellRan4(syn_obj.synapseID*100000 + 200,
+   282                                                                                    tgid + 250 + base_seed + rng_info.getMinisSeed())
+   283                                                               else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
+   284                                                                   exprng.MCellRan4(syn_obj.synapseID*1000 + 200,
+   285                                                                                    tgid + 250 + base_seed + rng_info.getMinisSeed())
+   286                                           
+   287                                                               exprng.negexp(1)
+   288                                                               uniformrng = ND.Random()
+   289                                                               if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
+   290                                                                   uniformrng.MCellRan4(syn_obj.synapseID*100000 + 300,
+   291                                                                                        tgid + 250 + base_seed + rng_info.getMinisSeed())
+   292                                                               else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
+   293                                                                   uniformrng.MCellRan4(syn_obj.synapseID*1000 + 300,
+   294                                                                                        tgid + 250 + base_seed + rng_info.getMinisSeed())
+   295                                           
+   296                                                               uniformrng.uniform(0.0, 1.0)
+   297                                                               ips.setRNGs(exprng, uniformrng)
+   298                                           
+   299                                                               # keep variables so they don't get deleted
+   300                                                               self._minis_RNGs.append(exprng)
+   301                                                               self._minis_RNGs.append(uniformrng)
+   302                                           
+   303                                                           # we never use this list, so I can put the ips in here too
+   304    320754     619195.0      1.9      0.4                  self._minis_RNGs.append(ips)
+   305    320754     607161.0      1.9      0.4                  self._minis_RNGs.append(tbins_vec)
+   306    320754     585139.0      1.8      0.4                  self._minis_RNGs.append(rate_vec)
+   307                                           
+   308                                                           # set the rate of the ips
+   309    320754     824785.0      2.6      0.5                  rate_vec.x[0] = self._minis_spont_rate
+   310    320754     992163.0      3.1      0.6                  ips.setTbins(tbins_vec)
+   311    320754     925131.0      2.9      0.6                  ips.setRate(rate_vec)
+   312                                           
+   313    320754     627718.0      2.0      0.4              self._netcons.append(nc)
+   314    320754    3667992.0     11.4      2.4              ND.pop_section()  # clear selection
+   315                                           
+   316                                                   # Apply configurations to the synapses
+   317     76506   31469732.0    411.3     20.6          self._configure_synapses()
+
+Total time: 43.0532 s
+File: /gpfs/bbp.cscs.ch/home/leite/dev/neurodamus/python/neurodamus/connection.py
+Function: _create_synapse at line 320
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   320                                               def _create_synapse(self, cell, params_obj, x, syn_id, base_seed):
+   321                                                   """Create synapse (GABBAB inhibitory, AMPANMDA excitatory, or another type defined by
+   322                                                   self._synapse_override) passing the creation helper the params.
+   323                                                   It also appends the synapse to the corresponding cell lists.
+   324                                           
+   325                                                   Args:
+   326                                                       cell: The cell object
+   327                                                       params_obj: SynapseParameters object for the synapse to be placed at a single location
+   328                                                       x: distance into the currently accessed section (cas)
+   329                                                       syn_id: Synapse id (determined by row number in the nrn.h5 dataset)
+   330                                                       base_seed: base seed to adjust synapse RNG - added to MCellRan4's low index parameter
+   331                                           
+   332                                                   """
+   333    320754     311241.0      1.0      0.7          if self._synapse_override is not None:
+   334                                                       # there should be a 'Helper' for that syntype in the hoc path.
+   335                                                       override_helper = self._synapse_override.get("ModOverride") + "Helper"
+   336                                                       ND.load_hoc(override_helper)
+   337                                                       try:
+   338                                                           helper_cls = getattr(ND.h, override_helper)
+   339                                                       except AttributeError:
+   340                                                           raise RuntimeError("Failed to load override helper " + override_helper)
+   341                                                   else:
+   342    320754    6107141.0     19.0     14.2              helper_cls = ND.GABAABHelper if params_obj.synType < 100 \
+   343    266202    2012847.0      7.6      4.7                  else ND.AMPANMDAHelper  # excitatory
+   344                                           
+   345    320754   31596776.0     98.5     73.4          syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, self._synapse_override)
+   346    320754    1481172.0      4.6      3.4          cell.CellRef.synHelperList.append(syn_helper)
+   347    320754    1157786.0      3.6      2.7          cell.CellRef.synlist.append(syn_helper.synapse)
+   348    320754     386216.0      1.2      0.9          return syn_helper.synapse
+
+Total time: 28.004 s
+File: /gpfs/bbp.cscs.ch/home/leite/dev/neurodamus/python/neurodamus/connection.py
+Function: _apply_configuration at line 396
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   396                                               @staticmethod
+   397                                               def _apply_configuration(configuration, synapse):
+   398                                                   # In the future configurations should be Python functions?
+   399                                                   """ Executes a configuration against a (tuple of) synapse(s)
+   400                                           
+   401                                                   Args:
+   402                                                       configuration: The configuration to be applied
+   403                                                       synapse: The synapse to be applied the configuration. If synapse is a tuple the
+   404                                                           configuration is applied to each element.
+   405                                                       context: The context in which the command shall be executed
+   406                                                   """
+   407    159551     179583.0      1.1      0.6          synapses = synapse if isinstance(synapse, tuple) else (synapse,)
+   408    159551    5795235.0     36.3     20.7          ND.execute("objref _tmp")
+   409    159551     429325.0      2.7      1.5          hoc_cmd = configuration.s.replace("%s", "_tmp")
+   410    838600     643186.0      0.8      2.3          for syn in synapses:
+   411    679049    7185866.0     10.6     25.7              ND._tmp = syn
+   412                                                       # Some properties are not accepted by some point processes. Dont raise excpt
+   413    679049   13157801.0     19.4     47.0              rc = ND.execute1("{%s}" % hoc_cmd)
+   414    679049     612960.0      0.9      2.2              if rc == 0:
+   415                                                           logging.debug("Failed to apply configuration to synapse: %s", hoc_cmd)
+
+Total time: 216.974 s
+File: /gpfs/bbp.cscs.ch/home/leite/dev/neurodamus/python/neurodamus/connection_manager.py
+Function: group_connect at line 107
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   107                                               def group_connect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
+   108                                                                 stdp_mode=None, spont_mini_rate=0, synapse_types=None, synapse_override=None):
+   109                                                   """Given source and destination targets, create all connections for post-gids in gidvec.
+   110                                                   Note: the cells in the source list are not limited by what is on this cpu whereas
+   111                                                   the dest list requires the cells be local
+   112                                           
+   113                                                   Args:
+   114                                                       src_target: Name of Source Target
+   115                                                       dst_target: Name of Destination Target
+   116                                                       gidvec: Vector of gids on the local cpu
+   117                                                       weight_factor: (float) Scaling weight to apply to the synapses. Default: dont change
+   118                                                       configuration: (str) SynapseConfiguration Default: None
+   119                                                       stdp_mode: Which STDP to use. Default: None (=TDPoff for creating, wont change existing)
+   120                                                       spont_mini_rate: (float) For spontaneous minis trigger rate (default: 0)
+   121                                                       synapse_types: (tuple) To restrict which synapse types are created. Default: None
+   122                                                       synapse_override: An alternative point process configuration.
+   123                                                   """
+   124                                                   # unlike connectAll, we must look through self._connections_map to see if sgid->tgid exists
+   125                                                   # because it may be getting weights updated.
+   126                                                   # Note: it is better to get the whole target over just the gid vector since then we can use
+   127                                                   # utility functions like 'contains'
+   128        23        432.0     18.8      0.0          src_target = self._target_manager.getTarget(src_target)
+   129        23        283.0     12.3      0.0          dst_target = self._target_manager.getTarget(dst_target)
+   130        23        122.0      5.3      0.0          stdp = STDPMode.from_str(stdp_mode) if stdp_mode is not None else None
+   131        23         25.0      1.1      0.0          synapses_restrict = synapse_types is not None
+   132        23         23.0      1.0      0.0          if synapses_restrict and not isinstance(synapse_types, (tuple, list)):
+   133                                                       synapse_types = (synapse_types,)
+   134                                           
+   135      2898       4095.0      1.4      0.0          for tgid in gidvec:
+   136      2875      22321.0      7.8      0.0              if not dst_target.contains(tgid):  # if tgid not in dst_target:
+   137      1619       1775.0      1.1      0.0                  continue
+   138                                           
+   139                                                       # this cpu owns some or all of the destination gid
+   140      1256   33529939.0  26695.8     15.5              syns_params = self.get_synapse_parameters(tgid)
+   141      1256       1468.0      1.2      0.0              prev_sgid = None
+   142      1256       1339.0      1.1      0.0              pend_conn = None
+   143                                           
+   144   3303607   23817640.0      7.2     11.0              for i, syn_params in enumerate(syns_params):
+   145   3302351    3711617.0      1.1      1.7                  if synapses_restrict and syn_params.synType not in synapse_types:
+   146                                                               continue
+   147                                           
+   148                                                           # if this gid in the source target?
+   149   3302351   56305557.0     17.1     26.0                  sgid = int(syn_params.sgid)
+   150   3302351   46287700.0     14.0     21.3                  if not src_target.completeContains(sgid):
+   151   2302548    2541924.0      1.1      1.2                      continue
+   152                                           
+   153                                                           # is this gid in the self._circuit_target (if defined)
+   154    999803    1298989.0      1.3      0.6                  if self._circuit_target and not self._circuit_target.completeContains(sgid):
+   155                                                               continue
+   156                                           
+   157                                                           # are we on a different sgid than the previous iteration?
+   158    999803    1202475.0      1.2      0.6                  if sgid != prev_sgid:
+   159                                                               # if we were putting things in a pending object, we can store that away now
+   160    236057     262149.0      1.1      0.1                      if pend_conn:
+   161     76256    2101591.0     27.6      1.0                          self.store_connection(pend_conn)
+   162     76256      93780.0      1.2      0.0                          pend_conn = None
+   163    236057     255814.0      1.1      0.1                      prev_sgid = sgid
+   164                                           
+   165                                                               # determine what we will do with the new sgid
+   166                                                               # update params if seen before, or create connection
+   167    236057    6944595.0     29.4      3.2                      cur_conn = self.get_connection(sgid, tgid)  # type: Connection
+   168    236057     298600.0      1.3      0.1                      if cur_conn is not None:
+   169    159551     181838.0      1.1      0.1                          if weight_factor is not None:
+   170    159551     223398.0      1.4      0.1                              cur_conn.weight_factor = weight_factor
+   171    159551     181215.0      1.1      0.1                          if configuration is not None:
+   172    159551     540693.0      3.4      0.2                              cur_conn.add_synapse_configuration(configuration)
+   173    159551     184280.0      1.2      0.1                          if stdp is not None:
+   174    159551     797965.0      5.0      0.4                              cur_conn.stdp = stdp
+   175    159551     192967.0      1.2      0.1                          if synapse_override is not None:
+   176                                                                       cur_conn.override_synapse(synapse_override)
+   177    159551     183368.0      1.1      0.1                          pend_conn = None
+   178                                                               else:
+   179     76506      90293.0      1.2      0.0                          if self._creation_mode:
+   180     76506      85704.0      1.1      0.0                              if weight_factor is None:
+   181                                                                           logging.warning("Invalid weight_factor for connection creation. "
+   182                                                                                           "Assuming 1.0")
+   183     76506      92282.0      1.2      0.0                              pend_conn = Connection(sgid, tgid, weight_factor, configuration, stdp,
+   184     76506      94203.0      1.2      0.0                                                     spont_mini_rate, self._synapse_mode,
+   185     76506    2513114.0     32.8      1.2                                                     synapse_override)
+   186                                           
+   187                                                           # if we have a pending connection we place the current synapse(s)
+   188    999803    1132350.0      1.1      0.5                  if pend_conn is not None:
+   189    320754    5633094.0     17.6      2.6                      point = self._target_manager.locationToPoint(tgid, syn_params.isec,
+   190    320754   17523077.0     54.6      8.1                                                                   syn_params.ipt, syn_params.offset)
+   191    320754    8630800.0     26.9      4.0                      pend_conn.add_synapse(point, syn_params, i)
+   192                                           
+   193                                                       # store any remaining pending connection
+   194      1256       1554.0      1.2      0.0              if pend_conn is not None:
+   195       250       7960.0     31.8      0.0                  self.store_connection(pend_conn)
+
+Total time: 28.0662 s
+File: /gpfs/bbp.cscs.ch/home/leite/dev/neurodamus/python/neurodamus/connection_manager.py
+Function: get_synapse_parameters at line 198
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   198                                               def get_synapse_parameters(self, gid):
+   199                                                   """Access the specified dataset from the nrn.h5 file to get all synapse parameters for
+   200                                                   a post-synaptic cell
+   201                                           
+   202                                                   Args:
+   203                                                       gid: The gid of the cell whose parameters are required
+   204                                           
+   205                                                   Returns: A list containing the parameters (SynapseParameters objects) of each synapse
+   206                                                   """
+   207      1256       2630.0      2.1      0.0          if gid in self._syn_params:
+   208      1131       1641.0      1.5      0.0              return self._syn_params[gid]  # Cached
+   209                                           
+   210       125        426.0      3.4      0.0          cell_name = "a%d" % gid
+   211       125        222.0      1.8      0.0          if self._n_synapse_files > 1:
+   212                                                       ret = self._synapse_reader.loadData(gid)
+   213                                                   else:
+   214       125    9491532.0  75932.3     33.8              ret = self._synapse_reader.loadData(cell_name)
+   215                                           
+   216       125        341.0      2.7      0.0          if ret < 0:
+   217                                                       logging.warning("No synapses for %s. Skipping", cell_name)
+   218                                                       return []
+   219                                           
+   220       125       6043.0     48.3      0.0          dt = ND.dt
+   221       125        218.0      1.7      0.0          reader = self._synapse_reader
+   222       125        877.0      7.0      0.0          nrow = int(reader.numberofrows(cell_name))
+   223       125      19793.0    158.3      0.1          conn_syn_params = SynapseParameters.create_array(nrow)
+   224       125        256.0      2.0      0.0          self._syn_params[gid] = conn_syn_params
+   225                                           
+   226    320879     343004.0      1.1      1.2          for i in range(nrow):
+   227    320754    2101619.0      6.6      7.5              params = conn_syn_params[i]
+   228    320754    1250971.0      3.9      4.5              params[0] = reader.getData(cell_name, i, 0)   # sgid
+   229    320754    1110749.0      3.5      4.0              params[1] = reader.getData(cell_name, i, 1)   # delay
+   230    320754    1106550.0      3.4      3.9              params[2] = reader.getData(cell_name, i, 2)   # isec
+   231    320754    1098634.0      3.4      3.9              params[3] = reader.getData(cell_name, i, 3)   # ipt
+   232    320754    1098733.0      3.4      3.9              params[4] = reader.getData(cell_name, i, 4)   # offset
+   233    320754    1099133.0      3.4      3.9              params[5] = reader.getData(cell_name, i, 8)   # weight
+   234    320754    1099601.0      3.4      3.9              params[6] = reader.getData(cell_name, i, 9)   # U
+   235    320754    1098697.0      3.4      3.9              params[7] = reader.getData(cell_name, i, 10)  # D
+   236    320754    1099599.0      3.4      3.9              params[8] = reader.getData(cell_name, i, 11)  # F
+   237    320754    1098272.0      3.4      3.9              params[9] = reader.getData(cell_name, i, 12)  # DTC
+   238    320754    1098935.0      3.4      3.9              params[10] = reader.getData(cell_name, i, 13)  # isynType
+   239    320754     399777.0      1.2      1.4              if self._nrn_version > 4:
+   240    320754    1125151.0      3.5      4.0                  params[11] = reader.getData(cell_name, i, 17)  # nrrp
+   241                                                       else:
+   242                                                           params[11] = -1
+   243                                                       # compensate for minor floating point inaccuracies in the delay
+   244    320754    2312651.0      7.2      8.2              params[1] = int(params[1] / dt + 1e-5) * dt
+   245                                           
+   246       125        127.0      1.0      0.0          return conn_syn_params
+
