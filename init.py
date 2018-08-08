@@ -8,4 +8,3 @@ from neurodamus import Neurodamus
 
 if __name__ == "__main__":
     Neurodamus("BlueConfig").run()
-

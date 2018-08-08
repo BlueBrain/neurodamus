@@ -28,9 +28,6 @@ class Timer:
     # Compat
     add = split
 
-
-
-
     @classmethod
     def events(cls, name):
         return cls._timers[name]

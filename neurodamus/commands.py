@@ -22,4 +22,3 @@ def neurodamus():
         GlobalConfig.use_mpi = False
 
     Neurodamus(options["BlueConfig"]).run()
-

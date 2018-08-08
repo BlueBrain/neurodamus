@@ -7,8 +7,7 @@ import time as _time
 def time():
     start = _time.time()
     yield
-    print("The function took %g secs." % _time.time()-start)
-
+    print("The function took %g secs." % (_time.time() - start))
 
 
 def timeit():
@@ -29,6 +28,5 @@ def timeit():
         tdiff = stop - start
         best_time = min(best_time, tdiff)
         tot_time += tdiff
-    
-    print("Best run: %.3f ms. [%d loops]" % (best_time*1000, loop+1))
 
+    print("Best run: %.3f ms. [%d loops]" % (best_time * 1000, loop + 1))

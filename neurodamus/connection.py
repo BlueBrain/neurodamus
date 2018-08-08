@@ -1,9 +1,9 @@
 from __future__ import absolute_import
 import logging
 import numpy as np
+from six.moves import zip
 from .core import NeuronDamus as ND
 from .utils import compat
-from six.moves import zip
 
 
 # SynapseParameters = namedtuple("SynapseParameters", _synapse_fields)
@@ -84,7 +84,7 @@ class Connection(object):
     _AMPAMDA_Helper = None
     _GABAAB_Helper = None
     ConnUtils = None  # Collection of hoc routines to speedup execution
-    
+
     @classmethod
     def _init_hmod(cls):
         if cls._AMPAMDA_Helper is not None:

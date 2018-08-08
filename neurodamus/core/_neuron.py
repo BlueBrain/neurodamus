@@ -140,8 +140,11 @@ class _MPI:
 
         # When using MPI (and more than 1 rank) we need to MPIAbort on exception to avoid deadlocks
         def excepthook(etype, value, tb):
+            # Stop Neuron, without reraising exception
+            try: Neuron.execerror(str(value))
+            except Exception: pass
+            # Print and cleanup exception
             sys.__excepthook__(etype, value, tb)
-            Neuron.execerror(str(value))
         sys.excepthook = excepthook
 
     @property

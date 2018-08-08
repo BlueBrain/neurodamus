@@ -8,17 +8,16 @@ from neurodamus import Neurodamus
 from neurodamus.cell_distributor import CellDistributor
 from neurodamus.connection_manager import _ConnectionManagerBase
 from neurodamus.connection import Connection
-from neurodamus.metype import METype
 from line_profiler import LineProfiler
 from neurodamus.core import MPI
 # import cProfile
 
 if __name__ == "__main__":
     if MPI.rank > 0:
-         Neurodamus('BlueConfig')
+        Neurodamus('BlueConfig')
     else:
-        #Neurodamus('BlueConfig').run()
-        #cProfile.run("nd = Neurodamus('BlueConfig')")
+        # Neurodamus('BlueConfig').run()
+        # cProfile.run("nd = Neurodamus('BlueConfig')")
         lp = LineProfiler()
         lp.add_function(CellDistributor._setup)
         lp.add_function(CellDistributor.finalize)
@@ -30,4 +29,3 @@ if __name__ == "__main__":
         with lp:
             Neurodamus('BlueConfig')
         lp.print_stats(open("line_stats.txt", "w"))
-

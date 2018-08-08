@@ -18,6 +18,7 @@ class Vector(array):
     def x(self):
         return self
 
+
 class List(list):
     """Behavior similar to Hoc List
     """

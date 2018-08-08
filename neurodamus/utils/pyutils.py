@@ -65,8 +65,8 @@ class ConfigT(object):
 
     def as_dict(self, subset=None, excludes=()):
         return {key: val for key, val in vars(self).items()
-                if val is not None and not key.startswith("_")
-                and key not in excludes and (subset is None or key in subset)}
+                if val is not None and not key.startswith("_") and
+                key not in excludes and (subset is None or key in subset)}
 
 
 def bin_search(container, key, keyf=None):

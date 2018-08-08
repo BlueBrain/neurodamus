@@ -7,14 +7,13 @@ from __future__ import absolute_import
 from os import path
 import sys
 import logging
-from .utils import setup_logging, compat, STAGE_LOGLEVEL
 from .core import MPI
 from .core import NeuronDamus as Nd
-from .core import ProgressBarRank0 as ProgressBar
 from .core.configuration import GlobalConfig, ConfigurationError
 from .cell_distributor import CellDistributor
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
+from .utils import compat, STAGE_LOGLEVEL
 
 
 class Node:
@@ -342,7 +341,7 @@ class Node:
                                   "Skipping loading additional files...")
                     break
 
-                self._gj_manager = Nd.GapJunctionManager(nrn_path, self._target_manager, 1, target)
+                self._gj_manager = GapJunctionManager(nrn_path, self._target_manager, 1, target)
                 self._gj_manager.connectAll(self.gidvec, 1)
 
         if self._gj_manager is not None:
@@ -572,14 +571,14 @@ class Node:
         instantiate them.
         """
         logging.info("Enabling reports...")
-        # need bin report helper to handle MPI communication
-        sim_dt = self._config_parser.parsedRun.valueOf("Dt")
+        run_conf = self._config_parser.parsedRun
+        sim_dt = run_conf.valueOf("Dt")
         self._binreport_helper = Nd.BinReportHelper(sim_dt)
         n_errors = 0
 
         # other useful fields from main Run object
-        output_path = self._config_parser.parsedRun.get("OutputRoot").s
-        sim_end = self._config_parser.parsedRun.valueOf("Duration")
+        output_path = run_conf.get("OutputRoot").s
+        sim_end = run_conf.valueOf("Duration")
 
         # confirm output_path exists and is usable -> use utility.mod
         if MPI.rank == 0:
@@ -604,6 +603,9 @@ class Node:
                 n_errors += 1
                 continue
 
+            electrode = self._elec_manager.getElectrode(rep_conf.get("Electrode").s)\
+                if rep_conf.exists("Electrode") else None
+
             report = Nd.Report(
                 rep_name,
                 rep_type,  # rep type is case sensitive !!
@@ -614,9 +616,8 @@ class Node:
                 rep_conf.valueOf("StartTime"),
                 end_time,
                 output_path,
-                self._elec_manager.getElectrode(rep_conf.get("Electrode").s)
-                    if rep_conf.exists("Electrode") else None,
-                rep_conf.get("Scaling") if rep_conf.exists("Scaling") else None,
+                electrode,
+                rep_conf.get("Scaling") if rep_conf.exists("Scaling") else None,  # string obj
                 rep_conf.get("ISC").s if rep_conf.exists("ISC") else ""
             )
 
@@ -652,9 +653,9 @@ class Node:
             raise ConfigurationError("%d reporting errors detected. Terminating" % (n_errors,))
 
         # Report Buffer Size hint in MB.
-        if self._configParser.parsedRun.exists("ReportingBufferSize"):
+        if run_conf.exists("ReportingBufferSize"):
             self._binreport_helper.set_max_buffer_size_hint(
-                configParser.parsedRun.valueOf("ReportingBufferSize"))
+                run_conf.valueOf("ReportingBufferSize"))
 
         # once all reports are created, we finalize the communicator for any bin reports
         self._binreport_helper.make_comm()
@@ -748,7 +749,7 @@ class Node:
         """
         run_conf = self._config_parser.parsedRun
         if show_progress:
-            _ = Nd.ShowProgress(Nd.cvode, MPI.rank)
+            _ = Nd.ShowProgress(Nd.cvode, MPI.rank)  # NOQA (required to keep obj alive)
 
         self._pnm.pc.setup_transfer()
         spike_compress = 3

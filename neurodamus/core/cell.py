@@ -215,7 +215,8 @@ endtemplate {cls_name}"""
                 """
                 sec = self.get_root()  # type: self.__class__
                 if sec.parent is None:
-                    raise CellCreationError("Disconnected subtree. Attach to a CellBuilder root node")
+                    raise CellCreationError("Disconnected subtree. Attach to a CellBuilder root "
+                                            "node")
                 # If parent is True we must create the cell. Otherwise use it
                 c = Cell() if sec.parent is True else sec.parent
                 c.h.all.wholetree(sec=sec.this)

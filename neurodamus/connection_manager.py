@@ -597,9 +597,3 @@ class GapJunctionManager(_ConnectionManagerBase):
             metype = self._target_manager.cellDistributor.getMEType(conn.tgid)
             conn.finalize_gap_junctions(
                 ND.pnm, metype, self._gj_offsets[conn.tgid-1], self._gj_offsets[conn.sgid-1])
-
-
-def test(msg):
-    MPI.barrier()
-    print(msg)
-    time.sleep(1)

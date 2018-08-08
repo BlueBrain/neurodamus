@@ -188,4 +188,4 @@ class METypeManager(object):
 
     def retrieve_info(self, gid):
         return self._me_map.get(gid) \
-               or logging.warning("No info for gid %d found.", gid)
+            or logging.warning("No info for gid %d found.", gid)
