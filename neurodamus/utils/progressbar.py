@@ -147,7 +147,7 @@ class ProgressBar(Progress):
     """
     _no_tty_bar = "-------20%-------40%-------60%-------80%------100%"  # len 50
 
-    def __init__(self, end, start=0, width=60, fill='=', blank='.', stream=sys.stdout,
+    def __init__(self, end, start=0, width=60, fill='=', blank='.', stream=sys.stdout, clear=True,
                  fmt='[%(fill)s>%(blank)s] %(progress)s', tty_bar=None):
         """
         Args:
@@ -157,7 +157,8 @@ class ProgressBar(Progress):
             width: bar length
             fill:  String to use for "filled" used to represent the progress
             blank: String to use for "filled" used to represent remaining space.
-            stream: the destination stream (default: stdout)
+            stream: the destination stream (default: stdout),
+            clear: whether to clear the current line or keep time info (and add '\n')
             fmt: Bar format string
             tty_mode: Controls whether the bar should be enhanced for text terminals.
                       Default: None (auto-detect), False, True
@@ -172,6 +173,7 @@ class ProgressBar(Progress):
         self._blank = blank
         self._format = fmt + " "
         self._stream = stream
+        self._clear = clear
         self._prev_bar_len = 0
         super(ProgressBar, self).__init__(end, start)
 
@@ -209,11 +211,16 @@ class ProgressBar(Progress):
             self._prev_bar_len = bar_len
 
     def __del__(self):
-        # Since some streams might not support \r we finish the bar
         if not self._tty_mode:
+            # Complete progressbar
             self._show_incremental_bar()
-        out_str = "[Done] Time taken: %d sec." % (self.time_taken,)
-        self._stream.write("\r{}{}\n".format(out_str, " " * (self._width + 8 - len(out_str))))
+
+        if self._clear:
+            self._stream.write("\r{}\r".format(" " * (self._width + 8)))
+        else:
+            # Output a nice stat about time taken
+            out_str = " [Time taken: %d sec.]" % (self.time_taken,)
+            self._stream.write("\r{}{}\n".format(out_str, " " * (self._width + 8 - len(out_str))))
 
     def _set_progress(self, val):
         Progress._set_progress(self, val)
@@ -222,7 +229,9 @@ class ProgressBar(Progress):
     progress = property(lambda self: self._progress, _set_progress)
 
 
+# ------------------------
 # QUICK TESTING
+# ------------------------
 
 if __name__ == '__main__':
     p = ProgressBar(100, width=80)

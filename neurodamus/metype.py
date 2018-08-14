@@ -3,7 +3,8 @@ from os import path
 import logging
 from collections import defaultdict
 from .core.configuration import ConfigurationError
-from .core import NeuronDamus as Nrn
+from .core import NeuronDamus as Nrn, ProgressBarRank0 as Progress
+from .utils import VERBOSE_LOGLEVEL
 
 
 class METype(object):
@@ -162,10 +163,11 @@ class METypeManager(object):
             combo_ids[c].append(i)
 
         combo_file = run_conf.get("MEComboInfoFile").s
+        logging.info(VERBOSE_LOGLEVEL, "Loading emodel+additional info from Combo f %s", combo_file)
         f = open(combo_file)
         next(f)  # Skip Header
 
-        for tstr in f:
+        for tstr in Progress.iter(f):
             vals = tstr.strip().split()
             if len(vals) not in (6, 8):
                 wmsg = ("Could not parse line %s from MEComboInfoFile %s."

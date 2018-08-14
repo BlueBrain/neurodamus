@@ -75,6 +75,10 @@ class STDPMode:
         return value
 
 
+# -------------------------------------------------------------------------------------
+# Connection class
+# NOTE: It is already implementing Replay with VecStim as in saveupdate_v6support_mask
+# -------------------------------------------------------------------------------------
 class Connection(object):
     """
     A Connection object serves as a container for synapses formed from a presynaptic and a
@@ -120,7 +124,7 @@ class Connection(object):
         self._done_replay_register = False
         self._stdp = STDPMode.validate(stdp)
         self._minis_spont_rate = minis_spont_rate
-        self._tpoint_man = h.TPointList(tgid, 1)
+        self._synapse_points = h.TPointList(tgid, 1)
         self._synapse_params = []
         self._synapse_ids = compat.Vector("i")
         self._configurations = [configuration] \
@@ -129,11 +133,12 @@ class Connection(object):
         self._netcons = None
         self._synapses = None
         self._conductances_bk = None  # Store conductances for re-enabling
-        self._replay_netcons = None
         self._minis_netcons = None
         self._minis_RNGs = None
         # Used for replay
-        self._tvecs = []
+        self._replay_netcons = None
+        self._stims = None
+        self._tvecs = None
 
     # read-only properties
     synapse_params = property(lambda self: self._synapse_params)
@@ -158,7 +163,7 @@ class Connection(object):
             params_obj: Parameters object for the Synapse to be placed
             syn_id: Optional id for the synapse to be used for seeding rng if applicable
         """
-        self._tpoint_man.append(syn_tpoints)
+        self._synapse_points.append(syn_tpoints)
         self._synapse_params.append(params_obj)
 
         # copy the location from the pointlist into the param item for easier debugging access
@@ -167,7 +172,7 @@ class Connection(object):
         if syn_id is not None:
             self._synapse_ids.append(syn_id)
         else:
-            self._synapse_ids.append(self._tpoint_man.count())
+            self._synapse_ids.append(self._synapse_points.count())
 
     # -
     def add_synapse_configuration(self, configuration):
@@ -202,17 +207,21 @@ class Connection(object):
         self._netcons = []
         self._minis_netcons = []
         self._minis_RNGs = []
+        # Prepare for replay
+        self._replay_netcons = []
+        self._stims = []
+        self._tvecs = []
 
         # Note that synapseLocation.SPLIT = 1
         # All locations, on and off node should be in this list, but only synapses/netcons on-node
         # should get instantiated
-        for syn_i, sc in enumerate(self._tpoint_man.sclst):
+        for syn_i, sc in enumerate(self._synapse_points.sclst):
             if not sc.exists():
                 continue
             # Put the section in the stack, so generic hoc instructions apply to the right section
             sc.sec.push()
 
-            x = self._tpoint_man.x[syn_i]
+            x = self._synapse_points.x[syn_i]
             syn_params = self._synapse_params[syn_i]
             syn_obj = self._create_synapse(cell, syn_params, x, self._synapse_ids[syn_i], base_seed)
             cell_syn_list = cell.CellRef.synlist
@@ -229,6 +238,7 @@ class Connection(object):
             nc.delay = syn_params.delay
             nc.weight[0] = syn_params.weight * self.weight_factor
             nc.threshold = -30
+            self._netcons.append(nc)
 
             # If the config has UseSTDP, do STDP stuff (can add more options later
             #   here and in Connection.init). Instantiates the appropriate StdpWA mod file
@@ -312,8 +322,8 @@ class Connection(object):
                 ips.setTbins(tbins_vec)
                 ips.setRate(rate_vec)
 
-            self._netcons.append(nc)
-            ND.pop_section()  # clear selection
+            # Pop the current working section from the neuron stack
+            ND.pop_section()
 
         # Apply configurations to the synapses
         self._configure_synapses()
@@ -365,10 +375,10 @@ class Connection(object):
 
         # Note that synapseLocation.SPLIT = 1
         # All locations should be in this list, but only synapses/netcons on-node get instantiated
-        for syn_i, sc in enumerate(self._tpoint_man.sclst):
+        for syn_i, sc in enumerate(self._synapse_points.sclst):
             if not sc.exists():
                 continue
-            x = self._tpoint_man.x[syn_i]
+            x = self._synapse_points.x[syn_i]
             active_params = self._synapse_params[syn_i]
             gap_junction = ND.Gap(x)
 
@@ -382,6 +392,9 @@ class Connection(object):
             self._synapses.append(gap_junction)
             self._configure_cell(cell)
 
+    # ------------------------------------------------------------------
+    # Parameters update / Configuration
+    # ------------------------------------------------------------------
     def update_conductance(self, new_g):
         """ Updates all synapses conductance
         """
@@ -395,25 +408,6 @@ class Connection(object):
             for key, val in params:
                 setattr(syn, key, val)
 
-    def _configure_cell(self, cell):
-        """ Helper function to apply the SynapseConfigure statements on a given cell synapses
-        """
-        for config in self._configurations:
-            self.ConnUtils.executeConfigure(cell.CellRef.synlist, config)
-
-    def _configure_synapses(self):
-        """ Helper function to apply all the connection configurations to the created synapses
-        """
-        for config in self._configurations:
-            self.apply_configuration(config)
-
-    # -
-    def apply_configuration(self, configuration):
-        """ Helper function to execute a configuration command on all connection synapses.
-        """
-        self.ConnUtils.executeConfigure(self._synapses, configuration)
-
-    # -
     def update_weights(self, weight, update_also_replay_netcons=False):
         """ Change the weights of the netcons generated when connecting the source and target gids
         represented in this connection
@@ -429,58 +423,55 @@ class Connection(object):
             for nc in self._replay_netcons:
                 nc.weight[0] = weight
 
+    def _configure_cell(self, cell):
+        """ Internal helper to apply all the configuration statements on a given cell synapses
+        """
+        for config in self._configurations:
+            self.ConnUtils.executeConfigure(cell.CellRef.synlist, config)
+
+    def _configure_synapses(self):
+        """ Internal helper to apply all the configuration statements to the created synapses
+        """
+        for config in self._configurations:
+            self.configure_synapses(config)
+
+    # -
+    def configure_synapses(self, configuration):
+        """ Helper function to execute a configuration statement (hoc) on all connection synapses.
+        """
+        self.ConnUtils.executeConfigure(self._synapses, configuration)
+
     # -
     def replay(self, tvec):
         """ The synapses connecting these gids are to be activated using predetermined timings
         Args:
             tvec: time for spike events from the sgid
         """
-        self._tvecs.append(tvec)
-        self._replay_netcons = []
+        hoc_tvec = ND.Vector()
+        for _t in tvec:
+            hoc_tvec.append(_t)
+        vstim = ND.VecStim()
+        vstim.play(hoc_tvec)
+        # vstim.verboseLevel = 1
+        self._tvecs.append(hoc_tvec)
+        self._stims.append(vstim)
+        logging.debug("Replaying %d spikes on %d", hoc_tvec.size(), self.sgid)
+        logging.debug(" > First replay event for connection at %f", tvec[0])
 
         # Note that synapseLocation.SPLIT = 1
         # All locations, on and off node should be in this list, but only synapses/netcons on-node
         # will receive the events
         local_i = 0
-        for syn_i, sc in enumerate(self._tpoint_man.sclst):
+        for syn_i, sc in enumerate(self._synapse_points.sclst):
             if not sc.exists():
                 continue
-            active_params = self._synapse_params[syn_i]
+            # syn_i for all synapses index, local_i for valid ones
+            syn_params = self._synapse_params[syn_i]
 
-            nc = ND.NetCon(None, self._synapses[local_i], 10, 1, active_params.weight)
-            nc.weight[0] = active_params.weight  * self.weight_factor
+            nc = ND.NetCon(vstim, self._synapses[local_i], 10, syn_params.delay, syn_params.weight)
+            nc.weight[0] = syn_params.weight  * self.weight_factor
             self._replay_netcons.append(nc)
             local_i += 1
-
-    # -
-    def register_events(self):
-        # TODO: DEPRECATED: this callback is unusable in the current form. Please replace
-        """For each time vector registered with this connection object, iterate the spike times
-        and queue up an event. To be invoked by FInitializeHandler.
-        """
-        # only need to register events once per Connection
-        if self._done_replay_register:
-            return
-        self._done_replay_register = True
-
-        for tvec in self._tvecs:
-            local_i = 0
-            for syn_i, sc in enumerate(self._tpoint_man.sclst):
-                if not sc.exists():
-                    continue
-                active_params = self._synapse_params[syn_i]
-                nc = self._replay_netcons[local_i]
-
-                for t in tvec:
-                    # Note: just creating an nc.event here did not seem to work.  Presumably
-                    # the queue is cleared when stdinit is called, hence we must use an
-                    # FInitializeHandler
-                    nc.event(t + active_params.delay)
-
-                    # sprint(tstr,"%s.event(%f)", nc, tVec.x[timeIndex] + activeParams.delay )
-                    logging.debug("%d->%d event at %f",
-                                  self.sgid, self.tgid, t + active_params.delay)
-                local_i += 1
 
     # -
     def disable(self, set_zero_conductance=False):

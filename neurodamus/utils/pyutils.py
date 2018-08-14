@@ -7,9 +7,10 @@ import numpy as np
 from collections import Mapping
 from operator import add
 from six.moves import zip, reduce
+from copy import copy
 
-_logging_initted = False
 STAGE_LOGLEVEL = 25
+VERBOSE_LOGLEVEL = 15
 
 
 class classproperty(object):
@@ -127,7 +128,7 @@ class MultiMap(Mapping):
 
     @staticmethod
     def sort_together(np_keys, values):
-        sort_idxs = np_keys.argsort()
+        sort_idxs = np_keys.argsort(kind="mergesort")  # need stability
         keys = np_keys[sort_idxs]
         if isinstance(values, np.ndarray):
             values = values[sort_idxs]
@@ -213,8 +214,9 @@ class GroupedMultiMap(MultiMap):
             return np_keys, []
         beg_it = iter(indexes)
         end_it = iter(indexes)
-        next(end_it)
-        values = [values[next(beg_it):end] for end in end_it] + [values[indexes[-1]:]]
+        next(end_it)  # Discard first
+        values = [values[next(beg_it):end] for end in end_it] + [values[indexes[-1]:]]  # Last
+        assert len(np_keys) == len(values)
         return np_keys, values
 
     def get(self, key, default=()):
@@ -253,59 +255,90 @@ class ConsoleColors:
 
     @classmethod
     def format_text(cls, text, color, style=None):
-        if color > 7:
-            style = (color >> 4)
-            color = color & 0xf
+        if not style:
+            style = (color & 0xf0)
+        color &= 0x0f
+        style = style >> 4
         format_seq = "" if style is None else cls._CHANGE_SEQ.format(style)
-
         return format_seq + cls.set_text_color(color) + text + cls._RESET_SEQ
 
 
 class _ColoredFormatter(_logging.Formatter):
     COLORS = {
-        'WARNING': ConsoleColors.YELLOW,
-        'INFO': ConsoleColors.DEFAULT,
-        'DEBUG': ConsoleColors.DIM,
-        'ERROR': ConsoleColors.RED,
-        'CRITICAL': ConsoleColors.RED,
-        'STAGE': ConsoleColors.BLUE + ConsoleColors.BOLD
+        _logging.CRITICAL: ConsoleColors.RED,
+        _logging.ERROR: ConsoleColors.RED,
+        _logging.WARNING: ConsoleColors.YELLOW,
+        STAGE_LOGLEVEL: ConsoleColors.DEFAULT + ConsoleColors.BOLD,
+        _logging.INFO: ConsoleColors.BLUE,
+        VERBOSE_LOGLEVEL: ConsoleColors.CYAN,
+        _logging.DEBUG: ConsoleColors.DEFAULT + ConsoleColors.DIM,
     }
 
     def format(self, record):
-        levelname = record.levelname
-        msg = super(_ColoredFormatter, self).format(record)
-        if levelname == "WARNING":
-            msg = "[WARNING] " + msg
-        if levelname in self.COLORS:
-            msg = ConsoleColors.format_text(msg, self.COLORS[levelname])
+        levelno = record.levelno
+        style = self.COLORS.get(levelno)
+        if style is not None:
+            record.levelname = ConsoleColors.format_text(record.levelname, style)
+            record.msg = ConsoleColors.format_text(record.msg, style) \
+                if levelno >= _logging.WARNING \
+                else ConsoleColors.format_text(record.msg, ConsoleColors.DEFAULT, style)
+        return super(_ColoredFormatter, self).format(record)
+
+
+class _LevelFormatter(_ColoredFormatter):
+    _logfmt = "[%(levelname)s] %(message)s"
+    _datefmt = "%b.%d %H:%M:%S"
+    _level_tabs = {VERBOSE_LOGLEVEL: ' -> ', _logging.DEBUG: '    + '}
+
+    def __init__(self, with_time=True, **kw):
+        _ColoredFormatter.__init__(self, self._logfmt, self._datefmt, **kw)
+        self._with_time = with_time
+
+    def format(self, record):
+        record = copy(record)  # All changes done here dont persist
+        record.levelname = record.levelname.center(6)
+        record.msg = self._level_tabs.get(record.levelno, "") + record.msg
+        msg = _ColoredFormatter.format(self, record)
+        if self._with_time:
+            msg = "(%s) " % self.formatTime(record, self._datefmt) + msg
         return msg
 
 
-def setup_logging(loglevel, stream=sys.stdout):
-    """Setup basic logging
+def setup_logging(loglevel, logfile="pydamus.log"):
+    """Setup logging
 
     Args:
       loglevel (int): minimum loglevel for emitting messages
-      stream: The output stream of log messages (default stdout)
+      logfile: The destination for log messages besides stdout
     """
     if getattr(setup_logging, "logging_initted", False):
         return
     assert isinstance(loglevel, int)
-    loglevel = min(loglevel, 2)
+    loglevel = min(loglevel, 3)
+
+    # New log levels, for stage (minimal output, verbose)
+    _logging.addLevelName(STAGE_LOGLEVEL, "STEP")
+    _logging.STAGE = STAGE_LOGLEVEL
+    _logging.addLevelName(VERBOSE_LOGLEVEL, "VERB")
+    _logging.VERBOSE = VERBOSE_LOGLEVEL
+
     verbosity_levels = {
         0: _logging.WARNING,
         1: _logging.INFO,
-        2: _logging.DEBUG,
+        2: _logging.VERBOSE,
+        3: _logging.DEBUG,
     }
 
-    _logging.addLevelName(STAGE_LOGLEVEL, "STAGE")
-    _logging.NEW_STAGE = STAGE_LOGLEVEL
-
-    logformat = "(%(asctime)s) [%(levelname)s] %(message)s"
-    datefmt = "%b.%d %H:%M:%S"
-    hdlr = _logging.StreamHandler(stream)
-    hdlr.setFormatter(_ColoredFormatter(logformat, datefmt))
+    # Stdout
+    hdlr = _logging.StreamHandler(sys.stdout)
+    hdlr.setFormatter(_LevelFormatter(False))
     _logging.root.setLevel(verbosity_levels[loglevel])
     del _logging.root.handlers[:]
     _logging.root.addHandler(hdlr)
+
+    # Logfile
+    fileh = _logging.FileHandler(logfile, 'w')
+    fileh.setFormatter(_LevelFormatter())
+    _logging.root.addHandler(fileh)
+
     setup_logging.logging_initted = True

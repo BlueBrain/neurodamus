@@ -5,7 +5,7 @@ from os import path
 import numpy as np
 from .core import NeuronDamus as Nd, MPI
 from .metype import METype, METypeManager
-from .utils import compat
+from .utils import compat, VERBOSE_LOGLEVEL
 from .core.configuration import ConfigurationError
 from .core import ProgressBarRank0 as ProgressBar
 
@@ -64,6 +64,7 @@ class CellDistributor(object):
 
     #
     def _setup(self, run_conf, targets_conf):
+        logging.info("Distributing circuit cells by available CPUs")
         morpho_path = run_conf.get("MorphologyPath").s
 
         # for testing if xopen bcast is in use (NEURON 7.3).
@@ -74,7 +75,7 @@ class CellDistributor(object):
         if run_conf.exists("CellLibraryFile"):
             celldb_filename = run_conf.get("CellLibraryFile").s
             if celldb_filename == "circuit.mvd3":
-                logging.info("Reading gid:METype info from circuit.mvd3")
+                logging.log(VERBOSE_LOGLEVEL, "Reading [gid:METype] info from circuit.mvd3")
                 self._useMVD3 = True
 
             elif celldb_filename != "start.ncs":
@@ -82,7 +83,7 @@ class CellDistributor(object):
                 raise ConfigurationError("Invalid CellLibFile".format(celldb_filename))
         # Default
         if not self._useMVD3:
-            logging.info("Reading gid:METype info from start.ncs")
+            logging.log(VERBOSE_LOGLEVEL, "Reading [gid:METype] info from start.ncs")
 
         gidvec = None       # Gids handled by this cpu
         total_cells = None  # total cells in this simulation (can be a subset, e.g.: target)
@@ -90,7 +91,7 @@ class CellDistributor(object):
         #  are we using load balancing? If yes, init structs accordingly
         if run_conf.exists("RunMode") \
                 and run_conf.get("RunMode").s in ("LoadBalance", "WholeCell"):
-            logging.info("  > Distributing cells according to load-balance")
+            logging.log(VERBOSE_LOGLEVEL, "Distributing cells according to load-balance")
             self._lb_flag = True
             self._spgidvec = compat.Vector("I")
             gidvec = compat.Vector("I")
@@ -121,7 +122,7 @@ class CellDistributor(object):
                 total_cells = len(_seen)
 
         elif run_conf.exists("CircuitTarget"):
-            logging.info("  > Distributing target circuit cells round-robin")
+            logging.log(VERBOSE_LOGLEVEL, "Distributing target circuit cells round-robin")
             target = targets_conf.getTarget(run_conf.get("CircuitTarget").s)
             gidvec = compat.Vector("I")
             _target_gids = target.completegids()
@@ -132,7 +133,7 @@ class CellDistributor(object):
                     gidvec.append(int(gid))
         else:
             # Otherwise distribute all the cells round robin style. readNCS / readMVD3 handle this
-            logging.info("  > Distributing all cells round-robin")
+            logging.log(VERBOSE_LOGLEVEL, "Distributing all cells round-robin")
 
         # Determine metype; apply round-robin assignment if necessary
         if self._useMVD3:
@@ -142,12 +143,13 @@ class CellDistributor(object):
             self._total_cells, self._gidvec, me_infos = self._load_ncs(
                 run_conf, total_cells, gidvec)
 
-        logging.info("Done gid assignment: %d cells in network, %d cells in rank 0",
-                     self._total_cells, len(self._gidvec))
+        logging.log(VERBOSE_LOGLEVEL, "Done gid assignment: %d cells in network, %d in rank 0",
+                    self._total_cells, len(self._gidvec))
 
         self._pnm.ncell = self._total_cells
         mepath = run_conf.get("METypePath").s
-        logging.info("Loading cells...")
+        logging.info("Instantiating cells...")
+        total_created_cells = 0
 
         for gid in ProgressBar.iter(self._gidvec):
             if self._useMVD3:
@@ -163,6 +165,9 @@ class CellDistributor(object):
             self._cell_list.append(cell)
             self._gid2meobj[gid] = cell
             self._pnm.cells.append(cell.CellRef)
+            total_created_cells += 1
+
+        logging.log(VERBOSE_LOGLEVEL, "Created %d cells", total_created_cells)
 
     #
     @staticmethod
@@ -187,7 +192,11 @@ class CellDistributor(object):
             raise ConfigurationError("NCS file contains invalid config: " + tstr)
 
         if total_cells is None:
+            logging.log(VERBOSE_LOGLEVEL, "Using all %d cells from NCS file", total_circuit_cells)
             total_cells = total_circuit_cells
+        else:
+            logging.log(VERBOSE_LOGLEVEL, "Reading %d target cells out of %d from NCS file",
+                        total_cells, total_circuit_cells)
 
         def get_next_cell(f):
             for cell_i, line in enumerate(f):
@@ -232,13 +241,12 @@ class CellDistributor(object):
         if gidvec is not None:
             gidvec = np.frombuffer(gidvec, dtype="uint32")
             gidvec.sort()
-
+            logging.log(VERBOSE_LOGLEVEL, "Reading %d target cells from MVD file", len(gidvec))
         else:
             # Reassign Round-Robin if not gidvec, and set total_cells
             mecombo_ds = mvd["/cells/properties/me_combo"]
             total_cells = len(mecombo_ds)
-            gidvec = compat.Vector("I")
-
+            logging.log(VERBOSE_LOGLEVEL, "Reading all %d cells from MVD file", total_cells)
             # circuit.mvd3 uses intrinsic gids starting from 1
             cell_i = MPI.rank + 1
             incr = MPI.cpu_count
@@ -260,14 +268,9 @@ class CellDistributor(object):
         # now we can open the combo file and get the emodel + additional info
         meinfo = METypeManager()
         res = meinfo.load_info(run_conf, gidvec, combo_names, morpho_names)
-
-        if MPI.cpu_count > 1:
-            res = Nd.pnm.pc.allreduce(res, 1)
         if res < 0:
-            if MPI.rank == 0:
-                logging.error("errors while processing mecombo file. Terminating")
-                raise RuntimeError("Could not process mecombo file. Error {}".format(res))
-            Nd.pnm.pc.barrier()
+            raise RuntimeError("Errors found during processing of mecombo file. See log")
+        MPI.barrier()
 
         return total_cells, gidvec, meinfo
 

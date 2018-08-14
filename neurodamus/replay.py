@@ -6,7 +6,7 @@ from __future__ import absolute_import
 import os
 import logging
 import numpy
-from .utils import GroupedMultiMap
+from .utils import GroupedMultiMap, VERBOSE_LOGLEVEL
 
 
 class SpikeManager(object):
@@ -46,22 +46,22 @@ class SpikeManager(object):
 
         self._store_events(tvec, gidvec)
 
-    #
-    def _read_spikes_ascii(self, filename):
-        logging.info("Reading ascii spike file %s", filename)
+    @staticmethod
+    def _read_spikes_ascii(filename):
+        logging.log(VERBOSE_LOGLEVEL, "Reading ascii spike file %s", filename)
         # first line is '/scatter'
         spikes = numpy.loadtxt(filename, dtype=[('t', 'd'), ('gid', 'uint32')], skiprows=1)
 
         if len(spikes) > 0:
-            logging.debug("Loaded %d spikes", len(spikes))
+            logging.log(VERBOSE_LOGLEVEL, "Loaded %d spikes", len(spikes))
         else:
             logging.warning("No spike/gid found in spike file %s", filename)
             raise Exception("Invalid spike file")
 
         return spikes["t"], spikes["gid"]
 
-    #
-    def _read_spikes_binary(self, filename):
+    @staticmethod
+    def _read_spikes_binary(filename):
         """Read in the binary file with spike events.
         Format notes: The first half of file is interpreted as double precision time values
         followed by an equal number of double precision gid values.
@@ -71,7 +71,7 @@ class SpikeManager(object):
         replaced with a distributed model where each node loads a portion of the file, and exchanges
         with other nodes so as to ultimately hold data for local gids.
         """
-        logging.info("Reading Binary spike file %s", filename)
+        logging.log(VERBOSE_LOGLEVEL, "Reading Binary spike file %s", filename)
         # there *should* be a number of doubles (8 bytes) such that
         # it is divisible by 2 (half for time values, half for gids)
         statinfo = os.stat(filename)
@@ -83,6 +83,8 @@ class SpikeManager(object):
         with open(filename, "rb") as reader:
             tvec = numpy.fromfile(reader, "d", n_events)
             gidvec = numpy.fromfile(reader, "d", n_events).astype("uint32")
+
+        logging.log(VERBOSE_LOGLEVEL, "Loaded %d spikes", len(tvec))
 
         return tvec, gidvec
 

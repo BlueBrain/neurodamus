@@ -13,7 +13,7 @@ from .core.configuration import GlobalConfig, ConfigurationError
 from .cell_distributor import CellDistributor
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
-from .utils import compat, STAGE_LOGLEVEL
+from .utils import compat, STAGE_LOGLEVEL, VERBOSE_LOGLEVEL
 
 
 class Node:
@@ -105,6 +105,7 @@ class Node:
         """This function has the simulator instantiate the circuit (cells & synapses) to determine
         the best way to split cells and balance those pieces across the available cpus.
         """
+        logging.log(STAGE_LOGLEVEL, "Computing Load Balance")
         run_cfg = self._config_parser.parsedRun
         run_mode = run_cfg.get("RunMode").s if run_cfg.exists("RunMode") else None
 
@@ -218,6 +219,7 @@ class Node:
         specified, load any target files via a TargetParser.  Note that these will be moved into a
         TargetManager after the cells have been distributed, instantiated, and potentially split.
         """
+        logging.log(STAGE_LOGLEVEL, "Loading Targets")
         self._target_parser = Nd.TargetParser()
         run_conf = self._config_parser.parsedRun
         if MPI.rank == 0:
@@ -242,6 +244,7 @@ class Node:
         Args:
             run_mode (str): optional argument to override RunMode as "RR" or "LoadBalance"
         """
+        logging.log(STAGE_LOGLEVEL, "Circuit build")
         mode_obj = None
         old_mode = None
         if run_mode is not None:
@@ -277,8 +280,11 @@ class Node:
             mode_obj.s = old_mode
 
     #
-    def _interpret_connections(self):
-        logging.info("Creating connections from BlueConfig...")
+    def _interpret_connections(self, extend_info=True):
+        _logmsg = "Creating connections from BlueConfig..."
+        if extend_info: logging.info(_logmsg)
+        else: logging.log(VERBOSE_LOGLEVEL, _logmsg)
+
         for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
             if conn_conf.exists("Delay"):
                 # Connection blocks using a 'Delay' option are handled later
@@ -286,12 +292,13 @@ class Node:
 
             conn_src = conn_conf.get("Source").s
             conn_dst = conn_conf.get("Destination").s
-            logging.info(" > Configuring Pathway %s -> %s ", conn_src, conn_dst)
+            if extend_info:
+                logging.info(" * Pathway %s -> %s ", conn_src, conn_dst)
 
             # check if we are supposed to disable creation
             # -> i.e. only change weights for existing connections
-            if conn_conf.exists("CreateMode") and conn_conf.get("CreateMode").s == "NoCreate":
-                self._synapse_manager.disable_creation()
+            dont_create = conn_conf.exists("CreateMode") and \
+                conn_conf.get("CreateMode").s == "NoCreate"
 
             # Check for STDP flag in config file, or default to no STDP
             stdp_mode = conn_conf.get("UseSTDP").s \
@@ -316,24 +323,25 @@ class Node:
             # finally we have all the options checked and can now invoke the SynapseRuleManager
             self._synapse_manager.group_connect(
                 conn_src, conn_dst, self.gidvec, weight, syn_config, stdp_mode,
-                mini_spont_rate, syn_t, syn_override)
+                mini_spont_rate, syn_t, syn_override, creation_mode=not dont_create)
 
     #
     def create_gap_junctions(self):
         """Create gap_juntions among the cells, according to blocks in the config file,
         defined as projections with type GapJunction.
         """
+        logging.log(STAGE_LOGLEVEL, "Gap Junctions create")
         run_conf = self._config_parser.parsedRun
         if run_conf.exists("CircuitTarget"):
             target = self._target_manager.getTarget(run_conf.get("CircuitTarget").s)
         else:
             raise ConfigurationError("No circuit target")
 
-        for projection in compat.Map(self._config_parser.parsedProjections).values():
+        for name, projection in compat.Map(self._config_parser.parsedProjections).items():
             # check if this Projection block is for gap junctions
             if projection.exists("Type") and projection.get("Type").s == "GapJunction":
                 nrn_path = projection.get("Path").s
-                logging.info("Using gap junctions from %s", nrn_path)
+                logging.info(" * %s (%s)", name, nrn_path)
 
                 # use connectAll for gj_manager
                 if self._gj_manager is not None:
@@ -342,7 +350,7 @@ class Node:
                     break
 
                 self._gj_manager = GapJunctionManager(nrn_path, self._target_manager, 1, target)
-                self._gj_manager.connectAll(self.gidvec, 1)
+                self._gj_manager.connect_all(self.gidvec, 1)
 
         if self._gj_manager is not None:
             self._gj_manager.finalizeGapJunctions()
@@ -354,6 +362,7 @@ class Node:
         # quick check - if we have a single connect block and it sets a weight of zero, can skip
         # synapse creation in its entirety.  This is useful for when no nrn.h5 exists, so we don't
         # error trying to init hdf5 reader. This may not be the cleanest solution.
+        logging.log(STAGE_LOGLEVEL, "Synapses Create")
         if self._config_parser.parsedConnects.count() == 1:
             if self._config_parser.parsedConnects.o(0).valueOf("Weight") == 0:
                 return
@@ -374,15 +383,11 @@ class Node:
                 raise ConfigurationError("nrn.h5 doesnt exist and BlueConfig does not specify"
                                          "NumSynapseFiles")
 
-        tid = Nd.timeit_register("Synapse init")
-        Nd.timeit_start(tid)
         self._synapse_manager = SynapseRuleManager(nrn_path, self._target_manager,
                                                    n_synapse_files, synapse_mode)
 
-        Nd.timeit_add(tid)
-
         if self._config_parser.parsedConnects.count() == 0:
-            self._synapse_manager.connectAll(self.gidvec, 1)
+            self._synapse_manager.connect_all(self.gidvec)
         else:
             # Do a quick scan for any ConnectionBlocks with 'Delay' keyword and put a reference on
             # a separate list to be adjusted until later. Note that this requires that another
@@ -406,15 +411,16 @@ class Node:
                 n_synapse_files)
 
             if self._config_parser.parsedConnects.count() == 0:
-                self._synapse_manager.connectAll(self.gidvec)
+                self._synapse_manager.connect_all(self.gidvec)
             else:
-                self._interpret_connections()
+                self._interpret_connections(extend_info=False)
 
         # Check for Projection blocks
         if self._config_parser.parsedProjections.count() > 0:
-            logging.info("Handle Projections")
+            logging.info("Handling projections...")
 
-            for projection in compat.Map(self._config_parser.parsedProjections).values():
+            for pname, projection in compat.Map(self._config_parser.parsedProjections).items():
+                logging.info(" * %s", pname)
                 n_synapse_files = projection.valueOf("NumSynapseFiles") \
                     if projection.exists("NumSynapseFiles") else 1
 
@@ -427,7 +433,7 @@ class Node:
 
                 # Go ahead and make all the Projection connections
                 self._synapse_manager.connect_all(self.gidvec)
-                self._interpret_connections()
+                self._interpret_connections(extend_info=False)
 
         # Check if we need to override the base seed for synapse RNGs
         base_seed = run_conf.valueOf("BaseSeed") if run_conf.exists("BaseSeed") else 0
@@ -454,7 +460,7 @@ class Node:
         """
         run_config = self._config_parser.parsedRun
 
-        # if leading slash '/', then absolute path and can be used immediately
+        # if it's absolute path then can be used immediately
         if path.isabs(filepath):
             nrn_path = path.join(filepath, filename)
         else:
@@ -468,17 +474,17 @@ class Node:
 
         if not path.isfile(nrn_path):
             raise ConfigurationError("Could not find file %s", filename)
-        logging.info("data file %s path: %s", filename, nrn_path)
+        logging.debug("data file %s path: %s", filename, nrn_path)
         return nrn_path
 
     def _find_config_file(self, filepath):
         if not path.isabs(filepath):
-            path_ = path.join(self._blueconfig_path, filepath)
-            if not path.isfile(path_):
-                path_ = path.join(self._blueconfig_path, file)
-            filepath = path_
+            _path = path.join(self._blueconfig_path, filepath)
+            if path.isfile(_path):
+                filepath = _path
+            # If not uses pwd
         if not path.isfile(filepath):
-            raise ConfigurationError("Config file not found: %s", filepath)
+            raise ConfigurationError("Config file not found: " + filepath)
         return filepath
 
     #
@@ -488,6 +494,7 @@ class Node:
         to clear the cells and synapses in order to have a clean slate on which to instantiate the
         balanced cells.
         """
+        logging.info("Clearing model")
         self._pnm.pc.gid_clear()
         self._pnm.nclist.remove_all()
         self._pnm.cells.remove_all()
@@ -513,6 +520,7 @@ class Node:
         text and instantiate an actual stimulus object.
         """
         # setup of Electrode objects part of enable stimulus
+        logging.log(STAGE_LOGLEVEL, "Stimulus apply")
         conf = self._config_parser
         if conf.parsedRun.exists("ElectrodesPath"):
             electrodes_path = conf.parsedRun.get("ElectrodesPath").s
@@ -538,8 +546,8 @@ class Node:
         if has_extra_cellular:
             self._stim_manager.interpretExtracellulars(conf.parsedInjects, conf.parsedStimuli)
 
-        logging.info("Instantiating stimulus...")
-        for inject in compat.Map(conf.parsedInjects).values():
+        logging.info("Instantiating Stimulus Injects:")
+        for name, inject in compat.Map(conf.parsedInjects).items():
             target_name = inject.get("Target").s
             stim_name = inject.get("Stimulus").s
             stim = stim_dict.get(stim_name)
@@ -547,11 +555,14 @@ class Node:
             # check the pattern for special cases that are handled here.
             if stim.get("Pattern").s == "SynapseReplay":
                 delay = stim.valueOf("Delay") if stim.exists("Delay") else 0
+                logging.info(" * [SYN REPLAY] %s (%s -> %s, delay: %d)",
+                             name, stim_name, target_name, delay)
                 spike_filepath = self._find_config_file(stim.get("SpikeFile").s)
                 spike_manager = SpikeManager(spike_filepath, delay)
                 spike_manager.replay(self._synapse_manager, target_name)
             else:
                 # all other patterns the stim manager will interpret
+                logging.info("[Stim] %s (%s -> %s)", name, stim_name, target_name)
                 self._stim_manager.interpret(target_name, stim)
 
     #
@@ -570,7 +581,7 @@ class Node:
         """Iterate over reports defined in the config file given to the simulation and
         instantiate them.
         """
-        logging.info("Enabling reports...")
+        logging.log(STAGE_LOGLEVEL, "Reports Enabling")
         run_conf = self._config_parser.parsedRun
         sim_dt = run_conf.valueOf("Dt")
         self._binreport_helper = Nd.BinReportHelper(sim_dt)
@@ -591,7 +602,7 @@ class Node:
         self._report_list = []
 
         for rep_name, rep_conf in reports_conf.items():
-            logging.info(" > " + rep_name)
+            logging.info(" * " + rep_name)
             rep_type = rep_conf.get("Type").s
             start_time = rep_conf.valueOf("StartTime")
             end_time = rep_conf.valueOf("EndTime")
@@ -680,15 +691,9 @@ class Node:
         """
         # Note - MemUsage constructor will do a group communication
         # so must be instantiated before pc.runworker
+        logging.info("Cleaning up")
         mem_usage = Nd.MemUsage()
-        # need a parallel context reference before doing final gather of timing data
-        Nd.timeit_init(self._pnm.pc)
-
         self._pnm.pc.runworker()
-
-        # don't use the built in gather spikes function as this will overload node 0 with events
-        # self.pnm.gatherspikes()
-        Nd.prtime(self._pnm.pc)
         self.clear_model()
         mem_usage.print_node_mem_usage()
         self._pnm.pc.done()
@@ -698,11 +703,11 @@ class Node:
         """ Write the spike events that occured on each node into a single output file.
         Nodes will write in order, one after the other.
         """
+        logging.info("Writing spikes to %s", outfile)
         outfile = path.join(self._config_parser.parsedRun.get("OutputRoot").s, outfile)
 
         # root node opens file for writing, all others append
         if MPI.rank == 0:
-            logging.info("Writing spikes to %s", outfile)
             with open(outfile, "w") as f:
                 f.write("/scatter\n")
                 for i, gid in enumerate(self._pnm.idvec):
@@ -726,11 +731,12 @@ class Node:
         """Iterate over any NeuronConfigure blocks from the BlueConfig.
         These are simple hoc statements that can be executed with minimal substitutions
         """
+        logging.info("Executing neuron configures")
         for config in compat.Map(self._config_parser.parsedConfigures).values():
             target_name = config.get("Target").s
             configure_str = config.get("Configure").s
-            logging.info("Apply configure statement \"%s\" on target %s",
-                         config.get("Configure").s, target_name)
+            logging.log(VERBOSE_LOGLEVEL, "Apply configuration \"%s\" on target %s",
+                        config.get("Configure").s, target_name)
 
             points = self.get_target_points(target_name)
             # iterate the pointlist and execute the command on the section
@@ -747,6 +753,7 @@ class Node:
     def run(self, show_progress=False):
         """ Runs the simulation
         """
+        logging.log(STAGE_LOGLEVEL, "Running")
         run_conf = self._config_parser.parsedRun
         if show_progress:
             _ = Nd.ShowProgress(Nd.cvode, MPI.rank)  # NOQA (required to keep obj alive)
@@ -770,18 +777,16 @@ class Node:
         tdat = [0] * 7
         tdat[0] = self._pnm.pc.wait_time()
 
-        tid = Nd.timeit_register("stdinit")
-        Nd.timeit_start(tid)
         Nd.stdinit()
-        Nd.timeit_add(tid)
 
         # check for optional argument "ForwardSkip"
         fwd_skip = run_conf.valueOf("ForwardSkip") if run_conf.exists("ForwardSkip") else False
         if fwd_skip:
+            logging.info("Fast-Forwarding to %d ms", fwd_skip)
             Nd.t = -1e9
             prev_dt = Nd.dt
             Nd.dt = fwd_skip * 0.1
-            for flushIndex in range(9):
+            for flushIndex in range(10):
                 Nd.fadvance()
             Nd.dt = prev_dt
             Nd.t = 0
@@ -790,22 +795,20 @@ class Node:
         # increase timeout by 10x
         self._pnm.pc.timeout(200)
 
-        tid = Nd.timeit_register("psolve")
-        Nd.timeit_start(tid)
-
         # I think I must use continuerun?
         if len(self._connection_weight_delay_list) == 0:
+            logging.info("Running until the end (%d ms)", Nd.tstop)
             self._pnm.psolve(Nd.tstop)
         else:
             # handle any delayed blocks
             for conn in self._connection_weight_delay_list:
-                logging.debug("will stop after %d", conn.valueOf("Delay"))
+                logging.info(" * Delay: Configuring %s->%s after %d ms",
+                             conn.get("Source").s, conn.get("Destination".s), conn.valueOf("Delay"))
                 self._pnm.psolve(conn.valueOf("Delay"))
-                self._synapse_manager.apply_post_config_obj(conn, self.gidvec)
+                self._synapse_manager.configure_connection_config(conn, self.gidvec)
 
-            logging.debug("run til the end %d", Nd.tstop)
+            logging.info("Running until the end (%d ms)", Nd.tstop)
             self._pnm.psolve(Nd.tstop)
-            Nd.timeit_add(tid)
 
         # final flush for reports
         self._binreport_helper.flush()
@@ -818,6 +821,8 @@ class Node:
         tdat[4] = self._pnm.pc.vtransfer_time(1)  # split exchange time
         tdat[6] = self._pnm.pc.vtransfer_time(2)  # reduced tree computation time
         tdat[4] -= tdat[6]
+
+        logging.info("Simulation finished.")
         return tdat
 
     @property
@@ -844,7 +849,7 @@ class Node:
         return target.getPointList(self._cell_distributor)
 
     #
-    def dump_circuit_config(self, suffix=None):
+    def dump_circuit_config(self, suffix="dbg"):
         for gid in self.gidvec:
             self._pnm.pc.prcellstate(gid, suffix)
 
@@ -863,6 +868,7 @@ class Neurodamus(Node):
                 1 - Info messages (default)
                 2 - Debug messages
         """
+        self._init_ok = False
         if logging_level is not None:
             GlobalConfig.verbosity = logging_level
 
@@ -874,13 +880,14 @@ class Neurodamus(Node):
         except Exception as e:
             logging.error(str(e))
             raise
+        self._init_ok = True
 
     def _instantiate_simulation(self):
-        logging.log(STAGE_LOGLEVEL, "INITIALIZING")
+        logging.log(STAGE_LOGLEVEL, "============= INITIALIZING (& Load-Balancing) =============")
         self.load_targets()
         self.compute_loadbal()
 
-        logging.log(STAGE_LOGLEVEL, "BUILDING CIRCUIT")
+        logging.log(STAGE_LOGLEVEL, "==================== BUILDING CIRCUIT ====================")
         MPI.barrier()
         self.create_cells()
         self.execute_neuron_configures()
@@ -898,10 +905,9 @@ class Neurodamus(Node):
     def run(self, spike_filaname='spikes.dat', show_progress=True):
         """Runs the Simulation, writing the spikes to the given file
         """
-        logging.log(STAGE_LOGLEVEL, "RUNNING SIMULATION")
         Node.run(self, show_progress)
-        logging.info("Simulation finished.")
         self.spike2file(spike_filaname)
 
     def __del__(self):
-        self.cleanup()
+        if self._init_ok:
+            self.cleanup()

@@ -145,6 +145,7 @@ class _MPI:
             except Exception: pass
             # Print and cleanup exception
             sys.__excepthook__(etype, value, tb)
+            sys.exit(1)
         sys.excepthook = excepthook
 
     @property

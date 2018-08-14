@@ -9,16 +9,20 @@ def neurodamus():
     """neurodamus
 
     Usage:
-        neurodamus <BlueConfig> [--no-mpi] [--verbose]
+        neurodamus <BlueConfig> [--verbose] [--debug]
         neurodamus --help
 
     Options:
         -v --verbose    Increase verbosity level
+        --debug         Extremely verbose mode for debugging
     """
-    options = docopt_sanitize(docopt(neurodamus.__doc__, version="0.1"))
-    if options["verbose"]:
+    options = docopt_sanitize(docopt(neurodamus.__doc__))
+    if options["debug"]:
+        GlobalConfig.verbosity = 3
+    elif options["verbose"]:
         GlobalConfig.verbosity = 2
-    if options["no_mpi"]:
-        GlobalConfig.use_mpi = False
+    # Some .mods require MPI
+    # if options["no_mpi"]:
+    #    GlobalConfig.use_mpi = False
 
     Neurodamus(options["BlueConfig"]).run()
