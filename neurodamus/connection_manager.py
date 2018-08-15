@@ -4,7 +4,8 @@ from itertools import chain
 from os import path
 from .core import NeuronDamus as ND, MPI
 from .core import ProgressBarRank0 as ProgressBar
-from .utils import compat, bin_search, OrderedDefaultDict, VERBOSE_LOGLEVEL
+from .utils import compat, bin_search, OrderedDefaultDict
+from .utils.logging import log_verbose
 from .connection import SynapseParameters, Connection, SynapseMode, STDPMode
 
 
@@ -33,7 +34,7 @@ class _ConnectionManagerBase(object):
         self.open_synapse_file(synapse_file, n_synapse_files)
 
     def open_synapse_file(self, synapse_file, n_synapse_files):
-        logging.log(VERBOSE_LOGLEVEL, "Loading synapses...")
+        log_verbose("Loading synapses...")
         self._synapse_reader = reader = self._init_synapse_reader(
             self._target_manager, synapse_file, n_synapse_files)
         self._n_synapse_files = n_synapse_files
@@ -59,7 +60,7 @@ class _ConnectionManagerBase(object):
             gidvec: The array of local gids
             weight_factor: (Optional) factor to scale all netcon weights
         """
-        logging.log(VERBOSE_LOGLEVEL, "Creating connections from synapse params file (NRN)...")
+        log_verbose("Creating connections from synapse params file (NRN)...")
         total_created_conns = 0
 
         for tgid in ProgressBar.iter(gidvec):
@@ -99,7 +100,7 @@ class _ConnectionManagerBase(object):
                 logging.debug("[post-gid %d] Created %d connections", tgid, gid_created_conns)
                 total_created_conns += gid_created_conns
 
-        logging.log(VERBOSE_LOGLEVEL, "ConnectAll: Created %d connections", total_created_conns)
+        log_verbose("ConnectAll: Created %d connections", total_created_conns)
 
     # Compatibility
     connectAll = connect_all
@@ -206,7 +207,7 @@ class _ConnectionManagerBase(object):
                 total_created_conns += gid_created_conns
 
         if total_created_conns > 0:
-            logging.log(VERBOSE_LOGLEVEL, "Group: Created %d connections", total_created_conns)
+            log_verbose("Group: Created %d connections", total_created_conns)
 
     # -
     def get_synapse_parameters(self, gid):
@@ -539,7 +540,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
         """
         cell_distributor = self._target_manager.cellDistributor
 
-        logging.log(VERBOSE_LOGLEVEL, "Instantiating synapses...")
+        log_verbose("Instantiating synapses...")
         for tgid, conns in ProgressBar.iteritems(self._connections_map):
             metype = cell_distributor.getMEType(tgid)
             spgid = cell_distributor.getSpGid(tgid)
@@ -559,7 +560,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
             target_name: Target name whose gids should be replayed
             spike_map: map of gids (pre-synaptic) with vector of spike times
         """
-        logging.log(VERBOSE_LOGLEVEL, "Applying replay map with %d src cells...", len(spike_map))
+        log_verbose("Applying replay map with %d src cells...", len(spike_map))
         target = self._target_manager.getTarget(target_name)
         used_src_gids = set()
 
@@ -577,7 +578,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
         if n_added_spike_src == 0:
             logging.warning("[CPU #%2d] No cells were injected replay stimulus", MPI.rank)
         else:
-            logging.log(VERBOSE_LOGLEVEL, "Cpu0: Added replays to %d src cells" % n_added_spike_src)
+            log_verbose("Cpu0: Added replays to %d src cells" % n_added_spike_src)
 
 
 # ################################################################################################

@@ -1,16 +1,6 @@
 from __future__ import absolute_import, print_function
-import logging as _logging
-import sys
 from collections import OrderedDict
 from bisect import bisect_left
-import numpy as np
-from collections import Mapping
-from operator import add
-from six.moves import zip, reduce
-from copy import copy
-
-STAGE_LOGLEVEL = 25
-VERBOSE_LOGLEVEL = 15
 
 
 class classproperty(object):
@@ -37,7 +27,7 @@ def docopt_sanitize(docopt_opts):
 
 
 class ConfigT(object):
-
+    """Base class for configurations"""
     def __init__(self, **opts):
         self._init(self, opts)
 
@@ -107,136 +97,6 @@ class OrderedDefaultDict(OrderedDict):
         return value
 
 
-class MultiMap(Mapping):
-    """A memory-efficient map, which accepts duplicates
-    """
-    __slots__ = ("_keys", "_values")
-
-    def __init__(self, np_keys, values, presorted=False):
-        """Constructor for OrderedMap
-
-        Args:
-            np_keys: The numpy array of the keys. Can be empty
-            values: The array of the values, can be any indexable, but better if numpy
-        """
-        assert len(np_keys) == len(values), "Keys and values must have the same length"
-        if presorted:
-            self._keys = np_keys
-            self._values = values
-        else:
-            self._keys, self._values = self.sort_together(np_keys, values)
-
-    @staticmethod
-    def sort_together(np_keys, values):
-        sort_idxs = np_keys.argsort(kind="mergesort")  # need stability
-        keys = np_keys[sort_idxs]
-        if isinstance(values, np.ndarray):
-            values = values[sort_idxs]
-        else:
-            values = [values[i] for i in sort_idxs]
-        return keys, values
-
-    def find(self, key):
-        idx = np.searchsorted(self._keys, key)
-        if idx == len(self._keys) or self._keys[idx] != key:
-            return None
-        return idx
-
-    def keys(self):
-        return self._keys
-
-    def values(self):
-        return self._values
-
-    def __iter__(self):
-        return iter(self._keys)
-
-    def __len__(self):
-        return len(self._keys)
-
-    def get(self, key, default=None):
-        idx = self.find(key)
-        if idx is None:
-            return default
-        return self._values[idx]
-
-    def get_items(self, key):
-        """An iterator over all the values of a key
-        """
-        idx = self.find(key)
-        for k, v in zip(self._keys[idx:], self._values[idx:]):
-            if k != key: break
-            yield v
-
-    def __getitem__(self, key):
-        idx = self.find(key)
-        if idx is None:
-            raise KeyError("{} does not exist".format(key))
-        return self._values[idx]
-
-    def __setitem__(self, key, value):
-        raise NotImplementedError("Setitem is not allowed for performance reasons. "
-                                  "Please build and add-inplace another MultiMap")
-
-    def items(self):
-        return zip(self._keys, self._values)
-
-    def __contains__(self, key):
-        return self.find(key) is not None
-
-    exists = __contains__  # Compat. w Hoc map
-
-    def __iadd__(self, other):
-        """inplace add (incorporate other)"""
-        self._keys, self._values = self.sort_together(
-            np.concatenate((self._keys, other._keys)), self.concat(self._values, other._values))
-        return self
-
-    @staticmethod
-    def concat(v1, v2):
-        if isinstance(v1, np.ndarray) and isinstance(v2, np.ndarray):
-            return np.concatenate((v1, v2))
-        return (v1 if isinstance(v1, (list, tuple)) else list(v1)) + \
-               (v2 if isinstance(v2, (list, tuple)) else list(v2))
-
-
-class GroupedMultiMap(MultiMap):
-    """ A Multimap which groups values by key in a list
-    """
-    def __init__(self, np_keys, values, presorted=False):
-        MultiMap.__init__(self, np_keys, values, presorted)
-        self._keys, self._values = self._duplicates_to_list(self._keys, self._values)
-
-    @staticmethod
-    def _duplicates_to_list(np_keys, values):
-        np_keys, indexes = np.unique(np_keys, return_index=True)
-        if len(indexes) == 0:
-            return np_keys, []
-        beg_it = iter(indexes)
-        end_it = iter(indexes)
-        next(end_it)  # Discard first
-        values = [values[next(beg_it):end] for end in end_it] + [values[indexes[-1]:]]  # Last
-        assert len(np_keys) == len(values)
-        return np_keys, values
-
-    def get(self, key, default=()):
-        return MultiMap.get(self, key, default)
-
-    def get_items(self, key):
-        return self.get(key)
-
-    def __iadd__(self, other):
-        MultiMap.__iadd__(self, other)
-        self._keys, v_list = self._duplicates_to_list(self._keys, self._values)
-        self._values = [reduce(add, subl) for subl in v_list]
-        return self
-
-    def flat_values(self):
-        return reduce(self.concat, self._values)
-
-
-# ********** LOGGING *************
-
 class ConsoleColors:
     BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, _, DEFAULT = range(10)
     NORMAL, BOLD, DIM, UNDERLINED, BLINK, INVERTED, HIDDEN = [a << 4 for a in range(7)]
@@ -261,84 +121,3 @@ class ConsoleColors:
         style = style >> 4
         format_seq = "" if style is None else cls._CHANGE_SEQ.format(style)
         return format_seq + cls.set_text_color(color) + text + cls._RESET_SEQ
-
-
-class _ColoredFormatter(_logging.Formatter):
-    COLORS = {
-        _logging.CRITICAL: ConsoleColors.RED,
-        _logging.ERROR: ConsoleColors.RED,
-        _logging.WARNING: ConsoleColors.YELLOW,
-        STAGE_LOGLEVEL: ConsoleColors.DEFAULT + ConsoleColors.BOLD,
-        _logging.INFO: ConsoleColors.BLUE,
-        VERBOSE_LOGLEVEL: ConsoleColors.CYAN,
-        _logging.DEBUG: ConsoleColors.DEFAULT + ConsoleColors.DIM,
-    }
-
-    def format(self, record):
-        levelno = record.levelno
-        style = self.COLORS.get(levelno)
-        if style is not None:
-            record.levelname = ConsoleColors.format_text(record.levelname, style)
-            record.msg = ConsoleColors.format_text(record.msg, style) \
-                if levelno >= _logging.WARNING \
-                else ConsoleColors.format_text(record.msg, ConsoleColors.DEFAULT, style)
-        return super(_ColoredFormatter, self).format(record)
-
-
-class _LevelFormatter(_ColoredFormatter):
-    _logfmt = "[%(levelname)s] %(message)s"
-    _datefmt = "%b.%d %H:%M:%S"
-    _level_tabs = {VERBOSE_LOGLEVEL: ' -> ', _logging.DEBUG: '    + '}
-
-    def __init__(self, with_time=True, **kw):
-        _ColoredFormatter.__init__(self, self._logfmt, self._datefmt, **kw)
-        self._with_time = with_time
-
-    def format(self, record):
-        record = copy(record)  # All changes done here dont persist
-        record.levelname = record.levelname.center(6)
-        record.msg = self._level_tabs.get(record.levelno, "") + record.msg
-        msg = _ColoredFormatter.format(self, record)
-        if self._with_time:
-            msg = "(%s) " % self.formatTime(record, self._datefmt) + msg
-        return msg
-
-
-def setup_logging(loglevel, logfile="pydamus.log"):
-    """Setup logging
-
-    Args:
-      loglevel (int): minimum loglevel for emitting messages
-      logfile: The destination for log messages besides stdout
-    """
-    if getattr(setup_logging, "logging_initted", False):
-        return
-    assert isinstance(loglevel, int)
-    loglevel = min(loglevel, 3)
-
-    # New log levels, for stage (minimal output, verbose)
-    _logging.addLevelName(STAGE_LOGLEVEL, "STEP")
-    _logging.STAGE = STAGE_LOGLEVEL
-    _logging.addLevelName(VERBOSE_LOGLEVEL, "VERB")
-    _logging.VERBOSE = VERBOSE_LOGLEVEL
-
-    verbosity_levels = {
-        0: _logging.WARNING,
-        1: _logging.INFO,
-        2: _logging.VERBOSE,
-        3: _logging.DEBUG,
-    }
-
-    # Stdout
-    hdlr = _logging.StreamHandler(sys.stdout)
-    hdlr.setFormatter(_LevelFormatter(False))
-    _logging.root.setLevel(verbosity_levels[loglevel])
-    del _logging.root.handlers[:]
-    _logging.root.addHandler(hdlr)
-
-    # Logfile
-    fileh = _logging.FileHandler(logfile, 'w')
-    fileh.setFormatter(_LevelFormatter())
-    _logging.root.addHandler(fileh)
-
-    setup_logging.logging_initted = True

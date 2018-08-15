@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 import sys
+import logging
 from .configuration import Neuron_Stdrun_Defaults
 from .configuration import GlobalConfig
 from ..utils import classproperty
@@ -141,12 +142,22 @@ class _MPI:
         # When using MPI (and more than 1 rank) we need to MPIAbort on exception to avoid deadlocks
         def excepthook(etype, value, tb):
             # Stop Neuron, without reraising exception
+            logging.critical(str(value))
+            # execerror might not be able to terminate the cluster. We make regular checks
+            cls._pnm.pc.allreduce(1, 1)
             try: Neuron.execerror(str(value))
             except Exception: pass
             # Print and cleanup exception
             sys.__excepthook__(etype, value, tb)
             sys.exit(1)
         sys.excepthook = excepthook
+
+    @classmethod
+    def check_no_errors(cls):
+        # All processes send their status. If one is problematic then quit
+        res = cls._pnm.pc.allreduce(0, 1)
+        if res > 0:
+            sys.exit(1)
 
     @property
     def pnm(self):
@@ -171,6 +182,31 @@ class _MPI:
 
 # A singleton
 MPI = _MPI()
+
+
+class _ParallelNetManager(object):
+    __slots__ = ['_pnm', '_cache']
+    def __init__(self):
+        self._cache = {}
+        self._pnm = None
+
+    @property
+    def o(self):
+        if not self._pnm:
+            self._pnm = MPI.pnm
+        return self._pnm
+
+    def __getattr__(self, name):
+        if not self._pnm:
+            self._pnm = MPI.pnm
+        obj = self._cache.get(name)
+        if obj is None:
+            obj = self._cache[name] = getattr(self._pnm, name)
+        return obj
+
+
+
+ParallelNetManager = _ParallelNetManager()
 
 
 class HocEntity(object):

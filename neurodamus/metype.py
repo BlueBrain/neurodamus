@@ -4,7 +4,7 @@ import logging
 from collections import defaultdict
 from .core.configuration import ConfigurationError
 from .core import NeuronDamus as Nrn, ProgressBarRank0 as Progress
-from .utils import VERBOSE_LOGLEVEL
+from .utils.logging import log_verbose
 
 
 class METype(object):
@@ -163,7 +163,7 @@ class METypeManager(object):
             combo_ids[c].append(i)
 
         combo_file = run_conf.get("MEComboInfoFile").s
-        logging.info(VERBOSE_LOGLEVEL, "Loading emodel+additional info from Combo f %s", combo_file)
+        log_verbose("Loading emodel+additional info from Combo f %s", combo_file)
         f = open(combo_file)
         next(f)  # Skip Header
 

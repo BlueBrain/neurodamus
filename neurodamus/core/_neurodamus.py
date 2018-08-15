@@ -1,7 +1,8 @@
 from __future__ import absolute_import
 from os import path
 import logging
-from ..utils import setup_logging, classproperty
+from ..utils import classproperty
+from ..utils.logging import setup_logging
 from .configuration import GlobalConfig
 from ._neuron import _Neuron, MPI
 
@@ -30,7 +31,7 @@ class NeuronDamus(_Neuron):
         h = _Neuron._init()  # if needed, sets cls._h
         if cls._pnm is None:
             # logging.debug("Loading mods from: " + MOD_LIB)
-            # cls.load_dll(MOD_LIB)  # While py neuron doesnt support mpi init use linked special
+            # cls.load_dll(MOD_LIB)  # While py neuron doesnt support mpi init use "special"
             logging.debug("Loading master Hoc: " + HOC_LIB)
             cls.load_hoc(HOC_LIB)
             cls._pnm = MPI.pnm
@@ -47,6 +48,9 @@ class NeuronDamus(_Neuron):
     def pnm(self):
         self._pnm or self._init()
         return self._pnm
+
+    def init(self):
+        self._pnm or self._init()
 
 
 # Singleton

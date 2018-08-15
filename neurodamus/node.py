@@ -7,13 +7,14 @@ from __future__ import absolute_import
 from os import path
 import sys
 import logging
-from .core import MPI
-from .core import NeuronDamus as Nd
+from .core import MPI, mpi_no_errors
+from .core import NeuronDamus as Nd, ParallelNetManager as pnm
 from .core.configuration import GlobalConfig, ConfigurationError
 from .cell_distributor import CellDistributor
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
-from .utils import compat, STAGE_LOGLEVEL, VERBOSE_LOGLEVEL
+from .utils import compat
+from .utils.logging import log_stage, log_verbose
 
 
 class Node:
@@ -23,18 +24,12 @@ class Node:
     It is relatively low-level, for a standard run consider using the Neurodamus class instead.
     """
 
-    _pnm = None
-    """NEURON Parallel Network Manager"""
-
     def __init__(self, recipe):
         """ Creates a neurodamus executor
         Args:
             recipe: The BlueRecipe file
         """
-        self._pnm = Nd.pnm  # Also inits core ND
-        Nd.execute("cvode = new CVode()")
-        Nd.execute("celsius=34")
-
+        Nd.init()
         self._config_parser = self._open_config(recipe)
         self._blueconfig_path = path.dirname(recipe)
         self._connection_weight_delay_list = []
@@ -86,9 +81,18 @@ class Node:
             config_parser.toggleVerbose()
 
         # set some basic information
+        if config_parser.parsedRun is None:
+            raise ConfigurationError("No Run block parsed from BlueConfig %s", recipe)
         parsed_run = config_parser.parsedRun
-        if not Nd.object_id(parsed_run):
-            raise RuntimeError("No Run block parsed from BlueConfig %s", recipe)
+
+        # confirm output_path exists and is usable -> use utility.mod
+        output_path = parsed_run.get("OutputRoot").s
+        if Nd.checkDirectory(output_path) < 0:
+            logging.error("Error with OutputRoot %s. Terminating", output_path)
+            raise ConfigurationError("Output directory error")
+
+        Nd.execute("cvode = new CVode()")
+        Nd.execute("celsius=34")
 
         # Make sure Random Numbers are prepped
         rng_info = Nd.RNGSettings()
@@ -98,14 +102,16 @@ class Node:
         h.tstop = parsed_run.valueOf("Duration")
         h.dt = parsed_run.valueOf("Dt")
         h.steps_per_ms = 1.0 / h.dt
+
         return config_parser
 
     #
+    @mpi_no_errors
     def compute_loadbal(self):
         """This function has the simulator instantiate the circuit (cells & synapses) to determine
         the best way to split cells and balance those pieces across the available cpus.
         """
-        logging.log(STAGE_LOGLEVEL, "Computing Load Balance")
+        log_stage("Computing Load Balance")
         run_cfg = self._config_parser.parsedRun
         run_mode = run_cfg.get("RunMode").s if run_cfg.exists("RunMode") else None
 
@@ -151,10 +157,13 @@ class Node:
                 do_generate = 1
                 generate_reason = "no cxinfo file"
 
+        # Before MPI broadcast check all processes fine
+        MPI.check_no_errors()
+
         # rank 0 broadcasts the fact whether we need to generate loadbalancing data or not
         if GlobalConfig.use_mpi:
             message = Nd.Vector(1, do_generate)
-            self._pnm.pc.broadcast(message, 0)
+            MPI.broadcast(message, 0)
             do_generate = message[0]
 
         # pre-existing load balance info is good. We can reuse it, so return now or quit
@@ -214,12 +223,13 @@ class Node:
         self.clear_model()
 
     #
+    @mpi_no_errors
     def load_targets(self):
         """Provided that the circuit location is known and whether a user.target file has been
         specified, load any target files via a TargetParser.  Note that these will be moved into a
         TargetManager after the cells have been distributed, instantiated, and potentially split.
         """
-        logging.log(STAGE_LOGLEVEL, "Loading Targets")
+        log_stage("Loading Targets")
         self._target_parser = Nd.TargetParser()
         run_conf = self._config_parser.parsedRun
         if MPI.rank == 0:
@@ -233,10 +243,12 @@ class Node:
             self._target_parser.open(user_target, 1)
 
     #
+    @mpi_no_errors
     def export_loadbal(self, lb):
-        self._cell_distributor.load_balance_cells(lb, self._pnm.pc.nhost())
+        self._cell_distributor.load_balance_cells(lb, MPI.size)
 
     #
+    @mpi_no_errors
     def create_cells(self, run_mode=None):
         """Instantiate the cells of the network, handling distribution and any load balancing as
         needed. Any targets will be updated to know which cells are local to the cpu.
@@ -244,7 +256,7 @@ class Node:
         Args:
             run_mode (str): optional argument to override RunMode as "RR" or "LoadBalance"
         """
-        logging.log(STAGE_LOGLEVEL, "Circuit build")
+        log_stage("Circuit build")
         mode_obj = None
         old_mode = None
         if run_mode is not None:
@@ -259,7 +271,7 @@ class Node:
 
         # will LoadBalancing need the pnm during distribution?  not round-robin? maybe split cell?
         self._cell_distributor = CellDistributor(
-            self._config_parser, self._target_parser, self._pnm)
+            self._config_parser, self._target_parser, pnm.o)
 
         # instantiate full cells -> should this be in CellDistributor object?
         self._cell_list = self._cell_distributor.cell_list
@@ -283,7 +295,7 @@ class Node:
     def _interpret_connections(self, extend_info=True):
         _logmsg = "Creating connections from BlueConfig..."
         if extend_info: logging.info(_logmsg)
-        else: logging.log(VERBOSE_LOGLEVEL, _logmsg)
+        else: log_verbose(_logmsg)
 
         for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
             if conn_conf.exists("Delay"):
@@ -326,11 +338,12 @@ class Node:
                 mini_spont_rate, syn_t, syn_override, creation_mode=not dont_create)
 
     #
+    @mpi_no_errors
     def create_gap_junctions(self):
         """Create gap_juntions among the cells, according to blocks in the config file,
         defined as projections with type GapJunction.
         """
-        logging.log(STAGE_LOGLEVEL, "Gap Junctions create")
+        log_stage("Gap Junctions create")
         run_conf = self._config_parser.parsedRun
         if run_conf.exists("CircuitTarget"):
             target = self._target_manager.getTarget(run_conf.get("CircuitTarget").s)
@@ -356,13 +369,14 @@ class Node:
             self._gj_manager.finalizeGapJunctions()
 
     #
+    @mpi_no_errors
     def create_synapses(self):
         """Create synapses among the cells, handling connections that appear in the config file
         """
         # quick check - if we have a single connect block and it sets a weight of zero, can skip
         # synapse creation in its entirety.  This is useful for when no nrn.h5 exists, so we don't
         # error trying to init hdf5 reader. This may not be the cleanest solution.
-        logging.log(STAGE_LOGLEVEL, "Synapses Create")
+        log_stage("Synapses Create")
         if self._config_parser.parsedConnects.count() == 1:
             if self._config_parser.parsedConnects.o(0).valueOf("Weight") == 0:
                 return
@@ -488,6 +502,7 @@ class Node:
         return filepath
 
     #
+    @mpi_no_errors
     def clear_model(self):
         """Clears appropriate lists and other stored references. For use with intrinsic load
         balancing. After creating and evaluating the network using round robin distribution, we want
@@ -495,9 +510,9 @@ class Node:
         balanced cells.
         """
         logging.info("Clearing model")
-        self._pnm.pc.gid_clear()
-        self._pnm.nclist.remove_all()
-        self._pnm.cells.remove_all()
+        pnm.pc.gid_clear()
+        pnm.nclist.remove_all()
+        pnm.cells.remove_all()
 
         for cell in self._cell_list:
             cell.CellRef.clear()
@@ -513,6 +528,7 @@ class Node:
             self._report_list = []
 
     #
+    @mpi_no_errors
     def enable_stimulus(self):
         """Iterate over any stimuli/stim injects defined in the config file given to the simulation
         and instantiate them. This iterates over the injects, getting the stim/target combinations
@@ -520,7 +536,7 @@ class Node:
         text and instantiate an actual stimulus object.
         """
         # setup of Electrode objects part of enable stimulus
-        logging.log(STAGE_LOGLEVEL, "Stimulus apply")
+        log_stage("Stimulus apply")
         conf = self._config_parser
         if conf.parsedRun.exists("ElectrodesPath"):
             electrodes_path = conf.parsedRun.get("ElectrodesPath").s
@@ -562,10 +578,11 @@ class Node:
                 spike_manager.replay(self._synapse_manager, target_name)
             else:
                 # all other patterns the stim manager will interpret
-                logging.info("[Stim] %s (%s -> %s)", name, stim_name, target_name)
+                logging.info(" * [STIM] %s (%s -> %s)", name, stim_name, target_name)
                 self._stim_manager.interpret(target_name, stim)
 
     #
+    @mpi_no_errors
     def enable_modifications(self):
         """Iterate over any Modification blocks read from the BlueConfig and apply them to the
         network. The steps needed are more complex than NeuronConfigures, so the user should not be
@@ -576,12 +593,13 @@ class Node:
         for mod in compat.Map(self._config_parser.parsedModifications).values():
             mod_manager.interpret(mod)
 
-    # -
+    #
+    @mpi_no_errors
     def enable_reports(self):
         """Iterate over reports defined in the config file given to the simulation and
         instantiate them.
         """
-        logging.log(STAGE_LOGLEVEL, "Reports Enabling")
+        log_stage("Reports Enabling")
         run_conf = self._config_parser.parsedRun
         sim_dt = run_conf.valueOf("Dt")
         self._binreport_helper = Nd.BinReportHelper(sim_dt)
@@ -590,13 +608,6 @@ class Node:
         # other useful fields from main Run object
         output_path = run_conf.get("OutputRoot").s
         sim_end = run_conf.valueOf("Duration")
-
-        # confirm output_path exists and is usable -> use utility.mod
-        if MPI.rank == 0:
-            if Nd.checkDirectory(output_path) < 0:
-                logging.error("Error with OutputRoot %s. Terminating", output_path)
-                Nd.execerror("Output directory error")
-        MPI.barrier()
 
         reports_conf = compat.Map(self._config_parser.parsedReports)
         self._report_list = []
@@ -676,6 +687,7 @@ class Node:
             self._elec_manager.clear()
 
     #
+    @mpi_no_errors
     def want_all_spikes(self):
         """setup recording of spike events (crossing of threshold) for the cells on this node
         """
@@ -683,7 +695,7 @@ class Node:
             # only want to collect spikes off cell pieces with the soma (i.e. the real gid)
             if self._cell_distributor.getSpGid(gid) == gid:
                 logging.debug("Collecting spikes for gid %d", gid)
-                self._pnm.spike_record(gid)
+                pnm.spike_record(gid)
 
     #
     def cleanup(self):
@@ -693,12 +705,13 @@ class Node:
         # so must be instantiated before pc.runworker
         logging.info("Cleaning up")
         mem_usage = Nd.MemUsage()
-        self._pnm.pc.runworker()
+        pnm.pc.runworker()
         self.clear_model()
         mem_usage.print_node_mem_usage()
-        self._pnm.pc.done()
+        pnm.pc.done()
 
     #
+    @mpi_no_errors
     def spike2file(self, outfile):
         """ Write the spike events that occured on each node into a single output file.
         Nodes will write in order, one after the other.
@@ -710,16 +723,16 @@ class Node:
         if MPI.rank == 0:
             with open(outfile, "w") as f:
                 f.write("/scatter\n")
-                for i, gid in enumerate(self._pnm.idvec):
-                    f.write("%.3f\t%d\n" % (self._pnm.spikevec.x[i], gid))
+                for i, gid in enumerate(pnm.idvec):
+                    f.write("%.3f\t%d\n" % (pnm.spikevec.x[i], gid))
 
         # Write other nodes' result in order
         for nodeIndex in range(1, MPI.cpu_count):
-            self._pnm.pc.barrier()
+            MPI.barrier()
             if MPI.rank == nodeIndex:
                 with open(outfile, "a") as f:
-                    for i, gid in enumerate(self._pnm.idvec):
-                        f.write("%.3f\t%d\n" % (self._pnm.spikevec.x[i], gid))
+                    for i, gid in enumerate(pnm.idvec):
+                        f.write("%.3f\t%d\n" % (pnm.spikevec.x[i], gid))
 
     #
     def get_synapse_data_gid(self, gid):
@@ -727,6 +740,7 @@ class Node:
                                  "method: get_synapse_params_gid")
 
     #
+    @mpi_no_errors
     def execute_neuron_configures(self):
         """Iterate over any NeuronConfigure blocks from the BlueConfig.
         These are simple hoc statements that can be executed with minimal substitutions
@@ -735,7 +749,7 @@ class Node:
         for config in compat.Map(self._config_parser.parsedConfigures).values():
             target_name = config.get("Target").s
             configure_str = config.get("Configure").s
-            logging.log(VERBOSE_LOGLEVEL, "Apply configuration \"%s\" on target %s",
+            log_verbose("Apply configuration \"%s\" on target %s",
                         config.get("Configure").s, target_name)
 
             points = self.get_target_points(target_name)
@@ -750,18 +764,19 @@ class Node:
                     Nd.execute1(tstr, sec=sc.sec)
 
     #
+    @mpi_no_errors
     def run(self, show_progress=False):
         """ Runs the simulation
         """
-        logging.log(STAGE_LOGLEVEL, "Running")
+        log_stage("Running")
         run_conf = self._config_parser.parsedRun
         if show_progress:
             _ = Nd.ShowProgress(Nd.cvode, MPI.rank)  # NOQA (required to keep obj alive)
 
-        self._pnm.pc.setup_transfer()
+        pnm.pc.setup_transfer()
         spike_compress = 3
 
-        self._pnm.pc.spike_compress(spike_compress, spike_compress != 0, 0)
+        pnm.pc.spike_compress(spike_compress, spike_compress != 0, 0)
         # LFP calculation requires WholeCell balancing and extracellular mechanism.
         # This is incompatible with efficient caching atm.
         if run_conf.exists("ElectrodesPath"):
@@ -770,19 +785,19 @@ class Node:
             Nd.cvode.cache_efficient(1)
 
         self.want_all_spikes()
-        self._pnm.pc.set_maxstep(4)
+        pnm.pc.set_maxstep(4)
         self._runtime = Nd.startsw()
 
         # Returned timings
         tdat = [0] * 7
-        tdat[0] = self._pnm.pc.wait_time()
+        tdat[0] = pnm.pc.wait_time()
 
         Nd.stdinit()
 
         # check for optional argument "ForwardSkip"
         fwd_skip = run_conf.valueOf("ForwardSkip") if run_conf.exists("ForwardSkip") else False
         if fwd_skip:
-            logging.info("Fast-Forwarding to %d ms", fwd_skip)
+            logging.info("Initting with ForwardSkip %d ms", fwd_skip)
             Nd.t = -1e9
             prev_dt = Nd.dt
             Nd.dt = fwd_skip * 0.1
@@ -792,34 +807,45 @@ class Node:
             Nd.t = 0
             Nd.frecord_init()
 
+        # # check for optional argument "ForwardSkip"
+        # fast_fwd = run_conf.valueOf("FastForward") if run_conf.exists("FastForward") else False
+        # if fast_fwd:
+        #     logging.info("FastForwarding to %d ms", fast_fwd)
+        #     prev_dt = Nd.dt
+        #     prev_steps_per_ms = Nd.steps_per_ms
+        #     Nd.dt = 1
+        #     pnm.pc.set_maxstep(1)
+        #     pnm.psolve(fast_fwd)
+        #     Nd.dt = prev_dt
+
         # increase timeout by 10x
-        self._pnm.pc.timeout(200)
+        pnm.pc.timeout(200)
 
         # I think I must use continuerun?
         if len(self._connection_weight_delay_list) == 0:
             logging.info("Running until the end (%d ms)", Nd.tstop)
-            self._pnm.psolve(Nd.tstop)
+            pnm.psolve(Nd.tstop)
         else:
             # handle any delayed blocks
             for conn in self._connection_weight_delay_list:
                 logging.info(" * Delay: Configuring %s->%s after %d ms",
                              conn.get("Source").s, conn.get("Destination".s), conn.valueOf("Delay"))
-                self._pnm.psolve(conn.valueOf("Delay"))
+                pnm.psolve(conn.valueOf("Delay"))
                 self._synapse_manager.configure_connection_config(conn, self.gidvec)
 
             logging.info("Running until the end (%d ms)", Nd.tstop)
-            self._pnm.psolve(Nd.tstop)
+            pnm.psolve(Nd.tstop)
 
         # final flush for reports
         self._binreport_helper.flush()
 
-        tdat[0] = self._pnm.pc.wait_time() - tdat[0]
+        tdat[0] = pnm.pc.wait_time() - tdat[0]
         self._runtime = Nd.startsw() - self._runtime
-        tdat[1] = self._pnm.pc.step_time()
-        tdat[2] = self._pnm.pc.send_time()
-        tdat[3] = self._pnm.pc.vtransfer_time()
-        tdat[4] = self._pnm.pc.vtransfer_time(1)  # split exchange time
-        tdat[6] = self._pnm.pc.vtransfer_time(2)  # reduced tree computation time
+        tdat[1] = pnm.pc.step_time()
+        tdat[2] = pnm.pc.send_time()
+        tdat[3] = pnm.pc.vtransfer_time()
+        tdat[4] = pnm.pc.vtransfer_time(1)  # split exchange time
+        tdat[6] = pnm.pc.vtransfer_time(2)  # reduced tree computation time
         tdat[4] -= tdat[6]
 
         logging.info("Simulation finished.")
@@ -851,7 +877,7 @@ class Node:
     #
     def dump_circuit_config(self, suffix="dbg"):
         for gid in self.gidvec:
-            self._pnm.pc.prcellstate(gid, suffix)
+            pnm.pc.prcellstate(gid, suffix)
 
 
 # Helper class
@@ -874,30 +900,22 @@ class Neurodamus(Node):
 
         Node.__init__(self, recipe_file)
 
-        # If an exception is raised, log it
-        try:
-            self._instantiate_simulation()
-        except Exception as e:
-            logging.error(str(e))
-            raise
+        self._instantiate_simulation()
         self._init_ok = True
 
     def _instantiate_simulation(self):
-        logging.log(STAGE_LOGLEVEL, "============= INITIALIZING (& Load-Balancing) =============")
+        log_stage("============= INITIALIZING (& Load-Balancing) =============")
         self.load_targets()
         self.compute_loadbal()
 
-        logging.log(STAGE_LOGLEVEL, "==================== BUILDING CIRCUIT ====================")
-        MPI.barrier()
+        log_stage("==================== BUILDING CIRCUIT ====================")
         self.create_cells()
         self.execute_neuron_configures()
 
         # Create connections
-        MPI.barrier()
         self.create_synapses()
         self.create_gap_junctions()
 
-        MPI.barrier()
         self.enable_stimulus()
         self.enable_modifications()
         self.enable_reports()

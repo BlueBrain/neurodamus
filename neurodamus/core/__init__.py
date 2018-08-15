@@ -1,11 +1,14 @@
 from __future__ import absolute_import
-from ._neuron import Neuron, MPI
+from functools import wraps
+import time
+from ._neuron import Neuron, MPI, ParallelNetManager
 from ._neurodamus import NeuronDamus
 from .cell import Cell
 from .stimuli import CurrentSource
 from ..utils import progressbar
 
-__all__ = ['Neuron', 'MPI', 'NeuronDamus', 'Cell', 'CurrentSource', 'ProgressBarRank0']
+__all__ = ['Neuron', 'MPI', 'NeuronDamus', 'Cell', 'CurrentSource', 'ProgressBarRank0',
+           'mpi_no_errors']
 
 
 class ProgressBarRank0(progressbar.Progress):
@@ -16,3 +19,17 @@ class ProgressBarRank0(progressbar.Progress):
         if MPI.rank == 0:
             return progressbar.ProgressBar(end, *args, tty_bar=(MPI.size == 1) and None, **kwargs)
         return progressbar.Progress(end, *args, **kwargs)
+
+
+def mpi_no_errors(f):
+    """Convenience decorator which checks all processes are fine when f returns
+    """
+    if MPI.size == 0:
+        return f
+    @wraps(f)
+    def wrapper(*args, **kw):
+        res = f(*args, **kw)
+        MPI.check_no_errors()
+        time.sleep(1)
+        return res
+    return wrapper
