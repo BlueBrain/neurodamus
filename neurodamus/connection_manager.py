@@ -538,15 +538,18 @@ class SynapseRuleManager(_ConnectionManagerBase):
         Args:
             base_seed: optional argument to adjust synapse RNGs (default=0)
         """
+        logging.info("Instantiating synapses...")
         cell_distributor = self._target_manager.cellDistributor
+        n_created_conns = 0
 
-        log_verbose("Instantiating synapses...")
         for tgid, conns in ProgressBar.iteritems(self._connections_map):
             metype = cell_distributor.getMEType(tgid)
             spgid = cell_distributor.getSpGid(tgid)
             for conn in conns:  # type: Connection
                 conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
             logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
+            n_created_conns += len(conns)
+        log_verbose("Created %d connections", n_created_conns)
 
     # compat
     finalizeSynapses = finalize
@@ -576,7 +579,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
 
         n_added_spike_src = len(used_src_gids)
         if n_added_spike_src == 0:
-            logging.warning("[CPU #%2d] No cells were injected replay stimulus", MPI.rank)
+            logging.warning("No cells were injected replay stimulus")
         else:
             log_verbose("Cpu0: Added replays to %d src cells" % n_added_spike_src)
 
@@ -619,12 +622,21 @@ class GapJunctionManager(_ConnectionManagerBase):
     # -
     def finalize(self):
         """Creates the netcons for all GapJunctions.
-        Connections must have been places and all weight scalars should have their final values.
+        Connections must have been placed and all weight scalars should have their final values.
         """
-        for conn in self.all_connections():  # type: Connection
-            metype = self._target_manager.cellDistributor.getMEType(conn.tgid)
-            conn.finalize_gap_junctions(
-                ND.pnm, metype, self._gj_offsets[conn.tgid-1], self._gj_offsets[conn.sgid-1])
+        logging.info("Instantiating GapJuntions...")
+        cell_distributor = self._target_manager.cellDistributor
+        n_created_gaps = 0
+
+        for tgid, conns in ProgressBar.iteritems(self._connections_map):
+            metype = cell_distributor.getMEType(tgid)
+            t_gj_offset = self._gj_offsets[tgid-1]
+            for conn in conns:
+                conn.finalize_gap_junctions(
+                    cell_distributor.pnm, metype, t_gj_offset, self._gj_offsets[conn.sgid-1])
+            logging.debug("Created %d gap-junctions on post-gid %d", len(conns), tgid)
+            n_created_conns += len(conns)
+        log_verbose("Created %d connections", n_created_conns)
 
     # Compat
     finalizeGapJunctions = finalize

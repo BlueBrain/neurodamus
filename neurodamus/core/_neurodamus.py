@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from os import path
 import logging
+import time
 from ..utils import classproperty
 from ..utils.logging import setup_logging
 from .configuration import GlobalConfig
@@ -9,6 +10,7 @@ from ._neuron import _Neuron, MPI
 LIB_PATH = path.realpath(path.join(path.dirname(__file__), "../../../lib"))
 MOD_LIB = path.join(LIB_PATH, "modlib", "libnrnmech.so")
 HOC_LIB = path.join(LIB_PATH, "hoclib", "neurodamus")
+LOG_FILENAME = "pydamus.log"
 
 
 class NeuronDamus(_Neuron):
@@ -38,10 +40,11 @@ class NeuronDamus(_Neuron):
 
             # default logging (if set previously this wont have any effect)
             if MPI.rank == 0:
-                h.timeit_setVerbose(1)
-                setup_logging(GlobalConfig.verbosity)
+                open(LOG_FILENAME, "w").close()  # Truncate
+                setup_logging(GlobalConfig.verbosity, LOG_FILENAME, rank=0)
             else:
-                setup_logging(0)
+                time.sleep(0.5)  # Give time to truncate
+                setup_logging(0, LOG_FILENAME, MPI.rank)
             logging.info("Neurodamus Mod & Hoc lib loaded.")
 
     @property

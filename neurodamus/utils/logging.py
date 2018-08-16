@@ -51,27 +51,32 @@ class _LevelFormatter(_ColoredFormatter):
     _datefmt = "%b.%d %H:%M:%S"
     _level_tabs = {VERBOSE_LOGLEVEL: ' -> ', _logging.DEBUG: '    + '}
 
-    def __init__(self, with_time=True, **kw):
+    def __init__(self, with_time=True, rank=None, **kw):
         _ColoredFormatter.__init__(self, self._logfmt, self._datefmt, **kw)
+        self._rank = rank
         self._with_time = with_time
 
     def format(self, record):
         record = copy(record)  # All changes done here dont persist
         record.levelname = record.levelname.center(6)
-        record.msg = self._level_tabs.get(record.levelno, "") + record.msg
+        addins = self._level_tabs.get(record.levelno, "")
+        if self._rank is not None and record.levelno >= _logging.WARNING:
+            addins = ("Cpu %d: " % (self._rank,)) + addins
+        record.msg = addins + record.msg
         msg = _ColoredFormatter.format(self, record)
         if self._with_time:
             msg = "(%s) " % self.formatTime(record, self._datefmt) + msg
         return msg
 
 
-def setup_logging(loglevel, logfile="pydamus.log"):
+def setup_logging(loglevel, logfile=None, rank=None):
     """Setup neurodamus logging.
     Features tabs and colors output to stdout and pydamus.log
 
     Args:
       loglevel (int): minimum loglevel for emitting messages
       logfile: The destination for log messages besides stdout
+      rank: A tag so warnings/errors are correctly identified in case of MPI
     """
     if getattr(setup_logging, "logging_initted", False):
         return
@@ -87,14 +92,14 @@ def setup_logging(loglevel, logfile="pydamus.log"):
 
     # Stdout
     hdlr = _logging.StreamHandler(sys.stdout)
-    hdlr.setFormatter(_LevelFormatter(False))
+    hdlr.setFormatter(_LevelFormatter(False, rank))
     _logging.root.setLevel(verbosity_levels[loglevel])
     del _logging.root.handlers[:]
     _logging.root.addHandler(hdlr)
 
-    # Logfile
-    fileh = _logging.FileHandler(logfile, 'w+')
-    fileh.setFormatter(_LevelFormatter())
-    _logging.root.addHandler(fileh)
+    if logfile:
+        fileh = _logging.FileHandler(logfile)
+        fileh.setFormatter(_LevelFormatter(rank=rank))
+        _logging.root.addHandler(fileh)
 
     setup_logging.logging_initted = True
