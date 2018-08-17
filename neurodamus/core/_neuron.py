@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 import sys
+import time
 import logging
 from .configuration import Neuron_Stdrun_Defaults
 from .configuration import GlobalConfig
@@ -141,14 +142,12 @@ class _MPI:
 
         # When using MPI (and more than 1 rank) we need to MPIAbort on exception to avoid deadlocks
         def excepthook(etype, value, tb):
-            # Stop Neuron, without reraising exception
+            cls._pnm.pc.allreduce(1, 1)  # Share error state
+            time.sleep(0.1 * cls._rank)  # Order errors
             logging.critical(str(value))
-            # execerror might not be able to terminate the cluster. We make regular checks
-            cls._pnm.pc.allreduce(1, 1)
-            try: Neuron.execerror(str(value))
-            except Exception: pass
             # Print and cleanup exception
             sys.__excepthook__(etype, value, tb)
+            Neuron.quit()  # With 'special' terminates right here
             sys.exit(1)
         sys.excepthook = excepthook
 

@@ -378,6 +378,9 @@ class Connection(object):
         for syn_i, sc in enumerate(self._synapse_points.sclst):
             if not sc.exists():
                 continue
+            # Put the section in the stack, so generic hoc instructions apply to the right section
+            sc.sec.push()
+
             x = self._synapse_points.x[syn_i]
             active_params = self._synapse_params[syn_i]
             gap_junction = ND.Gap(x)
@@ -387,10 +390,13 @@ class Connection(object):
                           self.tgid, self.sgid, offset, active_params.D,
                           end_offset, active_params.F, active_params.weight)
             pnm.pc.target_var(gap_junction, gap_junction._ref_vgap, (offset + active_params.D))
-            pnm.pc.source_var(sc.sec._ref_v(x), (end_offset + active_params.F))
+            pnm.pc.source_var(sc.sec(x)._ref_v, (end_offset + active_params.F))
             gap_junction.g = active_params.weight
             self._synapses.append(gap_junction)
             self._configure_cell(cell)
+
+            # Pop the current working section from the neuron stack
+            ND.pop_section()
 
     # ------------------------------------------------------------------
     # Parameters update / Configuration

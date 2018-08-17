@@ -34,7 +34,9 @@ class _ConnectionManagerBase(object):
         self.open_synapse_file(synapse_file, n_synapse_files)
 
     def open_synapse_file(self, synapse_file, n_synapse_files):
-        log_verbose("Loading synapses...")
+        """Initializes a reader for more Synapses or Gap-Junctions
+        """
+        log_verbose("Initializing synapse reader...")
         self._synapse_reader = reader = self._init_synapse_reader(
             self._target_manager, synapse_file, n_synapse_files)
         self._n_synapse_files = n_synapse_files
@@ -44,7 +46,6 @@ class _ConnectionManagerBase(object):
     @staticmethod
     def _init_synapse_reader(target_manager, synapse_file, n_synapse_files):
         _syn_reader = ND.HDF5Reader(synapse_file, n_synapse_files)
-
         if n_synapse_files > 1:
             gidvec = ND.Vector()
             for gid in target_manager.cellDistributor.getGidListForProcessor():
@@ -610,12 +611,15 @@ class GapJunctionManager(_ConnectionManagerBase):
         _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
 
         self._circuit_target = circuit_target
-        self._gj_offsets = compat.Vector("d")
+        self._gj_offsets = compat.Vector("uint32")
         gjfname = path.join(circuit_path, "gjinfo.txt")
         gj_sum = 0
+        log_verbose("Computing gap-junction offsets from gjinfo.txt")
 
         for line in open(gjfname):
             gid, offset = line.strip().split()
+            gid, offset = int(gid), int(offset)
+            # fist gid has no offset.  the final total is not used as an offset at all.
             self._gj_offsets.append(gj_sum)
             gj_sum += 2 * offset
 
@@ -626,7 +630,7 @@ class GapJunctionManager(_ConnectionManagerBase):
         """
         logging.info("Instantiating GapJuntions...")
         cell_distributor = self._target_manager.cellDistributor
-        n_created_gaps = 0
+        n_created_conns = 0
 
         for tgid, conns in ProgressBar.iteritems(self._connections_map):
             metype = cell_distributor.getMEType(tgid)
@@ -636,7 +640,7 @@ class GapJunctionManager(_ConnectionManagerBase):
                     cell_distributor.pnm, metype, t_gj_offset, self._gj_offsets[conn.sgid-1])
             logging.debug("Created %d gap-junctions on post-gid %d", len(conns), tgid)
             n_created_conns += len(conns)
-        log_verbose("Created %d connections", n_created_conns)
+        log_verbose("Created %d Gap-Junctions", n_created_conns)
 
     # Compat
     finalizeGapJunctions = finalize

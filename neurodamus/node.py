@@ -443,19 +443,20 @@ class Node:
             # check if this Projection block is for gap junctions
             if projection.exists("Type") and projection.get("Type").s == "GapJunction":
                 nrn_path = projection.get("Path").s
-                logging.info(" * %s (%s)", name, nrn_path)
+                logging.info(" * %s", name)
 
-                # use connectAll for gj_manager
                 if self._gj_manager is not None:
-                    logging.error("Neurodamus can only support loading one gap junction file."
-                                  "Skipping loading additional files...")
+                    logging.warning("Neurodamus can only support loading one gap junction file. "
+                                    "Skipping loading additional files...")
                     break
 
                 self._gj_manager = GapJunctionManager(nrn_path, self._target_manager, 1, target)
-                self._gj_manager.connect_all(self.gidvec, 1)
 
         if self._gj_manager is not None:
+            self._gj_manager.connect_all(self.gidvec, 1)
             self._gj_manager.finalizeGapJunctions()
+        else:
+            logging.info("No Gap-junctions found")
 
     #
     def _find_projection_file(self, projection):
@@ -516,7 +517,7 @@ class Node:
         log_stage("Stimulus apply")
         conf = self._config_parser
         if conf.parsedRun.exists("ElectrodesPath"):
-            electrodes_path = conf.parsedRun.get("ElectrodesPath").s
+            electrodes_path = conf.parsedRun.get("ElectrodesPath")
             self._elec_manager = Nd.ElectrodeManager(electrodes_path, conf.parsedElectrodes)
 
         # for each stimulus defined in the config file, request the stimmanager to instantiate
@@ -603,9 +604,8 @@ class Node:
                 continue
 
             if start_time > end_time:
-                if MPI.rank == 0: logging.error("Bad start/end times. Start (%g) > End (%s)",
-                                                rep_name, start_time, end_time)
-                n_errors += 1
+                if MPI.rank == 0: logging.warning("Report or Sim End-time (%s) is before Start (%g).%s",
+                                                  end_time, start_time, " Skipping...")
                 continue
 
             electrode = self._elec_manager.getElectrode(rep_conf.get("Electrode").s)\
@@ -735,17 +735,6 @@ class Node:
             Nd.dt = prev_dt
             Nd.t = 0
             Nd.frecord_init()
-
-        # # check for optional argument "ForwardSkip"
-        # fast_fwd = run_conf.valueOf("FastForward") if run_conf.exists("FastForward") else False
-        # if fast_fwd:
-        #     logging.info("FastForwarding to %d ms", fast_fwd)
-        #     prev_dt = Nd.dt
-        #     prev_steps_per_ms = Nd.steps_per_ms
-        #     Nd.dt = 1
-        #     pnm.pc.set_maxstep(1)
-        #     pnm.psolve(fast_fwd)
-        #     Nd.dt = prev_dt
 
         # increase timeout by 10x
         pnm.pc.timeout(200)
