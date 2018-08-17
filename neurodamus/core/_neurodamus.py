@@ -30,7 +30,7 @@ class NeuronDamus(_Neuron):
 
     @classmethod
     def _init(cls):
-        h = _Neuron._init()  # if needed, sets cls._h
+        _Neuron._init()  # if needed, sets cls._h
         if cls._pnm is None:
             # logging.debug("Loading mods from: " + MOD_LIB)
             # cls.load_dll(MOD_LIB)  # While py neuron doesnt support mpi init use "special"

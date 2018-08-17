@@ -8,7 +8,7 @@ from .stimuli import CurrentSource
 from ..utils import progressbar
 
 __all__ = ['Neuron', 'MPI', 'NeuronDamus', 'Cell', 'CurrentSource', 'ProgressBarRank0',
-           'mpi_no_errors']
+           'mpi_no_errors', 'ParallelNetManager']
 
 
 class ProgressBarRank0(progressbar.Progress):
@@ -26,6 +26,7 @@ def mpi_no_errors(f):
     """
     if MPI.size == 0:
         return f
+
     @wraps(f)
     def wrapper(*args, **kw):
         res = f(*args, **kw)

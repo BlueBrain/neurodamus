@@ -185,6 +185,7 @@ MPI = _MPI()
 
 class _ParallelNetManager(object):
     __slots__ = ['_pnm', '_cache']
+
     def __init__(self):
         self._cache = {}
         self._pnm = None
@@ -202,7 +203,6 @@ class _ParallelNetManager(object):
         if obj is None:
             obj = self._cache[name] = getattr(self._pnm, name)
         return obj
-
 
 
 ParallelNetManager = _ParallelNetManager()

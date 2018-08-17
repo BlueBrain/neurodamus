@@ -104,10 +104,9 @@ class Node:
         h.tstop = parsed_run.valueOf("Duration")
         h.dt = parsed_run.valueOf("Dt")
         h.steps_per_ms = 1.0 / h.dt
-
         return config_parser
 
- #
+    #
     @mpi_no_errors
     def load_targets(self):
         """Provided that the circuit location is known and whether a user.target file has been
@@ -570,8 +569,8 @@ class Node:
         logging.info("Enabling modifications...")
         for mod in compat.Map(self._config_parser.parsedModifications).values():
             mod_manager.interpret(mod)
+        # mod_mananger gets destroyed as it is done applying mods
 
-    #
     # @mpi_no_errors - not required since theres a call inside before _binreport_helper.make_comm
     def enable_reports(self):
         """Iterate over reports defined in the config file given to the simulation and
@@ -604,7 +603,7 @@ class Node:
                 continue
 
             if start_time > end_time:
-                if MPI.rank == 0: logging.warning("Report or Sim End-time (%s) is before Start (%g).%s",
+                if MPI.rank == 0: logging.warning("Report/Sim End-time (%s) before Start (%g).%s",
                                                   end_time, start_time, " Skipping...")
                 continue
 
@@ -807,7 +806,7 @@ class Node:
 
     # -------------------------------------------------------------------------
     #  Data retrieve / output
-    #-------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
 
     @property
     def gidvec(self):

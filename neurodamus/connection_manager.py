@@ -2,7 +2,7 @@ from __future__ import absolute_import, print_function
 import logging
 from itertools import chain
 from os import path
-from .core import NeuronDamus as ND, MPI
+from .core import NeuronDamus as ND
 from .core import ProgressBarRank0 as ProgressBar
 from .utils import compat, bin_search, OrderedDefaultDict
 from .utils.logging import log_verbose
