@@ -611,7 +611,7 @@ class GapJunctionManager(_ConnectionManagerBase):
         _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
 
         self._circuit_target = circuit_target
-        self._gj_offsets = compat.Vector("uint32")
+        self._gj_offsets = compat.Vector("I")
         gjfname = path.join(circuit_path, "gjinfo.txt")
         gj_sum = 0
         log_verbose("Computing gap-junction offsets from gjinfo.txt")
