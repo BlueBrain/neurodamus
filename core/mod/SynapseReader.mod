@@ -240,7 +240,6 @@ VERBATIM
 #ifndef DISABLE_SYNTOOL
     return syn_hasNrrp();
 #else
-    fprintf(stderr, "[SynReader] Warning: SynapseTool not Enabled")
     return -1;
 #endif
 ENDVERBATIM
