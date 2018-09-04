@@ -37,21 +37,18 @@ class _ConnectionManagerBase(object):
         """Initializes a reader for more Synapses or Gap-Junctions
         """
         log_verbose("Initializing synapse reader...")
-        self._synapse_reader = reader = self._init_synapse_reader(
-            self._target_manager, synapse_file, n_synapse_files)
-        self._n_synapse_files = n_synapse_files
-        self._syn_params = {}  # purge cache
-        self._nrn_version = reader.checkVersion()
+        # Use SynReaderSynTool if mod available, since it supports all formats
+        verbose = MPI.rank == 0
+        syntool = SynReaderSynTool(synapse_file, verbose)
 
-    @staticmethod
-    def _init_synapse_reader(target_manager, synapse_file, n_synapse_files):
-        _syn_reader = ND.HDF5Reader(synapse_file, n_synapse_files)
-        if n_synapse_files > 1:
-            gidvec = ND.Vector()
-            for gid in target_manager.cellDistributor.getGidListForProcessor():
-                gidvec.append(gid)
-            _syn_reader.exchangeSynapseLocations(gidvec)
-        return _syn_reader
+        if syntool.isEnabled():
+            log_verbose("[SynRuleManager] Using new-gen SynapseReader.")
+        else:
+            log_verbose("[SynRuleManager] Warning: Attepmting legacy Hdf5 NRN reader")
+            syntool = SynReaderHdf5(synapse_file, n_synapse_files, self._target_manager)
+
+        self._synapse_reader = syntool
+        self._syn_params = {}  # purge cache
 
     # -
     def connect_all(self, gidvec, weight_factor=1):
@@ -223,45 +220,9 @@ class _ConnectionManagerBase(object):
         if gid in self._syn_params:
             return self._syn_params[gid]  # Cached
 
-        reader = self._synapse_reader
-        cell_name = "a%d" % gid
-
-        if self._n_synapse_files > 1:
-            ret = reader.loadData(gid)
-        else:
-            ret = reader.loadData(cell_name)
-
-        if ret < 0:
-            logging.debug("No synapses for post-gid %d. Skipping", gid)
-            self._syn_params[gid] = []
-            return []
-
-        nrow = int(reader.numberofrows(cell_name))
-        conn_syn_params = SynapseParameters.create_array(nrow)
-        self._syn_params[gid] = conn_syn_params
-        dt = ND.dt
-
-        for i in range(nrow):
-            params = conn_syn_params[i]
-            params[0] = reader.getData(cell_name, i, 0)   # sgid
-            params[1] = reader.getData(cell_name, i, 1)   # delay
-            params[2] = reader.getData(cell_name, i, 2)   # isec
-            params[3] = reader.getData(cell_name, i, 3)   # ipt
-            params[4] = reader.getData(cell_name, i, 4)   # offset
-            params[5] = reader.getData(cell_name, i, 8)   # weight
-            params[6] = reader.getData(cell_name, i, 9)   # U
-            params[7] = reader.getData(cell_name, i, 10)  # D
-            params[8] = reader.getData(cell_name, i, 11)  # F
-            params[9] = reader.getData(cell_name, i, 12)  # DTC
-            params[10] = reader.getData(cell_name, i, 13)  # isynType
-            if self._nrn_version > 4:
-                params[11] = reader.getData(cell_name, i, 17)  # nrrp
-            else:
-                params[11] = -1
-            # compensate for minor floating point inaccuracies in the delay
-            params[1] = int(params[1] / dt + 1e-5) * dt
-
-        return conn_syn_params
+        params = self._synapse_reader.loadSynapseParameters(gid)
+        self._syn_params[gid] = params
+        return params
 
     # -
     def configure_connection(self, src_target, dst_target, gidvec,
