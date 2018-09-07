@@ -1,7 +1,7 @@
 COMMENT
 /**
  * @file VecStim.mod
- * @brief 
+ * @brief
  * @author king
  * @date 2011-03-16
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
@@ -9,10 +9,11 @@ COMMENT
 ENDCOMMENT
 
 
-: Vector stream of events	
+: Vector stream of events
 NEURON {
+    THREADSAFE
     ARTIFICIAL_CELL VecStim
-    RANGE ping
+    RANGE ping, index, etime
 }
 
 PARAMETER {
@@ -26,6 +27,9 @@ ASSIGNED {
 }
 
 INITIAL {
+VERBATIM
+ #ifndef CORENEURON_BUILD
+ENDVERBATIM
     index = 0
     element()
     if (index > 0) {
@@ -34,6 +38,9 @@ INITIAL {
     if (ping > 0) {
         net_send(ping, 2)
     }
+VERBATIM
+ #endif
+ENDVERBATIM
 }
 
 NET_RECEIVE (w) {
@@ -57,7 +64,7 @@ NET_RECEIVE (w) {
             : time, they are ignored.
             while (etime < t && index >= 0) {
                 element()
-                :printf("element(): index=%g, etime=%g, t=%g\n",index,etime,t)
+                : printf("element(): index=%g, etime=%g, t=%g\n",index,etime,t)
             }
             if (index > 0) {
                 net_send(etime - t, 1)
@@ -72,7 +79,7 @@ VERBATIM
 extern double* vector_vec();
 extern int vector_capacity();
 extern void* vector_arg();
-ENDVERBATIM     
+ENDVERBATIM
 
 PROCEDURE element() {
 VERBATIM
@@ -99,6 +106,7 @@ ENDVERBATIM
 
 PROCEDURE play() {
 VERBATIM
+    #ifndef CORENEURON_BUILD
     void** vv;
     vv = (void**)(&space);
     *vv = (void*)0;
@@ -106,6 +114,7 @@ VERBATIM
         *vv = vector_arg(1);
     }
     index = -2;
+    #endif
 ENDVERBATIM
 }
 
