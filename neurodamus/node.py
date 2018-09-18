@@ -308,17 +308,11 @@ class Node:
         nrn_path = run_conf.get("nrnPath").s
         synapse_mode = run_conf.get("SynapseMode").s if run_conf.exists("SynapseMode") else None
 
-        # note - with larger scale circuits, we may divide synapses among several files.
-        # Need to know how many from the BlueConfig
+        # with larger scale circuits, we may divide synapses among several files
         nrn_filepath = path.join(nrn_path, "nrn.h5")
-        if path.isfile(nrn_filepath):
-            n_synapse_files = 1
-        else:
-            if run_conf.exists("NumSynapseFiles"):
-                n_synapse_files = run_conf.valueOf("NumSynapseFiles")
-            else:
-                raise ConfigurationError("nrn.h5 doesnt exist and BlueConfig does not specify"
-                                         "NumSynapseFiles")
+        n_synapse_files = 1
+        if not path.isfile(nrn_filepath) and run_conf.exists("NumSynapseFiles"):
+            n_synapse_files = run_conf.valueOf("NumSynapseFiles")
 
         self._synapse_manager = SynapseRuleManager(nrn_path, self._target_manager,
                                                    n_synapse_files, synapse_mode)

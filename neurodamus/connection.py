@@ -15,6 +15,8 @@ class SynapseParameters(object):
                        "synType", "nrrp", "location")  # total: 13
     _dtype = np.dtype({"names": _synapse_fields,
                        "formats": ["f8"] * len(_synapse_fields)})
+    
+    empty = np.recarray(0, _dtype)
 
     def __new__(cls, params):
         rec = np.recarray(1, cls._dtype)[0]

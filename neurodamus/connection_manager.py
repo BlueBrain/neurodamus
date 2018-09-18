@@ -2,53 +2,51 @@ from __future__ import absolute_import, print_function
 import logging
 from itertools import chain
 from os import path
-from .core import NeuronDamus as ND
 from .core import ProgressBarRank0 as ProgressBar
+from .core.configuration import GlobalConfig
+from .connection import Connection, SynapseMode, STDPMode
+from .synapse_reader import SynapseReader
 from .utils import compat, bin_search, OrderedDefaultDict
 from .utils.logging import log_verbose
-from .connection import SynapseParameters, Connection, SynapseMode, STDPMode
 
 
 class _ConnectionManagerBase(object):
     """
     An abstract base class common to Synaptic connections and GapJunctions
     """
-    DATA_FILENAME = "nrn.h5"
+
+    DATA_FILENAME = None
+    """Standard circuit filename location. Synapse-tool auto-detects"""
+
     # Synapses dont require circuit_target but GapJunctions do
     # so the generic insertion validates against target.sgid if defined
     _circuit_target = None
     # Connection parameters which might not be used by all Managers
     _synapse_mode = SynapseMode.default
 
-    def __init__(self, circuit_path, target_manager, n_synapse_files):
+    def __init__(self, circuit_path, target_manager, n_synapse_files=None):
+        """Base class c-tor for connections (Synapses & Gap-Junctions) manager
+        """
         self._target_manager = target_manager
         # Connections indexed by post-gid, then ordered by pre-gid
         self._connections_map = OrderedDefaultDict()
         self._disabled_conns = OrderedDefaultDict()
-        # Cur loaded file
-        self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
         self._synapse_reader = None
-        self._nrn_version = None
+        if self.DATA_FILENAME is not None:
+            circuit_path = path.join(circuit_path, self.DATA_FILENAME)
+        # Open the given circuit
+        self.open_synapse_file(circuit_path, n_synapse_files)
 
-        synapse_file = path.join(circuit_path, self.DATA_FILENAME)
-        self.open_synapse_file(synapse_file, n_synapse_files)
+        if GlobalConfig.debug_conn:
+            logging.info("Debugging activated for cell/conn %s", GlobalConfig.debug_conn)
 
-    def open_synapse_file(self, synapse_file, n_synapse_files):
+    # -
+    def open_synapse_file(self, synapse_file, n_synapse_files=None):
         """Initializes a reader for more Synapses or Gap-Junctions
         """
         log_verbose("Initializing synapse reader...")
-        # Use SynReaderSynTool if mod available, since it supports all formats
-        verbose = MPI.rank == 0
-        syntool = SynReaderSynTool(synapse_file, verbose)
-
-        if syntool.isEnabled():
-            log_verbose("[SynRuleManager] Using new-gen SynapseReader.")
-        else:
-            log_verbose("[SynRuleManager] Warning: Attepmting legacy Hdf5 NRN reader")
-            syntool = SynReaderHdf5(synapse_file, n_synapse_files, self._target_manager)
-
-        self._synapse_reader = syntool
-        self._syn_params = {}  # purge cache
+        gids = self._target_manager.cellDistributor.getGidListForProcessor()
+        self._synapse_reader  = SynapseReader.create(synapse_file, gids, n_synapse_files)
 
     # -
     def connect_all(self, gidvec, weight_factor=1):
@@ -60,9 +58,10 @@ class _ConnectionManagerBase(object):
         """
         log_verbose("Creating connections from synapse params file (NRN)...")
         total_created_conns = 0
+        _dbg_conn = GlobalConfig.debug_conn
 
         for tgid in ProgressBar.iter(gidvec):
-            synapses_params = self.get_synapse_parameters(tgid)
+            synapses_params = self._synapse_reader.get_synapse_parameters(tgid)
             cur_conn = None
             logging.debug("Connecting post neuron a%d: %d synapses", tgid, len(synapses_params))
             gid_created_conns = 0
@@ -90,9 +89,8 @@ class _ConnectionManagerBase(object):
                     tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
                 cur_conn.add_synapse(point, syn_params, i)
 
-                # if _debug_conn == (tgid, sgid):
-                #     logging.debug("  -> Params (sgid, D, F, location): %d, %d, %d, %f",
-                #                   syn_params.sgid, syn_params.D, syn_params.F, syn_params.location
+                if _dbg_conn == [tgid, sgid] or len(_dbg_conn) == 1 and _dbg_conn[0] == tgid:
+                    print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, syn_params))
 
             if gid_created_conns > 0:
                 logging.debug("[post-gid %d] Created %d connections", tgid, gid_created_conns)
@@ -131,7 +129,10 @@ class _ConnectionManagerBase(object):
         dst_target = self._target_manager.getTarget(dst_target)
         stdp = STDPMode.from_str(stdp_mode) if stdp_mode is not None else None
         synapses_restrict = synapse_types is not None
+        total_gids_group = 0
         total_created_conns = 0
+        total_configd_conns = 0
+        _dbg_conn = GlobalConfig.debug_conn
 
         if synapses_restrict and not isinstance(synapse_types, (tuple, list)):
             synapse_types = (synapse_types,)
@@ -141,8 +142,9 @@ class _ConnectionManagerBase(object):
                 continue
 
             # this cpu owns some or all of the destination gid
-            syns_params = self.get_synapse_parameters(tgid)
+            syns_params = self._synapse_reader.get_synapse_parameters(tgid)
             gid_created_conns = 0
+            gid_configd_conns = 0
             prev_sgid = None
             pend_conn = None
 
@@ -179,6 +181,7 @@ class _ConnectionManagerBase(object):
                             cur_conn.stdp = stdp
                         if synapse_override is not None:
                             cur_conn.override_synapse(synapse_override)
+                        gid_configd_conns += 1
                     else:
                         if creation_mode:
                             if weight_factor is None:
@@ -195,34 +198,22 @@ class _ConnectionManagerBase(object):
                         tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
                     pend_conn.add_synapse(point, syn_params, i)
 
+                    if _dbg_conn == [tgid, sgid] or len(_dbg_conn) == 1 and _dbg_conn[0] == tgid:
+                        print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, syn_params))
+
             # store any remaining pending connection
             if pend_conn is not None:
                 self.store_connection(pend_conn)
 
             # Info ------
-            if gid_created_conns > 0:
-                logging.debug("[post-gid %d] Created %d connections", tgid, gid_created_conns)
-                total_created_conns += gid_created_conns
+            logging.debug("[post-gid %d] Created %d connections, %d configured",
+                          tgid, gid_created_conns, gid_configd_conns)
+            total_created_conns += gid_created_conns
+            total_configd_conns += gid_configd_conns
+            total_gids_group += 1
 
-        if total_created_conns > 0:
-            log_verbose("Group: Created %d connections", total_created_conns)
-
-    # -
-    def get_synapse_parameters(self, gid):
-        """Access the specified dataset from the nrn.h5 file to get all synapse parameters for
-        a post-synaptic cell
-
-        Args:
-            gid: The gid of the cell whose parameters are required
-
-        Returns: A list containing the parameters (SynapseParameters objects) of each synapse
-        """
-        if gid in self._syn_params:
-            return self._syn_params[gid]  # Cached
-
-        params = self._synapse_reader.loadSynapseParameters(gid)
-        self._syn_params[gid] = params
-        return params
+        log_verbose("Group (Total target cells: %d): Created %d connections, %d configured",
+                    total_gids_group, total_created_conns, total_configd_conns)
 
     # -
     def configure_connection(self, src_target, dst_target, gidvec,
@@ -352,7 +343,7 @@ class _ConnectionManagerBase(object):
         return self._connections_map[target_gid]
 
     def get_synapse_params_gid(self, target_gid):
-        """Get an iterator over all the synapse parameters of a target cell
+        """Get an iterator over all the synapse parameters of a target cell connections
         """
         conns = self._connections_map[target_gid]
         return chain.from_iterable(c.synapse_params for c in conns)

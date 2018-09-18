@@ -167,7 +167,7 @@ class METypeManager(object):
         f = open(combo_file)
         next(f)  # Skip Header
 
-        for tstr in Progress.iter(f):
+        for tstr in f:
             vals = tstr.strip().split()
             if len(vals) not in (6, 8):
                 wmsg = ("Could not parse line %s from MEComboInfoFile %s."

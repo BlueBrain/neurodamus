@@ -62,7 +62,7 @@ class Progress(object):
             start: State from which start the progress. For example, if start is
                    5 and the end is 10, the progress of this state is 50%
         """
-        if start < 0 or start > end:
+        if start < 0 or (end is not False and start > end):
             raise ValueError("Invalid Start value. Must be a non-negative smaller than end")
         self._start = start
         self._end = end
@@ -113,8 +113,10 @@ class Progress(object):
             yield elem
             self.__iadd__(1)
 
+    # Helpers to monitor/show progress while consuming an iterable
+    # ------------------------------------------------------------
     @classmethod
-    def consume_iterable(cls, iterable, end, start=0):
+    def iter(cls, iterable, end=None, start=0):
         """Consumes (a slice of) an iterable.
         Args:
             iterable: the iterable to consume and monitor progress
@@ -123,22 +125,17 @@ class Progress(object):
             start: in which position to start iterating
         """
         if end is None:
-            end = len(iterable)
+            try: end = len(iterable)
+            except TypeError: end = False
         return cls(end, start)(iterable, end, start)
-
-    # Helpers to monitor/show progress while consuming an iterable
-    # ------------------------------------------------------------
-    @classmethod
-    def iter(cls, iterable):
-        return cls.consume_iterable(iterable, len(iterable))
 
     @classmethod
     def itervalues(cls, iterable):
-        return cls.consume_iterable(iterable.values(), len(iterable))
+        return cls.iter(iterable.values(), len(iterable))
 
     @classmethod
     def iteritems(cls, iterable):
-        return cls.consume_iterable(iterable.items(), len(iterable))
+        return cls.iter(iterable.items(), len(iterable))
 
 
 class ProgressBar(Progress):

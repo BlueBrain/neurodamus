@@ -3,12 +3,17 @@ Runtime configuration
 """
 from __future__ import absolute_import
 from enum import Enum
+import os
 from neurodamus.utils import ConfigT
 
 
 class GlobalConfig:
     verbosity = 1
     use_mpi = True
+    debug_conn = os.getenv('ND_DEBUG_CONN', [])
+    if debug_conn:
+        debug_conn = [int(gid) for gid in os.getenv('ND_DEBUG_CONN', '').split(',')]
+        verbosity = 3
 
 
 class RNGConfig(ConfigT):
