@@ -2,7 +2,7 @@ from __future__ import absolute_import, print_function
 import logging
 from itertools import chain
 from os import path
-from .core import ProgressBarRank0 as ProgressBar
+from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core.configuration import GlobalConfig
 from .connection import Connection, SynapseMode, STDPMode
 from .synapse_reader import SynapseReader
@@ -93,10 +93,10 @@ class _ConnectionManagerBase(object):
                     print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, syn_params))
 
             if gid_created_conns > 0:
-                logging.debug("[post-gid %d] Created %d connections", tgid, gid_created_conns)
+                logging.debug("[post-gid %d] 0: Created %d connections", tgid, gid_created_conns)
                 total_created_conns += gid_created_conns
 
-        log_verbose("ConnectAll: Created %d connections", total_created_conns)
+        log_verbose("(rank0) ConnectAll: Created %d connections", total_created_conns)
 
     # Compatibility
     connectAll = connect_all
@@ -212,7 +212,7 @@ class _ConnectionManagerBase(object):
             total_configd_conns += gid_configd_conns
             total_gids_group += 1
 
-        log_verbose("Group (Total target cells: %d): Created %d connections, %d configured",
+        log_verbose("(Rank0) Group target cells: %d. Connections created: %d, configured: %d",
                     total_gids_group, total_created_conns, total_configd_conns)
 
     # -
@@ -502,7 +502,9 @@ class SynapseRuleManager(_ConnectionManagerBase):
                 conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
             logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
             n_created_conns += len(conns)
-        log_verbose("Created %d connections", n_created_conns)
+            
+        all_ranks_total= MPI.allreduce(n_created_conns, MPI.SUM)
+        logging.info(" => Created %d connections", all_ranks_total)
 
     # compat
     finalizeSynapses = finalize
@@ -531,10 +533,12 @@ class SynapseRuleManager(_ConnectionManagerBase):
                     used_src_gids.add(conn.sgid)
 
         n_added_spike_src = len(used_src_gids)
-        if n_added_spike_src == 0:
-            logging.warning("No cells were injected replay stimulus")
-        else:
-            log_verbose("Cpu0: Added replays to %d src cells" % n_added_spike_src)
+        total_replay_cells = MPI.allreduce(n_added_spike_src, MPI.SUM)
+        if MPI.rank == 0:
+            if total_replay_cells == 0:
+                logging.warning("No cells were injected replay stimulus")
+            else:
+                logging.info(" => Added replays to %d src cells" % total_replay_cells)
 
 
 # ################################################################################################
@@ -592,7 +596,9 @@ class GapJunctionManager(_ConnectionManagerBase):
                     cell_distributor.pnm, metype, t_gj_offset, self._gj_offsets[conn.sgid-1])
             logging.debug("Created %d gap-junctions on post-gid %d", len(conns), tgid)
             n_created_conns += len(conns)
-        log_verbose("Created %d Gap-Junctions", n_created_conns)
+        
+        all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
+        logging.info(" => Created %d Gap-Junctions", all_ranks_total)
 
     # Compat
     finalizeGapJunctions = finalize

@@ -127,6 +127,10 @@ class _MPI:
     _size = 1
     _rank = 0
     _pnm = None
+    
+    SUM = 1
+    MAX = 2
+    MIN = 3
 
     @classmethod
     def _init_pnm(cls):

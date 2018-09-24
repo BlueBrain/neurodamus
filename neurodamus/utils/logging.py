@@ -60,8 +60,8 @@ class _LevelFormatter(_ColoredFormatter):
         record = copy(record)  # All changes done here dont persist
         record.levelname = record.levelname.center(6)
         addins = self._level_tabs.get(record.levelno, "")
-        if self._rank is not None and record.levelno >= _logging.WARNING:
-            addins = ("Cpu %d: " % (self._rank,)) + addins
+        if self._rank is not None and record.levelno >= _logging.ERROR:
+            addins = ("(rank %d) " % (self._rank,)) + addins
         record.msg = addins + record.msg
         msg = _ColoredFormatter.format(self, record)
         if self._with_time:

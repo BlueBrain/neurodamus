@@ -62,6 +62,13 @@ class SynReaderSynTool(SynapseReader):
         Currently it uses the neuron NMODL interface.
     """
     def __init__(self, syn_source, verbose=False):
+        # Avoid warning from lib synapsetool, no way in neurodamus config to specify circuit file
+        if path.isdir(syn_source):
+            syn2file = path.join(syn_source, "circuit.syn2")
+            if path.isfile(syn2file):
+                logging.info("[SynapseReader] loading syn2file %s", syn2file)
+                syn_source = syn2file
+            
         self._syn_reader = reader = ND.SynapseReader(syn_source, verbose)
         if not reader.modEnabled():
             raise NotImplementedError("SynapseReader support not available.")
