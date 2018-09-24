@@ -127,7 +127,8 @@ class Progress(object):
         if end is None:
             try: end = len(iterable)
             except TypeError: end = False
-        return cls(end, start)(iterable, end, start)
+        # __call__ 'end' cant be False -> None
+        return cls(end, start)(iterable, end or None, start)
 
     @classmethod
     def itervalues(cls, iterable):
