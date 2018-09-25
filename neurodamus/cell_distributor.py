@@ -168,7 +168,9 @@ class CellDistributor(object):
             self._pnm.cells.append(cell.CellRef)
             total_created_cells += 1
 
-        log_verbose("Created %d cells", total_created_cells)
+        global_cells_created = MPI.allreduce(total_created_cells, MPI.SUM)
+        logging.info(" => Created %d cells (%d in rank 0)",
+                     global_cells_created, total_created_cells)
 
     #
     @staticmethod

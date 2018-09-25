@@ -857,6 +857,20 @@ class Node:
 
     #
     def dump_circuit_config(self, suffix="dbg"):
+        if not path.isfile("debug_gids.txt"):
+            logging.info("Debugging all gids")
+            gids = self.gidvec
+        else:
+            gids = []
+            for line in open("debug_gids.txt"):
+                line = line.strip()
+                if not line: continue
+                gid = int(line)
+                if gid in self.gidvec:
+                    gids.append(gid)
+            if gids:
+                print("[INFO] Rank %d: Debugging %d gids from debug_gids.txt" % (MPI.rank, len(gids)))
+
         for gid in self.gidvec:
             pnm.pc.prcellstate(gid, suffix)
 
