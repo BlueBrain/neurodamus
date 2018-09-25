@@ -857,6 +857,7 @@ class Node:
 
     #
     def dump_circuit_config(self, suffix="dbg"):
+        Nd.finitialize()
         if not path.isfile("debug_gids.txt"):
             logging.info("Debugging all gids")
             gids = self.gidvec
