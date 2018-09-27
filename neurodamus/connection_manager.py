@@ -66,6 +66,9 @@ class _ConnectionManagerBase(object):
             logging.debug("Connecting post neuron a%d: %d synapses", tgid, len(synapses_params))
             gid_created_conns = 0
 
+            if len(_dbg_conn) == 1 and _dbg_conn[0] == tgid:
+                print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, synapses_params))
+
             for i, syn_params in enumerate(synapses_params):
                 sgid = int(syn_params.sgid)
                 if self._circuit_target and not self._circuit_target.completeContains(sgid):
@@ -89,8 +92,8 @@ class _ConnectionManagerBase(object):
                     tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
                 cur_conn.add_synapse(point, syn_params, i)
 
-                if _dbg_conn == [tgid, sgid] or len(_dbg_conn) == 1 and _dbg_conn[0] == tgid:
-                    print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, syn_params))
+                if _dbg_conn == [tgid, sgid]:
+                    print("[ DEBUG ] -> Tgid={} Sgid={} Params: {}".format(tgid, sgid, syn_params))
 
             if gid_created_conns > 0:
                 logging.debug("[post-gid %d] 0: Created %d connections", tgid, gid_created_conns)
@@ -148,6 +151,9 @@ class _ConnectionManagerBase(object):
             prev_sgid = None
             pend_conn = None
 
+            if len(_dbg_conn) == 1 and _dbg_conn[0] == tgid:
+                print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, syns_params))
+
             for i, syn_params in enumerate(syns_params):
                 if synapses_restrict and syn_params.synType not in synapse_types:
                     continue
@@ -198,7 +204,7 @@ class _ConnectionManagerBase(object):
                         tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
                     pend_conn.add_synapse(point, syn_params, i)
 
-                    if _dbg_conn == [tgid, sgid] or len(_dbg_conn) == 1 and _dbg_conn[0] == tgid:
+                    if _dbg_conn == [tgid, sgid]:
                         print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, syn_params))
 
             # store any remaining pending connection
@@ -502,8 +508,8 @@ class SynapseRuleManager(_ConnectionManagerBase):
                 conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
             logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
             n_created_conns += len(conns)
-            
-        all_ranks_total= MPI.allreduce(n_created_conns, MPI.SUM)
+
+        all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
         logging.info(" => Created %d connections", all_ranks_total)
 
     # compat
@@ -596,7 +602,7 @@ class GapJunctionManager(_ConnectionManagerBase):
                     cell_distributor.pnm, metype, t_gj_offset, self._gj_offsets[conn.sgid-1])
             logging.debug("Created %d gap-junctions on post-gid %d", len(conns), tgid)
             n_created_conns += len(conns)
-        
+
         all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
         logging.info(" => Created %d Gap-Junctions", all_ranks_total)
 

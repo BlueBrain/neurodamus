@@ -3,7 +3,7 @@ from os import path
 import logging
 from collections import defaultdict
 from .core.configuration import ConfigurationError
-from .core import NeuronDamus as Nrn, ProgressBarRank0 as Progress
+from .core import NeuronDamus as Nrn
 from .utils.logging import log_verbose
 
 

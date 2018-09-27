@@ -857,7 +857,9 @@ class Node:
 
     #
     def dump_circuit_config(self, suffix="dbg"):
+        log_stage("Dumping cells state")
         Nd.finitialize()
+
         if not path.isfile("debug_gids.txt"):
             logging.info("Debugging all gids")
             gids = self.gidvec
@@ -869,10 +871,10 @@ class Node:
                 gid = int(line)
                 if gid in self.gidvec:
                     gids.append(gid)
-            if gids:
-                print("[INFO] Rank %d: Debugging %d gids from debug_gids.txt" % (MPI.rank, len(gids)))
+            if len(gids):
+                print("[INFO] Rank %d: Debugging %d gids in debug_gids.txt" % (MPI.rank, len(gids)))
 
-        for gid in self.gidvec:
+        for gid in gids:
             pnm.pc.prcellstate(gid, suffix)
 
     # ---------------------------------------------------------------------------
@@ -902,7 +904,7 @@ class Node:
 class Neurodamus(Node):
     """A high level interface to Neurodamus
     """
-    def __init__(self, recipe_file, logging_level=None):
+    def __init__(self, recipe_file, enable_reports=True, logging_level=None):
         """Creates and initializes a neurodamus run node
         Args:
             recipe_file: The BlueConfig recipe file
@@ -918,10 +920,11 @@ class Neurodamus(Node):
 
         Node.__init__(self, recipe_file)
 
-        self._instantiate_simulation()
+        self._instantiate_simulation(enable_reports)
+        # In case an exception occurs we must prevent the destructor from cleaning
         self._init_ok = True
 
-    def _instantiate_simulation(self):
+    def _instantiate_simulation(self, enable_reports=True):
         log_stage("============= INITIALIZING (& Load-Balancing) =============")
         self.load_targets()
         self.compute_loadbal()
@@ -936,7 +939,8 @@ class Neurodamus(Node):
 
         self.enable_stimulus()
         self.enable_modifications()
-        self.enable_reports()
+        if enable_reports:
+            self.enable_reports()
 
     def run(self, spike_filaname='spikes.dat', show_progress=True):
         """Runs the Simulation, writing the spikes to the given file

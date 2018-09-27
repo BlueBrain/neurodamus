@@ -3,7 +3,8 @@ from collections import OrderedDict
 import logging  # active only in rank 0 (init)
 from os import path
 import numpy as np
-from .core import NeuronDamus as Nd, MPI
+from .core import MPI, mpi_no_errors
+from .core import NeuronDamus as Nd
 from .core.configuration import ConfigurationError
 from .core import ProgressBarRank0 as ProgressBar
 from .metype import METype, METypeManager
@@ -233,6 +234,7 @@ class CellDistributor(object):
 
     #
     @staticmethod
+    @mpi_no_errors
     def _load_mvd3(run_conf, total_cells, gidvec):
         """Load cells from MVD3, required for v6 circuits
         """
@@ -255,6 +257,11 @@ class CellDistributor(object):
             incr = MPI.cpu_count
             gidvec = np.arange(cell_i, total_cells + 1, incr, dtype="uint32")
 
+        if not len(gidvec):
+            # Not enough cells to give this rank somea
+            logging.warning("Rank %d has no cells assigned.", MPI.rank)
+            return total_cells, compat.Vector('I'), METypeManager()
+
         # Indexes are 0-based, and cant be numpy
         indexes = compat.Vector("I", gidvec - 1)
 
@@ -275,7 +282,6 @@ class CellDistributor(object):
             logging.info(str(gidvec))
             logging.info("Memap: " + str(meinfo._me_map.keys()))
             raise RuntimeError("Errors found during processing of mecombo file. See log")
-        MPI.barrier()
 
         return total_cells, gidvec, meinfo
 
