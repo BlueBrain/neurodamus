@@ -504,7 +504,9 @@ class SynapseRuleManager(_ConnectionManagerBase):
         for tgid, conns in ProgressBar.iteritems(self._connections_map):
             metype = cell_distributor.getMEType(tgid)
             spgid = cell_distributor.getSpGid(tgid)
-            for conn in conns:  # type: Connection
+            # NOTE: neurodamus hoc keeps connections in reversed order.
+            # To exactly replicate results we temporarily finalize conns in reversed order
+            for conn in reversed(conns):  # type: Connection
                 conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
             logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
             n_created_conns += len(conns)
