@@ -4,7 +4,7 @@
 import sys
 from setuptools import setup
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 
 def setup_package():
