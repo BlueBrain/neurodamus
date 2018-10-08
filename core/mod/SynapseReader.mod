@@ -49,6 +49,7 @@ VERBATIM
 #else
 #warning "SynapseReader Enabled"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <syn2/c_reader.h>
@@ -80,13 +81,13 @@ typedef struct {
     s2id_t file;
     Strings_ fieldNames;
     // dataset dependent
-    uint32_t tgid;
+    uint64_t tgid;
     const Syn2Field* fields;
     size_t length;
     int n_fields;
 } ReaderState;
 
-static const ReaderState STATE_RESET = {-1, {NULL, 0}, 0, NULL, 0, -1};
+static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 
 // Use state var as a pointer
 #define state_ptr (*((ReaderState**)(&state_)))
@@ -263,7 +264,7 @@ VERBATIM
         return -1;
     }
 
-    uint32_t tgid = (uint32_t) *getarg(1);
+    uint64_t tgid = (uint64_t) *getarg(1);
 
     if (tgid == state_ptr->tgid) {  // Already loaded?
         return state_ptr->length;
