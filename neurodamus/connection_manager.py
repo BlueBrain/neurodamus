@@ -5,7 +5,7 @@ from os import path
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core.configuration import GlobalConfig
 from .connection import Connection, SynapseMode, STDPMode
-from .synapse_reader import SynapseReader
+from .synapse_reader import SynapseReader, SynToolNotAvail
 from .utils import compat, bin_search, OrderedDefaultDict
 from .utils.logging import log_verbose
 
@@ -15,14 +15,15 @@ class _ConnectionManagerBase(object):
     An abstract base class common to Synaptic connections and GapJunctions
     """
 
-    DATA_FILENAME = None
-    """Standard circuit filename location. Synapse-tool auto-detects"""
+    CIRCUIT_FILENAMES = None
+    """The possible circuit filenames specificed in search order"""
 
+    # We declare class variables which might be used in subclass methods
     # Synapses dont require circuit_target but GapJunctions do
     # so the generic insertion validates against target.sgid if defined
     _circuit_target = None
-    # Connection parameters which might not be used by all Managers
     _synapse_mode = SynapseMode.default
+    _local_gids = None
 
     def __init__(self, circuit_path, target_manager, n_synapse_files=None):
         """Base class c-tor for connections (Synapses & Gap-Junctions) manager
@@ -32,21 +33,26 @@ class _ConnectionManagerBase(object):
         self._connections_map = OrderedDefaultDict()
         self._disabled_conns = OrderedDefaultDict()
         self._synapse_reader = None
-        if self.DATA_FILENAME is not None:
-            circuit_path = path.join(circuit_path, self.DATA_FILENAME)
-        # Open the given circuit
-        self.open_synapse_file(circuit_path, n_synapse_files)
+        self._local_gids = target_manager.cellDistributor.getGidListForProcessor()
+
+        if path.isfile(circuit_path):
+            circuit_file = circuit_path
+            circuit_path = path.dirname(circuit_path)
+        else:
+            circuit_file = self._find_circuit_file(circuit_path) \
+                if path.isdir(circuit_path) else None
+            assert circuit_file, "Circuit path doesnt contain circuit files"
+
+        # Find and open the circuit
+        try:
+            self.open_synapse_file(circuit_file, n_synapse_files)
+        except SynToolNotAvail:
+            circuit_file = self._find_fallback_file(circuit_path)
+            assert circuit_file, "No SynTool support and no fallback NRN file"
+            self.open_synapse_file(circuit_file, n_synapse_files)
 
         if GlobalConfig.debug_conn:
             logging.info("Debugging activated for cell/conn %s", GlobalConfig.debug_conn)
-
-    # -
-    def open_synapse_file(self, synapse_file, n_synapse_files=None):
-        """Initializes a reader for more Synapses or Gap-Junctions
-        """
-        log_verbose("Initializing synapse reader...")
-        gids = self._target_manager.cellDistributor.getGidListForProcessor()
-        self._synapse_reader  = SynapseReader.create(synapse_file, gids, n_synapse_files)
 
     # -
     def connect_all(self, gidvec, weight_factor=1):
@@ -71,6 +77,7 @@ class _ConnectionManagerBase(object):
 
             for i, syn_params in enumerate(synapses_params):
                 sgid = int(syn_params.sgid)
+                # Only applicable to GAP-Junctions
                 if self._circuit_target and not self._circuit_target.completeContains(sgid):
                     continue
 
@@ -163,7 +170,7 @@ class _ConnectionManagerBase(object):
                 if not src_target.completeContains(sgid):
                     continue
 
-                # is this gid in the self._circuit_target (if defined)
+                # Only applicable to GAP-Junctions
                 if self._circuit_target and not self._circuit_target.completeContains(sgid):
                     continue
 
@@ -443,7 +450,6 @@ class _ConnectionManagerBase(object):
     def get_disabled(self, post_gid):
         return self._disabled_conns[post_gid]
 
-    # -
     @staticmethod
     def _find_group_in(conn_map, post_gids, pre_gids=None):
         # type: (dict, list, list) -> []
@@ -455,6 +461,21 @@ class _ConnectionManagerBase(object):
                     continue
                 yield c, conns, i
 
+    @classmethod
+    def _find_circuit_file(cls, location):
+        for fname in cls.CIRCUIT_FILENAMES:
+            fullname = path.join(location, fname)
+            if path.isfile(fullname):
+                return fullname
+        else:
+            return None
+
+    @classmethod
+    def _find_fallback_file(cls, location):
+        location = location if path.isdir(location) else path.dirname(location)
+        fullname = path.join(location, cls.CIRCUIT_FILENAMES[-1])
+        return fullname if path.isfile(fullname) else None
+
 
 # ################################################################################################
 # SynapseRuleManager
@@ -462,32 +483,45 @@ class _ConnectionManagerBase(object):
 class SynapseRuleManager(_ConnectionManagerBase):
     """
     The SynapseRuleManager is designed to encapsulate the creation of synapses for BlueBrain
-    simulations, handling the data coming from the nrn.h5 file. If the BlueConfig file provides any
+    simulations, handling the data coming from the circuit file. If the BlueConfig file provides any
     Connection Rules, those override which synapses are created.
+
     Note that the Connection rules are processed with the assumption that they come in the config
     file from more general to more specific. E.g.: A column->column connection should come before
     layer 4 -> layer 2 which should come before L4PC -> L2PC.
+
     Once all synapses are preped with final weights, the netcons can be created.
     """
+
+    CIRCUIT_FILENAMES = ('circuit.sonata', 'circuit.syn2', 'nrn.h5')
 
     def __init__(self, circuit_path, target_manager, n_synapse_files, synapse_mode=None):
         """ Constructor for SynapseRuleManager, checks that the nrn.h5 synapse file is available
         for reading
 
         Args:
-            circuit_path: Circuit path ('ncsStructural_gp2/nrn.h5' is added by this function)
+            circuit_path: Circuit path, typically a folder with circuit.syn2 or nrn.h5
             target_manager: The TargetManager which will be used to query targets and translate
                 locations to points
-            n_synapse_files: How many nrn.h5 files to expect (typically 1)
+            n_synapse_files: How many nrn.h5 files to expect (Nrn only, typically 1)
             synapse_mode: str dictating modifiers to what synapses are placed based on synType
                 (AmpaOnly vs DualSyns). Default: DualSyns
         """
         _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
+
         self._synapse_mode = SynapseMode.from_str(synapse_mode) \
             if synapse_mode is not None else SynapseMode.default
 
         #  self._rng_list = []
         self._replay_list = []
+
+    # -
+    def open_synapse_file(self, synapse_file, n_synapse_files=None):
+        """Initializes a reader for Synapses
+        """
+        logging.info("Opening Synapse file %s", synapse_file)
+        self._synapse_reader = SynapseReader.create(
+            synapse_file, SynapseReader.SYNAPSES, self._local_gids, n_synapse_files)
 
     # -
     def finalize(self, base_seed=0):
@@ -558,9 +592,10 @@ class GapJunctionManager(_ConnectionManagerBase):
     which will have the locations and conductance strengths of gap junctions detected in the
     circuit. The user will have the capacity to scale the conductance weights
     """
-    DATA_FILENAME = "nrn_gj.h5"  # override
 
-    def __init__(self, circuit_path, target_manager, n_synapse_files, circuit_target=None):
+    CIRCUIT_FILENAMES = ("gj.sonata", "gj.syn2", "nrn_gj.h5")
+
+    def __init__(self, circuit_path, target_manager, n_synapse_files=None, circuit_target=None):
         """Constructor for GapJunctionManager, checks that the nrn_gj.h5 synapse file is available
         for reading
 
@@ -573,12 +608,12 @@ class GapJunctionManager(_ConnectionManagerBase):
                 including off node. Default: full circuit
         """
         _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
-
         self._circuit_target = circuit_target
+
+        log_verbose("Computing gap-junction offsets from gjinfo.txt")
         self._gj_offsets = compat.Vector("I")
         gjfname = path.join(circuit_path, "gjinfo.txt")
         gj_sum = 0
-        log_verbose("Computing gap-junction offsets from gjinfo.txt")
 
         for line in open(gjfname):
             gid, offset = line.strip().split()
@@ -586,6 +621,14 @@ class GapJunctionManager(_ConnectionManagerBase):
             # fist gid has no offset.  the final total is not used as an offset at all.
             self._gj_offsets.append(gj_sum)
             gj_sum += 2 * offset
+
+    # -
+    def open_synapse_file(self, synapse_file, n_synapse_files=None):
+        """Initializes a reader for Synapses
+        """
+        logging.info("Opening Gap-Junctions file %s", synapse_file)
+        self._synapse_reader = SynapseReader.create(
+            synapse_file, SynapseReader.GAP_JUNCTIONS, self._local_gids, n_synapse_files)
 
     # -
     def finalize(self):

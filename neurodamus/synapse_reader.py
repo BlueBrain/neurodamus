@@ -10,6 +10,10 @@ class SynapseReader:
     """ Synapse Readers base class.
         Factory create() will attempt to instantiate SynReaderSynTool, followed by SynReaderNRN.
     """
+    # Data types to read
+    SYNAPSES = 0
+    GAP_JUNCTIONS = 1
+
     _syn_reader = None
     _has_nrrp = None
 
@@ -43,17 +47,19 @@ class SynapseReader:
         return self._has_nrrp
 
     @classmethod
-    def create(cls, syn_src, *args, **kw):
-        # FACTORY
+    def create(cls, syn_src, conn_type=SYNAPSES, *args, **kw):
+        # If create called from this class then FACTORY, try SynReaderSynTool
         if cls is SynapseReader:
             try:
-                reader = SynReaderSynTool(syn_src, MPI.rank == 0)
+                reader = SynReaderSynTool(syn_src, conn_type, verbose=(MPI.rank == 0))
                 log_verbose("[SynReader] Using new-gen SynapseReader.")
-            except NotImplementedError as e:
-                logging.warning("[SynReader] " + str(e) + " Attempting legacy hdf5 reader.")
-                reader = SynReaderNRN(syn_src, *args, **kw)
+            except SynToolNotAvail as e:
+                if not syn_src.endswith(".h5"):
+                    raise  # reraise because we cant use the fallback for non nrn files
+                logging.info("[SynReader] " + str(e) + " Attempting legacy hdf5 reader.")
+                reader = SynReaderNRN(syn_src, conn_type, *args, **kw)
         else:
-            reader = cls(args, **kw)
+            reader = cls(args, conn_type, *args, **kw)
         return reader
 
 
@@ -61,26 +67,19 @@ class SynReaderSynTool(SynapseReader):
     """ Synapse Reader using synapse tool.
         Currently it uses the neuron NMODL interface.
     """
-    def __init__(self, syn_source, verbose=False):
-        # Avoid warning from lib synapsetool, no way in neurodamus config to specify circuit file
-        if path.isdir(syn_source):
-            nrnfile = path.join(syn_source, "nrn.h5")
-            syn2file = path.join(syn_source, "circuit.syn2")
-            if not path.isfile(nrnfile) and path.isfile(syn2file):
-                log_verbose("Loading syn2file %s", syn2file)
-                syn_source = syn2file
+    def __init__(self, syn_source, conn_type, verbose=False):
+        # Instantiate the NMODL reader
+        self._syn_reader = reader = ND.SynapseReader(syn_source, conn_type, verbose)
 
-        self._syn_reader = reader = ND.SynapseReader(syn_source, verbose)
         if not reader.modEnabled():
-            raise NotImplementedError("SynapseReader support not available.")
+            raise SynToolNotAvail("SynapseReader support not available.")
+
         self._has_nrrp = reader.hasNrrpField()
         SynapseReader.__init__(self, syn_source)
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader
-
-        # Load data. SynapseTool is base 0
-        nrow = int(reader.loadSynapses(gid - 1))
+        nrow = int(reader.loadSynapses(gid))
         if nrow < 1:
             return SynapseParameters.empty
 
@@ -93,30 +92,29 @@ class SynReaderSynTool(SynapseReader):
             # as_numpy() shares memory to ndarray[double] -> can be copied (assigned) to the view
             syn_params_mtx[syn_i, :12] = tmpParams.as_numpy()
 
-        conn_syn_params.sgid += 1  # make s-gids 1-based (as expected by neurodamus)
         return conn_syn_params
 
 
 class SynReaderNRN(SynapseReader):
     """ Synapse Reader for NRN format only, using the hdf5_reader mod.
     """
-    def __init__(self, syn_src, local_gids, n_synapse_files):
+    def __init__(self, syn_src, conn_type, local_gids, n_synapse_files, verbose=False):
         if path.isdir(syn_src):
             syn_src = path.join(syn_src, 'nrn.h5')
         # Hdf5 reader doesnt do checks, failing badly (and crypticly) later
-        if not path.isfile(syn_src):
-            if n_synapse_files == 1:
-                raise RuntimeError("NRN synapses file not found: " + syn_src)
-            else:
-                if not path.isfile(syn_src + ".1"):
-                    raise RuntimeError("NRN synapses files not found: " + syn_src + ".1")
+        if not path.isfile(syn_src) and not path.isfile(syn_src + ".1"):
+            raise RuntimeError("NRN synapses file not found: " + syn_src)
 
         self._syn_reader = reader = ND.HDF5Reader(syn_src, n_synapse_files)
         self.nrn_version = reader.checkVersion()
         self._has_nrrp = self.nrn_version > 4
         self._n_synapse_files = n_synapse_files
         if n_synapse_files > 1:
-            reader.exchangeSynapseLocations(local_gids)
+            # excg-location requires true vector
+            vec = ND.Vector(len(local_gids))
+            for num in local_gids:
+                vec.append(num)
+            reader.exchangeSynapseLocations(vec)
         SynapseReader.__init__(self, syn_src)
 
     def _load_synapse_parameters(self, gid):
@@ -156,3 +154,7 @@ class SynReaderNRN(SynapseReader):
                 params[11] = -1
 
         return conn_syn_params
+
+
+class SynToolNotAvail(Exception):
+    pass
