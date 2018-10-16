@@ -101,29 +101,36 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 
 
 // The NRN Synapse fields according to SYN2 transitional spec
-// ----------------------------------------------------------
-//   - connected_neurons_post
-//   0 connected_neurons_pre
-//   1 delay
-//   2 morpho_section_id_post
-//   3 morpho_segment_id_post
-//   4 morpho_offset_segment_post
-//   5 morpho_section_id_pre
-//   6 morpho_segment_id_pre
-//   7 morpho_offset_segment_pre
-//   8 conductance
-//   9 u_syn
-//  10 depression_time
-//  11 facilitation_time
-//  12 decay_time
-//  13 syn_type_id
-//  14 morpho_type_id_pre
-//  15 morpho_branch_order_dend  # N/A
-//  16 morpho_branch_order_axon  # Irrelevant
-//  17 n_rrp_vesicles
-//  18 morpho_section_type_pos   # N/A
+// ---------------------------------------------------------------------
+// | Synapse field name     [ND index] |  Gap-J fields name
+// ---------------------------------------------------------------------
+//   - connected_neurons_post          | connected_neurons_post (not loaded)
+//   0 connected_neurons_pre      [0]  | connected_neurons_pre
+//   1 delay                      [1]  | N/A
+//   2 morpho_section_id_post     [2]  | morpho_section_id_post
+//   3 morpho_segment_id_post     [3]  | morpho_section_id_post
+//   4 morpho_offset_segment_post [4]  | morpho_section_id_post
+//   5 morpho_section_id_pre           | morpho_section_id_pre (unused)
+//   6 morpho_segment_id_pre           | morpho_section_id_pre (unused)
+//   7 morpho_offset_segment_pre       | morpho_section_id_pre (unused)
+//   8 conductance                [5]  | conductance (optional)
+//   9 u_syn                      [6]  | N/A
+//  10 depression_time            [7]  | junction_id_pre
+//  11 facilitation_time          [8]  | junction_id_post
+//  12 decay_time                 [9]  | N/A
+//  13 syn_type_id                [10] | N/A
+//  14 morpho_type_id_pre              | N/A
+//  15 morpho_branch_order_dend        | N/A
+//  16 morpho_branch_order_axon        | N/A
+//  17 n_rrp_vesicles (optional)  [11] | N/A
+//  18 morpho_section_type_pos         | N/A
 
-// The 12 synapse fields read by neurodamus
+// C99 Use #define for constants
+#define ND_FIELD_COUNT 12
+#define ND_GJ_PREGID_I 0
+#define ND_GJ_CONDUCTANCE_I 5
+
+// The 11 mandatory fields read by neurodamus
 #define BASE_SYN_FIELDS "connected_neurons_pre, \
                          delay, \
                          morpho_section_id_post, \
@@ -135,23 +142,23 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
                          syn_type_id"
 #define NRRP_FIELD "n_rrp_vesicles"
 
-// The 7 fields for GapJunctions required by neurodamus
-#define _GJ_FIELDS "connected_neurons_pre, \
-                    morpho_section_id_post, \
-                    morpho_segment_id_post, \
-                    morpho_offset_segment_post, \
-                    conductance, \
-                    junction_id_pre, \
-                    junction_id_post"
+// The 6 mandatory fields for GapJunctions read by neurodamus
+#define _BASE_GJ_FIELDS "connected_neurons_pre, \
+                         morpho_section_id_post, \
+                         morpho_segment_id_post, \
+                         morpho_offset_segment_post, \
+                         junction_id_pre, \
+                         junction_id_post"
 
-static const int ND_FIELD_COUNT = 12;
-static const int ND_FIELDS_GJ_COUNT = 9;
 static const char* SYN_FIELDS_NO_RRP = BASE_SYN_FIELDS;
 static const char* SYN_FIELDS = BASE_SYN_FIELDS ", " NRRP_FIELD;
-static const char* GJ_FIELDS = _GJ_FIELDS;
+static const char* GJ_FIELDS_NO_CONDUCTANCE = _BASE_GJ_FIELDS;
+static const char* GJ_FIELDS = _BASE_GJ_FIELDS ", conductance" ;
+
 // relative position of the 7 GJ fields into the 12-field neurodamus structure
+// Conductance is fetched last since its optional
 // Why the structure is not packed? Any special meaning for pos 1 and 6?
-static const int GJ_POSITIONS[] = {0, 2, 3, 4, 5, 7, 8};
+static const int ND_GJ_POSITIONS[] = {ND_GJ_PREGID_I, 2, 3, 4, 7, 8, ND_GJ_CONDUCTANCE_I};
 
 
 static int _syn_is_empty() {
@@ -159,7 +166,7 @@ static int _syn_is_empty() {
 }
 
 
-static _Strings getFieldNames() {
+static _Strings _getFieldNames() {
     if (state_ptr->fieldNames.data == NULL) {
         const Syn2Dataset names_ds = syn_list_property_names(state_ptr->file);
         state_ptr->fieldNames.data = as_str_array(names_ds.data);
@@ -169,13 +176,13 @@ static _Strings getFieldNames() {
 }
 
 
-static int _syn_hasNrrp()  {
-    const _Strings names_ds = getFieldNames();
+static int _syn_has_field(const char* field_name) {
+    const _Strings names_ds = _getFieldNames();
     syn2_vec_str names = names_ds.data;
 
     int i;
     for (i=0; i < names_ds.length; i++) {
-        if (strcmp(names[i], "n_rrp_vesicles") == 0)
+        if (strcmp(names[i], field_name) == 0)
             return 1;
     }
     return 0;
@@ -192,6 +199,7 @@ static int _store_result(uint64_t tgid, const Syn2Table *tb)  {
     return tb->length;
 }
 
+
 /// Loads data from synapse file into internal state
 static int _load_data(uint64_t tgid, int conn_type, const char* fields) {
     if (state_ptr->file == -1)  {
@@ -202,15 +210,6 @@ static int _load_data(uint64_t tgid, int conn_type, const char* fields) {
     // Already loaded?
     if (tgid == state_ptr->tgid && conn_type == loaded_conn_type) {
         return state_ptr->length;
-    }
-
-    if (!fields) {
-        if (conn_type == CONN_SYNAPSES) {
-            fields = _syn_hasNrrp()? SYN_FIELDS : SYN_FIELDS_NO_RRP;
-        }
-        else if (conn_type == CONN_GAPJUNCTIONS) {
-            fields = GJ_FIELDS;
-        }
     }
 
     const Syn2Selection sel = syn_select_post(tgid);
@@ -280,7 +279,7 @@ ENDVERBATIM
 FUNCTION countProperties(){ : string cellname
 VERBATIM
 #ifndef DISABLE_SYNTOOL
-    const _Strings names_ds = getFieldNames();
+    const _Strings names_ds = _getFieldNames();
     return names_ds.length;
 #endif
 ENDVERBATIM
@@ -302,7 +301,17 @@ ENDVERBATIM
 FUNCTION hasNrrpField() {
 VERBATIM
 #ifndef DISABLE_SYNTOOL
-    return _syn_hasNrrp();
+    return _syn_has_field(NRRP_FIELD);
+#else
+    return -1;
+#endif
+ENDVERBATIM
+}
+
+FUNCTION hasConductance() {
+VERBATIM
+#ifndef DISABLE_SYNTOOL
+    return _syn_has_field("conductance");
 #else
     return -1;
 #endif
@@ -324,7 +333,8 @@ FUNCTION loadSynapses() { : double tgid, string fields
 VERBATIM
 #ifndef DISABLE_SYNTOOL
     uint64_t tgid = (uint64_t) *getarg(1) - 1;  // 0 based
-    const char* fields = ifarg(2)? gargstr(2) : NULL;
+    const char* fields = ifarg(2)? gargstr(2) :
+                         (_syn_has_field(NRRP_FIELD)? SYN_FIELDS : SYN_FIELDS_NO_RRP);
     return _load_data(tgid, CONN_SYNAPSES, fields);
 #else
     fprintf(stderr, "[SynReader] Error: Neurodamus compiled without SYNTOOL\n");
@@ -342,7 +352,8 @@ FUNCTION loadGapJunctions() { : double tgid, string fields
 VERBATIM
 #ifndef DISABLE_SYNTOOL
     uint64_t tgid = (uint64_t) *getarg(1) - 1;
-    return _load_data(tgid, CONN_GAPJUNCTIONS, NULL);
+    //fields = _syn_has_field("conductance")? GJ_FIELDS : GJ_FIELDS_NO_CONDUCTANCE;
+    return _load_data(tgid, CONN_GAPJUNCTIONS, GJ_FIELDS);
 #else
     fprintf(stderr, "[SynReader] Error: Neurodamus compiled without SYNTOOL\n");
     raise(SIGUSR1);
@@ -395,7 +406,7 @@ VERBATIM
     }
 
     for (i=0; i<n_fields; i++) {
-        dst_i = (loaded_conn_type == CONN_GAPJUNCTIONS)? GJ_POSITIONS[i] : i;
+        dst_i = (loaded_conn_type == CONN_GAPJUNCTIONS)? ND_GJ_POSITIONS[i] : i;
         switch(fields[i].datatype) {
         case SYN2_UINT:
             out_buf[dst_i] = (double) as_uint_array(fields[i].data)[row];
@@ -413,7 +424,7 @@ VERBATIM
     }
 
     // pre-gid (field 0) must be incremented by 1 for neurodamus compat
-    out_buf[0] += 1;
+    out_buf[ND_GJ_PREGID_I] += 1;
 
     return 0;
 #endif
