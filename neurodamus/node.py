@@ -506,17 +506,22 @@ class Node:
         and passes the raw text in field/value pairs to a StimulusManager object to interpret the
         text and instantiate an actual stimulus object.
         """
-        # setup of Electrode objects part of enable stimulus
         log_stage("Stimulus apply")
         conf = self._config_parser
+
+        # setup of Electrode objects part of enable stimulus
+        electrodes_path_o = None
         if conf.parsedRun.exists("ElectrodesPath"):
-            electrodes_path = conf.parsedRun.get("ElectrodesPath")
-            self._elec_manager = Nd.ElectrodeManager(electrodes_path, conf.parsedElectrodes)
+            electrodes_path_o = conf.parsedRun.get("ElectrodesPath")
+            logging.info("ElectrodeManager using electrodes from %s", electrodes_path_o.s)
+        else:
+            logging.info("No electrodes path. Extracellular class of stimuli will be unavailable")
+        self._elec_manager = Nd.ElectrodeManager(electrodes_path_o, conf.parsedElectrodes)
 
         # for each stimulus defined in the config file, request the stimmanager to instantiate
         if conf.parsedRun.exists("BaseSeed"):
-            self._stim_manager = Nd.StimulusManager(self._target_manager, self._elec_manager,
-                                                    conf.parsedRun.valueOf("BaseSeed"))
+            self._stim_manager = Nd.StimulusManager(
+                self._target_manager, self._elec_manager, conf.parsedRun.valueOf("BaseSeed"))
         else:
             self._stim_manager = Nd.StimulusManager(self._target_manager, self._elec_manager)
 
