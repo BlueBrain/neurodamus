@@ -562,7 +562,6 @@ class SynapseRuleManager(_ConnectionManagerBase):
         """
         log_verbose("Applying replay map with %d src cells...", len(spike_map))
         target = self._target_manager.getTarget(target_name)
-        used_src_gids = set()
 
         for tgid, conns in ProgressBar.iteritems(self._connections_map):
             if not target.contains(tgid):
@@ -572,15 +571,14 @@ class SynapseRuleManager(_ConnectionManagerBase):
                 if conn.sgid in spike_map:
                     conn.replay(spike_map[conn.sgid])
                     self._replay_list.append(conn)
-                    used_src_gids.add(conn.sgid)
 
-        n_added_spike_src = len(used_src_gids)
-        total_replay_cells = MPI.allreduce(n_added_spike_src, MPI.SUM)
+        n_replays = len(self._replay_list)
+        total_replays = MPI.allreduce(n_replays, MPI.SUM)
         if MPI.rank == 0:
-            if total_replay_cells == 0:
+            if total_replays == 0:
                 logging.warning("No cells were injected replay stimulus")
             else:
-                logging.info(" => Added replays to %d src cells" % total_replay_cells)
+                logging.info(" => Replay applied to %d connections", total_replays)
 
 
 # ################################################################################################
