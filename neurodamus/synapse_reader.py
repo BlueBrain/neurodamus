@@ -14,12 +14,12 @@ class SynapseReader:
     SYNAPSES = 0
     GAP_JUNCTIONS = 1
 
-    _syn_reader = None
-    _has_nrrp = None
-
-    def __init__(self, src, *args, **kw):
-        if self._syn_reader is None:
-            raise TypeError("Subclasses must define _syn_reader")
+    def __init__(self, src, conn_type, syn_reader, has_nrrp, *args, **kw):
+        assert conn_type in (self.SYNAPSES, self.GAP_JUNCTIONS), "conn_type can only be Syn or Gap"
+        assert syn_reader is not None, "syn_reader must not be None"
+        self._conn_type = conn_type
+        self._syn_reader = syn_reader
+        self._has_nrrp = has_nrrp
         self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
 
     def get_synapse_parameters(self, gid):
@@ -69,17 +69,16 @@ class SynReaderSynTool(SynapseReader):
     """
     def __init__(self, syn_source, conn_type, verbose=False):
         # Instantiate the NMODL reader
-        self._syn_reader = reader = ND.SynapseReader(syn_source, conn_type, verbose)
-
+        reader = ND.SynapseReader(syn_source, conn_type, verbose)
         if not reader.modEnabled():
             raise SynToolNotAvail("SynapseReader support not available.")
-
-        self._has_nrrp = reader.hasNrrpField()
-        SynapseReader.__init__(self, syn_source)
+        SynapseReader.__init__(self, syn_source, conn_type, reader, reader.hasNrrpField())
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader
-        nrow = int(reader.loadSynapses(gid))
+
+        nrow = int(reader.loadSynapses(gid) if self._conn_type == self.SYNAPSES
+                   else reader.loadGapJunctions(gid))
         if nrow < 1:
             return SynapseParameters.empty
 
@@ -105,29 +104,26 @@ class SynReaderNRN(SynapseReader):
         if not path.isfile(syn_src) and not path.isfile(syn_src + ".1"):
             raise RuntimeError("NRN synapses file not found: " + syn_src)
 
-        self._syn_reader = reader = ND.HDF5Reader(syn_src, n_synapse_files)
+        reader = ND.HDF5Reader(syn_src, n_synapse_files)
         self.nrn_version = reader.checkVersion()
-        self._has_nrrp = self.nrn_version > 4
         self._n_synapse_files = n_synapse_files
+        SynapseReader.__init__(self, syn_src, conn_type, reader, self.nrn_version > 4)
+
         if n_synapse_files > 1:
             # excg-location requires true vector
             vec = ND.Vector(len(local_gids))
             for num in local_gids:
                 vec.append(num)
             reader.exchangeSynapseLocations(vec)
-        SynapseReader.__init__(self, syn_src)
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader
         cell_name = "a%d" % gid
 
-        if self._n_synapse_files > 1:
-            ret = reader.loadData(gid)
-        else:
-            ret = reader.loadData(cell_name)
+        ret = reader.loadData(gid) if self._n_synapse_files > 1 \
+            else reader.loadData(cell_name)
 
-        # Checks. Error (-1) or no data
-        if ret < 0:
+        if ret < 0:  # No dataset
             return SynapseParameters.empty
         nrow = int(reader.numberofrows(cell_name))
         if nrow == 0:
