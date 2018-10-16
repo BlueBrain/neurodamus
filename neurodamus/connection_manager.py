@@ -642,7 +642,7 @@ class GapJunctionManager(_ConnectionManagerBase):
         for tgid, conns in ProgressBar.iteritems(self._connections_map):
             metype = cell_distributor.getMEType(tgid)
             t_gj_offset = self._gj_offsets[tgid-1]
-            for conn in conns:
+            for conn in reversed(conns):
                 conn.finalize_gap_junctions(
                     cell_distributor.pnm, metype, t_gj_offset, self._gj_offsets[conn.sgid-1])
             logging.debug("Created %d gap-junctions on post-gid %d", len(conns), tgid)
