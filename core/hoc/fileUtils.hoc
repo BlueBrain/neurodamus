@@ -1,0 +1,31 @@
+{nrnpython( "import shutil" )}
+
+/**
+ * Calls a python shutil command involving src and dst, optionally prepending a given path
+ * @param $s1 shutil command
+ * @param $s2 source
+ * @param $s3 dest
+ * @param $s4 path
+ */
+proc shutil() {
+    strdef cmd, src, dst
+    src = $s2
+    dst = $s3
+    if( numarg() == 4 ) {
+        sprint( src, "%s/%s", $s4, src )
+        sprint( dst, "%s/%s", $s4, dst )
+    }
+    sprint( cmd, "shutil.%s(\"%s\", \"%s\")", $s1, src, dst )
+    nrnpython(cmd)
+}
+
+
+func fileExists()  {   localobj fileobj
+    fileobj = new File()
+    fileobj.ropen($s1)
+    if( fileobj.isopen() ) {
+        fileobj.close()
+        return 1
+    }
+    return 0
+}

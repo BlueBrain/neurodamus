@@ -279,24 +279,28 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
  * @param $o1 Cell The cell getting reported
  * @param $o2 TPointList with the points for a single cell
  * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
+ * @param $4 corenrnDataMode: When simulating with coreNeuron (default: false)
  */
 proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
     strdef tstr
-    
+    if( numarg() >= 4 && $4 ) {  // Skip when in coreNeuron mode
+        return
+    }
+
     // Don't attempt to put a cell with 0 points in a BinReport; bad things happen
     if( $o2.count() == 0 ) {
         return
     }
 
     //if no $3, use cell's gid
-    if( numarg() == 3 ) {
+    if( numarg() >= 3 ) {
         vgid = $3
     } else {
         vgid = $o1.gid
     }
-        
+
     rpt = prepareReportForCell( $o1, $o2, vgid )
-    
+
     /*
      * define timesteps in tvec does not work, maybe a neuron issue
     // for the in memory report:
@@ -309,8 +313,8 @@ proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
 
     //for each point, register variable and mapping
     for $o2.each_point(&x) {
-        
-        // special case: area.  create an alu to do the reporting.  
+
+        // special case: area.  create an alu to do the reporting.
         if( strcmp(reportOn, "area") == 0 ) {
             ALUhelper = new ALU( 0.5, reportDt )
             ALUhelper.setop( "constant" )
@@ -320,31 +324,29 @@ proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
             bbss = new BBSaveState()
             bbss.ignore(ALUhelper)
         } else {
-    
-        //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
-        if( 0 == strcmp(format, "Bin") ) {
-            sprint(tstr, "rec.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
-            execute(tstr, this)
-        } else if( 0 == strcmp(format, "Memory") ) {
-            // in-memory report
-            yvec = new Vector()
-            cvode = new CVode()
-            //cvode_active(0)
-            cvode.active(1)
-            sprint(tstr, "cvode.record(&%s(%1.2f), yvec, tvec)", reportOn, x)
-            execute(tstr, this)
-            memory_report.append(yvec)
-        } else {
-            sprint(tstr,"retVal = rec.addvar(%d, &%s(%1.2f))", rpt, reportOn, x )
-            execute(tstr, this)
-            if(retVal ==0){
-                break
+            //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
+            if( 0 == strcmp(format, "Bin") ) {
+                sprint(tstr, "rec.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
+                execute(tstr, this)
+            } else if( 0 == strcmp(format, "Memory") ) {
+                // in-memory report
+                yvec = new Vector()
+                cvode = new CVode()
+                //cvode_active(0)
+                cvode.active(1)
+                sprint(tstr, "cvode.record(&%s(%1.2f), yvec, tvec)", reportOn, x)
+                execute(tstr, this)
+                memory_report.append(yvec)
+            } else {
+                sprint(tstr,"retVal = rec.addvar(%d, &%s(%1.2f))", rpt, reportOn, x )
+                execute(tstr, this)
+                if(retVal ==0){
+                    break
+                }
+                rec.addmapping( rpt, sectionNo( $o1 ) )
             }
-            rec.addmapping( rpt, sectionNo( $o1 ) )
         }
-
-        }
-    }    
+    }
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -354,7 +356,7 @@ proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
  *
  */
 obfunc get_memory_report() {
-    return memory_report 
+    return memory_report
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -364,20 +366,24 @@ obfunc get_memory_report() {
  * not supported if multisplit is in use.
  * Has been updated to also enable reporting of conductances and any internal variable of a point process that is visible on the neuron level (mentioned in the NEURON block)
  * of the .mod file). Note that this is still a summation report, therefore if several point processes are located on a compartment the values will be summed up to a single value.
- * 
+ *
  *
  * @param $o1 Cell The cell getting reported
  * @param $o2 TPointList with the points for a single cell
  * @param $3 Flag indicating report is to collapse to single value for the cell (1) or run normal where each cmp gets a summed value
  * @param $4 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
+ * @param $5 corenrnDataMode: When simulating with coreNeuron
  */
 proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, useElectrode, secType, secNum \
     localobj intrinsicList, ptProcessList, mechtype, internalVar, nil, bbss
-    strdef tstr        
-    
+    strdef tstr
+    if( numarg() >= 5 && $5 ) {  // Skip when in coreNeuron mode
+        return
+    }
+
     evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
     collapsed = $3
-        
+
     vgid = $o1.gid
 
     if( numarg() >= 4 ) {
@@ -388,54 +394,53 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
     } else {
         useElectrode = 1
     }
-        
+
     rpt = prepareReportForCell( $o1, $o2, vgid )
-        
+
     //validate that we are not using multisplit and a collapsed summation report
     if( collapsed && $o1.gid != vgid ) {
         execerror( "Attempting to use a collapsed summation report while using mutlisplt\n" )
     }
-    
+
     if( collapsed ) {  //Since the summations will be collapsed to a single value, we will store the ptprocess in the soma
         $o1.soma {
             ALUhelper = new ALU( 0.5, reportDt )
             ALUhelper.setop( "summation" )
-            
+
             bbss = new BBSaveState()
             bbss.ignore(ALUhelper)
         }
     }
-    
+
     for $o2.each_point(&x) {
         mechtype = new MechanismType(1)
-        
+
         if( !(collapsed) ) { //need 1 ALU per cmp
             ALUhelper = new ALU( x, reportDt )
             ALUhelper.setop( "summation" )
-            
+
             bbss = new BBSaveState()
             bbss.ignore(ALUhelper)
         }
-        
+
         //intrinsic currents
         for intrinsicIndex=0, intrinsicList.count()-1 {
 
-	    // Insert extracellular mechanism if reporting on i_membrane
+            // Insert extracellular mechanism if reporting on i_membrane
+            if (0 == strcmp(intrinsicList.o(intrinsicIndex).s, "i_membrane")) {
+                sprint(tstr,"{%s insert extracellular}",secname())
+                execute1(tstr,0)
+            }
 
-	    if (0 == strcmp(intrinsicList.o(intrinsicIndex).s, "i_membrane")) {
-            sprint(tstr,"{%s insert extracellular}",secname())
-            execute1(tstr,0)
-	    }
-
-            //test if we can even access the desired current variable in this compartment 
+            //test if we can even access the desired current variable in this compartment
             sprint(tstr,"{%s.%s(%1.2f)}", secname(), intrinsicList.o(intrinsicIndex).s, x )
             result = execute1(tstr, 0)
             if( result != 0 ) { //success, the var exists so we can add it
                 if( area(x) != 0 ) {
-                
+
                     //need to convert distributed current sources units.  NEURON stores/reports them as mA/cm^2; we want nA
                     // to convert, multiply by the area of the cmp (micron^2) then multiply by powers of 10 so units agree
-                	//for conductances NEURON reports them as S/cm^2. so the final report is uS
+                    //for conductances NEURON reports them as S/cm^2. so the final report is uS
                     if( scalingMode == SCALING_AREA ) {
                         scalar = area(x) / 100 // mA => nA (or S => uS):  * 10^6, cm^2 => micron^2 : 1/10^8
                     } else if( scalingMode == SCALING_NONE ) {
@@ -458,14 +463,14 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
                 }
             }
         }
-        
+
         //point processes - note that we *could* have collapsed reports add all point processes in a single section
-        // at once, but that adds complexity to the code which may or may not save time        
+        // at once, but that adds complexity to the code which may or may not save time
         for ptProcessIndex=0, ptProcessList.count()-1 {
             mechtype.select( ptProcessList.o(ptProcessIndex).s )
 
             for( activeProcess=mechtype.pp_begin(); object_id(activeProcess) != 0; activeProcess = mechtype.pp_next() ) {
-                
+
                 dist = activeProcess.get_loc()
                 cmpID = int(dist*nseg)
                 if( cmpID == int(x*nseg) ) {
@@ -475,25 +480,25 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
                     } else {
                         sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
                     }
-                	result = execute(tstr, this)
-                	if( result == 0 ) {
-                		//Error message here?!
-                	}
-                	//if( condFlag == 1){
-                	//	ALUhelper.addvar( &activeProcess.g )  //As mentioned above, the final report will be in uS. This is exactly what the point process synapses typically deliver.
-                	//} else {
-                	//	ALUhelper.addvar( &activeProcess.i )  //no scalar needed
-                	//}
+                    result = execute(tstr, this)
+                    if( result == 0 ) {
+                        //Error message here?!
+                    }
+                    //if( condFlag == 1){
+                    // ALUhelper.addvar( &activeProcess.g )  //As mentioned above, the final report will be in uS. This is exactly what the point process synapses typically deliver.
+                    //} else {
+                    // ALUhelper.addvar( &activeProcess.i )  //no scalar needed
+                    //}
                 }
                 pop_section()
             }
         }
-        
+
         if( !(collapsed) ) {  //we commit one new ALU object per point
             addSummationVarAndCommitALU( sectionNo($o1), rpt )
         }
     }
-    
+
     if( collapsed ) {  //otherwise, we commit one new ALU object per cell
         addSummationVarAndCommitALU( 0, rpt )
     }
@@ -506,24 +511,27 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
  * @param $o1 Cell The cell getting reported
  * @param $o2 TPointList with the points for a single cell
  * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
+ * @param $4 corenrnDataMode: When simulating with coreNeuron we dont want addSummationVarAndCommitALU
  */
-proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID \
+proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, corenrnDataMode \
     localobj intrinsicList, ptProcessList, locALUList, locTPointList, mechtype, internalVar, synList, bbss
     strdef tstr
+    corenrnDataMode = 0
+    if( numarg() >= 4 ) { corenrnDataMode=$4 }
 
     locALUList = new List()
     locTPointList = new TPointList()
     synList = new List()
-    
+
     evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
-        
+
     //if no $3, use cell's gid
-    if( numarg() == 3 ) {
+    if( numarg() >= 3 ) {
         vgid = $3
     } else {
         vgid = $o1.gid
     }
-    
+
     for $o2.each_point(&x) {
         mechtype = new MechanismType(1)
 
@@ -560,16 +568,16 @@ proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProce
 
     }
 
-    // If a cell has no pt processes, don't commit the ALU
-    if( locALUList.count() > 0 ) {
-    	//TODO: copy/edit this function to fix mapping?
-    	rpt = prepareReportForCell( $o1, locTPointList, vgid )
+    // In Neuron mode, If a cell has no pt processes, don't commit the ALU
+    if( ! corenrnDataMode && locALUList.count() > 0 ) {
+        //TODO: copy/edit this function to fix mapping?
+        rpt = prepareReportForCell( $o1, locTPointList, vgid )
 
-    	for ALUIndex=0, locALUList.count()-1 {
-    	    ALUhelper = locALUList.o(ALUIndex)
+        for ALUIndex=0, locALUList.count()-1 {
+            ALUhelper = locALUList.o(ALUIndex)
                 // Use the stored synapseID for the report mapping
-    	        addSummationVarAndCommitALU( synList.o(ALUIndex).synapseID, rpt )
-    	}
+                addSummationVarAndCommitALU( synList.o(ALUIndex).synapseID, rpt )
+        }
     }
 }
 

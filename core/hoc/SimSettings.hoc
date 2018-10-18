@@ -4,7 +4,7 @@
  * @remark Copyright © BBP/EPFL 2005-2017; All rights reserved. Do not distribute without further notice.
  */
 
-{load_file("RNGSettings.hoc")}
+{load_file("defvar.hoc")}
 
 simulatorMode = 0  // corresponds to NEURON
 objref coreneuronDataDir, coreneuronOutputDir
@@ -44,9 +44,7 @@ proc interpret() { localobj runInfo, pc, rng, commandString
     pc = new ParallelContext()
 
     if( runInfo.exists( "Simulator" ) ) {
-        if( pc.id == 0 ) {
-            print "Taking Simulator mode from BlueConfig"
-        }
+        if( pc.id == 0 ) print "Taking Simulator mode from BlueConfig"
         simulator = runInfo.get( "Simulator" ).s
     }
 
@@ -133,5 +131,9 @@ obfunc getCoreneuronOutputDir() {
     return coreneuronOutputDir
 }
 
-
 endtemplate SimSettings
+
+
+// Instantiate singleton  -  load_file() makes sure runs only once
+objref simConfig
+simConfig = new SimSettings()
