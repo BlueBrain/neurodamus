@@ -84,7 +84,7 @@ proc interpret() { localobj runInfo, pc, rng, commandString
             // if we are Restoring, then we will reuse the datadirectory
             if( runInfo.exists( "Restore" ) ) {
                 nrnpython( "import os" )
-                sprint( commandString.s, "os.symlink( \"%s/../coreneuron_input\", \"%s\" )", runInfo.get( "Restore" ).s, coreneuronDataDir.s )
+                sprint( commandString.s, "os.symlink( os.path.abspath(\"%s/../coreneuron_input\"), \"%s\" )", runInfo.get( "Restore" ).s, coreneuronDataDir.s )
                 print commandString.s
                 nrnpython( commandString.s )
             } else {
