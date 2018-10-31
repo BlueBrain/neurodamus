@@ -44,7 +44,7 @@ proc init() {
  */
 proc open() { localobj tFile, targetInstance
     strdef tstr, tstr1, typeString
-    tFile   = new File() //new FakeFile()
+    tFile = new File()
     tFile.ropen($s1)
     if( isVerbose ) {
         print "Reading target file ", $s1
