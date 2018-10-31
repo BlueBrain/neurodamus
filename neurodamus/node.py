@@ -909,10 +909,10 @@ class Node:
 class Neurodamus(Node):
     """A high level interface to Neurodamus
     """
-    def __init__(self, recipe_file, enable_reports=True, logging_level=None):
+    def __init__(self, config_file, enable_reports=True, logging_level=None):
         """Creates and initializes a neurodamus run node
         Args:
-            recipe_file: The BlueConfig recipe file
+            config_file: The BlueConfig recipe file
             logging_level: (int) Redefine the global logging level.
                 0 - Only warnings / errors
                 1 - Info messages (default)
@@ -923,8 +923,9 @@ class Neurodamus(Node):
         if logging_level is not None:
             GlobalConfig.verbosity = logging_level
 
-        Node.__init__(self, recipe_file)
+        Node.__init__(self, config_file)
 
+        logging.info("Running Neurodamus with config from " + config_file)
         self._instantiate_simulation(enable_reports)
         # In case an exception occurs we must prevent the destructor from cleaning
         self._init_ok = True

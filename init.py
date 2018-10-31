@@ -13,4 +13,10 @@ if __name__ == "__main__":
         GlobalConfig.verbosity = 3
     elif "--verbose" in sys.argv:
         GlobalConfig.verbosity = 2
-    Neurodamus("BlueConfig").run()
+
+    config_file = "BlueConfig"
+    for arg in sys.argv:
+        if arg.startswith("--configFile="):
+            config_file = arg.split('=')[1]
+            break
+    Neurodamus(config_file).run()
