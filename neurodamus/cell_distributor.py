@@ -240,7 +240,7 @@ class CellDistributor(object):
         """
         import h5py  # Can be heavy so loaded on demand
         pth = path.join(run_conf.get("CircuitPath").s, "circuit.mvd3")
-        mvd = h5py.File(pth)
+        mvd = h5py.File(pth, 'r')
 
         # Gidvec must be ordered. we change to numpy
         if gidvec is not None:
