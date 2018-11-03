@@ -74,14 +74,17 @@ obfunc loadSynapseParameters() { local gid, nSyn, synIndex  localobj synParamsLi
 
     if(dbg) printf("Loading %d synapses for Post-Neuron %d:\n", nSyn, gid)
     synParamsList = new List()
-    tmpParams = new Vector(12)
+    tmpParams = new Vector(13)
 
     for synIndex=0, nSyn-1 {
         // getSynapse makes sure capacity is enough (12 elems), only resizing otherwise
         synapseReader.getSynapse(synIndex, tmpParams)
 
         // compensate for minor floating point inaccuracies in the delay
-        if (!readGaps) tmpParams.x[1] = int(tmpParams.x[1]/dt + 1e-5)*dt
+        if (!readGaps) {
+            tmpParams.x[1] = int(tmpParams.x[1]/dt + 1e-5)*dt
+            tmpParams.x[12] = synIndex
+        }
         if (dbg && synIndex == 0) tmpParams.printf()
 
         curParams = new SynapseParameters(tmpParams)
