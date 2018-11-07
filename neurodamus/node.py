@@ -285,7 +285,6 @@ class Node:
 
         # Let the CellDistributor object have any final say in the cell objects
         self._cell_distributor.finalize(self.gidvec)
-        self._cell_distributor.delayed_split()
 
         # restore original if there was any override
         if run_mode is not None:

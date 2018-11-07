@@ -6,8 +6,6 @@ from .core import NeuronDamus as ND
 from .utils import compat
 
 
-# SynapseParameters = namedtuple("SynapseParameters", _synapse_fields)
-# SynapseParameters.__new__.__defaults__ = (None, 0.5)  # defaults to last 2 optional params
 class SynapseParameters(object):
     """Synapse parameters, internally implemented as numpy record
     """
@@ -32,7 +30,8 @@ class SynapseParameters(object):
 
 
 class SynapseMode:
-    # Note, these are constants provided for other objects (like SynapseRuleManager)
+    """Synapse Modes, as req. by SynapseRuleManager
+    """
     AMPA_ONLY = 1
     DUAL_SYNS = 2
     default = DUAL_SYNS

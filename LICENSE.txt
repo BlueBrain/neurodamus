@@ -1,2 +1,2 @@
 Copyright 2018 Blue Brain Project, EPFL CH
-
+All rights reserved.

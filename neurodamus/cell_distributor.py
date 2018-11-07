@@ -13,13 +13,12 @@ from .utils.logging import log_verbose
 
 
 class CellDistributor(object):
-    """
-    Handle assignment of cells to processors, instantiate and store them (locally and in _pnm)
+    """Handle assignment of cells to processors, instantiate and store them (locally and in _pnm)
     """
 
     def __init__(self, config_parser, target_parser, pnm):
-        """Constructor for CellDistributor object, takes information loaded from start.ncs to know
-        what cells are available in the circuit and a flag to indicate the state if LoadBalancing.
+        """Initializes CellDistributor obj and runs distribution from start.ncs or mvd3.
+        Depending on the Config file, might apply LoadBalancing.
 
         Params:
             config_parser: config parser object
@@ -50,9 +49,7 @@ class CellDistributor(object):
         self.msfactor = 0.8
 
         if not hasattr(Nd, "nc_"):
-            # finalize will require a placeholder object for calling connect2target
             Nd.execute("objref nc_")
-            Nd.execute("strdef tstr_")
 
         self._setup(config_parser.parsedRun, target_parser)
 
@@ -64,8 +61,8 @@ class CellDistributor(object):
     def cell_list(self):
         return self._cell_list
 
-    #
-    def _setup(self, run_conf, targets_conf):
+    # -
+    def _setup(self, run_conf, target_parser):
         logging.info("Distributing circuit cells by available CPUs")
         morpho_path = run_conf.get("MorphologyPath").s
 
@@ -82,7 +79,7 @@ class CellDistributor(object):
 
             elif celldb_filename != "start.ncs":
                 logging.error("Invalid CellLibraryFile %s. Terminating", celldb_filename)
-                raise ConfigurationError("Invalid CellLibFile".format(celldb_filename))
+                raise ConfigurationError("Invalid CellLibraryFile {}".format(celldb_filename))
         # Default
         if not self._useMVD3:
             log_verbose("Reading [gid:METype] info from start.ncs")
@@ -118,14 +115,14 @@ class CellDistributor(object):
             # TODO: do we have any way of knowing that a CircuitTarget found definitively matches
             #       the cells in the balance files? for now, assume the user is being honest
             if run_conf.exists("CircuitTarget"):
-                target = targets_conf.getTarget(run_conf.get("CircuitTarget").s)
+                target = target_parser.getTarget(run_conf.get("CircuitTarget").s)
                 total_cells = int(target.completegids().size())
             else:
-                total_cells = len(_seen)
+                total_cells = len(gidvec)
 
         elif run_conf.exists("CircuitTarget"):
             log_verbose("Distributing target circuit cells round-robin")
-            target = targets_conf.getTarget(run_conf.get("CircuitTarget").s)
+            target = target_parser.getTarget(run_conf.get("CircuitTarget").s)
             gidvec = compat.Vector("I")
             _target_gids = target.completegids()
             total_cells = int(_target_gids.size())
@@ -173,7 +170,7 @@ class CellDistributor(object):
         logging.info(" => Created %d cells (%d in rank 0)",
                      global_cells_created, total_created_cells)
 
-    #
+    # -
     @staticmethod
     def _load_ncs(run_conf, total_cells, gidvec):
         """ Load start.ncs getting the gids and the metypes for all cells in the base circuit
@@ -232,7 +229,7 @@ class CellDistributor(object):
         ncs.close()
         return total_cells, gidvec, gid2mefile
 
-    #
+    # -
     @staticmethod
     @mpi_no_errors
     def _load_mvd3(run_conf, total_cells, gidvec):
@@ -258,7 +255,7 @@ class CellDistributor(object):
             gidvec = np.arange(cell_i, total_cells + 1, incr, dtype="uint32")
 
         if not len(gidvec):
-            # Not enough cells to give this rank somea
+            # Not enough cells to give this rank a few
             logging.warning("Rank %d has no cells assigned.", MPI.rank)
             return total_cells, compat.Vector('I'), METypeManager()
 
@@ -285,6 +282,7 @@ class CellDistributor(object):
 
         return total_cells, gidvec, meinfo
 
+    # -
     @staticmethod
     def _load_template(tpl_filename, tpl_location=None):
         """Helper function which loads the template into NEURON and returns its name.
@@ -313,6 +311,8 @@ class CellDistributor(object):
                     break
         Nd.load_hoc(tpl_mod)
         return tpl_name
+    
+    # ### Accessor methods - They keep CamelCase API for compatibility with existing hoc
 
     def getMEType(self, gid):
         return self._gid2meobj[gid]
@@ -326,11 +326,8 @@ class CellDistributor(object):
     def getMEFileFromGid(self, gid):
         """Provide the file name of the metype which corresponds to a gid
         (thise may differ from metype due to special character replacement)
-
-        Returns: String with the mefile or nil
         """
-        raise NotImplementedError("This function is not portable since it makes no sense for v6")
-        # return self._gid2mefile.get(gid)
+        raise NotImplementedError("This function was removed since it makes no sense since v6")
 
     def getGidListForProcessor(self):
         """Get list containing the gids on this cpu.  Note that these gids may be virtual gids.
@@ -362,6 +359,10 @@ class CellDistributor(object):
         else:
             return gid
 
+    def __iter__(self):
+        """Iterator over this node GIDs"""
+        return iter(self._gidvec)
+
     # ### Routines to actually compute load balance
 
     def load_balance_cells(self, lb_obj, nhost):
@@ -373,12 +374,7 @@ class CellDistributor(object):
         self._load_balance = lb_obj
         self._compute_save_load_balance("cx", nhost)
 
-    def __iter__(self):
-        """Iterator over this node GIDs"""
-        return iter(self._gidvec)
-
-    def _compute_cell_complexity(self, with_total=True):
-        # local i, gid, ncell  localobj cx_cell, id_cell
+    def _compute_cell_complexity(self, with_total=False):
         cx_cell = compat.Vector("f")
         id_cell = compat.Vector("I")
         ncell = self._gidvec.size()
@@ -388,16 +384,16 @@ class CellDistributor(object):
             cx_cell.append(self._load_balance.cell_complexity(self._pnm.pc.gid2cell(gid)))
 
         if with_total:
-            ncell = self._pnm.pc.allreduce(ncell, 1)
+            ncell = int(self._pnm.pc.allreduce(ncell, 1))
             return cx_cell, id_cell, ncell
         else:
             return cx_cell, id_cell
 
-    def _cell_complexity_total_max(self, ):
+    def _cell_complexity_total_max(self):
         """
         Returns: Tuple of (TotalComplexity, max_complexity)
         """
-        cx_cells, id_cells = self._compute_cell_complexity(with_total=False)
+        cx_cells, id_cells = self._compute_cell_complexity()
         local_max = max(cx_cells) if len(cx_cells) > 0 else .0
         local_sum = sum(cx_cells) if len(cx_cells) > 0 else .0
 
@@ -411,8 +407,6 @@ class CellDistributor(object):
             total_cx: Total complexity
             max_cx: Maximum cell complexity
             nhost: Prospective no of hosts
-
-        Returns:
         """
         lps = total_cx * self.msfactor / nhost
         return int(lps+1)
@@ -424,7 +418,7 @@ class CellDistributor(object):
         """
         Nd.mymetis3("cx_%d" % prospective_hosts, prospective_hosts)
 
-    #
+    # -
     def _compute_save_load_balance(self, filename, prospective_hosts):
         if prospective_hosts > 0:
             total_cx, max_cx = self._cell_complexity_total_max()
@@ -437,13 +431,13 @@ class CellDistributor(object):
             filename += ".dat"
 
         ms_list = []
-        ms   = Nd.Vector()
-        b = self._load_balance
+        ms = Nd.Vector()
+        lb = self._load_balance
 
-        for i, gid in enumerate(self):
+        for i, gid in enumerate(self._gidvec):
             # what should be passed into this func? the base cell? the CCell?
-            b.cell_complexity(self._pnm.cells.object(i))
-            b.multisplit(gid, lcx, ms)
+            lb.cell_complexity(self._pnm.cells.object(i))
+            lb.multisplit(gid, lcx, ms)
             ms_list.append(ms.c())
 
         if MPI.rank == 0:
@@ -452,61 +446,51 @@ class CellDistributor(object):
             logging.info("LB Info : TC=%.3f MC=%.3f OptimalCx=%.3f FileName=%s" %
                          (total_cx, max_cx, lcx, filename))
 
+        # Write out, 1 rank at a time
         for j in range(MPI.cpu_count):
             if j == MPI.rank:
                 with open(filename, "a") as fp:
                     for ms in ms_list:
                         self._write_msdat(fp, ms)
-            self._pnm.pc.barrier()
+            MPI.barrier()
 
         # now assign to the various cpus - use node 0 to do it
         if MPI.rank == 0:
             self._cpu_assign(prospective_hosts)
-        self._pnm.pc.barrier()
+        MPI.barrier()
 
     @staticmethod
     def _write_msdat(fp, ms):
-        """Writes load balancing info to an output stream"""
-        tcx = 0
+        """Writes load balancing info to an output stream
+        """
         fp.write("%d" % ms.x[0])   # gid
         fp.write(" %g" % ms.x[1])  # total complexity of cell
-        n1 = ms.x[2]
+        piece_count = int(ms.x[2])
+        fp.write(" %d\n" % piece_count)
         i = 2
-        fp.write(" %d\n" % n1)  # number of pieces
-        for i1 in range(int(n1)):
+        tcx = 0  # Total accum complexity
+        
+        for _ in range(piece_count):
             i += 1
-            n2 = ms.x[i]  # at number of subtrees
-            fp.write("  %d\n" % n2)  # number of subtrees
-            for i2 in range(int(n2)):
+            subtree_count = int(ms.x[i]) 
+            fp.write("  %d\n" % subtree_count)
+            for _ in range(subtree_count):
                 i += 1
-                cx = ms.x[i]  # at subtree complexity
+                cx = ms.x[i]  # subtree complexity
                 tcx += cx
                 i += 1
-                n3 = ms.x[i]  # at number of children in a subtree
-                fp.write("   %g %d\n" % (cx, n3))  # subtree complexity
-                if n3 > 0:
+                children_count = int(ms.x[i])
+                fp.write("   %g %d\n" % (cx, children_count))
+                if children_count > 0:
                     fp.write("    ")
-                for i3 in range(n3):
+                for _ in range(children_count):
                     i += 1
-                    id = ms.x[i]  # at next child
-                    fp.write(" %d" % id)
-                if n3 > 0:
+                    elem_id = ms.x[i]  # at next child
+                    fp.write(" %d" % elem_id)
+                if children_count > 0:
                     fp.write("\n")
 
-    def rngForStochKvInit(self, ccell):
-        """In place of using a CCell's re_init_rng function, we will check for cells
-        that define the re_init_rng function, but then setRNG using global seed as well
-
-        Args:
-            ccell: celll to be checked for setRNG
-
-        """
-        raise NotImplementedError("rngForStochKvInit")
-        #  quick check to verify this object contains StochKv
-        # hasStochKv = Nd.ismembrane("StochKv", sec=ccell.CellRef.soma)
-        # if not hasStochKv:
-        #     return
-
+    # -
     def finalize(self, gids):
         """Do final steps to setup the network. For example, multisplit will handle gids depending
         on additional info from self.binfo object. Otherwise, normal cells do their finalization
@@ -532,9 +516,7 @@ class CellDistributor(object):
                 # for v5 circuits and earlier check if cell has re_init function.
                 # Instantiate random123 or mcellran4 as appropriate
                 # Note: should CellDist be aware that metype has CCell member?
-                ret = hasattr(metype.CCell, "re_init_rng")
-
-                if ret:
+                if hasattr(metype.CCell, "re_init_rng"):
                     if rng_info.getRNGMode() == rng_info.RANDOM123:
                         Nd.rng123ForStochKvInit(metype.CCell)
                     else:
@@ -542,18 +524,16 @@ class CellDistributor(object):
                             logging.warning("mcellran4 cannot initialize properly with large gids")
                         Nd.rngForStochKvInit(metype.CCell)
 
-            # TODO: CCell backwards compatibility
-            # if we drop support for older versions use simply cell.CCellRef.connect2target(nil, nc)
             version = metype.getVersion()
             if version < 2:
-                nc = Nd.nc_
+                nc = Nd.nc_   # tmp netcon
                 metype.CellRef.connect2target(Nd.nil, nc)
             else:
                 nc = metype.connect2target(Nd.nil)
 
             if self._lb_flag:
-                ic = int(self._binfo.gids.indwhere("==", gid))
-                cb = self._binfo.bilist.object(self._binfo.cbindex.x[ic])
+                gid_i = int(self._binfo.gids.indwhere("==", gid))
+                cb = self._binfo.bilist.object(self._binfo.cbindex.x[gid_i])
 
                 if cb.subtrees.count() == 0:
                     #  whole cell, normal creation
@@ -568,11 +548,5 @@ class CellDistributor(object):
                 self._pnm.set_gid2node(gid, self._pnm.myid)
                 self._pnm.pc.cell(gid, nc)
 
-        # TODO: on bbplinsrv, calling pc.multisplit function now causes problem, but if it is called
-        #  in a separate function after return, then it is fine. Maybe contact Michael for advice?
-        if self._lb_flag:
-            self._pnm.pc.multisplit()
-
-    def delayed_split(self):
         if self._lb_flag:
             self._pnm.pc.multisplit()

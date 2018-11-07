@@ -1,2 +1,6 @@
 .. _authors:
-.. include:: ../AUTHORS.rst
+
+Authors
+=======
+
+Fernando Pereira <@epfl.ch>

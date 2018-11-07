@@ -1,5 +1,13 @@
-# -*- coding: utf-8 -*-
 # flake8: noqa
+"""
+    neurodamus
+    ----------
+    
+    The neurodamus package implements the instantiation of simulations in Neuron
+    based on a configuration file, a.k.a. BlueConfigs
+    It is deeply based on the HOC implementation, therefore providing python modules like
+    `node`, `cell_distributor`,etc; and still depends on several low-level HOC files at runtime.
+"""
 from __future__ import absolute_import
 import pkg_resources
 try:

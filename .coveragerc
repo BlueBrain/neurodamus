@@ -1,8 +1,8 @@
 # .coveragerc to control coverage.py
 [run]
 branch = True
-source = pyneurodamus
-# omit = bad_file.py
+source = neurodamus
+# omit = 
 
 [report]
 # Regexes for lines to exclude from consideration
