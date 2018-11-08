@@ -2,6 +2,7 @@ from __future__ import absolute_import
 import sys
 import time
 import logging
+from contextlib import contextmanager
 from .configuration import Neuron_Stdrun_Defaults
 from .configuration import GlobalConfig
 from ..utils import classproperty
@@ -76,6 +77,12 @@ class _Neuron(object):
         if rc == 0:
             raise RuntimeError("Cant load MOD dll {}. Please check LD path and dependencies"
                                .format(dll_path))
+
+    @contextmanager
+    def section_in_stack(self, sec):
+        sec.push()
+        yield
+        self.h.pop_section()
 
     @classmethod
     def run_sim(cls, t_stop, *monitored_sections, **params):

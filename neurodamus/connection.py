@@ -78,7 +78,6 @@ class STDPMode:
 
 # -------------------------------------------------------------------------------------
 # Connection class
-# NOTE: It is already implementing Replay with VecStim as in saveupdate_v6support_mask
 # -------------------------------------------------------------------------------------
 class Connection(object):
     """
@@ -154,6 +153,21 @@ class Connection(object):
     def override_synapse(self, synapse_conf):
         self._synapse_override = synapse_conf
 
+    def valid_sections(self, push_to_stack=False):
+        """Generator over all valid sections with index
+        """
+        # All locations, on and off node should be in this list, but only synapses/netcons on-node
+        # should be returned
+        for syn_i, sc in enumerate(self._synapse_points.sclst):
+            if not sc.exists():
+                continue
+            # Put the section in the stack, so generic hoc instructions apply to the right section
+            if push_to_stack:
+                with ND.section_in_stack(sc.sec):
+                    yield syn_i, sc.sec
+            else:
+                yield syn_i, sc.sec
+
     # ---------------------
 
     def add_synapse(self, syn_tpoints, params_obj, syn_id=None):
@@ -214,14 +228,9 @@ class Connection(object):
         self._tvecs = []
 
         # Note that synapseLocation.SPLIT = 1
-        # All locations, on and off node should be in this list, but only synapses/netcons on-node
         # should get instantiated
-        for syn_i, sc in enumerate(self._synapse_points.sclst):
-            if not sc.exists():
-                continue
-            # Put the section in the stack, so generic hoc instructions apply to the right section
-            sc.sec.push()
 
+        for syn_i, _ in self.valid_sections(True):
             x = self._synapse_points.x[syn_i]
             syn_params = self._synapse_params[syn_i]
             syn_obj = self._create_synapse(cell, syn_params, x, self._synapse_ids[syn_i], base_seed)
@@ -324,9 +333,6 @@ class Connection(object):
                 ips.setTbins(tbins_vec)
                 ips.setRate(rate_vec)
 
-            # Pop the current working section from the neuron stack
-            ND.pop_section()
-
         # Apply configurations to the synapses
         self._configure_synapses()
 
@@ -377,12 +383,7 @@ class Connection(object):
 
         # Note that synapseLocation.SPLIT = 1
         # All locations should be in this list, but only synapses/netcons on-node get instantiated
-        for syn_i, sc in enumerate(self._synapse_points.sclst):
-            if not sc.exists():
-                continue
-            # Put the section in the stack, so generic hoc instructions apply to the right section
-            sc.sec.push()
-
+        for syn_i, sec in self.valid_sections(True):
             x = self._synapse_points.x[syn_i]
             active_params = self._synapse_params[syn_i]
             gap_junction = ND.Gap(x)
@@ -392,13 +393,10 @@ class Connection(object):
                           self.tgid, self.sgid, offset, active_params.D,
                           end_offset, active_params.F, active_params.weight)
             pnm.pc.target_var(gap_junction, gap_junction._ref_vgap, (offset + active_params.D))
-            pnm.pc.source_var(sc.sec(x)._ref_v, (end_offset + active_params.F))
+            pnm.pc.source_var(sec(x)._ref_v, (end_offset + active_params.F))
             gap_junction.g = active_params.weight
             self._synapses.append(gap_junction)
             self._configure_cell(cell)
-
-            # Pop the current working section from the neuron stack
-            ND.pop_section()
 
     # ------------------------------------------------------------------
     # Parameters update / Configuration
@@ -443,13 +441,14 @@ class Connection(object):
         for config in self._configurations:
             self.configure_synapses(config)
 
-    # -
     def configure_synapses(self, configuration):
         """ Helper function to execute a configuration statement (hoc) on all connection synapses.
         """
         self.ConnUtils.executeConfigure(self._synapses, configuration)
 
-    # -
+    #
+    # NOTE: Replay is already implementing Replay with VecStim as in saveupdate_v6support_mask
+    #
     def replay(self, tvec):
         """ The synapses connecting these gids are to be activated using predetermined timings
         Args:
@@ -469,17 +468,12 @@ class Connection(object):
         # Note that synapseLocation.SPLIT = 1
         # All locations, on and off node should be in this list, but only synapses/netcons on-node
         # will receive the events
-        local_i = 0
-        for syn_i, sc in enumerate(self._synapse_points.sclst):
-            if not sc.exists():
-                continue
-            # syn_i for all synapses index, local_i for valid ones
+        for i, (syn_i, sc) in enumerate(self.valid_sections()):
             syn_params = self._synapse_params[syn_i]
 
-            nc = ND.NetCon(vstim, self._synapses[local_i], 10, syn_params.delay, syn_params.weight)
-            nc.weight[0] = syn_params.weight  * self.weight_factor
+            nc = ND.NetCon(vstim, self._synapses[i], 10, syn_params.delay, syn_params.weight)
+            nc.weight[0] = syn_params.weight * self.weight_factor
             self._replay_netcons.append(nc)
-            local_i += 1
 
     # -
     def disable(self, set_zero_conductance=False):
