@@ -232,6 +232,9 @@ CONSTRUCTOR { : string filepath
 VERBATIM
 #ifndef DISABLE_SYNTOOL
     ReaderState rs = STATE_RESET;
+    if( !ifarg(1) ) {
+        return;
+    }
 
     if (!hoc_is_str_arg(1)) {
         fprintf(stderr, "[SynReader] Error: SynapseReader filename must be a string");
