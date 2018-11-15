@@ -15,14 +15,15 @@ ENDCOMMENT
 
 NEURON {
     ARTIFICIAL_CELL SynapseReader
+    THREADSAFE
+    BBCOREPOINTER ptr
 }
 
 PARAMETER {
 }
 
 ASSIGNED {
-    state_
-    loaded_conn_type
+    ptr
     verboseLevel
 }
 
@@ -34,7 +35,7 @@ NET_RECEIVE(w) {
 
 VERBATIM
 
-#ifdef DISABLE_HDF5
+#if defined(DISABLE_HDF5) || defined(CORENEURON_BUILD)
   #warning "Disabling Synapse Reader since HDF5 is disabled"
   #define DISABLE_SYNTOOL 1
 #endif
@@ -73,7 +74,6 @@ extern int ifarg(int iarg);
 extern double chkarg(int iarg, double low, double high);
 extern double* vector_vec(void* vv);
 extern int vector_capacity(void* vv);
-extern void vector_resize(void* v, int n);
 extern void* vector_arg(int);
 
 
@@ -92,12 +92,13 @@ typedef struct {
     const Syn2Field* fields;
     size_t length;
     int n_fields;
+    int conn_type;
 } ReaderState;
 
 static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 
-// Use state var as a pointer
-#define state_ptr (*((ReaderState**)(&state_)))
+// state_ptr shortcut. Only usable from within FUNCTIONS
+#define getStatePtr() (*((ReaderState**)(&(_p_ptr))))
 
 
 // The NRN Synapse fields according to SYN2 transitional spec
@@ -161,12 +162,12 @@ static const char* GJ_FIELDS = _BASE_GJ_FIELDS ", conductance" ;
 static const int ND_GJ_POSITIONS[] = {ND_GJ_PREGID_I, 2, 3, 4, 7, 8, ND_GJ_CONDUCTANCE_I};
 
 
-static int _syn_is_empty() {
+static int _syn_is_empty(ReaderState* state_ptr) {
     return state_ptr->fields == NULL;
 }
 
 
-static _Strings _getFieldNames() {
+static _Strings _getFieldNames(ReaderState* state_ptr) {
     if (state_ptr->fieldNames.data == NULL) {
         const Syn2Dataset names_ds = syn_list_property_names(state_ptr->file);
         state_ptr->fieldNames.data = as_str_array(names_ds.data);
@@ -176,8 +177,8 @@ static _Strings _getFieldNames() {
 }
 
 
-static int _syn_has_field(const char* field_name) {
-    const _Strings names_ds = _getFieldNames();
+static int _syn_has_field(const char* field_name, ReaderState* state_ptr) {
+    const _Strings names_ds = _getFieldNames(state_ptr);
     syn2_vec_str names = names_ds.data;
 
     int i;
@@ -190,7 +191,7 @@ static int _syn_has_field(const char* field_name) {
 
 
 /// Store table results to internal state object
-static int _store_result(uint64_t tgid, const Syn2Table *tb)  {
+static int _store_result(uint64_t tgid, const Syn2Table *tb, ReaderState* state_ptr)  {
     state_ptr->tgid = tgid;
     // "tb.fields" might be NULL if there is no data. Ok as long length is zero.
     state_ptr->fields = tb->fields;
@@ -201,14 +202,14 @@ static int _store_result(uint64_t tgid, const Syn2Table *tb)  {
 
 
 /// Loads data from synapse file into internal state
-static int _load_data(uint64_t tgid, int conn_type, const char* fields) {
+static int _load_data(uint64_t tgid, int conn_type, const char* fields, ReaderState* state_ptr) {
     if (state_ptr->file == -1)  {
         fprintf(stderr, "[SynReader] Error: File not initialized.");
         raise(SIGUSR2);
     }
 
     // Already loaded?
-    if (tgid == state_ptr->tgid && conn_type == loaded_conn_type) {
+    if (tgid == state_ptr->tgid && conn_type == state_ptr->conn_type) {
         return state_ptr->length;
     }
 
@@ -216,8 +217,8 @@ static int _load_data(uint64_t tgid, int conn_type, const char* fields) {
     const Syn2Table tb = syn_get_property_table(state_ptr->file, fields, sel);
     // tb.fields == NULL in case there are no cells (selection). If missing fields then exception
 
-    loaded_conn_type = conn_type;
-    return _store_result(tgid, &tb);
+    state_ptr->conn_type = conn_type;
+    return _store_result(tgid, &tb, state_ptr);
 }
 
 #endif  // SYNTOOL
@@ -248,8 +249,11 @@ VERBATIM
     // normal case - open a file and be ready to load data as needed
     rs.file = syn_open(gargstr(1));
 
-    state_ptr = (ReaderState*) malloc(sizeof(ReaderState));
+    ReaderState* state_ptr = (ReaderState*) malloc(sizeof(ReaderState));
     *state_ptr = rs;
+    // use macro to get the pointer, write new address
+    getStatePtr() = state_ptr;
+
 #endif
 ENDVERBATIM
 }
@@ -259,6 +263,7 @@ ENDVERBATIM
 DESTRUCTOR {
 VERBATIM
 #ifndef DISABLE_SYNTOOL
+    ReaderState* state_ptr = getStatePtr();
     syn_close(state_ptr->file);
     free(state_ptr);
 #endif
@@ -282,7 +287,7 @@ ENDVERBATIM
 FUNCTION countProperties(){ : string cellname
 VERBATIM
 #ifndef DISABLE_SYNTOOL
-    const _Strings names_ds = _getFieldNames();
+    const _Strings names_ds = _getFieldNames(getStatePtr());
     return names_ds.length;
 #endif
 ENDVERBATIM
@@ -293,7 +298,7 @@ ENDVERBATIM
 FUNCTION countSynapses() { : string cellname
 VERBATIM {
 #ifndef DISABLE_SYNTOOL
-    return syn_get_number_synapses(state_ptr->file);
+    return syn_get_number_synapses(getStatePtr()->file);
 #endif
 }
 ENDVERBATIM
@@ -304,7 +309,7 @@ ENDVERBATIM
 FUNCTION hasNrrpField() {
 VERBATIM
 #ifndef DISABLE_SYNTOOL
-    return _syn_has_field(NRRP_FIELD);
+    return _syn_has_field(NRRP_FIELD, getStatePtr());
 #else
     return -1;
 #endif
@@ -314,7 +319,7 @@ ENDVERBATIM
 FUNCTION hasConductance() {
 VERBATIM
 #ifndef DISABLE_SYNTOOL
-    return _syn_has_field("conductance");
+    return _syn_has_field("conductance", getStatePtr());
 #else
     return -1;
 #endif
@@ -336,9 +341,10 @@ FUNCTION loadSynapses() { : double tgid, string fields
 VERBATIM
 #ifndef DISABLE_SYNTOOL
     uint64_t tgid = (uint64_t) *getarg(1) - 1;  // 0 based
+    ReaderState* state_ptr = getStatePtr();
     const char* fields = ifarg(2)? gargstr(2) :
-                         (_syn_has_field(NRRP_FIELD)? SYN_FIELDS : SYN_FIELDS_NO_RRP);
-    return _load_data(tgid, CONN_SYNAPSES, fields);
+        (_syn_has_field(NRRP_FIELD, state_ptr)? SYN_FIELDS : SYN_FIELDS_NO_RRP);
+    return _load_data(tgid, CONN_SYNAPSES, fields, state_ptr);
 #else
     fprintf(stderr, "[SynReader] Error: Neurodamus compiled without SYNTOOL\n");
     raise(SIGUSR1);
@@ -355,8 +361,8 @@ FUNCTION loadGapJunctions() { : double tgid, string fields
 VERBATIM
 #ifndef DISABLE_SYNTOOL
     uint64_t tgid = (uint64_t) *getarg(1) - 1;
-    //fields = _syn_has_field("conductance")? GJ_FIELDS : GJ_FIELDS_NO_CONDUCTANCE;
-    return _load_data(tgid, CONN_GAPJUNCTIONS, GJ_FIELDS);
+    //fields = _syn_has_field("conductance", state_ptr)? GJ_FIELDS : GJ_FIELDS_NO_CONDUCTANCE;
+    return _load_data(tgid, CONN_GAPJUNCTIONS, GJ_FIELDS, getStatePtr());
 #else
     fprintf(stderr, "[SynReader] Error: Neurodamus compiled without SYNTOOL\n");
     raise(SIGUSR1);
@@ -384,7 +390,9 @@ VERBATIM
         raise(SIGUSR2);
     }
 
-    if (_syn_is_empty()) {
+    ReaderState* state_ptr = getStatePtr();
+
+    if (_syn_is_empty(state_ptr)) {
         fprintf(stderr, "[SynReader] Error: No synapse data. Please load synapses first.\n");
         raise(SIGUSR2);
     }
@@ -393,6 +401,7 @@ VERBATIM
     unsigned int row = *getarg(1);
     void* xd = vector_arg(2);
 
+    const int loaded_conn_type = state_ptr->conn_type;
     const int n_fields = state_ptr->n_fields;
     const Syn2Field* fields = state_ptr->fields;
 
@@ -433,3 +442,15 @@ VERBATIM
 #endif
 ENDVERBATIM
 }
+
+
+VERBATIM
+
+/** not executed in coreneuron and hence empty stubs sufficient */
+
+static void bbcore_write(double* x, int* d, int* xx, int* offset, _threadargsproto_) {
+}
+
+static void bbcore_read(double* x, int* d, int* xx, int* offset, _threadargsproto_) {
+}
+ENDVERBATIM
