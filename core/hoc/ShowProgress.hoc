@@ -9,7 +9,7 @@
 begintemplate ShowProgress
 
 objref fihTimer, cvode, this
-public init
+public init, updateProgress
 
 external tstop
 

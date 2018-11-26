@@ -78,8 +78,8 @@ PROCEDURE write() {
         // populate buffer with all entries
         int i;
         for(i = 0; i < num_spikes; i++) {
-            char str[48];
-            snprintf(str, 48, "%.3f\t%d\n", time[i], (int)gid[i]);
+            char str[spike_record_length];
+            snprintf(str, spike_record_length, "%.3f\t%d\n", time[i], (int)gid[i]);
             strcat(spike_data, str);
         }
 
@@ -89,6 +89,10 @@ PROCEDURE write() {
 
         unsigned long offset = 0;
         MPI_Exscan(&num_chars, &offset, 1, MPI_UNSIGNED_LONG, MPI_SUM, MPI_COMM_WORLD);
+
+        if (nrnmpi_myid == 0) {
+            offset = 0;
+        }
 
         // write to file using parallel mpi i/o
         MPI_File fh;

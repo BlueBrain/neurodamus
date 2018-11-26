@@ -30,3 +30,4 @@ NaTg.mod
 StochKv3.mod
 MemUsage.mod
 CoreConfig.mod
+SynapseReader.mod

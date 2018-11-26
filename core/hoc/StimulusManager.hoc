@@ -18,13 +18,13 @@ begintemplate StimulusManager
 objref stimList, elecManager, targetManager, cellDistributor, this
 
 //! For use in poisson stims, when creating via the execute stmt, need to have class level object (not just local to function)
-objref stimHelper, poissonNetconList, handleList, poissonSynList, vecStimList, voltageReplayList, timeReplayList
+objref stimHelper, poissonNetconList, handleList, poissonSynList, vecStimList, voltageReplayList, timeReplayList, synapseEventGenerator
 
 //-----------------------------------------------------------------------------------------------
 // public members
 //-----------------------------------------------------------------------------------------------
 
-public init, linear, interpret, FillSpikeTrain, interpretExtracellulars
+public init, linear, interpret, FillSpikeTrain, interpretExtracellulars, saveStatePreparation, reevent
 
 //note: for some reason, if we do not make 'noise' function public, we get a syntax error.
 public noise
@@ -55,6 +55,7 @@ proc init() { local argIndex
     vecStimList = new List()
     voltageReplayList = new List()
     timeReplayList = new List()
+    synapseEventGenerator = new List()
     
     // if we have been passed an elec manager or base seed argument, need to determine now by arg type.  May want to clean this up in the future to
     // remove excess freedom for the users
@@ -134,7 +135,7 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 	
 	stimlist = getExtracellularParams($o1,$o2)	
 	for targetIndex=0, stimlist.count()-1{ //over all unique targets
-		print "Treating extracellulars for target: ", stimlist.key(targetIndex).s
+		//print "Treating extracellulars for target: ", stimlist.key(targetIndex).s
 		pts = targetManager.getPointList(stimlist.key(targetIndex).s) //get that target
 		gidObj = targetManager.gids(stimlist.key(targetIndex).s)
 		
@@ -183,9 +184,6 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 }
 
 //-----------------------------------------------------------------------------------------------
-
-
-
 //-----------------------------------------------------------------------------------------------
 
 /*!
@@ -215,6 +213,10 @@ proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localob
     //all will have Delay and Duration, so parse immediately
     del = stim.valueOf( "Delay" )
     dur = stim.valueOf( "Duration" )
+    
+    if( t > 0 ) {
+        del = del + t
+    }
     
     //more specific parameters based on pattern
     patternName = stim.get( "Pattern" )
@@ -892,7 +894,9 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
             //why do we register an init handler if we are just going to call the function anyways?
             // do we end up with twice the events?
             sprint(tstr,"FillSpikeTrain(%s,%f,%f,%f,%d)", nc, lambda, del, dur, baseSeed+iteration )
+            synapseEventGenerator.append( new String(tstr) )
             fih = new FInitializeHandler(tstr, this)
+            //print tstr
             execute1(tstr, this)
         } else {
             tstr = "print \"Jim broke this!\""
@@ -1188,6 +1192,46 @@ proc replayVoltageTrace() { local gidIndex, x, dtReport, del, dur \
 //-----------------------------------------------------------------------------------------------
 
 /**
+ * For save state, we need to indicate that point processes made by this manager object will be ignored during the save action.
+ *
+ * @param $o1 savestate object
+ */
+proc saveStatePreparation() { local ppIndex
+    for ppIndex=0, poissonSynList.count()-1 {
+        //print poissonSynList.o(ppIndex)
+        $o1.ignore( poissonSynList.o(ppIndex) )
+    }
+
+    for ppIndex=0, stimList.count()-1 {
+        $o1.ignore( stimList.o(ppIndex).ic )
+    }
+}
+
+proc reevent() { local eIndex, vIndex, res
+    for eIndex=0, synapseEventGenerator.count()-1 {
+        //print synapseEventGenerator.o(eIndex).s
+        res = execute1( synapseEventGenerator.o(eIndex).s, this )
+    }
+    
+    //while I am here, let me check all other stims
+    /*
+    print "replay as needed ", stimList.count()
+    for eIndex=0, stimList.count()-1 {
+        //print "stim info ", stimList.o(eIndex).ic.amp, " ", stimList.o(eIndex).ic.del, " ", stimList.o(eIndex).ic.dur
+        //print stimList.o(eIndex).tvec.x[0], " ", stimList.o(eIndex).stim.size(), " ", stimList.o(eIndex).stim.x[0]
+        for vIndex=0, stimList.o(eIndex).tvec.size()-1 {
+            print "time ", stimList.o(eIndex).tvec.x[vIndex]
+        }
+        for vIndex=0, stimList.o(eIndex).stim.size()-1 {
+            print "amp ", stimList.o(eIndex).stim.x[vIndex]
+        }
+        stimList.o(eIndex).stim.play(&stimList.o(eIndex).ic.amp,stimList.o(eIndex).tvec,1)
+    }*/
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*
  * Places an SEClamp on the targeted locations which will hold the voltage to the indicated value
  *
  * @param $s1 Target name

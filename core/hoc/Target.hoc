@@ -98,6 +98,11 @@ func binary_search_contains() { local binsrch_low, binsrch_high, binsrch_mid
 endtemplate TargetUtility
 
 //------------------------------------------------------------------------------------------------------------
+
+objref targetUtil
+targetUtil = new TargetUtility()
+
+//------------------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------------------
 
@@ -119,6 +124,8 @@ objref gidMembers, subtargets, flattenedGids, completeFlattenedGids, sortedGids,
 objref cellExtraValues, targetExtraValues, cellSubsets, targetSubsets
 
 strdef name, type
+
+external targetUtil
 
 //------------------------------------------------------------------------------------------------------------
 // Public Accessibility
@@ -398,6 +405,7 @@ obfunc gids() { local cellIndex targetIndex
     return flattenedGids
 }
 
+
 //------------------------------------------------------------------------------------------------------------
 
 /*!
@@ -432,9 +440,7 @@ obfunc completegids() { local cellIndex targetIndex
     for targetIndex=0, subtargets.count()-1 {
         completeFlattenedGids.append( subtargets.object(targetIndex).completegids() )
     }
-	
-	//completeFlattenedGids.sort()
-    
+	    
     isCompleteFlattened = 1
     return completeFlattenedGids
 }
@@ -460,8 +466,7 @@ obfunc completegidsSorted() {
  * @param $1 gid to attempt to find
  * @return 1 if the gid is present, 0 if not included
  */
-func contains() { localobj targetUtil
-    targetUtil = new TargetUtility()
+func contains() {
     return targetUtil.binary_search_contains( gidsSorted(), $1 )
 }
 
@@ -473,8 +478,7 @@ func contains() { localobj targetUtil
  * @param $1 gid to attempt to find
  * @return 1 if the gid is present, 0 if not included
  */
-func completeContains() { localobj targetUtil
-    targetUtil = new TargetUtility()
+func completeContains() {
     return targetUtil.binary_search_contains( completegidsSorted(), $1 )
 }
 

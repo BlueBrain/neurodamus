@@ -1,0 +1,15 @@
+{load_file("stdlib.hoc")}
+proc default_var() {localobj s, pc
+	s = new String()
+	if (name_declared($s1) == 0) {
+		if (argtype(2) == 2) {
+			sprint(s.s, "~strdef %s", $s1)
+			execute(s.s)
+			sprint(s.s, "%s = \"%s\"", $s1, $s2)
+		}else{
+			hoc_ac_ = $2
+			sprint(s.s, "%s = hoc_ac_", $s1)
+		}
+		execute(s.s)
+	}
+}

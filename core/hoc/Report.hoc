@@ -8,6 +8,17 @@
 
 objref globrec
 
+// Note: the following is to allow this version with save state to be used by a non-savestate enabled NEURON.
+// maybe we can get rid of it in the future
+objref test
+if( execute1("test = new BBSaveState()", 0) == 0 ) {
+    test = new ParallelContext()
+    if( test.id() == 0 ) {
+        print "Using non-savestate version of NEURON"
+    }
+    execute( "~begintemplate BBSaveState\npublic ignore\nproc ignore(){}\nendtemplate BBSaveState" )
+}
+
 begintemplate Report
 
 //-----------------------------------------------------------------------------------------------
@@ -23,7 +34,10 @@ external cvode
 // public members
 //-----------------------------------------------------------------------------------------------
 
-public init, addCompartmentReport, addSummationReport, addSynapseReport, get_memory_report
+public init, addCompartmentReport, addSummationReport, addSynapseReport, get_memory_report, reportName
+
+// for save/restore
+public restartALUs
 
 //-----------------------------------------------------------------------------------------------
 // Member function implementations
@@ -207,7 +221,7 @@ proc sumSectionCounts() { local offset, x  localobj prevSection, nil
  * @param $3 vgid of cell (may be same as cells nomal gid)
  * @return Reference to the appropriate report object
  */
-func prepareReportForCell() { local node, rpt, vgid
+func prepareReportForCell() { local node, rpt, vgid  localobj bbss
     strdef strCellName, tstr
     node = 0  //do we really need to know which node produced these reports?  We're trying to make this agnostic to multiple cpu
     vgid = $3
@@ -236,9 +250,12 @@ func prepareReportForCell() { local node, rpt, vgid
         } else {
             return 0
         }
-        rpt = rec.newReport(strCellName, reportName, $o2.count(), startTime, endTime, reportDt, unit )
+        rpt = rec.newReport(strCellName, reportName, $o2.count(), startTime, endTime, reportDt, unit )        
     }
-        
+    
+    bbss = new BBSaveState()
+    bbss.ignore(rec)
+    
     //get section counts: nSoma, nApic, etc
     sumSectionCounts( $o2 )
 
@@ -263,7 +280,7 @@ func prepareReportForCell() { local node, rpt, vgid
  * @param $o2 TPointList with the points for a single cell
  * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
  */
-proc addCompartmentReport() { local x, rpt, vgid
+proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
     strdef tstr
     
     // Don't attempt to put a cell with 0 points in a BinReport; bad things happen
@@ -300,6 +317,8 @@ proc addCompartmentReport() { local x, rpt, vgid
             sprint( tstr, "{ALUhelper.addvar( &v(%lf), %lf )}", x, area(x)  )
             result = execute(tstr, this)
             addSummationVarAndCommitALU( sectionNo($o1), rpt )
+            bbss = new BBSaveState()
+            bbss.ignore(ALUhelper)
         } else {
     
         //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
@@ -353,7 +372,7 @@ obfunc get_memory_report() {
  * @param $4 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
  */
 proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, useElectrode, secType, secNum \
-    localobj intrinsicList, ptProcessList, mechtype, internalVar, nil
+    localobj intrinsicList, ptProcessList, mechtype, internalVar, nil, bbss
     strdef tstr        
     
     evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
@@ -369,8 +388,7 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
     } else {
         useElectrode = 1
     }
-    
-    
+        
     rpt = prepareReportForCell( $o1, $o2, vgid )
         
     //validate that we are not using multisplit and a collapsed summation report
@@ -382,6 +400,9 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
         $o1.soma {
             ALUhelper = new ALU( 0.5, reportDt )
             ALUhelper.setop( "summation" )
+            
+            bbss = new BBSaveState()
+            bbss.ignore(ALUhelper)
         }
     }
     
@@ -391,6 +412,9 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
         if( !(collapsed) ) { //need 1 ALU per cmp
             ALUhelper = new ALU( x, reportDt )
             ALUhelper.setop( "summation" )
+            
+            bbss = new BBSaveState()
+            bbss.ignore(ALUhelper)
         }
         
         //intrinsic currents
@@ -399,8 +423,8 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
 	    // Insert extracellular mechanism if reporting on i_membrane
 
 	    if (0 == strcmp(intrinsicList.o(intrinsicIndex).s, "i_membrane")) {
-		sprint(tstr,"{%s insert extracellular}",secname())
-		execute1(tstr,0)
+            sprint(tstr,"{%s insert extracellular}",secname())
+            execute1(tstr,0)
 	    }
 
             //test if we can even access the desired current variable in this compartment 
@@ -484,7 +508,7 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
  * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
  */
 proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID \
-    localobj intrinsicList, ptProcessList, locALUList, locTPointList, mechtype, internalVar, synList
+    localobj intrinsicList, ptProcessList, locALUList, locTPointList, mechtype, internalVar, synList, bbss
     strdef tstr
 
     locALUList = new List()
@@ -508,23 +532,26 @@ proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProce
 
             // Iterate along the requested point processes
             for( activeProcess=mechtype.pp_begin(); object_id(activeProcess) != 0; activeProcess = mechtype.pp_next() ) {
-                
+
                 dist = activeProcess.get_loc()
                 cmpID = int(dist*nseg)
-                if( cmpID == int(x*nseg) ) {  
+                if( cmpID == int(x*nseg) ) {
 
                     // Here is the "hack" to report synapses with the Summation ALU
                     ALUhelper = new ALU( x, reportDt )
-                    ALUhelper.setop( "summation" )                	                	               
-                	sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
-                	result = execute(tstr, this)
-                	if( result == 0 ) {
-                            //is this an error?
-                	}
+                    ALUhelper.setop( "summation" )
+                    sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
+                    result = execute(tstr, this)
+                    if( result == 0 ) {
+                        //is this an error?
+                    }
+                    bbss = new BBSaveState()
+                    bbss.ignore(ALUhelper)
 
                     locALUList.append(ALUhelper)
                     locTPointList.append(x)
                     synList.append(activeProcess)
+                    activeProcess.selected_for_report = 1
                 }
 
                 pop_section()
@@ -833,4 +860,21 @@ $&2=secIndex
                 return 0
 }
 
+/**
+ * After a restore, the ALU objects need to be manually triggered so that they periodically update
+ *
+ * @param $o1 jumpstarters List object to hold NetCons which are used to restart the ALUs
+ */
+proc restartALUs() { local aluIndex  localobj nc, nil
+    if( object_id( ALUList, 1 ) != -1 ) {
+        
+        for aluIndex=0, ALUList.count()-1 {
+            nc = new NetCon( nil, ALUList.o(aluIndex), 10, 1, 1 )
+            nc.event(t)
+            $o1.append(nc)
+        }
+    }
+}
+
 endtemplate Report
+

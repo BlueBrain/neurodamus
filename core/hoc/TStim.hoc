@@ -8,7 +8,7 @@
 
 D__TSTIMHOC = 1
 
-
+{load_file("RNGSettings.hoc")}
 
 /**
 * TStim class is intended to make it easy to use current injection stimulation.
@@ -98,6 +98,7 @@ begintemplate TStim
         }
         
         initinject()
+        //addpoint( 0, $1 )
         remtime = $2
         nextpulse = $1
 
@@ -121,6 +122,13 @@ begintemplate TStim
         }
         
         addpoint( 0, $1+$2 )
+
+/*
+for remtime=0, tvec.size()-1 {
+    print tvec.x[remtime], " ", stim.x[remtime]
+}
+*/
+
     }
     
     proc sin(/*amp,start,dur,freq*/){
@@ -151,28 +159,53 @@ begintemplate TStim
 		tvec.integral	
 	}
 
-/**
-* Note that the easiest way to write the noise function is:
-* 	rand.play(&iclamp.amp)
-* However, this does not allow you the control of when to start and to end the
-* stimulus, so there is a memory overhead of preparing the noise vector in advanced
-* and put it in memory. I do now know of any differences in performance between
-* the vector.play and the rand.play functions.
-*/
-	proc noise(/*start,dur,mean,var[,dt]*/){local dT localobj rngInfo
-		if(numarg()>4) dT = $5 else dT = 0.5
-		initinject()
-		rand.normal($3,$4)
+    /**
+     * Note that the easiest way to write the noise function is:
+     * rand.play(&iclamp.amp)
+     * However, this does not allow you the control of when to start and to end the
+     * stimulus, so there is a memory overhead of preparing the noise vector in advanced
+     * and put it in memory. I do now know of any differences in performance between
+     * the vector.play and the rand.play functions.
+     */
+    proc noise(/*start,dur,mean,var[,dt]*/){local dT, tstim_end, prev_t, next_t, tstep  localobj rngInfo
+        if(numarg()>4) dT = $5 else dT = 0.5
+        initinject()
+        rand.normal($3,$4)
         tstim_end = $1+$2
 
         rngInfo = new RNGSettings()
+        
+        // To help with save state, we want Noise stimulus to continue where it left off
+        // so first draw the numbers that were already used (not very efficient, but can be improved later)
+        if( rngInfo.getRNGMode() != rngInfo.COMPATIBILITY ) if( $1 > 0 ) {
 
-		tvec.indgen($1,$1+$2,dT)
-		stim.copy(tvec.c)
-		stim.setrand(rand)
+            // this can use up a lot of memory as simulation times increase.  Should do a proper rewrite, but for now
+            // make sure no chunk is larger than what we will use for the actual simulation
+            prev_t = 0
+            tstep = tstim_end-$1-dt
+            
+            while( prev_t < $1-dt ) {
+                if( prev_t + tstep < $1-dt ) {
+                    next_t = prev_t + tstep
+                } else {
+                    next_t = $1-dt
+                }
+            
+                tvec.indgen(prev_t,next_t,dT)
+                stim.copy(tvec.c)
+                stim.setrand(rand)
+
+                prev_t = next_t+dt
+            }
+        }
+        
+        tvec.indgen($1,tstim_end,dT)
+        stim.copy(tvec.c)
+        stim.setrand(rand)
 
         // If the stimulus starts with a delay from simulation start time, we will want 0 amps until the next Dt.
         // Note that for Resume, we will be at t > 0 and delay was offset by previous save time. Ergo, we must check that delay > t
+        // Note that for legacy versions, we always start with 0 amps; when we stop support for legacy, we should selectively set initial slot to 0
         if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY || $1 > t ) {
             stim.x[0] = 0
         }

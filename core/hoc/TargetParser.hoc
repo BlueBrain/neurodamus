@@ -19,7 +19,7 @@ begintemplate TargetParser
 objref targetList
 
 //public functions
-public init, open, targetList, getTarget, updateTargets
+public init, open, targetList, getTarget, updateTargets, updateTargetList
 
 //allow some nodes (i.e. node 1) to output messages to the console
 public isVerbose
@@ -99,7 +99,9 @@ proc open() { localobj tFile, targetInstance
                 targetInstance.isDefined = 1
 
                 //Display msg to default output if target instance is empty
-                if (targetInstance.isEmpty && isVerbose) print "Warning: Following target is empty: ", targetInstance.name
+                if (targetInstance.isEmpty && isVerbose) {
+                    print "Warning: Following target is empty: ", targetInstance.name
+                }
             }
         }
         tFile.close()
@@ -186,8 +188,12 @@ func parseCellTargetContents() { local potentialGid, numberToken localobj tFile,
 
     validateTargetTermination(targetInstance.name, tstr1)
 
-    //Return error code: 1 if target is empty, 0 if
-    if (numberToken == 0) return 1 else return 0
+    //Return error code: 1 if target is empty
+    if (numberToken == 0) {
+        return 1
+    } else {
+        return 0
+    }
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -273,7 +279,11 @@ func parseOtherTargetContents() { local offset, extraIndex, potentialGid, val, n
     validateTargetTermination(targetInstance.name, tstr1)
 
     //Return error code: 1 if target is empty, 0 if
-    if (numberToken == 0) return 1 else return 0
+    if (numberToken == 0) {
+        return 1
+    } else {
+        return 0
+    }
 }
 
 //------------------------------------------------------------------------------------------------------------
