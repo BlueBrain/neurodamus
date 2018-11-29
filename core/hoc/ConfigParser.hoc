@@ -44,7 +44,7 @@ public parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, p
 
 proc init() {
     strUtil = new StringFunctions()
-    
+
     // note that since there should only be one Run object, we create nothing now.
     parsedReports = new Map()
     parsedStimuli = new Map()
@@ -62,99 +62,93 @@ proc init() {
  * Read the specified Config File, populating basic maps with the data read for now.
  *
  * @param $s1 Name of file to open and parse
+ * @param $2 verbose
  */
-proc open() { local commentCheck  localobj configIn, rawline, strtemp, sectionName, sectionType, tempBlock
-    
+proc open() { local commentCheck, verbose  localobj configIn, sectionName, sectionType, tempBlock
+    verbose = 0
+    if( numarg() >= 2 ) {
+        verbose = $2
+    }
+
     configIn = new File()
     configIn.ropen( $s1 )
-    
+
     if( configIn.isopen == 0 ) {
         printf( "Error: Could not open BlueConfig file '%s'\n", $s1 )
         quit()
     }
-    
+
     //read line by line, branch off when encountering major block type: run, stimulus, report, stimulusinject, connect
-    rawline = new String()
-    strtemp = new String()
+    strdef rawline
+    strdef strtemp
     sectionType = new String()
     sectionName = new String()
-    
-    while( configIn.gets(rawline.s) >= 0 ) {
-        trimFront( rawline.s )
-        if( strcmp( rawline.s, "\n" ) == 0 ) {
-        
-        } else if( isCommented( rawline.s ) ) {
-        } else {
-            //non-comment line, there should be a name along with the yet to be determined section type
-            sectionType.s = ""
-            sscanf( rawline.s, "%s%s", sectionType.s, sectionName.s )
-            
-            //next line is open brace, so grab it now
-            configIn.gets(strtemp.s)
-            
-            if( strcmp( sectionType.s, "Run" ) == 0 ) {
-                parseRun( configIn )
-            } else {
-                tempBlock = parseBlock( configIn )
-                if ( strcmp( sectionType.s, "Report" ) == 0 ) {
-                    parsedReports.put( sectionName, tempBlock )
-                } else if ( strcmp( sectionType.s, "Stimulus" ) == 0 ) {
-                    parsedStimuli.put( sectionName, tempBlock )
-                } else if ( strcmp( sectionType.s, "StimulusInject" ) == 0 ) {
-                    parsedInjects.put( sectionName, tempBlock )
-                } else if ( strcmp( sectionType.s, "Connection" ) == 0 ) {
-                    parsedConnects.put( sectionName, tempBlock )
-                } else if ( strcmp( sectionType.s, "Electrode" ) == 0 ){
-            	    parsedElectrodes.put( sectionName, tempBlock )
-                } else if ( strcmp( sectionType.s, "NeuronConfigure" ) == 0 ){
-            	    parsedConfigures.put( sectionName, tempBlock )
-                } else if ( strcmp( sectionType.s, "Modification" ) == 0 ) {
-                    parsedModifications.put( sectionName, tempBlock )
-                } else if ( strcmp( sectionType.s, "Projection" ) == 0 ) {
-                    parsedProjections.put( sectionName, tempBlock )
+
+    while( configIn.gets(rawline) >= 0 ) {
+        trim( rawline )
+
+        if( isEmpty(rawline) ) {
+            continue
+        }
+        if( isCommented(rawline) ) {
+            // This can skip whole section. It is a section if next line starts with {
+            sectionType.s = rawline
+            configIn.gets(rawline)
+            // { may be commented
+            strUtil.tail(rawline, "[ \t#]*", strtemp)
+            strUtil.left(strtemp, 1)
+
+            if( strcmp(strtemp, "{") == 0 ) {
+                if( verbose ) { print "   [SKIP] Section: ", sectionType.s }
+                while( ! isTerminated(rawline) && configIn.gets(rawline) >= 0 ) {
+                    strUtil.tail(rawline, "[ \t#]*", rawline)
                 }
+                continue
+            } else if ( isCommented(rawline) ) {
+                // If it's not a section and is commented, skip, otherwise parse normally
+                continue
+            }
+        }
+
+        //non-comment line, there should be a name along with the yet to be determined section type
+        sectionType.s = ""
+        sscanf( rawline, "%s%s", sectionType.s, sectionName.s )
+
+        //next line is open brace, so grab it now
+        configIn.gets(strtemp)
+        if ( verbose ) { print "  ConfigParser: Parsing section ", sectionType.s, ": ", sectionName.s }
+
+        if( strcmp( sectionType.s, "Run" ) == 0 ) {
+            if( object_id(parsedRun) > 0 ) {
+                //user is only allowed to declare one Run section in the config file
+                execerror("Error: multiple Run objects declared in config file")
+            }
+            parsedRun = parseBlock(configIn)
+        } else {
+            tempBlock = parseBlock( configIn )
+            if ( strcmp( sectionType.s, "Report" ) == 0 ) {
+                parsedReports.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "Stimulus" ) == 0 ) {
+                parsedStimuli.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "StimulusInject" ) == 0 ) {
+                parsedInjects.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "Connection" ) == 0 ) {
+                parsedConnects.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "Electrode" ) == 0 ){
+                parsedElectrodes.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "NeuronConfigure" ) == 0 ){
+                parsedConfigures.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "Modification" ) == 0 ) {
+                parsedModifications.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "Projection" ) == 0 ) {
+                parsedProjections.put( sectionName, tempBlock )
             }
         }
     }
-    
+
     configIn.close
 }
 
-//------------------------------------------------------------------------------------------------------------
-
-/*!
- * @param $o1 configIn
- */
-proc parseRun() { localobj rawline, configIn, fieldName, fieldValue
-
-    //user is only allowed to declare one Run section in the config file
-    if( object_id(parsedRun) != 0 )  {
-        printf( "Error: multiple Run objects declared in config file\n" )
-        quit()
-    }
-    
-    rawline = new String()
-    configIn = $o1
-    
-    parsedRun = new Map()
-    
-    while( configIn.gets(rawline.s) >= 0 ) {
-        //check if close brace to terminate section
-        if( isTerminated( rawline.s ) ) {
-            return
-        }
-    
-        if( !isCommented( rawline.s )) {
-            //we only expect string pairs for run objects, so keep it simple for now
-            fieldName = new String()
-            fieldValue = new String()
-
-            sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
-            
-            parsedRun.put( fieldName, fieldValue )
-        }
-    }
-}
 
 //------------------------------------------------------------------------------------------------------------
 
@@ -163,157 +157,35 @@ proc parseRun() { localobj rawline, configIn, fieldName, fieldValue
  *
  * @param $o1 File getting parsed
  */
-obfunc parseBlock() { local ret  localobj pendingBlock, rawline, configIn, fieldName, fieldValue
-    strdef wscheck
-    
-    rawline = new String()
+obfunc parseBlock() { localobj pendingBlock, configIn, fieldName, fieldValue
+    strdef rawline
     configIn = $o1
-    
     pendingBlock = new Map()
-    
-    while( configIn.gets(rawline.s) >= 0 ) {
-        //ignore empty lines
-        trimFront(rawline.s)
-        if( strcmp(rawline.s, "\n") == 0 ) {
+
+    while( configIn.gets(rawline) >= 0 ) {
+        trim( rawline )
+        if( isEmpty(rawline) || isCommented(rawline) ) {
             continue
         }
-    
-        //check if close brace to terminate section
-        if( isTerminated( rawline.s ) ) {
+        if( isTerminated(rawline) ) {
             return pendingBlock
         }
-        
-        if( !isCommented( rawline.s )) {
-            
-            //just grab the first string, then everything after that string
-            fieldName = new String()
-            fieldValue = new String()
-            
-            sscanf( rawline.s, "%s", fieldName.s )
-            
-            strUtil.tail( rawline.s, fieldName.s, fieldValue.s )
-            
-            //check for leading and trailing white space in fieldValue
-            wscheck = fieldValue.s
-            strUtil.left( wscheck, 1 )
-            if( strcmp( wscheck, " " ) == 0 || strcmp( wscheck, "\t" ) == 0 ) {
-                ret = strUtil.tail( fieldValue.s, "[ \t]+", fieldValue.s ) //strip leading white space
-            }
-            
-            wscheck = fieldValue.s
-            strUtil.right( wscheck, strUtil.len(wscheck)-1 )
-            while( strcmp( wscheck, " " ) == 0 || strcmp( wscheck, "\t" ) == 0 || strcmp( wscheck, "\n" ) == 0 ) {
-                strUtil.left( fieldValue.s, strUtil.len(fieldValue.s)-1 )
-                wscheck = fieldValue.s
-                strUtil.right( wscheck, strUtil.len(wscheck)-1 )
-            }
-            
-            //add  to the map
-            pendingBlock.put( fieldName, fieldValue )
+
+        //just grab the first string, then everything after that string
+        fieldName = new String()
+        fieldValue = new String()
+        sscanf( rawline, "%s", fieldName.s )
+        strUtil.tail( rawline, fieldName.s, fieldValue.s )
+
+        // Trim eventual leading white chars (trailing ones removed before split)
+        trimFront( fieldValue.s )
+
+        if( pendingBlock.exists(fieldName.s) ) {
+            execerror("Key defined twice in Config:",  fieldName.s)
         }
-    }
-}
 
-//------------------------------------------------------------------------------------------------------------
-
-/*!
- * deprecated - used to get report info, now should use parseBlock
- * @param $o1 File getting parsed
- * @param $o2 Stimulus name - String containing the name
- */
-proc parseReport() { localobj pendingReport, rawline, configIn, fieldName, fieldValue
-
-    rawline = new String()
-    configIn = $o1
-    
-    pendingReport = new Map()
-    
-    while( configIn.gets(rawline.s) >= 0 ) {
-    
-        //check if close brace to terminate section
-        if( isTerminated( rawline.s ) ) {
-            parsedReports.put( $o2, pendingReport )
-            return
-        }
-    
-        if( !isCommented( rawline.s )) {
-            
-            //we only expect string pairs for stimulus objects, so keep it simple for now
-            fieldName = new String()
-            fieldValue = new String()
-
-            sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
-            
-            pendingReport.put( fieldName, fieldValue )
-        }
-    }
-}
-
-//------------------------------------------------------------------------------------------------------------
-
-/*!
- * deprecated - used to get stimulus info, now should use parseBlock
- * @param $o1 File getting parsed
- * @param $o2 Stimulus name - String containing the name
- */
-proc parseStimulus() { localobj pendingStim, rawline, configIn, fieldName, fieldValue
-
-    rawline = new String()
-    configIn = $o1
-    
-    pendingStim = new Map()
-    
-    while( configIn.gets(rawline.s) >= 0 ) {
-    
-        //check if close brace to terminate section
-        if( isTerminated( rawline.s ) ) {
-            parsedStimuli.put( $o2, pendingStim )
-            return
-        }
-    
-        if( !isCommented( rawline.s )) {
-            
-            //we only expect string pairs for stimulus objects, so keep it simple for now
-            fieldName = new String()
-            fieldValue = new String()
-
-            sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
-            
-            pendingStim.put( fieldName, fieldValue )
-        }
-    }
-}
-
-//------------------------------------------------------------------------------------------------------------
-
-/*!
- * deprecated - used to get inject info, now should use parseBlock
- * @param $o1 File getting parsed
- * @param $o2 Stimulus Inject name - String containing the name
- */
-proc parseStimulusInject() { localobj pendingInject, rawline, configIn, fieldName, fieldValue
-
-    rawline = new String()
-    configIn = $o1
-    
-    pendingInject = new Map()
-    
-    while( configIn.gets(rawline.s) >= 0 ) {
-    
-        //check if close brace to terminate section
-        if( isTerminated( rawline.s ) ) {
-            parsedInjects.put( $o2, pendingInject )
-            return
-        }
-    
-        if( !isCommented( rawline.s )) {
-            //we only expect string pairs for stimulus objects, so keep it simple for now
-            fieldName = new String()
-            fieldValue = new String()
-
-            sscanf( rawline.s, "%s%s", fieldName.s, fieldValue.s )
-            pendingInject.put( fieldName, fieldValue )
-        }
+        //add to the map
+        pendingBlock.put( fieldName, fieldValue )
     }
 }
 
@@ -323,21 +195,32 @@ proc parseStimulusInject() { localobj pendingInject, rawline, configIn, fieldNam
  * Remove white space from start and end of a string
  * @param $s1 string to get trimmed
  */
-proc trimFront() { local index
-    strdef peek
-    
-    //confirm that first character is ws
-    peek = $s1
-    strUtil.left(peek, 1)
-    index = strUtil.head( peek, "[ \t]", peek )
-    while( index != -1 ) {
-        strUtil.tail( $s1, "[ \t]", $s1 )
-        
-        peek = $s1
-        strUtil.left(peek, 1)
-        index = strUtil.head( peek, "[ \t]", peek )
+proc trimFront() {
+    strUtil.tail($s1, "[ \t]*", $s1)
+}
+
+
+proc trimBack() { local idx
+    strdef lastchar
+
+    while( strUtil.len($s1) ) {
+        lastchar=$s1
+        idx=strUtil.len($s1) - 1
+        strUtil.right(lastchar, idx)
+        if( strUtil.head(lastchar, "[ \t\n]", lastchar) > -1 ) {
+            strUtil.left($s1, idx)
+        } else {
+            break
+        }
     }
 }
+
+
+proc trim() {
+    trimFront($s1)
+    trimBack($s1)
+}
+
 
 //------------------------------------------------------------------------------------------------------------
 
@@ -347,16 +230,14 @@ proc trimFront() { local index
  */
 func isCommented() {
     strdef temp
-    
     sscanf( $s1, "%s", temp )
-    
+
     //verify first non-ws charater is not '#'; otherwise, ignore whole line as comment
     if( strUtil.substr( temp, "#" ) != 0 ) {
         return 0
     } else {
         return 1
     }
-    
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -367,9 +248,8 @@ func isCommented() {
  */
 func isTerminated() {
     strdef temp
-    
     sscanf( $s1, "%s", temp )
-    
+
     if( strcmp( temp, "}" ) != 0 ) {
         return 0
     } else {
@@ -377,15 +257,19 @@ func isTerminated() {
     }
 }
 
+func isEmpty() {
+    return ( strcmp($s1, "") == 0 || strcmp($s1, "\n") == 0 )
+}
+
 //------------------------------------------------------------------------------------------------------------
 
 /*!
- * For all the maps stored in the ConfigParser, activate verbose logging so that any unexpected events are 
+ * For all the maps stored in the ConfigParser, activate verbose logging so that any unexpected events are
  * more descriptively printed to the console
  */
 proc toggleVerbose() { local mapIndex, itemIndex  localobj mapList
     parsedRun.toggleVerbose()
-    
+
     mapList = new List()
     mapList.append( parsedReports )
     mapList.append( parsedStimuli )
