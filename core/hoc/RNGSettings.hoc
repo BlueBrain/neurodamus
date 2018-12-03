@@ -5,6 +5,7 @@
  * @date 2017-03-08
  * @remark Copyright © BBP/EPFL 2005-2017; All rights reserved. Do not distribute without further notice.
  */
+{load_file("SimSettings.hoc")}
 
 rngMode = 0  // corresponds to COMPATIBILITY defined below
 ionchannelSeed = 0
