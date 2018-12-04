@@ -41,9 +41,10 @@ class NeuronDamus(_Neuron):
             # default logging (if set previously this wont have any effect)
             if MPI.rank == 0:
                 open(LOG_FILENAME, "w").close()  # Truncate
+                MPI.barrier()
                 setup_logging(GlobalConfig.verbosity, LOG_FILENAME, rank=0)
             else:
-                time.sleep(0.5)  # Give time to truncate
+                MPI.barrier()
                 setup_logging(0, LOG_FILENAME, MPI.rank)
             logging.info("Neurodamus Mod & Hoc lib loaded.")
 

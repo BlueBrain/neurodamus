@@ -285,8 +285,8 @@ class CellDistributor(object):
         meinfo = METypeManager()
         res = meinfo.load_info(run_conf, gidvec, combo_names, morpho_names)
         if res < 0:
-            logging.info(str(gidvec))
-            logging.info("Memap: " + str(meinfo._me_map.keys()))
+            logging.info("gidvec: " + str(gidvec))
+            logging.info("Memap: " + str(meinfo.gids))
             raise RuntimeError("Errors found during processing of mecombo file. See log")
 
         return total_cells, gidvec, meinfo

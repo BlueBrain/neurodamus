@@ -146,7 +146,7 @@ class METypeManager(object):
     __slots__ = ['_me_map']
 
     def __init__(self):
-        self._me_map = {}
+        self._me_map = {}  # Map gid->me_type
 
     def load_info(self, run_conf, gidvec, combo_list, morph_list):
         """ Read file with mecombo info, retaining only those that are local to this node
@@ -194,3 +194,7 @@ class METypeManager(object):
     def retrieve_info(self, gid):
         return self._me_map.get(gid) \
             or logging.warning("No info for gid %d found.", gid)
+
+    @property
+    def gids(self):
+        return self._me_map.keys()
