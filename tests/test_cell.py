@@ -1,3 +1,6 @@
+"""
+Basic tests to HL neuron for creating cells and setup a simple simulation
+"""
 from os import path
 from neurodamus.core import Neuron, Cell, CurrentSource
 from pytest import approx

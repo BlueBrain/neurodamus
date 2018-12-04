@@ -1,5 +1,8 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+"""
+Neuron tutorial I using the new HighLevel API. Original tutorial at
+https://github.com/BlueBrain/SimulationTutorials/blob/master/CNS2017/NEURON/NEURON_intro.ipynb
+"""
 from neurodamus.core import Cell
 from neurodamus.core import CurrentSource
 from neurodamus.core import Neuron

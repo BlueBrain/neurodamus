@@ -1,3 +1,7 @@
+"""
+Stimuli sources. inc current sources which can be attached to cells
+"""
+
 from __future__ import absolute_import
 from . import Neuron
 from .random import RNG

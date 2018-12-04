@@ -4,7 +4,7 @@ The main Neurodamus entity
 Copyright 2018 - Blue Brain Project, EPFL
 """
 from __future__ import absolute_import
-from os import path
+from os import path as Path
 import sys
 import logging
 from .core import MPI, mpi_no_errors
@@ -31,7 +31,7 @@ class Node:
         """
         Nd.init()
         self._config_parser = self._open_config(recipe)
-        self._blueconfig_path = path.dirname(recipe)
+        self._blueconfig_path = Path.dirname(recipe)
         self._connection_weight_delay_list = []
 
         # Instance Objects
@@ -68,6 +68,7 @@ class Node:
             return getattr(self, new_name)
         raise AttributeError("Node has no attribute {} (nor {})".format(item, new_name))
 
+    # -
     @staticmethod
     def _open_config(recipe):
         """This function will run the parser and make the data accessible.
@@ -106,7 +107,7 @@ class Node:
         h.steps_per_ms = 1.0 / h.dt
         return config_parser
 
-    #
+    # -
     @mpi_no_errors
     def load_targets(self):
         """Provided that the circuit location is known and whether a user.target file has been
@@ -119,14 +120,14 @@ class Node:
         if MPI.rank == 0:
             self._target_parser.isVerbose = 1
 
-        target_f = path.join(run_conf.get("nrnPath").s, "start.target")
+        target_f = Path.join(run_conf.get("nrnPath").s, "start.target")
         self._target_parser.open(target_f)
 
         if run_conf.exists("TargetFile"):
             user_target = self._find_config_file(run_conf.get("TargetFile").s)
             self._target_parser.open(user_target, 1)
 
-    #
+    # -
     @mpi_no_errors
     def compute_loadbal(self):
         """This function has the simulator instantiate the circuit (cells & synapses) to determine
@@ -157,7 +158,7 @@ class Node:
         cxinfo_filename = "cxinfo_%d.txt" % (prospective_hosts,)
 
         if MPI.rank == 0:
-            if path.isfile(cxinfo_filename):
+            if Path.isfile(cxinfo_filename):
                 with open(cxinfo_filename, "r") as cxinfo:
                     cx_nrnpath = cxinfo.readline().strip()
                     cx_target = cxinfo.readline().strip()
@@ -201,7 +202,7 @@ class Node:
         loadbal = Nd.LoadBalance()
 
         # Can we use an existing mcomplex.dat?  If mechanisms change, it needs to be regenerated.
-        if not path.isfile("mcomplex.dat"):
+        if not Path.isfile("mcomplex.dat"):
             logging.info("Generating mcomplex.dat...")
             loadbal.create_mcomplex()
         else:
@@ -242,12 +243,12 @@ class Node:
 
         self.clear_model()
 
-    #
+    # -
     @mpi_no_errors
     def export_loadbal(self, lb):
         self._cell_distributor.load_balance_cells(lb, MPI.size)
 
-    #
+    # -
     @mpi_no_errors
     def create_cells(self, run_mode=None):
         """Instantiate the cells of the network, handling distribution and any load balancing as
@@ -290,7 +291,7 @@ class Node:
         if run_mode is not None:
             mode_obj.s = old_mode
 
-    #
+    # -
     @mpi_no_errors
     def create_synapses(self):
         """Create synapses among the cells, handling connections that appear in the config file
@@ -308,9 +309,9 @@ class Node:
         synapse_mode = run_conf.get("SynapseMode").s if run_conf.exists("SynapseMode") else None
 
         # with larger scale circuits, we may divide synapses among several files
-        nrn_filepath = path.join(nrn_path, "nrn.h5")
+        nrn_filepath = Path.join(nrn_path, "nrn.h5")
         n_synapse_files = 1
-        if not path.isfile(nrn_filepath) and run_conf.exists("NumSynapseFiles"):
+        if not Path.isfile(nrn_filepath) and run_conf.exists("NumSynapseFiles"):
             n_synapse_files = run_conf.valueOf("NumSynapseFiles")
 
         self._synapse_manager = SynapseRuleManager(nrn_path, self._target_manager,
@@ -370,7 +371,7 @@ class Node:
 
         self._synapse_manager.finalizeSynapses(base_seed)
 
-    #
+    # -
     def _interpret_connections(self, extend_info=True):
         """Aux method for creating/updating connections
         """
@@ -418,7 +419,7 @@ class Node:
                 conn_src, conn_dst, self.gidvec, weight, syn_config, stdp_mode,
                 mini_spont_rate, syn_t, syn_override, creation_mode=not dont_create)
 
-    #
+    # -
     @mpi_no_errors
     def create_gap_junctions(self):
         """Create gap_juntions among the cells, according to blocks in the config file,
@@ -450,7 +451,7 @@ class Node:
         else:
             logging.info("No Gap-junctions found")
 
-    #
+    # -
     def _find_projection_file(self, projection):
         """Determine where to find the synapse projection files"""
         return self._find_input_file("proj_nrn.h5", projection.get("Path").s, ("ProjectionPath",))
@@ -471,8 +472,8 @@ class Node:
         run_config = self._config_parser.parsedRun
 
         # if it's absolute path then can be used immediately
-        if path.isabs(filepath):
-            nrn_path = path.join(filepath, filename)
+        if Path.isabs(filepath):
+            nrn_path = Path.join(filepath, filename)
         else:
             for path_key in path_conf_entries:
                 if run_config.exists(path_key):
@@ -480,24 +481,24 @@ class Node:
                     break
             else:
                 base_path = run_config.get("CircuitPath").s,
-            nrn_path = path.join(base_path, filepath, filename)
+            nrn_path = Path.join(base_path, filepath, filename)
 
-        if not path.isfile(nrn_path):
+        if not Path.isfile(nrn_path):
             raise ConfigurationError("Could not find file %s", filename)
         logging.debug("data file %s path: %s", filename, nrn_path)
         return nrn_path
 
     def _find_config_file(self, filepath):
-        if not path.isabs(filepath):
-            _path = path.join(self._blueconfig_path, filepath)
-            if path.isfile(_path):
+        if not Path.isabs(filepath):
+            _path = Path.join(self._blueconfig_path, filepath)
+            if Path.isfile(_path):
                 filepath = _path
             # If not uses pwd
-        if not path.isfile(filepath):
+        if not Path.isfile(filepath):
             raise ConfigurationError("Config file not found: " + filepath)
         return filepath
 
-    #
+    # -
     @mpi_no_errors
     def enable_stimulus(self):
         """Iterate over any stimuli/stim injects defined in the config file given to the simulation
@@ -514,7 +515,7 @@ class Node:
             electrodes_path_o = conf.parsedRun.get("ElectrodesPath")
             logging.info("ElectrodeManager using electrodes from %s", electrodes_path_o.s)
         else:
-            logging.info("No electrodes path. Extracellular class of stimuli will be unavailable")
+            logging.info("No electrodes Path. Extracellular class of stimuli will be unavailable")
         self._elec_manager = Nd.ElectrodeManager(electrodes_path_o, conf.parsedElectrodes)
 
         # for each stimulus defined in the config file, request the stimmanager to instantiate
@@ -556,7 +557,7 @@ class Node:
                 logging.info(" * [STIM] %s (%s -> %s)", name, stim_name, target_name)
                 self._stim_manager.interpret(target_name, stim)
 
-    #
+    # -
     @mpi_no_errors
     def enable_modifications(self):
         """Iterate over any Modification blocks read from the BlueConfig and apply them to the
@@ -569,6 +570,7 @@ class Node:
             mod_manager.interpret(mod)
         # mod_mananger gets destroyed as it is done applying mods
 
+    # -
     # @mpi_no_errors - not required since theres a call inside before _binreport_helper.make_comm
     def enable_reports(self):
         """Iterate over reports defined in the config file given to the simulation and
@@ -665,7 +667,7 @@ class Node:
         if self._elec_manager is not None:
             self._elec_manager.clear()
 
-    #
+    # -
     @mpi_no_errors
     def execute_neuron_configures(self):
         """Iterate over any NeuronConfigure blocks from the BlueConfig.
@@ -689,7 +691,7 @@ class Node:
                     tstr = tstr.replace("%g", "%g" % x)
                     Nd.execute1(tstr, sec=sc.sec)
 
-    #
+    # -
     @mpi_no_errors
     def run(self, show_progress=False):
         """ Runs the simulation
@@ -766,7 +768,7 @@ class Node:
         logging.info("Simulation finished.")
         return tdat
 
-    #
+    # -
     def want_all_spikes(self):
         """setup recording of spike events (crossing of threshold) for the cells on this node
         """
@@ -776,7 +778,7 @@ class Node:
                 logging.debug("Collecting spikes for gid %d", gid)
                 pnm.spike_record(gid)
 
-    #
+    # -
     @mpi_no_errors
     def clear_model(self):
         """Clears appropriate lists and other stored references. For use with intrinsic load
@@ -810,7 +812,7 @@ class Node:
     def gidvec(self):
         return self._cell_distributor.getGidListForProcessor()
 
-    #
+    # -
     def get_target_points(self, target, cell_use_compartment_cast=True):
         """Helper to retrieve the points of a target.
         If target is a cell then uses compartmentCast to obtain its points.
@@ -830,19 +832,19 @@ class Node:
                 .getPointList(self._cell_distributor)
         return target.getPointList(self._cell_distributor)
 
-    #
+    # -
     def get_synapse_data_gid(self, gid):
         raise DeprecationWarning("Please use directly the synapse_manager object API, "
                                  "method: get_synapse_params_gid")
 
-    #
+    # -
     @mpi_no_errors
     def spike2file(self, outfile):
         """ Write the spike events that occured on each node into a single output file.
         Nodes will write in order, one after the other.
         """
         logging.info("Writing spikes to %s", outfile)
-        outfile = path.join(self._config_parser.parsedRun.get("OutputRoot").s, outfile)
+        outfile = Path.join(self._config_parser.parsedRun.get("OutputRoot").s, outfile)
 
         # root node opens file for writing, all others append
         if MPI.rank == 0:
@@ -859,12 +861,12 @@ class Node:
                     for i, gid in enumerate(pnm.idvec):
                         f.write("%.3f\t%d\n" % (pnm.spikevec.x[i], gid))
 
-    #
+    # -
     def dump_circuit_config(self, suffix="dbg"):
         log_stage("Dumping cells state")
         Nd.stdinit()
 
-        if not path.isfile("debug_gids.txt"):
+        if not Path.isfile("debug_gids.txt"):
             logging.info("Debugging all gids")
             gids = self.gidvec
         else:
@@ -929,6 +931,7 @@ class Neurodamus(Node):
         # In case an exception occurs we must prevent the destructor from cleaning
         self._init_ok = True
 
+    # -
     def _instantiate_simulation(self, enable_reports=True):
         log_stage("============= INITIALIZING (& Load-Balancing) =============")
         self.load_targets()
@@ -947,6 +950,7 @@ class Neurodamus(Node):
         if enable_reports:
             self.enable_reports()
 
+    # -
     def run(self, spike_filaname='spikes.dat', show_progress=True):
         """Runs the Simulation, writing the spikes to the given file
         """

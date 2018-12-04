@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function
 from collections import OrderedDict
 import logging  # active only in rank 0 (init)
-from os import path
+from os import path as Path
 import numpy as np
 from .core import MPI, mpi_no_errors
 from .core import NeuronDamus as Nd
@@ -35,8 +35,9 @@ class CellDistributor(object):
         self._gidvec = None
         self._total_cells = None
         # These wont ever be init'ed if not using lb
-        self._spgidvec = None
-        self._binfo = None
+        self._spgidvec = None   # cell parts gids
+        self._binfo = None      # balanceInfo
+
         self._useMVD3 = False
         self._global_seed = 0
         self._ionchannel_seed = 0
@@ -45,9 +46,10 @@ class CellDistributor(object):
         self._gid2meobj = {}
         self._gid2metype = {}
 
-        # Public
+        # complexity factor
         self.msfactor = 0.8
 
+        # create a tmp netcon objref
         if not hasattr(Nd, "nc_"):
             Nd.execute("objref nc_")
 
@@ -99,7 +101,7 @@ class CellDistributor(object):
             cx_path = "cx_%d" % MPI.cpu_count
             if run_conf.exists("CWD"):
                 # Should we allow for another path to facilitate reusing cx* files?
-                cx_path = path.join(run_conf.get("CWD").s, cx_path)
+                cx_path = Path.join(run_conf.get("CWD").s, cx_path)
 
             # self.binfo reads the files that have the predistributed cells (and pieces)
             self._binfo = Nd.BalanceInfo(cx_path, MPI.rank, MPI.cpu_count)
@@ -176,9 +178,16 @@ class CellDistributor(object):
         """ Load start.ncs getting the gids and the metypes for all cells in the base circuit
         (note that we may simulate less if there is a circuit target in the BlueConfig file)
 
-        Returns: A tuple of (gids and the metypes
+        Params:
+            run_conf: the Run secgion from the configuration
+            total_cells: The number of cells to be loaded
+            gidvec: The cells ids to be loaded according to the target. If it's None then
+                all the cells shall be loaded and reassigned Round-Robin
+
+        Returns: A tuple of (gids and the metypes)
+
         """
-        ncs = open(path.join(run_conf.get("nrnPath").s, "start.ncs"), "r")
+        ncs = open(Path.join(run_conf.get("nrnPath").s, "start.ncs"), "r")
         gid2mefile = OrderedDict()
 
         # first lines might be comments. Skip '#'
@@ -236,7 +245,7 @@ class CellDistributor(object):
         """Load cells from MVD3, required for v6 circuits
         """
         import h5py  # Can be heavy so loaded on demand
-        pth = path.join(run_conf.get("CircuitPath").s, "circuit.mvd3")
+        pth = Path.join(run_conf.get("CircuitPath").s, "circuit.mvd3")
         mvd = h5py.File(pth, 'r')
 
         # Gidvec must be ordered. we change to numpy
@@ -299,7 +308,7 @@ class CellDistributor(object):
         #  have those hyphens replaced with underscores.
         tpl_mod = tpl_filename
         if tpl_location is not None:
-            tpl_mod = path.join(tpl_location, tpl_filename)
+            tpl_mod = Path.join(tpl_location, tpl_filename)
 
         # first open the file manually to get the hoc template name
         tpl_name = None
@@ -311,7 +320,7 @@ class CellDistributor(object):
                     break
         Nd.load_hoc(tpl_mod)
         return tpl_name
-    
+
     # ### Accessor methods - They keep CamelCase API for compatibility with existing hoc
 
     def getMEType(self, gid):
@@ -469,10 +478,10 @@ class CellDistributor(object):
         fp.write(" %d\n" % piece_count)
         i = 2
         tcx = 0  # Total accum complexity
-        
+
         for _ in range(piece_count):
             i += 1
-            subtree_count = int(ms.x[i]) 
+            subtree_count = int(ms.x[i])
             fp.write("  %d\n" % subtree_count)
             for _ in range(subtree_count):
                 i += 1

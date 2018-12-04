@@ -1,13 +1,16 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+"""
+Neuron tutorial II using the new HighLevel API. Original tutorial at
+https://github.com/BlueBrain/SimulationTutorials/blob/master/CNS2017/NEURON/NEURON_morph_synapses.ipynb
+"""
 from neurodamus.core import Cell
 from neurodamus.core import CurrentSource
 from neurodamus.core import Neuron
 from neurodamus.core import synapses
 from neurodamus.core import mechanisms
-from os import path
+from os import path as Path
 
-MORPHO = path.join(path.dirname(__file__), "..", "tests/morphology/C060114A7.asc")
+MORPHO = Path.join(Path.dirname(__file__), "..", "tests/morphology/C060114A7.asc")
 
 
 def test_tut2():

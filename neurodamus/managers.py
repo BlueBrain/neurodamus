@@ -3,7 +3,7 @@ Structures holding the several instantiated objects from the configuration
 """
 import numpy
 import logging
-from os import path as osp
+from os import path as Path
 from .core import Neurondamus as Nd
 
 
@@ -30,7 +30,7 @@ class ElectrodeManager(object):
             if not el_file:
                 logging.warning("No File speficied for electrode %s. Skipping", name)
                 continue
-            el_filepath = osp.join(elec_path, el_file.s)
+            el_filepath = Path.join(elec_path, el_file.s)
 
             # Get electrode, checking versions
             v = conf.get("Version")  # Either None or hocObject

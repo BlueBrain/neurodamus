@@ -1,5 +1,8 @@
+"""
+Module which defines and handles METypes config (v5/v6 cells)
+"""
 from __future__ import absolute_import, print_function
-from os import path
+from os import path as Path
 import logging
 from collections import defaultdict
 from .core.configuration import ConfigurationError
@@ -41,13 +44,13 @@ class METype(object):
     def _instantiate_cell_v6(self, gid, etype_path, emodel, morpho_path, meinfos_v6):
         """Instantiates a SSCx v6 cell
         """
-        etype_mod = path.join(etype_path, emodel)
+        etype_mod = Path.join(etype_path, emodel)
         rc = Nrn.load_hoc(etype_mod)
         if rc == 0:
             raise ValueError("Unable to load METype file %s" % etype_mod + ".hoc")
 
         EModel = getattr(Nrn, emodel)
-        self._cellref = EModel(gid, path.join(morpho_path, "ascii"), meinfos_v6.morph_name + ".asc")
+        self._cellref = EModel(gid, Path.join(morpho_path, "ascii"), meinfos_v6.morph_name + ".asc")
         self._ccell = self._cellref
         self._synapses = Nrn.List()
         self._syn_helper_list = Nrn.List()
@@ -58,7 +61,7 @@ class METype(object):
         """Instantiates a cell v5 or before. Asssumes emodel hoc templates are loaded
         """
         EModel = getattr(Nrn, emodel)
-        self._ccell = ccell = EModel(gid, path.join(morpho_path, "ascii"))
+        self._ccell = ccell = EModel(gid, Path.join(morpho_path, "ascii"))
         self._cellref = ccell.CellRef
         self._synapses = ccell.CellRef.synlist
         self._syn_helper_list = ccell.CellRef.synHelperList

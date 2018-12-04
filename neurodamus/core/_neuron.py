@@ -1,3 +1,7 @@
+"""
+Internal module which defines several wrapper classes for Hoc entities.
+They are then available as singletons objects in neurodamus.core package
+"""
 from __future__ import absolute_import
 import sys
 import time

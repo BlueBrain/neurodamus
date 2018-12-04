@@ -1,7 +1,10 @@
+"""
+Main module for handling and instantiating synaptical connections and gap-junctions
+"""
 from __future__ import absolute_import, print_function
 import logging
 from itertools import chain
-from os import path
+from os import Path
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core.configuration import GlobalConfig
 from .connection import Connection, SynapseMode, STDPMode
@@ -25,6 +28,7 @@ class _ConnectionManagerBase(object):
     _synapse_mode = SynapseMode.default
     _local_gids = None
 
+    # -
     def __init__(self, circuit_path, target_manager, n_synapse_files=None):
         """Base class c-tor for connections (Synapses & Gap-Junctions) manager
         """
@@ -35,12 +39,12 @@ class _ConnectionManagerBase(object):
         self._synapse_reader = None
         self._local_gids = target_manager.cellDistributor.getGidListForProcessor()
 
-        if path.isfile(circuit_path):
+        if Path.isfile(circuit_path):
             circuit_file = circuit_path
-            circuit_path = path.dirname(circuit_path)
+            circuit_path = Path.dirname(circuit_path)
         else:
             circuit_file = self._find_circuit_file(circuit_path) \
-                if path.isdir(circuit_path) else None
+                if Path.isdir(circuit_path) else None
             assert circuit_file, "Circuit path doesnt contain circuit files"
 
         # Find and open the circuit
@@ -108,8 +112,7 @@ class _ConnectionManagerBase(object):
 
         log_verbose("(rank0) ConnectAll: Created %d connections", total_created_conns)
 
-    # Compatibility
-    connectAll = connect_all
+    connectAll = connect_all  # Compatibility
 
     # -
     def group_connect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
@@ -344,7 +347,6 @@ class _ConnectionManagerBase(object):
             return
         cell_conns.insert(pos, conn)
 
-    # -
     def all_connections(self):
         """Get an iterator over all the connections.
         """
@@ -377,7 +379,6 @@ class _ConnectionManagerBase(object):
             return
         del conn_lst[idx]
 
-    # -
     def disable(self, sgid, tgid, also_zero_conductance=False):
         """Disable a connection, all of its netcons and optionally synapses.
 
@@ -395,7 +396,6 @@ class _ConnectionManagerBase(object):
             self._disabled_conns[tgid].append(c)
             c.disable(also_zero_conductance)
 
-    # -
     def enable(self, sgid, tgid):
         """(Re)enable a connection
         """
@@ -409,7 +409,6 @@ class _ConnectionManagerBase(object):
         else:
             logging.warning("Non-existing connection to enable: %d->%d", sgid, tgid)
 
-    # -
     def delete_group(self, post_gids, pre_gids=None):
         """Delete a number of connections given lists of pre and post gids.
            Note: None is neutral and will match all gids.
@@ -421,7 +420,6 @@ class _ConnectionManagerBase(object):
         for _, lst, idx in self._find_group_in(self._connections_map, post_gids, pre_gids):
             del lst[idx]
 
-    # -
     def disable_group(self, post_gids, pre_gids=None, also_zero_conductance=False):
         """Disable a number of connections given lists of pre and post gids.
         Note: None will match all gids.
@@ -435,7 +433,6 @@ class _ConnectionManagerBase(object):
             self._disabled_conns[conn.tgid].append(lst.pop(idx))
             conn.disable(also_zero_conductance)
 
-    # -
     def enable_group(self, post_gids, pre_gids=None):
         """Enable a number of connections given lists of pre and post gids.
         Note: None will match all gids.
@@ -464,17 +461,17 @@ class _ConnectionManagerBase(object):
     @classmethod
     def _find_circuit_file(cls, location):
         for fname in cls.CIRCUIT_FILENAMES:
-            fullname = path.join(location, fname)
-            if path.isfile(fullname):
+            fullname = Path.join(location, fname)
+            if Path.isfile(fullname):
                 return fullname
         else:
             return None
 
     @classmethod
     def _find_fallback_file(cls, location):
-        location = location if path.isdir(location) else path.dirname(location)
-        fullname = path.join(location, cls.CIRCUIT_FILENAMES[-1])
-        return fullname if path.isfile(fullname) else None
+        location = location if Path.isdir(location) else Path.dirname(location)
+        fullname = Path.join(location, cls.CIRCUIT_FILENAMES[-1])
+        return fullname if Path.isfile(fullname) else None
 
 
 # ################################################################################################
@@ -548,8 +545,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
         all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
         logging.info(" => Created %d connections", all_ranks_total)
 
-    # compat
-    finalizeSynapses = finalize
+    finalizeSynapses = finalize  # compat
 
     # -
     def replay(self, target_name, spike_map):
@@ -610,7 +606,7 @@ class GapJunctionManager(_ConnectionManagerBase):
 
         log_verbose("Computing gap-junction offsets from gjinfo.txt")
         self._gj_offsets = compat.Vector("I")
-        gjfname = path.join(circuit_path, "gjinfo.txt")
+        gjfname = Path.join(circuit_path, "gjinfo.txt")
         gj_sum = 0
 
         for line in open(gjfname):
@@ -649,5 +645,4 @@ class GapJunctionManager(_ConnectionManagerBase):
         all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
         logging.info(" => Created %d Gap-Junctions", all_ranks_total)
 
-    # Compat
-    finalizeGapJunctions = finalize
+    finalizeGapJunctions = finalize  # Compat

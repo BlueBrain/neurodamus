@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from os import path
+from os import path as Path
 import logging
 import time
 from ..utils import classproperty
@@ -7,9 +7,9 @@ from ..utils.logging import setup_logging
 from .configuration import GlobalConfig
 from ._neuron import _Neuron, MPI
 
-LIB_PATH = path.realpath(path.join(path.dirname(__file__), "../../../lib"))
-MOD_LIB = path.join(LIB_PATH, "modlib", "libnrnmech.so")
-HOC_LIB = path.join(LIB_PATH, "hoclib", "neurodamus")
+LIB_PATH = Path.realpath(Path.join(Path.dirname(__file__), "../../../lib"))
+MOD_LIB = Path.join(LIB_PATH, "modlib", "libnrnmech.so")
+HOC_LIB = Path.join(LIB_PATH, "hoclib", "neurodamus")
 LOG_FILENAME = "pydamus.log"
 
 

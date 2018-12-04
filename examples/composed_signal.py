@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+"""
+An example on how to use CurrentSource to create a stimulus composed of different signals
+"""
 from neurodamus.core import CurrentSource
 
 

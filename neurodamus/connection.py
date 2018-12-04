@@ -99,6 +99,7 @@ class Connection(object):
         cls.ConnUtils = h.ConnectionUtils()
         return h
 
+    # -
     def __init__(self, sgid, tgid, weight_factor=1.0, configuration=None, stdp=None,
                  minis_spont_rate=.0, synapse_mode=SynapseMode.DUAL_SYNS, synapse_override=None):
         """Creates a connection object

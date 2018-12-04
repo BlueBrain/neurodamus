@@ -1,3 +1,6 @@
+"""
+A module implementing a high-level interface to Neuron cells.
+"""
 from __future__ import absolute_import
 from lazy_property import LazyProperty
 import logging

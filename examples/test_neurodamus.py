@@ -1,12 +1,18 @@
+#!/usr/bin/env python
+"""
+An example on how node can be used to mimick neurodamus behavior
+"""
 from __future__ import print_function
 from neurodamus import Node, Neurodamus
 from neurodamus.core import NeuronDamus as Nd
 from neurodamus.utils import setup_logging
 import sys
 import logging
-from os import path as osp
+from os import path as Path
 
-RECIPE_FILE = osp.expanduser("~/dev/TestData/build/circuitBuilding_1000neurons/BlueConfig")
+RECIPE_FILE = Path.expanduser("~/dev/TestData/build/circuitBuilding_1000neurons/BlueConfig")
+DEFAULT_LOG_LEVEL = 2
+TRACE_LOG_LEVEL = 5
 
 
 def test_run():
@@ -18,11 +24,11 @@ def test_run():
 def test_node_run(trace=False):
     """Node is more of a low-level class, where all initialization steps are manual
     """
-    setup_logging(2)
+    setup_logging(DEFAULT_LOG_LEVEL)
     if trace:
         # Some additional logging is available at special level 5
         print("TRACE mode is ON")
-        logging.root.setLevel(5)
+        logging.root.setLevel(TRACE_LOG_LEVEL)
 
     node = Node(RECIPE_FILE)
     node.load_targets()

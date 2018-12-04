@@ -2,7 +2,7 @@
 """
     neurodamus
     ----------
-    
+
     The neurodamus package implements the instantiation of simulations in Neuron
     based on a configuration file, a.k.a. BlueConfigs
     It is deeply based on the HOC implementation, therefore providing python modules like

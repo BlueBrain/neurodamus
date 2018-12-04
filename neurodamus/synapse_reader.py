@@ -1,6 +1,9 @@
+"""
+Module implementing interfaces to the several synapse readers (eg.: synapsetool, Hdf5Reader)
+"""
 import logging
 from abc import abstractmethod
-from os import path
+from os import path as Path
 from .core import NeuronDamus as ND, MPI
 from .connection import SynapseParameters
 from .utils.logging import log_verbose
@@ -98,10 +101,10 @@ class SynReaderNRN(SynapseReader):
     """ Synapse Reader for NRN format only, using the hdf5_reader mod.
     """
     def __init__(self, syn_src, conn_type, local_gids, n_synapse_files, verbose=False):
-        if path.isdir(syn_src):
-            syn_src = path.join(syn_src, 'nrn.h5')
+        if Path.isdir(syn_src):
+            syn_src = Path.join(syn_src, 'nrn.h5')
         # Hdf5 reader doesnt do checks, failing badly (and crypticly) later
-        if not path.isfile(syn_src) and not path.isfile(syn_src + ".1"):
+        if not Path.isfile(syn_src) and not Path.isfile(syn_src + ".1"):
             raise RuntimeError("NRN synapses file not found: " + syn_src)
 
         reader = ND.HDF5Reader(syn_src, n_synapse_files)

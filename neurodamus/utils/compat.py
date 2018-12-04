@@ -1,5 +1,5 @@
 """
-    Compatibility Classes to work similar to HOC types, recreating or wrapping them
+Compatibility Classes to work similar to HOC types, recreating or wrapping them
 """
 from __future__ import absolute_import
 from array import array

@@ -1,6 +1,5 @@
 """
 Stimulus implementation where incoming synaptic events are replayed for a single gid
-
 """
 from __future__ import absolute_import
 import os

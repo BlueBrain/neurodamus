@@ -1,3 +1,6 @@
+"""
+Tests relative to utils.pyutils package, namely the MultiMaps
+"""
 from __future__ import print_function, absolute_import
 import numpy
 from neurodamus.utils.pyutils import MultiMap, GroupedMultiMap

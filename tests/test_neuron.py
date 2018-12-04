@@ -1,3 +1,6 @@
+"""
+Test checking hoc entities from neuron are accessible from the high level wrappers.
+"""
 from neurodamus.core import Neuron
 from neurodamus.core import NeuronDamus
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""A few ways to create a cell with two branches, one of then two sections long"""
+"""
+A few ways to create a cell with two branches, one of then two sections long
+"""
 from neurodamus.core import Cell
 
 

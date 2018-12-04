@@ -1,7 +1,7 @@
 """
     neurodamus.core
     ---------------
-    
+
     The neurodamus.core package implements several helper modules for building circuits
     with Neuron.
     They can be seen as a High-Level Neuron API, and several examples are found under `examples`.

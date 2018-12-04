@@ -1,3 +1,6 @@
+"""
+A collection of Pure-Python MultiMaps
+"""
 import numpy as np
 from collections import Mapping
 from operator import add

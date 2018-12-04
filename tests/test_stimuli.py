@@ -1,11 +1,9 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
+"""
+Test suite for the new-gen Stimuli source (replacing TStim.hoc and parts of StimManager)
+"""
 import pytest
 from neurodamus.core import CurrentSource
-
-__author__ = "Fernando Pereira"
-__copyright__ = "Fernando Pereira"
 
 
 class TestStimuli(object):

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 A tutorial based on the Neuron documentation at
 https://neuron.yale.edu/neuron/static/docs/neuronpython/firststeps.html#step-2-create-a-cell
