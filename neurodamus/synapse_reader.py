@@ -9,7 +9,7 @@ from .connection import SynapseParameters
 from .utils.logging import log_verbose
 
 
-class SynapseReader:
+class SynapseReader(object):
     """ Synapse Readers base class.
         Factory create() will attempt to instantiate SynReaderSynTool, followed by SynReaderNRN.
     """

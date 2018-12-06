@@ -17,10 +17,7 @@ class SynapseParameters(object):
     empty = np.recarray(0, _dtype)
 
     def __new__(cls, params):
-        rec = np.recarray(1, cls._dtype)[0]
-        rec.location = 0.5
-        # Return record object
-        return rec
+        raise NotImplementedError()
 
     @classmethod
     def create_array(cls, length):

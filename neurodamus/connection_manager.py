@@ -4,7 +4,7 @@ Main module for handling and instantiating synaptical connections and gap-juncti
 from __future__ import absolute_import, print_function
 import logging
 from itertools import chain
-from os import Path
+from os import path as Path
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core.configuration import GlobalConfig
 from .connection import Connection, SynapseMode, STDPMode

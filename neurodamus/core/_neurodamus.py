@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from os import path as Path
 import logging
-import time
 from ..utils import classproperty
 from ..utils.logging import setup_logging
 from .configuration import GlobalConfig

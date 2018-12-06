@@ -1,13 +1,12 @@
 from __future__ import absolute_import, print_function
-from collections import OrderedDict
 import logging  # active only in rank 0 (init)
 from os import path as Path
-import numpy as np
+from . import cell_readers
 from .core import MPI, mpi_no_errors
 from .core import NeuronDamus as Nd
+from .metype import METype
 from .core.configuration import ConfigurationError
 from .core import ProgressBarRank0 as ProgressBar
-from .metype import METype, METypeManager
 from .utils import compat
 from .utils.logging import log_verbose
 
@@ -64,6 +63,7 @@ class CellDistributor(object):
         return self._cell_list
 
     # -
+    @mpi_no_errors
     def _setup(self, run_conf, target_parser):
         logging.info("Distributing circuit cells by available CPUs")
         morpho_path = run_conf.get("MorphologyPath").s
@@ -86,8 +86,11 @@ class CellDistributor(object):
         if not self._useMVD3:
             log_verbose("Reading [gid:METype] info from start.ncs")
 
-        gidvec = None       # Gids handled by this cpu
-        total_cells = None  # total cells in this simulation (can be a subset, e.g.: target)
+        gidvec = compat.Vector("I")  # Gids handled by this cpu
+        total_cells = None   # total cells in this simulation (can be a subset, e.g.: target)
+        circuit_size = None  # total cells in the circuit
+        me_infos = None      # metype info, dict (ncs) or METypeManager (mvd3)
+        loader = cell_readers.load_mvd3 if self._useMVD3 else cell_readers.load_ncs
 
         #  are we using load balancing? If yes, init structs accordingly
         if run_conf.exists("RunMode") \
@@ -95,7 +98,6 @@ class CellDistributor(object):
             log_verbose("Distributing cells according to load-balance")
             self._lb_flag = True
             self._spgidvec = compat.Vector("I")
-            gidvec = compat.Vector("I")
 
             # read the cx_* files to build the gidvec
             cx_path = "cx_%d" % MPI.cpu_count
@@ -120,29 +122,29 @@ class CellDistributor(object):
                 target = target_parser.getTarget(run_conf.get("CircuitTarget").s)
                 total_cells = int(target.completegids().size())
             else:
+                # TODO: gidvec doesnt sound it would include all cells. Check this
                 total_cells = len(gidvec)
+            # LOAD
+            self._gidvec, me_infos, _ = loader(run_conf, gidvec)
 
         elif run_conf.exists("CircuitTarget"):
             log_verbose("Distributing target circuit cells round-robin")
             target = target_parser.getTarget(run_conf.get("CircuitTarget").s)
-            gidvec = compat.Vector("I")
-            _target_gids = target.completegids()
-            total_cells = int(_target_gids.size())
+            target_gids = target.completegids()
+            gidvec.extend(int(gid) for gid in target_gids)
+            total_cells = int(target_gids.size())
+            # LOAD
+            self._gidvec, me_infos, _ = loader(run_conf, gidvec, MPI.cpu_count, MPI.rank)
 
-            for i, gid in enumerate(_target_gids):
-                if i % MPI.cpu_count == MPI.rank:
-                    gidvec.append(int(gid))
         else:
-            # Otherwise distribute all the cells round robin style. readNCS / readMVD3 handle this
             log_verbose("Distributing all cells round-robin")
+            # LOAD
+            self._gidvec, me_infos, circuit_size = loader(run_conf, None, MPI.cpu_count, MPI.rank)
 
-        # Determine metype; apply round-robin assignment if necessary
-        if self._useMVD3:
-            self._total_cells, self._gidvec, me_infos = self._load_mvd3(
-                run_conf, total_cells, gidvec)
-        else:
-            self._total_cells, self._gidvec, me_infos = self._load_ncs(
-                run_conf, total_cells, gidvec)
+        self._total_cells = total_cells or circuit_size
+
+        if len(self._gidvec) == 0:
+            logging.warning("Rank %d has no cells assigned.", MPI.rank)
 
         log_verbose("Done gid assignment: %d cells in network, %d in rank 0",
                     self._total_cells, len(self._gidvec))
@@ -171,125 +173,6 @@ class CellDistributor(object):
         global_cells_created = MPI.allreduce(total_created_cells, MPI.SUM)
         logging.info(" => Created %d cells (%d in rank 0)",
                      global_cells_created, total_created_cells)
-
-    # -
-    @staticmethod
-    def _load_ncs(run_conf, total_cells, gidvec):
-        """ Load start.ncs getting the gids and the metypes for all cells in the base circuit
-        (note that we may simulate less if there is a circuit target in the BlueConfig file)
-
-        Params:
-            run_conf: the Run secgion from the configuration
-            total_cells: The number of cells to be loaded
-            gidvec: The cells ids to be loaded according to the target. If it's None then
-                all the cells shall be loaded and reassigned Round-Robin
-
-        Returns: A tuple of (gids and the metypes)
-
-        """
-        ncs = open(Path.join(run_conf.get("nrnPath").s, "start.ncs"), "r")
-        gid2mefile = OrderedDict()
-
-        # first lines might be comments. Skip '#'
-        tstr = ncs.readline().strip()
-        while tstr.startswith("#"):
-            tstr = ncs.readline().strip()
-
-        try:
-            # should have "Cells x"
-            total_circuit_cells = int(tstr.split()[1])
-        except IndexError:
-            raise ConfigurationError("NCS file contains invalid config: " + tstr)
-
-        if total_cells is None:
-            log_verbose("Using all %d cells from NCS file", total_circuit_cells)
-            total_cells = total_circuit_cells
-        else:
-            log_verbose("Reading %d target cells out of %d from NCS file",
-                        total_cells, total_circuit_cells)
-
-        def get_next_cell(f):
-            for cell_i, line in enumerate(f):
-                line = line.strip()
-                if line == "}":
-                    break
-                parts = line.split()
-                assert len(parts) >= 5, "Error in ncs line " + line
-                _gid = int(parts[0][1:])
-                metype = parts[4]
-                yield cell_i, _gid, metype
-
-        ncs.readline()  # skip the '{'
-
-        if gidvec is None:
-            # Reassign Round-Robin
-            gidvec = compat.Vector("I")
-            for cellIndex, gid, metype in get_next_cell(ncs):
-                if cellIndex % MPI.cpu_count == MPI.rank:
-                    gidvec.append(gid)
-                    gid2mefile[gid] = metype
-        else:
-            for gid in gidvec:
-                gid2mefile[gid] = None  # Same order as vec
-            for cellIndex, gid, metype in get_next_cell(ncs):
-                if gid in gid2mefile:
-                    gid2mefile[gid] = metype
-
-        ncs.close()
-        return total_cells, gidvec, gid2mefile
-
-    # -
-    @staticmethod
-    @mpi_no_errors
-    def _load_mvd3(run_conf, total_cells, gidvec):
-        """Load cells from MVD3, required for v6 circuits
-        """
-        import h5py  # Can be heavy so loaded on demand
-        pth = Path.join(run_conf.get("CircuitPath").s, "circuit.mvd3")
-        mvd = h5py.File(pth, 'r')
-
-        # Gidvec must be ordered. we change to numpy
-        if gidvec is not None:
-            gidvec = np.frombuffer(gidvec, dtype="uint32")
-            gidvec.sort()
-            log_verbose("Reading %d target cells from MVD file", len(gidvec))
-        else:
-            # Reassign Round-Robin if not gidvec, and set total_cells
-            mecombo_ds = mvd["/cells/properties/me_combo"]
-            total_cells = len(mecombo_ds)
-            log_verbose("Reading all %d cells from MVD file", total_cells)
-            # circuit.mvd3 uses intrinsic gids starting from 1
-            cell_i = MPI.rank + 1
-            incr = MPI.cpu_count
-            gidvec = np.arange(cell_i, total_cells + 1, incr, dtype="uint32")
-
-        if not len(gidvec):
-            # Not enough cells to give this rank a few
-            logging.warning("Rank %d has no cells assigned.", MPI.rank)
-            return total_cells, compat.Vector('I'), METypeManager()
-
-        # Indexes are 0-based, and cant be numpy
-        indexes = compat.Vector("I", gidvec - 1)
-
-        morph_ids = mvd["/cells/properties/morphology"][indexes]
-        combo_ids = mvd["/cells/properties/me_combo"][indexes]
-        morpho_ds = mvd["/library/morphology"]
-        morpho_names = [str(morpho_ds[i]) for i in morph_ids]
-        combo_ds = mvd["/library/me_combo"]
-        combo_names = [str(combo_ds[i]) for i in combo_ids]
-
-        # We require gidvec as compat.Vector
-        gidvec = compat.Vector("I", gidvec)
-
-        # now we can open the combo file and get the emodel + additional info
-        meinfo = METypeManager()
-        res = meinfo.load_info(run_conf, gidvec, combo_names, morpho_names)
-        if res < 0:
-            logging.info("gidvec: " + str(gidvec))
-            logging.info("Memap: " + str(meinfo.gids))
-            raise RuntimeError("Errors found during processing of mecombo file. See log")
-
-        return total_cells, gidvec, meinfo
 
     # -
     @staticmethod
