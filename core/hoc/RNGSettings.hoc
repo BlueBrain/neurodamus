@@ -60,6 +60,9 @@ proc interpret() { localobj runInfo, pc, rng
             pc.barrier()
             quit()
         }
+        if( pc.id() == 0 ) {
+            print "RNGMode set to ", rngMode, " [COMPATIBILITY=0, RANDOM123=1, UPMCELLRAN4=2]"
+        }
     }
 
     if( runInfo.exists("BaseSeed") ) {

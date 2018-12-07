@@ -23,7 +23,11 @@ begintemplate TargetManager
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-objref targetList, cellList, sectionAccess, isec2sec[1], cellDistributor, nilSecRef
+objref targetList, cellList, sectionAccess, isec2sec[1], cellDistributor, nilSecRef, deletedSecRef
+
+///a dummy section which will serve as a nil for populating TPointLists
+create dummy
+
 
 //-----------------------------------------------------------------------------------------------
 // public members
@@ -54,7 +58,12 @@ proc init() { local lastgid, cellIndex  localobj cellObj, secList, pointList
     }
     nErrors = 0
     
-    sectionAccess = new Map()    
+    sectionAccess = new Map()
+    
+    //can I create a dummy section, reference it, then delte it to keep a null SectionRef for insertion into pointlists?
+    access dummy
+    deletedSecRef = new SectionRef()
+    delete_section()
 }
 
 //------------------------------------------------------------------------------------------
@@ -540,25 +549,24 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
     isec = $2
     ipt = $3
     offset = $4
-    
+
     if( offset < 0 ) { //soma connection, just zero it
         offset = 0
     }
 
     resultPoint = new TPointList( gid )
-    
+
     cellSections = gidToSections( gid )
     if( object_id(cellSections) == 0 ) {
         print "getting locations for non-bg sims is not implemented yet..."
         quit()
     }
-    
+
     distance = 0.5
     tmpSection = cellSections.isec2sec[isec]
-    
+
     if (tmpSection == nil) {  //assume we are in LoadBalance mode (until we decide to verify this either here or in a higher layer)
-        //resultPoint.append( tmpSection, -1 )
-        resultPoint.append( cellDistributor.nilSecRef, -1 )
+        resultPoint.append( deletedSecRef, -1 )
     }else {
         tmpSection.sec {
             // when a cell is split, the path from the split point
@@ -568,16 +576,16 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
                 ipt = n3d() - 1 - ipt
                 offset = -offset
             }
-            
+
             if (ipt < n3d()) {
                 //distance = (arc3d(ipt))/L
                 distance = (arc3d(ipt)+offset)/L
-               
+
                 if( distance == 0.0 ) {
                     distance = 0.0000001
                 }
 
-                if( distance >= 1.0 ) {  
+                if( distance >= 1.0 ) {
                     total = (arc3d(ipt)+offset)
                     distance = 0.9999999
                 }
@@ -586,10 +594,10 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
                 distance = 1 - distance
             }
         }
-        
+
         resultPoint.append( tmpSection, distance )
     }
-        
+
     return resultPoint
 }
 

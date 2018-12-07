@@ -372,11 +372,11 @@ proc squarepulse() { local cellIndex, x, amp, del, dur  localobj pts, tstim
 //-----------------------------------------------------------------------------------------------
 
 /**
- * Apply a cell's hyperpolarizing current for the given time span.  The current value (I) to apple is 
+ * Apply a cell's hyperpolarizing current for the given time span.  The current value (I) to apple is
  * part of the CCell template (provided it has been calculated)
  *
  * @param $s1 Target name
- * @param $2 delay 
+ * @param $2 delay
  * @param $3 duration
  */
 proc hypamp() { local hypampI, ret, x, del, dur  localobj pts, cellList, tstim
@@ -385,19 +385,14 @@ proc hypamp() { local hypampI, ret, x, del, dur  localobj pts, cellList, tstim
     //cellList = targetManager.getCells($s1)
     del = $2
     dur = $3
-    
+
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
-            ret = execute1( "{getHypAmp()}", cellList.o(cellIndex), 0 )
-            if( ret == 0 ) {
-                print cellList.o(cellIndex)
-                print "Warning: gid ", pts.o(cellIndex).gid, " request for hyperpolarizing current injection where CCell template has no getHypAmp function"
-            } else {
-                hypampI = cellList.o(cellIndex).getHypAmp()
-                tstim = new TStim(x)
-                tstim.pulse( del, dur, hypampI )
-                stimList.append(tstim)
-            }
+            // Now with MType instances this always works
+            hypampI = cellList.o(cellIndex).getHypAmp()
+            tstim = new TStim(x)
+            tstim.pulse( del, dur, hypampI )
+            stimList.append(tstim)
         }
     }
 }

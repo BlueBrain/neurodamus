@@ -159,9 +159,7 @@ void initInfo( Info *info )
     info->rowsize_ = 0;
     info->columnsize_ = 0;
     info->acc_tpl1 = -1;
-
-    info->verboseLevel = 1;
-
+    info->verboseLevel = 0;
     // These fields are used exclusively for catalogging which h5 files contain which postsynaptic gids
     info->synapseCatalog.rootName = NULL;
     info->synapseCatalog.directFile = NULL;
