@@ -134,7 +134,7 @@ endtemplate RNGSettings
  *
  * @param $o1 CCell which is to be checked for setRNG
  */
-func rngForStochKvInit() {  local channelID, hasStochKv  localobj CCell, rng, rngInfo, rngList
+obfunc rngForStochKvInit() {  local channelID, hasStochKv  localobj CCell, rng, rngInfo, rngList, pc
     CCell = $o1
     //print "Replace rng for stochKv in gid ", CCell.CellRef.gid
 
