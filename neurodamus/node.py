@@ -863,7 +863,7 @@ class Node:
     #
     def dump_circuit_config(self, suffix="dbg"):
         log_stage("Dumping cells state")
-        Nd.finitialize()
+        Nd.stdinit()
 
         if not path.isfile("debug_gids.txt"):
             logging.info("Debugging all gids")

@@ -398,8 +398,8 @@ class CellDistributor(object):
         Returns: Tuple of (TotalComplexity, max_complexity)
         """
         cx_cells, id_cells = self._compute_cell_complexity(with_total=False)
-        local_max = max(cx_cells)
-        local_sum = sum(cx_cells)
+        local_max = max(cx_cells) if len(cx_cells) > 0 else .0
+        local_sum = sum(cx_cells) if len(cx_cells) > 0 else .0
 
         global_total = self._pnm.pc.allreduce(local_sum, 1)
         global_max = self._pnm.pc.allreduce(local_max, 1)
@@ -559,10 +559,10 @@ class CellDistributor(object):
                     #  whole cell, normal creation
                     self._pnm.set_gid2node(gid, MPI.rank)
                     self._pnm.pc.cell(gid, nc)
-                    self._spgidvec.append(gid)
+                    self._spgidvec.append(int(gid))
                 else:
                     spgid = cb.multisplit(nc, self._binfo.msgid, self._pnm.pc, MPI.rank)
-                    self._spgidvec.append(spgid)
+                    self._spgidvec.append(int(spgid))
 
             else:
                 self._pnm.set_gid2node(gid, self._pnm.myid)

@@ -102,7 +102,7 @@ class Connection(object):
         return h
 
     def __init__(self, sgid, tgid, weight_factor=1.0, configuration=None, stdp=None,
-                 minis_spont_rate=0, synapse_mode=SynapseMode.DUAL_SYNS, synapse_override=None):
+                 minis_spont_rate=.0, synapse_mode=SynapseMode.DUAL_SYNS, synapse_override=None):
         """Creates a connection object
 
         Args:
@@ -185,17 +185,17 @@ class Connection(object):
             self._configurations.append(configuration)
 
     # -
-    def finalize(self, pnm, cell, base_seed=None, tgid_override=None):
+    def finalize(self, pnm, cell, base_seed=None, spgid=None):
         """ When all parameters are set, create synapses and netcons
 
         Args:
             pnm: parallelNetManager object which manages cells (& netcons) for NEURON
             cell: cell provided directly rather than via pnm to avoid loadbalance issues
             base_seed: base seed value (leave default None in case no adjustment is needed)
-            tgid_override: optional argument which overrides the tgid in the event of loadbalancing
+            spgid: (optional) When using loadbalancing we require the spgid instead of tgid
 
         """
-        tgid = tgid_override if tgid_override is not None else self.tgid
+        target_spgid = spgid or self.tgid
         weight_adjusts = []
         wa_netcon_pre = []
         wa_netcon_post = []
@@ -234,7 +234,7 @@ class Connection(object):
             # if sgid not exist, creates an input PreSyn to receive spikes transited over the net.
             # PreSyn is the source to the NetCon, cannot ask netcon about the preloc, but srcgid ok
 
-            nc_index = pnm.nc_append(self.sgid, tgid, cell_syn_list.count()-1,
+            nc_index = pnm.nc_append(self.sgid, target_spgid, cell_syn_list.count()-1,
                                      syn_params.delay, syn_params.weight)
             nc = pnm.nclist.object(nc_index)  # Netcon object
             nc.delay = syn_params.delay
@@ -262,7 +262,7 @@ class Connection(object):
                 nc_wa_pre.weight[0] = 1
                 nc_wa_pre.delay = syn_params.delay
 
-                nc_wa_post = pnm.pc.gid_connect(tgid, weight_adjuster)
+                nc_wa_post = pnm.pc.gid_connect(target_spgid, weight_adjuster)
                 nc_wa_post.threshold = -30
                 nc_wa_post.weight[0] = -1
                 nc_wa_post.delay = syn_params.delay
@@ -286,26 +286,27 @@ class Connection(object):
                 # Right now spontaneous minis should be unaffected by delays
                 netcon_m.weight[0] = syn_params.weight * self.weight_factor
                 self._minis_netcons.append(netcon_m)
+
                 if rng_info.getRNGMode() == rng_info.RANDOM123:
-                    ips.setRNGs(syn_obj.synapseID+200, tgid+250, rng_info.getMinisSeed()+300,
-                                syn_obj.synapseID+200, tgid+250, rng_info.getMinisSeed()+350)
+                    ips.setRNGs(syn_obj.synapseID+200, self.tgid+250, rng_info.getMinisSeed()+300,
+                                syn_obj.synapseID+200, self.tgid+250, rng_info.getMinisSeed()+350)
                 else:
                     exprng = ND.Random()
                     if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
                         exprng.MCellRan4(syn_obj.synapseID*100000 + 200,
-                                         tgid + 250 + base_seed + rng_info.getMinisSeed())
+                                         self.tgid + 250 + base_seed + rng_info.getMinisSeed())
                     else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
                         exprng.MCellRan4(syn_obj.synapseID*1000 + 200,
-                                         tgid + 250 + base_seed + rng_info.getMinisSeed())
+                                         self.tgid + 250 + base_seed + rng_info.getMinisSeed())
 
                     exprng.negexp(1)
                     uniformrng = ND.Random()
                     if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
                         uniformrng.MCellRan4(syn_obj.synapseID*100000 + 300,
-                                             tgid + 250 + base_seed + rng_info.getMinisSeed())
+                                             self.tgid + 250 + base_seed + rng_info.getMinisSeed())
                     else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
                         uniformrng.MCellRan4(syn_obj.synapseID*1000 + 300,
-                                             tgid + 250 + base_seed + rng_info.getMinisSeed())
+                                             self.tgid + 250 + base_seed + rng_info.getMinisSeed())
 
                     uniformrng.uniform(0.0, 1.0)
                     ips.setRNGs(exprng, uniformrng)

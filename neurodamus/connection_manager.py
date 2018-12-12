@@ -113,7 +113,7 @@ class _ConnectionManagerBase(object):
 
     # -
     def group_connect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
-                      stdp_mode=None, spont_mini_rate=0, synapse_types=None, synapse_override=None,
+                      stdp_mode=None, spont_mini_rate=.0, synapse_types=None, synapse_override=None,
                       creation_mode=True):
         """Given source and destination targets, create all connections for post-gids in gidvec.
         Note: the cells in the source list are not limited by what is on this cpu whereas
