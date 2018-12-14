@@ -580,6 +580,7 @@ class Node:
         run_conf = self._config_parser.parsedRun
         sim_dt = run_conf.valueOf("Dt")
         self._binreport_helper = Nd.BinReportHelper(sim_dt)
+        coreNeuron_mode = False
         n_errors = 0
 
         # other useful fields from main Run object
@@ -641,11 +642,12 @@ class Node:
 
                 # may need to take different actions based on report type
                 if rep_type.lower() == "compartment":
-                    report.addCompartmentReport(cell, point, spgid)
+                    report.addCompartmentReport(cell, point, spgid, coreNeuron_mode)
                 elif rep_type.lower() == "summation":
-                    report.addSummationReport(cell, point, target.isCellTarget(), spgid)
+                    report.addSummationReport(cell, point, target.isCellTarget(), spgid,
+                                              coreNeuron_mode)
                 elif rep_type.lower() == "synapse":
-                    report.addSynapseReport(cell, point, spgid)
+                    report.addSynapseReport(cell, point, spgid, coreNeuron_mode)
 
             # keep report object? Who has the ascii/hdf5 object? (1 per cell)
             # the bin object? (1 per report)

@@ -93,8 +93,7 @@ class CellDistributor(object):
         loader = cell_readers.load_mvd3 if self._useMVD3 else cell_readers.load_ncs
 
         #  are we using load balancing? If yes, init structs accordingly
-        if run_conf.exists("RunMode") \
-                and run_conf.get("RunMode").s in ("LoadBalance", "WholeCell"):
+        if run_conf.exists("RunMode") and run_conf.get("RunMode").s in ("LoadBalance", "WholeCell"):
             log_verbose("Distributing cells according to load-balance")
             self._lb_flag = True
             self._spgidvec = compat.Vector("I")
@@ -109,12 +108,7 @@ class CellDistributor(object):
             self._binfo = Nd.BalanceInfo(cx_path, MPI.rank, MPI.cpu_count)
 
             # self.binfo has gidlist, but gids can appear multiple times
-            _seen = set()
-            for gid in self._binfo.gids:
-                gid = int(gid)
-                if gid not in _seen:
-                    gidvec.append(gid)
-                    _seen.add(gid)
+            gidvec.extend(sorted(set(int(gid) for gid in self._binfo.gids)))
 
             # TODO: do we have any way of knowing that a CircuitTarget found definitively matches
             #       the cells in the balance files? for now, assume the user is being honest
@@ -311,6 +305,7 @@ class CellDistributor(object):
         Nd.mymetis3("cx_%d" % prospective_hosts, prospective_hosts)
 
     # -
+    @mpi_no_errors
     def _compute_save_load_balance(self, filename, prospective_hosts):
         if prospective_hosts > 0:
             total_cx, max_cx = self._cell_complexity_total_max()
@@ -349,7 +344,6 @@ class CellDistributor(object):
         # now assign to the various cpus - use node 0 to do it
         if MPI.rank == 0:
             self._cpu_assign(prospective_hosts)
-        MPI.barrier()
 
     @staticmethod
     def _write_msdat(fp, ms):
@@ -399,6 +393,7 @@ class CellDistributor(object):
         self._ionchannel_seed = rng_info.getIonChannelSeed()
 
         for i, gid in enumerate(gids):
+            gid = int(gid)
             metype = self._cell_list[i]  # type: METype
 
             #  for v6 and beyond - we can just try to invoke rng initialization
@@ -431,14 +426,12 @@ class CellDistributor(object):
                     #  whole cell, normal creation
                     self._pnm.set_gid2node(gid, MPI.rank)
                     self._pnm.pc.cell(gid, nc)
-                    self._spgidvec.append(int(gid))
+                    self._spgidvec.append(gid)
                 else:
                     spgid = cb.multisplit(nc, self._binfo.msgid, self._pnm.pc, MPI.rank)
                     self._spgidvec.append(int(spgid))
-
             else:
                 self._pnm.set_gid2node(gid, self._pnm.myid)
                 self._pnm.pc.cell(gid, nc)
 
-        if self._lb_flag:
-            self._pnm.pc.multisplit()
+        self._pnm.pc.multisplit()

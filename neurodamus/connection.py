@@ -10,7 +10,7 @@ class SynapseParameters(object):
     """Synapse parameters, internally implemented as numpy record
     """
     _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F", "DTC",
-                       "synType", "nrrp", "location")  # total: 13
+                       "synType", "nrrp", "maskValue", "location")  # total: 13
     _dtype = np.dtype({"names": _synapse_fields,
                        "formats": ["f8"] * len(_synapse_fields)})
 
@@ -22,6 +22,7 @@ class SynapseParameters(object):
     @classmethod
     def create_array(cls, length):
         npa = np.recarray(length, cls._dtype)
+        npa.maskValue = -1
         npa.location = 0.5
         return npa
 
