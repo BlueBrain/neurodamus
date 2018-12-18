@@ -147,9 +147,9 @@ class Node:
 
         # Is there a cpu count override in the BlueConfig?
         if self._config_parser.parsedRun.exists("ProspectiveHosts"):
-            prospective_hosts = self._config_parser.parsedRun.valueOf("ProspectiveHosts")
+            prospective_hosts = int(self._config_parser.parsedRun.valueOf("ProspectiveHosts"))
         else:
-            prospective_hosts = MPI.cpu_count
+            prospective_hosts = MPI.size
 
         # determine if we need to regen load balance info, or if it already exists for this config
         # to prevent excessive messages when the file is not there, have rank 0 handle file access
@@ -183,15 +183,15 @@ class Node:
         MPI.check_no_errors()
 
         # rank 0 broadcasts the fact whether we need to generate loadbalancing data or not
-        if GlobalConfig.use_mpi:
+        if MPI.size > 1:
             message = Nd.Vector(1, do_generate)
             MPI.broadcast(message, 0)
-            do_generate = message[0]
+            do_generate = bool(message[0])
 
         # pre-existing load balance info is good. We can reuse it, so return now or quit
         if not do_generate:
             logging.info("Using existing load balancing info")
-            if MPI.cpu_count == prospective_hosts:
+            if MPI.size == prospective_hosts:
                 return
             else:
                 logging.error("Requires  on a partition of %d cpus (as per ProspectiveHosts)",
@@ -199,15 +199,7 @@ class Node:
                 raise RuntimeError("Invalid CPU count. See log")
 
         logging.info("Generating loadbalancing data. Reason: %s", generate_reason)
-        loadbal = Nd.LoadBalance()
-
-        # Can we use an existing mcomplex.dat?  If mechanisms change, it needs to be regenerated.
-        if not Path.isfile("mcomplex.dat"):
-            logging.info("Generating mcomplex.dat...")
-            loadbal.create_mcomplex()
-        else:
-            logging.info("Using existing mcomplex.dat")
-        loadbal.read_mcomplex()
+        loadbal = Nd.LoadBalance()  # if mechanisms change we must force_regenerate
 
         logging.info("Instantiating cells Round Robin style")
         self.create_cells("RR")
@@ -239,7 +231,6 @@ class Node:
         if prospective_hosts != MPI.cpu_count:
             raise ConfigurationError("Loadbalancing forced on %d CPUs (ProspectiveHosts). "
                                      "Launch on a partition of that size", prospective_hosts)
-            sys.exit()
 
         self.clear_model()
 
@@ -795,16 +786,24 @@ class Node:
 
         for cell in self._cell_list:
             cell.CellRef.clear()
-        del self._cell_list[:]
+        self._cell_list.clear()
 
         # remove the self._synapse_manager to destroy all underlying synapses/connections
         self._synapse_manager = None
         self._gj_manager = None
         self._connection_weight_delay_list = []
 
-        # clear reports if initialized
-        if self._report_list is not None:
-            self._report_list = []
+        # Instance Objects
+        self._target_manager = None
+        self._cell_distributor = None
+        self._cell_list = None
+        self._stim_list = None
+        self._report_list = None
+        self._stim_manager = None
+        self._elec_manager = None
+        self._binreport_helper = None
+        self._runtime = 0
+
 
     # -------------------------------------------------------------------------
     #  Data retrieve / output

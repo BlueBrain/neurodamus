@@ -7,6 +7,7 @@ import sys
 import time
 import logging
 from contextlib import contextmanager
+from os import path as Path
 from .configuration import Neuron_Stdrun_Defaults
 from .configuration import GlobalConfig
 from ..utils import classproperty
@@ -311,14 +312,24 @@ class Simulation:
 class LoadBalance(object):
     """Wrapper of the load balance Hoc Module.
     """
-    def __init__(self):
+    def __init__(self, force_regenerate=False):
+        # Can we use an existing mcomplex.dat?
+        if force_regenerate or not Path.isfile("mcomplex.dat"):
+            logging.info("Generating mcomplex.dat...")
+            self._create_mcomplex()
+        else:
+            logging.info("Using existing mcomplex.dat")
         self._lb = Neuron.h.LoadBalance()
-
-    def create_mcomplex(self):
-        self._lb.ExperimentalMechComplex("StdpWA", "extracel", "HDF5", "Report", "Memory", "ASCII")
-
-    def read_mcomplex(self):
         self._lb.read_mcomplex()
+
+    @staticmethod
+    def _create_mcomplex():
+        # ExperimentalMechComplex is a complex routine changing many state vars, and cant be reused
+        # Therefore here we create a temporary LoadBalance obj
+        lb = Neuron.h.LoadBalance()
+        lb.ExperimentalMechComplex("StdpWA", "extracel", "HDF5", "Report", "Memory", "ASCII")
+        # mcomplex changes neuron state and results get different. We re-init
+        Neuron.h.init()
 
     def __getattr__(self, item):
         return getattr(self._lb, item)
