@@ -38,7 +38,7 @@ double nrn_random_pick(void* r);
 void* nrn_random_arg(int argpos);
 
 // constant used to indicate an event triggered after a restore to restart the main event loop
-const int POST_RESTORE_RESTART_FLAG = 99;
+const int POST_RESTORE_RESTART_FLAG = -99;
 
 ENDVERBATIM
 
@@ -63,11 +63,12 @@ ASSIGNED {
    exp_rng
    usingR123
    rmax
-
+   activeFlag
 }
 
 INITIAL {
    index = 0.
+   activeFlag = 0.
 
    : determine start of spiking.
    VERBATIM
@@ -128,7 +129,7 @@ INITIAL {
    generate_next_event()
    : stop even producing surrogate events if we are past duration
    if (t+event < start+duration) {
-     net_send(event, 0)
+     net_send(event, activeFlag )
    }
 
 
@@ -184,10 +185,12 @@ VERBATIM
         if( usingR123 ) {
             nrnran123_State** pv = (nrnran123_State**)(&_p_exp_rng);
             nrnran123_deletestream(*pv);
+            *pv = (nrnran123_State*)0;
             pv = (nrnran123_State**)(&_p_uniform_rng);
             nrnran123_deletestream(*pv);
-            _p_exp_rng = (nrnran123_State*)0;
-            _p_uniform_rng = (nrnran123_State*)0;
+            *pv = (nrnran123_State*)0;
+            //_p_exp_rng = (nrnran123_State*)0;
+            //_p_uniform_rng = (nrnran123_State*)0;
         }
     }
 #endif
@@ -282,8 +285,11 @@ VERBATIM
     for (i=0;i<size;i++) {
     	if (px[i]>max) max = px[i];
     }
+    
+    curRate = px[0];
     rmax = max;
 
+    activeFlag = activeFlag + 1;
   }
   #endif
 ENDVERBATIM
@@ -338,20 +344,22 @@ COMMENT
  * and sending a self event.  Second, we check to see if the synapse coupled to this artificial cell should be activated.
  * This second task is not done if we have just completed a state restore and only wish to restart the self event triggers.
  *
- * @param flag 0 for Typical activation, POST_RESTORE_RESTART_FLAG for only restarting the self event triggers
+ * @param flag >= 0 for Typical activation, POST_RESTORE_RESTART_FLAG for only restarting the self event triggers 
  */
 ENDCOMMENT
 NET_RECEIVE (w) {
     : Note - if we have restored a sim from a saved state.  We need to restart the queue, but do not generate a spike now
     if ( flag == POST_RESTORE_RESTART_FLAG ) {
-        net_send(event, 0)
-    } else if (flag == 0 ) {
+        if (t+event < start+duration) {
+            net_send(event, activeFlag )
+        }
+    } else if( activeFlag == flag ) {
         update_time()
         generate_next_event()
 
         : stop even producing surrogate events if we are past duration
         if (t+event < start+duration) {
-            net_send(event, 0)
+            net_send(event, activeFlag )
         }
 
         : check if we trigger event on coupled synapse
