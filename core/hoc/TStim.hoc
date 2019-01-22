@@ -1,6 +1,6 @@
 /**
  * @file TStim.hoc
- * @brief 
+ * @brief
  * @author moor
  * @date 2010-03-08
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
@@ -12,7 +12,7 @@ D__TSTIMHOC = 1
 
 /**
 * TStim class is intended to make it easy to use current injection stimulation.
-* it has injection premitives (pulse, ramp, segment, sinspec, noise) 
+* it has injection premitives (pulse, ramp, segment, sinspec, noise)
 * There is also an easy way to create TStim sets using the function c (see below).
 */
 
@@ -22,13 +22,13 @@ begintemplate TStim
 	public ic,pulse,ramp,stim,tvec,delay,segment,sinspec,noise,x,c,loc,mark,get_loc, train, sin
 
     external tstop
-	
+
 /**
 * In this object and any other object that uses random numbers, the random
 * number stream is very delecate issue since it is being used in a parralleled
 * threaded environment. So my decision was that no matter what the user
 * must supply with the random object if it is inetended to be used. Here for example
-* if the function noise() is not used than it is not nessesary to supply the random 
+* if the function noise() is not used than it is not nessesary to supply the random
 * object. otherwise, error will rise, since the rand objref is NULL.
 */
 	proc init(/*x[,Random]*/){
@@ -38,13 +38,13 @@ begintemplate TStim
 		stim = new Vector()
 		tvec = new Vector()
 		if(numarg()>1) rand = $o2
-		//the most important argument is continuos. this essentily 
+		//the most important argument is continuos. this essentily
 		// allowed me to draw the input current with points.
 		stim.play(&ic.amp,tvec,1)
 	}
-	
+
 /**
-* stim and tvec can not be destroyed for any reason or the pointer to the 
+* stim and tvec can not be destroyed for any reason or the pointer to the
 * ic.amp (play function) will be lost. Therefore for each new stimulus
 * decleration, vecs are initialized but not deleted.
 */
@@ -58,7 +58,7 @@ begintemplate TStim
 
 	proc appendpulse(/*amp,dur*/){tvec.append(0,$2) stim.append($1,$1)}
 
-	
+
 	proc pulse(/*start,dur,max_amp[,min_amp]*/){local min_amp
         min_amp = 0
         initinject()
@@ -67,9 +67,9 @@ begintemplate TStim
         appendpulse($3,$2)
         addpoint(min_amp,0)
         addpoint(min_amp,0)
-        tvec.integral //make the set of durations a timeline        
+        tvec.integral //make the set of durations a timeline
 	}
-    
+
     proc ramp(/*start_amp,dur,amp1,amp2,dur,end_amp,dur*/){local min_amp
         initinject()
 		appendpulse($1,$2)
@@ -88,22 +88,22 @@ begintemplate TStim
      * @param $5 width - the duration of a single pulse
      */
     proc train() { local tpulse, remtime, width
-        
+
         tpulse = 1000/$4
         width = $5
-        
+
         if( width > tpulse ) {  //just use a standard pulse
             pulse( $1, $2, $3 )
             return
         }
-        
+
         initinject()
         //addpoint( 0, $1 )
         remtime = $2
         nextpulse = $1
 
 //TODO: for better clarity, don't try to shift pulse onsets by one dt (only done to match old bglib)
-        
+
         while( remtime > 0 ) {
             if( width < remtime ) {  //can fit whole pulse in remaining time
                 addpoint( 0, nextpulse )
@@ -116,21 +116,14 @@ begintemplate TStim
                 addpoint( $3, $1+$2 )
                 addpoint( 0, $1+$2 )
             }
-            
+
             nextpulse = nextpulse + tpulse
             remtime = remtime - tpulse
         }
-        
+
         addpoint( 0, $1+$2 )
-
-/*
-for remtime=0, tvec.size()-1 {
-    print tvec.x[remtime], " ", stim.x[remtime]
-}
-*/
-
     }
-    
+
     proc sin(/*amp,start,dur,freq*/){
     	initinject()
     	tvec.indgen($2,$2+$3,0.025)
@@ -140,23 +133,23 @@ for remtime=0, tvec.size()-1 {
     	tvec.append(tvec.x[tvec.size()-1]+0.025)
     	stim.append(0)
     }
-	
+
 	func zap(){return sin(exp(exp($1/5000)))}//original was in seconds (fron PulseQ)
-	
+
 	proc sinspec(/*start,dur*/){
 		initinject()
 		tvec.indgen(0,10000,0.5)
 		stim.copy(tvec)//must preserve the original object
 		stim.apply("zap")
 	}
-	
+
 	proc segment(/*amp1,dur1,amp2,dur2,...*/){local i,k
 		initinject()
 		for(i=1;i<=numarg();i+=1) {
 			k = $i	i+=1	appendpulse(k,$i)
 		}
 		addpoint(0,0)//putting it to zero after the last injection
-		tvec.integral	
+		tvec.integral
 	}
 
     /**
@@ -174,7 +167,7 @@ for remtime=0, tvec.size()-1 {
         tstim_end = $1+$2
 
         rngInfo = new RNGSettings()
-        
+
         // To help with save state, we want Noise stimulus to continue where it left off
         // so first draw the numbers that were already used (not very efficient, but can be improved later)
         if( rngInfo.getRNGMode() != rngInfo.COMPATIBILITY ) if( $1 > 0 ) {
@@ -183,14 +176,14 @@ for remtime=0, tvec.size()-1 {
             // make sure no chunk is larger than what we will use for the actual simulation
             prev_t = 0
             tstep = tstim_end-$1-dt
-            
+
             while( prev_t < $1-dt ) {
                 if( prev_t + tstep < $1-dt ) {
                     next_t = prev_t + tstep
                 } else {
                     next_t = $1-dt
                 }
-            
+
                 tvec.indgen(prev_t,next_t,dT)
                 stim.copy(tvec.c)
                 stim.setrand(rand)
@@ -198,7 +191,7 @@ for remtime=0, tvec.size()-1 {
                 prev_t = next_t+dt
             }
         }
-        
+
         tvec.indgen($1,tstim_end,dT)
         stim.copy(tvec.c)
         stim.setrand(rand)
@@ -209,24 +202,23 @@ for remtime=0, tvec.size()-1 {
         if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY || $1 > t ) {
             stim.x[0] = 0
         }
-        
+
         // If the stimulus should end before the simulation, make sure the final value will set the amp to 0
         if(tstim_end < tstop) {
             stim.x[stim.size()-1] = 0
         }
-        
+
         addpoint(0,0)
         }
-		
+
 	proc delay(/*dur*/){
 		tvec.add($1)
 	}
 
 
-
 /**
 * Meant to give a copy option (like vector.c) but it is very different if the concept.
-* Note that the stim and tvec vectors of the newly created TStim are pointing to the 
+* Note that the stim and tvec vectors of the newly created TStim are pointing to the
 * old one. So when changing stimulation (pulse, ramp, noise ets') it will be altered
 * in all the objects created by c.
 */
@@ -235,13 +227,13 @@ for remtime=0, tvec.size()-1 {
 			ts = new TStim(x,rand)
 		}else{
 			ts = new TStim(x,rand)
-		}		
+		}
 		if(numarg()>0) ts.loc($1)
 		ts.stim = stim //set stim of the new object to reference the old one
 		ts.tvec = tvec //set stim of the new object to reference the old one
 		return ts
 	}
-	
+
 
 /**
 * It is better to thing about TStim class as a poitprocess object. So I exposed some
@@ -250,7 +242,7 @@ for remtime=0, tvec.size()-1 {
 	proc loc(){ ic.loc(x=$1) }
 	func get_loc(){ return get_loc() }//don't forget the pop_section()
 	proc mark(/*Shape,color_index*/){$o1.point_mark(ic,$2)}
-	
-	
+
+
 endtemplate TStim
 

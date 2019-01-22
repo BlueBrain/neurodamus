@@ -11,7 +11,7 @@
 {load_file( "Map.hoc" )}
 
 //------------------------------------------------------------------------------------------
-// 
+//
 //------------------------------------------------------------------------------------------
 
 /**
@@ -38,17 +38,17 @@ public isec2sec, init, count
 
 /*!
  * Constructor serializes the sections of a cell for easier random access.  Note that this is possible because
- * the v field in the section has been assigned an integer corresponding to the target index as read from the 
+ * the v field in the section has been assigned an integer corresponding to the target index as read from the
  * morphology file.
  *
  * $o1 Cell reference (basic cell, not a CCell)
  */
 proc init() { local index
-    
+
     n = $o1.nSecAll
-    
+
     objref isec2sec[n]
-    
+
     index=1
     forsec $o1.all {
         if( v(0.0001) >= n ) {

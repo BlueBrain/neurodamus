@@ -1,6 +1,6 @@
 /**
  * @file Cell.hoc
- * @brief 
+ * @brief
  * @author king
  * @date 2009-07-08
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
@@ -36,7 +36,7 @@ proc init() {
 	if(numarg()>1){
 		AddMorph($s2)
     }
-    
+
     synlist = new List()
     rnglist = new List()
     synHelperList = new List()
@@ -45,12 +45,12 @@ create soma[1], dend[1], apic[1], axon[1], myelin[1]
 
 proc AddMorph(){ localobj morph, import, strobj, extension
     forall delete_section()
-    
+
     strobj = new StringFunctions()
     extension = new String()
-    
+
     sscanf($s1, "%s", extension.s)
-    
+
     strobj.right(extension.s, strobj.len(extension.s)-4)
 
     if( strcmp(extension.s, ".asc") == 0 ) {
@@ -71,7 +71,6 @@ proc AddMorph(){ localobj morph, import, strobj, extension
 }
 
 
-
 /**
  * Replace the axon built from the original morphology file with a stub axon.  If no args are given,
  * The stub axon will attempt to use diam info from original axon and L=30.  If args are present, the
@@ -88,7 +87,7 @@ proc delete_axon(){ local nSec, D1, D2, dist, i1, i2, count
     // preserve the number of original axonal sections
     nSec  = 0
     forsec axonal{nSec = nSec + 1}
-    
+
     // Try to grab info from original axon
     if(nSec == 0){ //No axon section present
         //is this actually working?  Seems it would cause problems if we ever did have cells with 0 axon sections
@@ -100,7 +99,7 @@ proc delete_axon(){ local nSec, D1, D2, dist, i1, i2, count
         if( nSec > 1 ){ //More than one axon section present
             access soma distance() //to calculate distance from soma
             count = 0
-            forsec axonal{   // loop through all axon sections and check for 60um distance 
+            forsec axonal{   // loop through all axon sections and check for 60um distance
                 if( count == 1 ){
                     i2 = v(0.0001)
                 }
@@ -113,11 +112,11 @@ proc delete_axon(){ local nSec, D1, D2, dist, i1, i2, count
             }
         }
     }
-    
+
     // get rid of the old axon
     forsec axonal{delete_section()}
     execute1("create axon[2]\n", this)
-    
+
     // new axon dependant on args passed (or lack thereof)
     access axon[0] {
         if( numarg() == 0 ) {
@@ -147,7 +146,7 @@ proc delete_axon(){ local nSec, D1, D2, dist, i1, i2, count
         v(0.0001) = i2
     }
     nSecAxonal = 2
-    
+
     if( numarg() > 0 ) if ( $4 ) {
         execute1("create myelin[1]\n", this)
         access myelin{
@@ -158,7 +157,7 @@ proc delete_axon(){ local nSec, D1, D2, dist, i1, i2, count
         }
         connect myelin(0), axon[1](1)
     }
-    
+
     // I am not sure if these connection methods have different consequences.  Maybe someone can reconcile that later?
     if( numarg() == 0 ) {
         soma[0] connect axon[0](0), 1
@@ -219,11 +218,10 @@ proc SetCellProperties(){local Rm,v_init
                 e_pas=v_init
                 cm = 1
         }
-        
+
         //whenever the Cell properties (resistance esp.) change, recalculate how a section divides into segments
         //geom_nseg()  //for now, let the CCell do this after biophys is executed
 }
-
 
 
 /*!
@@ -232,16 +230,15 @@ proc SetCellProperties(){local Rm,v_init
  */
 proc geom_nseg_lambda() { local secIndex
     soma area(.5) // make sure diam reflects 3d points
-    
+
     secIndex=0
     forsec all {
         nseg = int((L/(0.1*lambda_f(100))+.9)/2)*2 + 1
-        
+
         segCounts.x[secIndex] = nseg
         secIndex = secIndex+1
     }
 }
-
 
 
 /*!
@@ -262,7 +259,6 @@ proc geom_nseg_fixed() { local secIndex, chunkSize
         secIndex = secIndex+1
     }
 }
-
 
 
 /*!
@@ -289,7 +285,7 @@ proc geom_nsec() { local nSec
     nSec = 0
     forsec axonal { nSec = nSec + 1}
     nSecAxonalOrig = nSecAxonal = nSec
-    
+
     segCounts = new Vector()
     segCounts.resize(nSecAll)
     nSec=0
@@ -309,7 +305,7 @@ proc setCCell(){
 //-----------------------------------------------------------------------------------------------
 
 /*!
- * Assign section indices to the section voltage value.  This will be useful later for serializing 
+ * Assign section indices to the section voltage value.  This will be useful later for serializing
  * the sections into an array.  Note, that once the simulation begins, the voltage values will revert to actual data again.
  *
  * @param $o1 Import3d_GUI object
@@ -328,7 +324,7 @@ proc indexSections() { local index  localobj tmpString, s
 //-----------------------------------------------------------------------------------------------
 
 /*!
- * When clearing the model, the circular reference between Cells and CCells must be broken so the 
+ * When clearing the model, the circular reference between Cells and CCells must be broken so the
  * entity watching reference counts can work.
  */
 proc clear() { localobj nil
@@ -400,7 +396,7 @@ func getLongestBranch(){local maxL,d localobj distallist,sref
  * @param $2 Distance value
  *
  * returns a list of vectors with two values. Every vector in the list [value1, value2]
- * represents one point at the specified distance. 
+ * represents one point at the specified distance.
  * value1 is the index of the section in the section array
  * value2 is the x of the compartment in the section
  */
@@ -447,10 +443,10 @@ obfunc locateSites2() {local site,d0,d1,siteX,i localobj vv,ll
  * @param $s1 Name of the section array - soma, dend, apic, axon, or all
  * @param $2 Distance value
  *
- * returns a vector [value1, value2] that represents one point at the specified distance. 
+ * returns a vector [value1, value2] that represents one point at the specified distance.
  * value1 is the index of the section in the section array
  * value2 is the x of the segment in the section
- * If no compartment is found at the specified distance, and an empty vector is returned 
+ * If no compartment is found at the specified distance, and an empty vector is returned
  */
 obfunc locateBAPSite() {local thisdiam, iSite, thickSite localobj sitesList, returnList, thickSection
     strdef locName
@@ -464,13 +460,13 @@ obfunc locateBAPSite() {local thisdiam, iSite, thickSite localobj sitesList, ret
         }
     }
     returnList = new Vector()
-   
+
     if (sitesList.count() == 0) {
         print "*** Unable to find compartment at BAP site ***"
     } else {
         returnList.append(sitesList.o(thickSite).x[0], sitesList.o(thickSite).x[1])
     }
-    
+
     return returnList
 }
 

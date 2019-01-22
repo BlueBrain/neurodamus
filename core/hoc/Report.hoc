@@ -1,6 +1,6 @@
 /**
  * @file Report.hoc
- * @brief Gather data references for sending information to files 
+ * @brief Gather data references for sending information to files
  * @author king
  * @date 2009-11-20
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
@@ -65,11 +65,11 @@ proc init() { localobj nil
     reportOn = $s3
     unit = $s4
     format = $s5
-    
+
     reportDt = $6
     startTime = $7
     endTime = $8
-    
+
     outputDir = $s9
 
     if( numarg() < 10){
@@ -77,33 +77,33 @@ proc init() { localobj nil
     } else {
         electrode = $o10
     }
-    
+
     //variables to hold section counts for the active cell, to be output as extra mapping
     nAll= 0
     nSoma = 0
     nAxon = 0
     nBasal = 0
     nApic = 0
-    
+
     //share one StringFunctions obj for access to substr function
     strobj = new StringFunctions()
-    
+
     //note that any BinReports need to be kept unlike ASCII and HDF5 which are stored in the cell
     binList = new List()
-    
+
     //variable used to catch return values from functions
     retVal = 0
-    
+
     //For some reports, we will need to store the ALU objects that are performing operations on the various properties (e.g. current sources)
     if( strcmp( reportType, "Summation" ) == 0 ||  strcmp( reportType, "Synapse" ) == 0 || strcmp(reportOn, "area") == 0 ) {
         ALUList = new List()
     }
-    
+
     // Constants for scaling
     SCALING_NONE = 0
     SCALING_AREA = 1
     SCALING_ELECTRODE = 2
-    
+
     scalingMode = SCALING_AREA
     if( numarg() > 10 ) {
         if( object_id($o11) != 0 ) {
@@ -127,7 +127,7 @@ proc init() { localobj nil
 /*!
  * Determine the absolute index of a section within the cell
  *
- * @param $o1 Cell object who owns the currently accessed section 
+ * @param $o1 Cell object who owns the currently accessed section
  * @return index which can be used to map back onto the neuron
  */
 func sectionNo() { local baseOffset, secIndex  localobj str
@@ -137,7 +137,7 @@ func sectionNo() { local baseOffset, secIndex  localobj str
     sprint( objtype, "%s", $o1 )
     sprint( str.s, "%s", secname() )
     strobj.right( str.s, strobj.len(objtype) )
-    
+
     if( strobj.substr( str.s, "soma" ) > 0 ) {
         subset = "soma"
         baseOffset = 0
@@ -152,7 +152,7 @@ func sectionNo() { local baseOffset, secIndex  localobj str
         baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal
     }
     objtype = str.s
-    
+
     // parse out the index from the secname
     strobj.tail( objtype, subset, str.s )
     if (strobj.len(str.s) > 0) {
@@ -162,7 +162,7 @@ func sectionNo() { local baseOffset, secIndex  localobj str
     } else {
         print "should this ever happen?"
     }
-    
+
     return baseOffset + secIndex
 }
 
@@ -177,22 +177,22 @@ func sectionNo() { local baseOffset, secIndex  localobj str
  */
 proc sumSectionCounts() { local offset, x  localobj prevSection, nil
     nAll = nSoma = nAxon = nBasal = nApical = 0
-    
+
     for $o1.each_point(&x) {
-        
+
         // Have we moved to a new/different section?  reset prevSection
         if( object_id(prevSection) ) {
             if( !prevSection.is_cas() ) {
                 prevSection = nil
             }
         }
-        
+
         //if prevSection is unset, we need to examine the section and increment the apprpriate counter
         if( !object_id(prevSection) ) {
-            
+
             //remeber this section for upcoming iterations
             prevSection = new SectionRef()
-            
+
             // increment appropriate subset counter
             if( strobj.substr( secname(), "soma" ) > 0 ) {
                 nSoma = nSoma+1
@@ -205,7 +205,7 @@ proc sumSectionCounts() { local offset, x  localobj prevSection, nil
             }
         }
     }
-    
+
     nAll = nSoma + nAxon + nBasal + nApical
 }
 
@@ -214,7 +214,7 @@ proc sumSectionCounts() { local offset, x  localobj prevSection, nil
 /*!
  * Utility function to prepare a report for information about the cell such as section counts (i.e. extra mapping)
  * In additon, retrieves the ASCII or HDF5 report object from a cell object, encapsulating the creation of one
- * in the event provided that this is the first request for either.  
+ * in the event provided that this is the first request for either.
  *
  * @param $o1 cellObj
  * @param $o2 TPointList with the points for a single cell
@@ -225,9 +225,9 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
     strdef strCellName, tstr
     node = 0  //do we really need to know which node produced these reports?  We're trying to make this agnostic to multiple cpu
     vgid = $3
-    
+
     sprint( strCellName, "a%d", $o1.gid )
-    
+
     if( 0 == strcmp( format, "Bin")) {
         rpt = -1
         if (0 == strcmp(iscParam, "")) {
@@ -250,12 +250,12 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
         } else {
             return 0
         }
-        rpt = rec.newReport(strCellName, reportName, $o2.count(), startTime, endTime, reportDt, unit )        
+        rpt = rec.newReport(strCellName, reportName, $o2.count(), startTime, endTime, reportDt, unit )
     }
-    
+
     bbss = new BBSaveState()
     bbss.ignore(rec)
-    
+
     //get section counts: nSoma, nApic, etc
     sumSectionCounts( $o2 )
 
@@ -267,7 +267,7 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
             rec.ExtraMapping( nAll, nSoma, nAxon, nBasal, nApical)
         }
     }
-    
+
     return rpt
 }
 
@@ -582,13 +582,11 @@ proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProce
 }
 
 
-
-
 //-----------------------------------------------------------------------------------------------
 
 /*!
  * Helper function for adding a var for Summation reports where the only distinction is how the mapping
- * is computed.  The caller knows if the absolute index is needed (non-collapsed report) or just 0 for 
+ * is computed.  The caller knows if the absolute index is needed (non-collapsed report) or just 0 for
  * the soma (collapsed report)
  *
  * @param mapping index, i.e. the absolute index used to find this section in the morphology
@@ -608,7 +606,7 @@ proc addSummationVarAndCommitALU() { local rpt
         }
         rec.addmapping( rpt, $1 )
     }
-    
+
     ALUList.append( ALUhelper )
 }
 
@@ -619,13 +617,13 @@ proc addSummationVarAndCommitALU() { local rpt
  *
  * @Param $o1 intrinsicList - List of intrinsic types (ions) generated in this function
  * @Param $o2 ptProcessList - List of point processes types (ions) generated in this function
- * @Param $o3 (optional) internalVar - In this String the internal variable to report on will be returned, in the case of point processes 
+ * @Param $o3 (optional) internalVar - In this String the internal variable to report on will be returned, in the case of point processes
  */
 proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLibrary, intrinsicLibrary, ptProcessLibrary
     intrinsicList = new List()
     ptProcessList = new List()
 
-    //before scanning the ReportOn field, build some libraries that can be used for lookup and comparison    
+    //before scanning the ReportOn field, build some libraries that can be used for lookup and comparison
 	//Conductances must be dealt with on an individual mod-file basis. Here I include only mod-files that were used in the
 	// circuit of 27.10.10. Some mod-file in modlib are therefore NOT included! --Michael (Wolf)
 	condLibrary = new List()
@@ -686,7 +684,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
     ptProcessLibrary.append( new String( "Gap" ) )
 
     //Note - only synapse types are put in ptProcessLibrary, with IClamp & SEClamp getting checked separately.  Should we change that behavior?
-    
+
     //split 'ReportOn' field on white space and check for special keywords - AllCurrent, SynapticCurrents, IntrinsicCurrents
     strdef fullToken, token, sourceString, skipBlock, internalVar
     sourceString = reportOn
@@ -734,14 +732,14 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
         	}
         }
         //print "token ", token
-        
+
         //check for special tokens for keywords
         if( strcmp(token, "AllCurrents") == 0 ) {
             //all current sources
             for libIndex=0, intrinsicLibrary.count()-1 {
                 intrinsicList.append( intrinsicLibrary.o(libIndex) )
             }
-            
+
             //synapses + point processes
             includeSyn = 1
             for libIndex=0, ptProcessLibrary.count()-1 {
@@ -826,11 +824,11 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
                 // Note that we now check for intrinsic names individually like with synapses.  Therefore, this else no longer
                 //  needs to assume that an unmatched token is an ion.  (In the event new ions are added, we can update the lists)
                 execerror( "Bad type given to Current Summation report: %s", token )
-                
+
             }
         }
     }
-    
+
     $o1 = intrinsicList
     $o2 = ptProcessList
 }
@@ -875,7 +873,7 @@ $&2=secIndex
  */
 proc restartALUs() { local aluIndex  localobj nc, nil
     if( object_id( ALUList, 1 ) != -1 ) {
-        
+
         for aluIndex=0, ALUList.count()-1 {
             nc = new NetCon( nil, ALUList.o(aluIndex), 10, 1, 1 )
             nc.event(t)

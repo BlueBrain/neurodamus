@@ -78,7 +78,7 @@ proc interpret() { localobj runInfo, pc, rng, commandString
             if( execResult < 0 ) {
                 execerror( "Error while creating directory '", coreneuronOutputDir.s, "'.  Terminating." )
             }
-            
+
             // if we are Restoring, then we will reuse the datadirectory
             if( runInfo.exists( "Restore" ) ) {
                 nrnpython( "import os" )

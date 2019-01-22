@@ -1,6 +1,6 @@
 /**
  * @file Map.hoc
- * @brief Generic associative container 
+ * @brief Generic associative container
  * @author king
  * @date 2009-07-07
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
@@ -109,7 +109,7 @@ obfunc object() {
  */
 obfunc getV() { local mapIndex localobj nil
     //TODO: if we upgrade: objects should be stored sorted and then find via binary search
-    
+
     strdef searchName
     if( argtype(1) == 0 ) {  // given numeric key, check if we can use pure numeric search operations
         if( hasOnlyNumericKeys ) {
@@ -122,16 +122,16 @@ obfunc getV() { local mapIndex localobj nil
     } else {
         searchName = $s1
     }
-    
+
     print "look for ", searchName, " prev search was for ", prevKey
     if( isCacheValid ) if( strcmp( prevKey, searchName ) == 0 ) {
         return prevItem
     }
-    
+
     //print "look for ", searchName
     prevKey = searchName
     prevItem = nil
-    
+
     //iterate over list until we find a name that matches
     for mapIndex=0, stringList.count()-1 {
         print stringList.o(mapIndex).s, " vs ", searchName
@@ -162,7 +162,7 @@ obfunc getV() { local mapIndex localobj nil
  */
 obfunc get() { local mapIndex localobj nil
     //TODO: if we upgrade: objects should be stored sorted and then find via binary search
-    
+
     strdef searchName
     if( argtype(1) == 0 ) {  // given numeric key, check if we can use pure numeric search operations
         if( hasOnlyNumericKeys ) {
@@ -175,7 +175,7 @@ obfunc get() { local mapIndex localobj nil
     } else {
         searchName = $s1
     }
-    
+
     if( isCacheValid ) if( strcmp( prevKey, searchName ) == 0 ) {
         return prevItem
     }
@@ -183,7 +183,7 @@ obfunc get() { local mapIndex localobj nil
     //print "look for ", searchName
     prevKey = searchName
     prevItem = nil
-    
+
     //iterate over list until we find a name that matches
     for mapIndex=0, stringList.count()-1 {
         //print mapIndex, " ", stringList.o(mapIndex).s
@@ -194,7 +194,7 @@ obfunc get() { local mapIndex localobj nil
             return prevItem
         }
     }
-    
+
     // if we have reached here, then probably something is wrong (users should use 'exists' first for optional items)
     if( verbose ) {
         print "Warning: map key '", searchName, "' not found.\n"
@@ -218,14 +218,14 @@ obfunc binaryGet() { local low, high, mid, key  localobj nil
         sortedLookup = numericKeys.sortindex()
         isSorted = 1
     }
-    
+
     low = 0
     high = sortedLookup.size()
     key = $1
-    
+
     while ( low < high ) {
         mid = int(( low+high)*0.5 )
-        
+
         //print key, " vs ", numericKeys.x[ sortedLookup.x[mid] ]
         if( key > numericKeys.x[ sortedLookup.x[mid] ] ) { // must guess again, lower
             low = mid+1
@@ -234,7 +234,7 @@ obfunc binaryGet() { local low, high, mid, key  localobj nil
         }
         //print "range ", low, " .. ", high
     }
-    
+
     //did we stop somewhere?
     //print low
     if( high < sortedLookup.size() ) {
@@ -243,7 +243,7 @@ obfunc binaryGet() { local low, high, mid, key  localobj nil
             return valueList.o( sortedLookup.x[low] )
         }
     }
-    
+
     //print "nil"
     return nil
 }
@@ -258,12 +258,12 @@ obfunc binaryGet() { local low, high, mid, key  localobj nil
  */
 proc put() { localobj wrapString
     //TODO: if we upgrade: check for duplicates and store new objects in lexographical order
-    
+
     if( argtype(1) == 0 ) {  //given number.  As long as only numeric keys are given, we can maintain info for binary searching
         wrapString = new String()
         sprint( wrapString.s, "%d", $1 )
         stringList.append( wrapString )
-        
+
         if( hasOnlyNumericKeys ) {
             numericKeys.append($1)
             isSorted = 0
@@ -272,11 +272,11 @@ proc put() { localobj wrapString
         wrapString = new String($s1)
         stringList.append( wrapString )
         hasOnlyNumericKeys = 0
-    } else {  
+    } else {
         stringList.append( new String($o1.s) ) //so as not to store a reference which might change
         hasOnlyNumericKeys = 0
     }
-    
+
     isCacheValid = 0
     valueList.append( $o2 )
 }
@@ -315,7 +315,7 @@ func exists() {  local oldVerbose  localobj tfield
         tfield = get( $s1 )
     }
     verbose = oldVerbose
-    
+
     if( object_id(tfield,1) < 0 ) return 0
     return 1
 }

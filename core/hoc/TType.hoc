@@ -1,6 +1,6 @@
 /**
  * @file TType.hoc
- * @brief 
+ * @brief
  * @author moor
  * @date 2010-03-08
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
@@ -16,11 +16,11 @@ begintemplate TType
 	public classname,itype,stype,equal
 	strdef classname,stype
 	public NUMBER,OBJREF,STRDEF,POINTER,NOTEXIST
-	
+
 
 	//0 for numbers, 1 for objref, 2 for strdef, 3 for pointers to numbers, and -1 if the arg does not exist
-	
-	
+
+
 	proc init(){
 		classname="TType"
 		itype = NOTEXIST //default
@@ -32,7 +32,7 @@ begintemplate TType
         	POINTER = 3
         	NOTEXIST = -1
 	}
-	
+
 	proc get(){local i
 		itype = NOTEXIST //default
 		stype = "none" //default
@@ -53,12 +53,11 @@ begintemplate TType
 		}
 		if(numarg()>1) $s2 = stype
 	}
-	
+
 	func equal(){
 		get($o1)
 		return !strcmp(stype,$s2)
 	}
-	
-	
-	
+
+
 endtemplate TType

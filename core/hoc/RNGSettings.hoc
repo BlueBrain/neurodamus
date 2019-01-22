@@ -121,7 +121,6 @@ func getGlobalSeed() {
 endtemplate RNGSettings
 
 
-
 ///////////////////////////////////////////////////////////////////////
 ///
 ///  These are legacy functions to keep compaltibility

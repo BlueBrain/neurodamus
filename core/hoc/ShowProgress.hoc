@@ -1,6 +1,6 @@
 /**
  * @file ShowProgress.hoc
- * @brief Implements a function which will cause the percentage complete of the simulation to periodically be printed to the console 
+ * @brief Implements a function which will cause the percentage complete of the simulation to periodically be printed to the console
  * @author king
  * @date 2010-03-16
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
@@ -32,7 +32,7 @@ proc init() {
 }
 
 /**
- * Call back function that refreshes the progress value (if enough time has elapsed) and then 
+ * Call back function that refreshes the progress value (if enough time has elapsed) and then
  * inserts the next call into the event queue
  */
 proc updateProgress() {
@@ -40,10 +40,10 @@ proc updateProgress() {
 	lastTimeCheck = startsw()
 	NumSecRemain = (lastTimeCheck-simStart)*(tstop/t-1)
         printf(" Completed =%02d%% ETA =%d:%02d:%02d  \r",  (t*100/tstop), int(NumSecRemain/3600), int(NumSecRemain%3600/60), int(NumSecRemain%3600%60) )
-    
-        
+
+
     }
-    
+
     cvode.event(t+1, "updateProgress()")
 }
 

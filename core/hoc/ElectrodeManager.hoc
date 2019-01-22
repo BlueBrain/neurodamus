@@ -1,6 +1,6 @@
 /**
  * @file ElectrodeManager.hoc
- * @brief 
+ * @brief
  * @author reimann
  * @date 2010-12-30
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
@@ -23,15 +23,15 @@ proc init() { local i, vNum, pX, pY, pZ localobj parsedElectrodes, pathString, t
 	zPosVec = new Vector()
 	electrodeName = new List()
 	electrodeList = new List()
-	
+
 	electrodePath = $o1
 	parsedElectrodes = $o2
-	
+
 	if(electrodePath == nil || parsedElectrodes == nil){
 		//print "No ElectrodesPath or no Electrodes specified. Extracellular class of stimuli will be unavailable!"
 		return
 	}
-	
+
 	for( i = 0; i < parsedElectrodes.count(); i = i+1){
 		//GET FILENAME
 		pathString = new String()
@@ -42,7 +42,7 @@ proc init() { local i, vNum, pX, pY, pZ localobj parsedElectrodes, pathString, t
 			continue
 		}
 		sprint(pathString.s,"%s/%s",electrodePath.s,parsedElectrodes.o(i).get("File").s)
-		
+
 		//GET LOCATION
 		pX = 0
 		pY = 0
@@ -55,34 +55,34 @@ proc init() { local i, vNum, pX, pY, pZ localobj parsedElectrodes, pathString, t
 		}
 		if(parsedElectrodes.o(i).get("z") != nil){
 			sscanf(parsedElectrodes.o(i).get("z").s,"%i",&pZ)
-		}		
-			
+		}
+
 		//GET VERSION AND FINALLY THE OBJECT
 		vNum = -1
 		if(parsedElectrodes.o(i).get("Version") != nil){
 			sscanf(parsedElectrodes.o(i).get("Version").s,"%i",&vNum)
 		}
-		if(vNum==5){			
+		if(vNum==5){
 			tempElectrode = new lookupTableV2(pathString.s)
 			if(vNum != tempElectrode.vInfo()){
 				print "LookupTable version numbers dont match: ", pathString.s
 				continue
 			}
-		}else if(vNum<5){			
+		}else if(vNum<5){
 			print "LookupTable version number < 5 no longer supported: ", pathString.s
 			continue
 		}else {
 			print "LookupTable unknown version number encountered: ", pathString.s
 			continue
 		}
-		
+
 		//ADD INFORMATION TO THE LISTS
 		xPosVec.append(pX)
 		yPosVec.append(pY)
 		zPosVec.append(pZ)
 		electrodeName.append(parsedElectrodes.key(i))
 		electrodeList.append(tempElectrode)
-	}	
+	}
 }
 
 /*!
@@ -94,7 +94,7 @@ proc init() { local i, vNum, pX, pY, pZ localobj parsedElectrodes, pathString, t
  * 		$3: z-coord of the Electrode object
  * Or by index:
  * 		$1: Index of the Electrode object
- * Returns the first Electrode object found within 5 micron (in each direction) of the specified coordinates 
+ * Returns the first Electrode object found within 5 micron (in each direction) of the specified coordinates
  */
 
 obfunc getElectrode(){ local i localobj tElec
@@ -111,14 +111,14 @@ obfunc getElectrode(){ local i localobj tElec
 	} else if(numarg() == 3){ //TODO: Need a better concept of how to handle the lookup by location. For now something simple
 		for(i = 0; i < electrodeName.count(); i=i+1){
 			if((abs(xPosVec.x(i)-$1)<5) && (abs(yPosVec.x(i)-$2)<5) && (abs(zPosVec.x(i)-$3)<5)){
-				return electrodeList.o(i)				
-			}				
+				return electrodeList.o(i)
+			}
 		}
 	}
 	return tElec
 }
 
-obfunc getName(){ 
+obfunc getName(){
 	return electrodeName.o($1)
 }
 
@@ -131,7 +131,7 @@ proc clear(){ localobj nil
 	yPosVec.resize(0)
 	zPosVec.resize(0)
 	electrodeList.remove_all()
-	electrodeName.remove_all()	
+	electrodeName.remove_all()
 }
 
 

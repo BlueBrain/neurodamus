@@ -1,6 +1,6 @@
 /**
  * @file StimulusManager.hoc
- * @brief Process Synapse connections Rules of a BlueConfig (if any) and then instantiate the synapses for a bluebrain sim 
+ * @brief Process Synapse connections Rules of a BlueConfig (if any) and then instantiate the synapses for a bluebrain sim
  * @author king
  * @date 2009-10-23
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
@@ -42,10 +42,10 @@ public noise
  * @param $3 [deprecated] optional globalBaseSeed to apply to random numbers (default 0)
  */
 proc init() { local argIndex
-    
+
     stimList = new List()
     targetManager = $o1
-    
+
     //keep track of how many poisson and noise stims we create so that the seeds can be offset (otherwise we would have same injections or syns/spike trains in a given cell)
     poissonStimCount = 0
     noiseStimCount = 0
@@ -56,18 +56,18 @@ proc init() { local argIndex
     voltageReplayList = new List()
     timeReplayList = new List()
     synapseEventGenerator = new List()
-    
+
     // if we have been passed an elec manager or base seed argument, need to determine now by arg type.  May want to clean this up in the future to
     // remove excess freedom for the users
     if( numarg() > 1 ) {
-        if( argtype(2) == 0 ) { // 0 indicates value type arg, which goes to baseSeed 
+        if( argtype(2) == 0 ) { // 0 indicates value type arg, which goes to baseSeed
             globalBaseSeed = $2
         } else if ( argtype(2) == 1 ) { // 1 indicates objref, which goes to elecManager
             elecManager = $o2
         }
     }
     if( numarg() > 2 ) {
-        if( argtype(3) == 0 ) { // 0 indicates value type arg, which goes to baseSeed 
+        if( argtype(3) == 0 ) { // 0 indicates value type arg, which goes to baseSeed
             globalBaseSeed = $3
         } else if ( argtype(3) == 1 ) { // 1 indicates objref, which goes to elecManager
             elecManager = $o3
@@ -78,14 +78,14 @@ proc init() { local argIndex
 //-----------------------------------------------------------------------------------------------
 
 /*!
- * Helper function to get an overview over the requested extracellular stimuli. interpretExtracellulars() needs 
- * them in the following format: A map(String,List), where the key is the target name and the object is 
+ * Helper function to get an overview over the requested extracellular stimuli. interpretExtracellulars() needs
+ * them in the following format: A map(String,List), where the key is the target name and the object is
  * a List of Maps containing Stimulus parameters. Because it is a rather complicated structure to set up, I do
  * it in a separate function.
- * 
+ *
  * @param $o1 injRequests - the list of maps containing info on requested StimulusInjects
  * @param $o2 parsedStimuli - Maps containing the information on defined stimuli
- * 
+ *
  */
 obfunc getExtracellularParams() { local injIndex localobj listForTarget, newListObj, injRequests, stimName, targetName, stim, paramValue, extraList, nil
 	if($o1 == nil){
@@ -109,7 +109,7 @@ obfunc getExtracellularParams() { local injIndex localobj listForTarget, newList
 					extraList.put( targetName, newListObj )
 				} else {
 					listForTarget.append(stim)
-				}				
+				}
 			}
 	}
 	return extraList
@@ -118,33 +118,33 @@ obfunc getExtracellularParams() { local injIndex localobj listForTarget, newList
 //-----------------------------------------------------------------------------------------------
 
 /*!
- * This function handles all the requested extracellular stimuli. It uses helper function getExtracellularParams 
+ * This function handles all the requested extracellular stimuli. It uses helper function getExtracellularParams
  * to get an overview over requested extracellular stimuli
- * 
+ *
  *
  * @param $o1 injRequests - the list of maps containing info on requested StimulusInjects
  * @param $o2 parsedStimuli - Maps containing the information on defined stimuli
- * 
+ *
  */
 proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIndex, scaleFac, secType, secNum, offset, tx, ty, tz, x localobj stimlist, eName, pts, gidObj, stim, estim, paramValue, activeElectrode, nil
-    strdef tstr 
+    strdef tstr
     //verify that electrode manager was passed to StimulusManager
     if( elecManager == nil ) {
         execerror("Error: attempting to use extracellular stimulation without ElectrodeManager" )
     }
-	
-	stimlist = getExtracellularParams($o1,$o2)	
+
+	stimlist = getExtracellularParams($o1,$o2)
 	for targetIndex=0, stimlist.count()-1{ //over all unique targets
 		//print "Treating extracellulars for target: ", stimlist.key(targetIndex).s
 		pts = targetManager.getPointList(stimlist.key(targetIndex).s) //get that target
 		gidObj = targetManager.gids(stimlist.key(targetIndex).s)
-		
+
 		for elecIndex = 0, elecManager.count()-1{ //over all electrodes
 			//Now we have every combination of electrode and target. We collect all Stimuli using a given combination,
 			//Fill them into one EStim object and do the frequency dependent conversion. Then we Vector.play() it into
-			//Every compartment of the target			
-			eName = elecManager.getName(elecIndex)			
-			activeElectrode = elecManager.getElectrode(elecIndex)			
+			//Every compartment of the target
+			eName = elecManager.getName(elecIndex)
+			activeElectrode = elecManager.getElectrode(elecIndex)
 			estim = new EStim() //Create one EStim per electrode!
 			for stimIndex=0, stimlist.o(targetIndex).count()-1 { //Now gather every stimulus using this electrode
 				stim = stimlist.o(targetIndex).o(stimIndex)
@@ -154,7 +154,7 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 				//Also: Maybe do this with a Map object?
 				if( paramValue != nil && (strcmp(paramValue.s,eName.s)==0) ){
 					estim.train( stim.valueOf( "Delay" ), stim.valueOf( "Duration" ), stim.valueOf( "AmpStart" ), stim.valueOf( "Frequency" ), stim.valueOf( "Width" ) )
-				}								
+				}
 			}
 			estim.initRawElec() //now that we treated all stimuli using this electrode we can initiate it
 			for cellIndex=0, pts.count()-1 { //Now over all compartments in the target
@@ -163,20 +163,20 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 					sprint(tstr,"{%s insert extracellular}",secname())
 			                execute1(tstr,0)
 					if(!getSecTypeAndIndex(&secType,&secNum)){	//Now get the scale factor based on distance
-						if(activeElectrode.vInfo()>4){ //version 4 has one value per compartment, <4 only one per Section							
+						if(activeElectrode.vInfo()>4){ //version 4 has one value per compartment, <4 only one per Section
 							scaleFac = activeElectrode.getValueForSection(gidObj.x[cellIndex],secType,secNum,x)
 						} else {
 							scaleFac = activeElectrode.getValueForSection(gidObj.x[cellIndex],secType,secNum)
 						}
-						if(scaleFac == 0){	//No need to inject anything. 0 is default value for e_extracellular					
+						if(scaleFac == 0){	//No need to inject anything. 0 is default value for e_extracellular
 							continue
 						}
 					} else {
 						print "Problem identifying section type and number for", secname()
 						quit()
-					}					
+					}
 					estim.inject(x,scaleFac)
-				}				
+				}
 			}
 			stimList.append(estim)
 		}
@@ -192,7 +192,7 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
  *
  * @param $s1 targetName - which target where stimulus should be injected
  * @param $o2 stim - map containing stimulus parameters
- * 
+ *
  * alternatively for Ruben's PFE
  * @param $o1 TPointList where stimulus will be injected
  * @param $o2 stim - map containing stimulus parameters
@@ -201,26 +201,26 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localobj stim, target, paramValue, paramVect, patternName, synType, synConfig, fillFunc, nil
 
     stim = $o2
-    
+
     paramVect = new Vector()
 	paramValue = stim.get( "Mode" )
-    
+
     //Extracellular stimuli handled separately; Current and Voltage Modes only
-	if( strcmp( paramValue.s, "Extracellular" ) == 0 ) { 
+	if( strcmp( paramValue.s, "Extracellular" ) == 0 ) {
 		return
 	}
-    
+
     //all will have Delay and Duration, so parse immediately
     del = stim.valueOf( "Delay" )
     dur = stim.valueOf( "Duration" )
-    
+
     if( t > 0 ) {
         del = del + t
     }
-    
+
     //more specific parameters based on pattern
     patternName = stim.get( "Pattern" )
-    
+
     // Ruben's pfe chunk
     //
     // check for TPointList argument
@@ -250,34 +250,34 @@ proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localob
             */
         } else if( strcmp( patternName.s, "Linear" ) == 0 ) {
             paramVect.append( stim.valueOf("AmpStart") )
-            
+
             //optional option - AmpEnd.  If not there, use same value as AmpStart
             if( stim.exists( "AmpEnd" ) ) {
                 paramVect.append( stim.valueOf("AmpEnd") )
             } else {
                 paramVect.append( paramVect.x[paramVect.size()-1] )
             }
-            
+
             linear( $s1, paramVect.x[0], paramVect.x[1], del, dur )
         } else if( strcmp( patternName.s, "RelativeLinear" ) == 0 ) {
             paramVect.append( stim.valueOf("PercentStart") )
-            
+
             //optional option - PercentEnd.  If not there, use same value as PercentStart
             if( stim.get( "PercentEnd" ) != nil ) {
                 paramVect.append( stim.valueOf("PercentEnd") )
             } else {
                 paramVect.append( paramVect.x[paramVect.size()-1] )
             }
-            
+
             relativeLinear( $s1, paramVect.x[0], paramVect.x[1], del, dur )
         } else if ( strcmp( patternName.s, "Pulse" ) == 0 ) {
             //looking at bglib, it expects potentially multiple delay/duration pairs (and an AmpEnd)
             // TODO: rename bglib's stimulus pattern names to be inline with TStim, creating 'train' as replacement for bglib's 'pulse'
-            
+
             paramVect.append( stim.valueOf( "AmpStart" ) )
             paramVect.append( stim.valueOf( "Frequency" ) )
             paramVect.append( stim.valueOf( "Width" ) )
-            
+
             //optional argument - Offset; default = 0.
             // TODO: re-evaluate offset for Pulse stimulus and debug because it looks like it might not be multisplit safe
             if( stim.exists( "Offset" ) ) {
@@ -285,10 +285,10 @@ proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localob
             } else {
                 paramVect.append( 0 )
             }
-            
+
             train( $s1, paramVect.x[0], paramVect.x[1], paramVect.x[2], paramVect.x[3], del, dur )
             //linear( $s1, paramVect.x[0], paramVect.x[0], del, dur )
-        } else if(strcmp(patternName.s, "Sinusoidal")==0){        	
+        } else if(strcmp(patternName.s, "Sinusoidal")==0){
         	paramVect.append( stim.valueOf("AmpStart"))
 			paramVect.append( stim.valueOf("Frequency"))
 			if( stim.exists( "Offset" ) ) {
@@ -301,7 +301,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localob
             paramVect.append( stim.valueOf( "Lambda" ) )
             paramVect.append( stim.valueOf( "Weight" ) )
             paramVect.append( stim.valueOf( "NumOfSynapses" ) )
-            
+
             //Note: SynapseType is optional and may return nil (handled by npoisson function)
             //Note: SynapseConfigure is optional and may return nil (handled by npoisson function)
             //Note: FillFunctionOverride is optional and under development, may return nil (handled by npoisson function)
@@ -313,7 +313,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localob
         } else if( strcmp( patternName.s, "NPoissonInhomogeneous" ) == 0 ) {
             //Note: SynapseType is optional and may return nil (handled by npoisson function)
             //Note: SynapseConfigure is optional and may return nil (handled by npoisson function)
-            
+
             //Note: even though we dont use delay/duration, they must still be present in the BlueConfig until I can refactor the code better
             //Note: requires special Target handling, so just pass targetName through
             if( stim.exists( "SynapseType" ) ) { synType = stim.get( "SynapseType" ) }
@@ -352,18 +352,18 @@ proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localob
  * @param $4 duration of stimulus (ms)
  */
 proc squarepulse() { local cellIndex, x, amp, del, dur  localobj pts, tstim
-    
+
     amp = $2
     del = $3
     dur = $4
 
     //since there are no random elements, we can just evaluate the pointlist and proceed as normal
     pts = $o1
-    
+
     for pts.each_point(&x) {
-        
+
         tstim = new TStim(x)
-        
+
         tstim.pulse( del, dur, amp)
         stimList.append( tstim )
     }
@@ -416,7 +416,7 @@ proc relativeNoise() { local x, threshold  localobj pts, cellList, rand, tstim, 
     cellList = targetManager.getMETypes($s1)
 
     rngInfo = new RNGSettings()
-    
+
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
             threshold = cellList.o(cellIndex).getThreshold()
@@ -435,7 +435,7 @@ proc relativeNoise() { local x, threshold  localobj pts, cellList, rand, tstim, 
             stimList.append(tstim)
         }
     }
-    
+
     noiseStimCount = noiseStimCount+1
 }
 
@@ -456,7 +456,7 @@ proc noise() { local x  localobj pts, rand, tstim, rngInfo
     pts = targetManager.getPointList($s1)
 
     rngInfo = new RNGSettings()
-    
+
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
             if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY ) {
@@ -473,7 +473,7 @@ proc noise() { local x  localobj pts, rand, tstim, rngInfo
             stimList.append(tstim)
         }
     }
-    
+
     noiseStimCount = noiseStimCount+1
 }
 
@@ -493,11 +493,11 @@ proc subthreshold() { local cellIndex, x  localobj pts, cellList, tstim
     pts = targetManager.getPointList($s1)
     cellList = targetManager.getMETpes($s1)
     //cellList = targetManager.getCells($s1)
-    
+
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
             tstim = new TStim(x)
-            
+
             tstim.pulse( $3, $4, cellList.o(cellIndex).getThreshold()*(100-$2)/100 )
             stimList.append(tstim)
         }
@@ -518,27 +518,27 @@ proc subthreshold() { local cellIndex, x  localobj pts, cellList, tstim
  * @param $5 duration of stimulus (ms)
  */
 proc relativeLinear() { local cellIndex, x, percentStart, percentEnd, cellThresh, del, dur  localobj pts, tstim, cellList
-    
+
     percentStart = $2
     percentEnd = $3
     del = $4
     dur = $5
-    
+
     pts = targetManager.getPointList($s1)
     cellList = targetManager.getMETypes($s1)
     //cellList = targetManager.getCells($s1)
-    
+
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
             cellThresh = cellList.o(cellIndex).getThreshold()
             tstim = new TStim(x)
-            
+
             if( percentStart == percentEnd ) {
                 tstim.pulse( del, dur, cellThresh*(percentStart/100) )
             } else {
                 tstim.ramp( 0, del, cellThresh*(percentStart/100), cellThresh*(percentEnd/100), dur, 0, 0 )
             }
-            
+
             stimList.append( tstim )
         }
     }
@@ -560,24 +560,24 @@ proc relativeLinear() { local cellIndex, x, percentStart, percentEnd, cellThresh
 proc train() { local cellIndex, x, offset, secIndex, foo  localobj pts, tstim, jitter
 
     pts = targetManager.getPointList($s1)
-        
+
     for cellIndex=0, pts.count()-1 {
     	offset = 0
         if( $5 != 0 ) {
             jitter = new Random( pts.o(cellIndex).gid )
             jitter.normal(0,$5)
-        }               
+        }
         for pts.o(cellIndex).each_point(&x) {
-            tstim = new TStim(x)            
+            tstim = new TStim(x)
             if( $5 != 0 ) {
-            	if($5<0){            		            	
-            		offset = offset-$5            			
+            	if($5<0){
+            		offset = offset-$5
             	} else {
                 offset = jitter.repick()
             	}
             }
             tstim.train( $6+offset, $7, $2, $3, $4 )
-            
+
             stimList.append(tstim)
         }
     }
@@ -595,25 +595,25 @@ proc train() { local cellIndex, x, offset, secIndex, foo  localobj pts, tstim, j
  * @param $5 del
  * @param $6 dur
  */
-proc sinusoid() { local cellIndex, x, offset, secIndex, foo  localobj pts, tstim, jitter	
-    pts = targetManager.getPointList($s1)    
+proc sinusoid() { local cellIndex, x, offset, secIndex, foo  localobj pts, tstim, jitter
+    pts = targetManager.getPointList($s1)
     offset = 0
     for cellIndex=0, pts.count()-1 {
     	offset = 0
         if( $4 != 0 ) {
             jitter = new Random( pts.o(cellIndex).gid )
             jitter.normal(0,$4)
-        }        
+        }
         for pts.o(cellIndex).each_point(&x) {
-            tstim = new TStim(x)            
+            tstim = new TStim(x)
             if( $4 != 0 ) {
             	if($4<0){
-            		offset = offset-$4            		
+            		offset = offset-$4
             	} else {
                 offset = jitter.repick()
             	}
-            }            
-            tstim.sin($2,$5+offset,$6,$3)            
+            }
+            tstim.sin($2,$5+offset,$6,$3)
             stimList.append(tstim)
         }
     }
@@ -623,7 +623,7 @@ proc sinusoid() { local cellIndex, x, offset, secIndex, foo  localobj pts, tstim
 
 /*!
  * Injects a square pulse into a cell.  Note that if the starting and ending amplitude are the same,
- * a simple 
+ * a simple
  *
  * @param $s1 Name of Target where iclamps will be placed
  * @param $2 ampStart Starting amplitude of the current injected (nA)
@@ -632,7 +632,7 @@ proc sinusoid() { local cellIndex, x, offset, secIndex, foo  localobj pts, tstim
  * @param $5 duration of stimulus (ms)
  */
 proc linear() { local cellIndex, x, ampStart, ampEnd, del, dur  localobj pts, tstim
-    
+
     ampStart = $2
     ampEnd = $3
     del = $4
@@ -640,18 +640,18 @@ proc linear() { local cellIndex, x, ampStart, ampEnd, del, dur  localobj pts, ts
 
     //since there are no random elements, we can just evaluate the pointlist and proceed as normal
     pts = targetManager.getPointList($s1)
-    
+
     for cellIndex=0, pts.count()-1 {
         for pts.o(cellIndex).each_point(&x) {
-            
+
             tstim = new TStim(x)
-            
+
             if( ampStart == ampEnd ) {
                 tstim.pulse( del, dur, ampStart )
             } else {
                 tstim.ramp( 0, del, ampStart, ampEnd, dur, 0, 0 )
             }
-            
+
             stimList.append( tstim )
         }
     }
@@ -661,7 +661,7 @@ proc linear() { local cellIndex, x, ampStart, ampEnd, del, dur  localobj pts, ts
 
 /*!
  * Apply a poisson stimulus over n artificial synapses distributed randomly on a cell's basal and apical sections
- * 
+ *
  * @param $s1 TargetName
  * @param $2 lambda
  * @param $3 weight
@@ -673,10 +673,10 @@ proc linear() { local cellIndex, x, ampStart, ampEnd, del, dur  localobj pts, ts
  * @param $9 duration of stimulus (ms)
  */
 proc npoisson() { local cellIndex, del, dur  localobj apicalPoints, basalPoints, gids
-    
+
     del = $8
     dur = $9
-    
+
     //The synapses generated should only go on the apical or basal sections of any target cells
     // difficulty for doing exactly same thing as old bglib: that could operate easily on the section
     // of a cell, but now we work with compartment points only(?)  If so, random selection won't be the same
@@ -686,21 +686,21 @@ proc npoisson() { local cellIndex, del, dur  localobj apicalPoints, basalPoints,
     //         base_target apic  //note that base_target must be a cell target, if section target, that is fine
     //         base_target dend
     //     }
-    
+
     // open for interpretation - should I get the target, check they type and take action based on that?
     //  or should I send two requests to the targetManager asking for the apic & basal sections, letting
     //  the manager do checks and balances
     gids = targetManager.gids( $s1 )
     apicalPoints = targetManager.getApicalSections( $s1 )
     basalPoints = targetManager.getBasalSections( $s1 )
-    
+
     //for each gid/TPointList - place synapses randomly and supply a spike train
     for cellIndex=0, gids.size()-1 {
-        
-        //so all cells should be represented and have the same point count regardless of splitting        
+
+        //so all cells should be represented and have the same point count regardless of splitting
         distributePoissonSynapses( gids.x[cellIndex], $2, $3, $4, $o5, $o6, $o7, del, dur, apicalPoints.o(cellIndex), basalPoints.o(cellIndex) )
     }
-    
+
     poissonStimCount = poissonStimCount + 1
 }
 
@@ -708,7 +708,7 @@ proc npoisson() { local cellIndex, del, dur  localobj apicalPoints, basalPoints,
 
 /*!
  * Apply a poisson stimulus over n artificial synapses distributed randomly on a cell's basal and apical sections
- * 
+ *
  * @param $s1 TargetName
  * @param $2 weight
  * @param $3 number of synapses
@@ -719,9 +719,9 @@ proc npoisson() { local cellIndex, del, dur  localobj apicalPoints, basalPoints,
  * @param $o8 rate
  */
 proc npoissonInhomogeneous() { local cellIndex, del, dur  localobj apicalPoints, basalPoints, gids
-    
+
     //TODO: refactor with npoisson
-        
+
     //The synapses generated should only go on the apical or basal sections of any target cells
     // difficulty for doing exactly same thing as old bglib: that could operate easily on the section
     // of a cell, but now we work with compartment points only(?)  If so, random selection won't be the same
@@ -731,21 +731,21 @@ proc npoissonInhomogeneous() { local cellIndex, del, dur  localobj apicalPoints,
     //         base_target apic  //note that base_target must be a cell target, if section target, that is fine
     //         base_target dend
     //     }
-    
+
     // open for interpretation - should I get the target, check they type and take action based on that?
     //  or should I send two requests to the targetManager asking for the apic & basal sections, letting
     //  the manager do checks and balances
     gids = targetManager.gids( $s1 )
     apicalPoints = targetManager.getApicalSections( $s1 )
     basalPoints = targetManager.getBasalSections( $s1 )
-    
+
     //for each gid/TPointList - place synapses randomly and supply a spike train
     for cellIndex=0, gids.size()-1 {
 
-        //so all cells should be represented and have the same point count regardless of splitting        
+        //so all cells should be represented and have the same point count regardless of splitting
         distributePoissonSynapsesInhomogeneous( gids.x[cellIndex], $2, $3, $o4, $o5, $o6, $o7, $o8, apicalPoints.o(cellIndex), basalPoints.o(cellIndex) )
     }
-    
+
     poissonStimCount = poissonStimCount + 1
 }
 
@@ -804,7 +804,7 @@ $&2=secIndex
 proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, lambda, weight, del, dur, substituteCount, vIndex \
     localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, fih, sf, fillFunctionOverride, vecstim, myvec, nil, rngInfo
     strdef tstr, tstr1
-    
+
     iteration = 0
     nCreated = 0
 
@@ -820,77 +820,77 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
     dur = $9
     apicalPoints = $o10
     basalPoints = $o11
-    
+
     //determine now if the synapseType is given or we should use the default
     if( object_id($o5,1) < 0 ) {
         synapseType = new String("ExpSyn")
     } else {
         synapseType = $o5
     }
-    
+
     while ( nCreated < nNeeded ) {
-    
+
         //count the iterations and use that to offset the seed
         iteration = iteration + 1
-        
+
         ran2 = new Random(baseSeed + iteration)
         ran2.MCellRan4(baseSeed + iteration, $1+100 )
         ran2.discunif(0,1)
-        
+
         ran1 = new Random(baseSeed + iteration)
         ran1.MCellRan4(baseSeed + iteration, $1+110 )
-        
+
         //first choose to target apical of basal sections
         if(ran2.repick()) {
             activeSubset = basalPoints
         } else {
             activeSubset = apicalPoints
         }
-        
+
         if( activeSubset.count() == 0 ) { continue }
-        
+
         ran1.discunif( 0, activeSubset.count()-1 )
         sectionIndex = ran1.repick()
-        
+
         //do we have random access to TPointList SectionRef members?  how should such a utility function look/behave?
         if( !activeSubset.sclst.o(sectionIndex).exists() ) {  //section not on this cpu
             nCreated = nCreated + 1  //assume another split piece handles it instead
             continue
         }
-        
+
         //the section is on this cpu, so create the synapse and fill the spike train
         activeSubset.access_(sectionIndex)
         sprint(tstr,"stimHelper = new %s(0.5)", synapseType.s )
         execute1(tstr, this)
-        
+
         //do we need to execute some statements on the synapse?
         if( object_id( synapseConfigure, 1 ) != -1 ) {
             sf = new StringFunctions()
-            
+
             //need to replace all '%s' with stimHelper object
             substituteCount = 0
             tstr = synapseConfigure.s
-            
+
             // keep checking the string for '%s'; as long as one is there, rebuild the string around it
             while( sf.substr( tstr, "%s" ) != -1 ) {
                 sf.head( tstr, "%s", tstr1 )
                 sf.tail( tstr, "%s", tstr )
                 sprint( tstr, "%s%s%s", tstr1, stimHelper, tstr )
             }
-            
+
             //surround with curly braces then execute
             sprint(tstr, "{%s}", tstr )
             //print "execute ", tstr
             execute1(tstr,this)
-            
+
             //debug - only works for ExpSyn
             //print stimHelper.e, " ", stimHelper.tau
         }
-        
+
         if( object_id( fillFunctionOverride, 1 ) == -1 ) {  //no override - so use default spike timing fill method
-            
+
             nc = new NetCon( nil, stimHelper,10,1,weight )  //has nil source
-            
+
             //why do we register an init handler if we are just going to call the function anyways?
             // do we end up with twice the events?
             sprint(tstr,"FillSpikeTrain(%s,%f,%f,%f,%d)", nc, lambda, del, dur, baseSeed+iteration )
@@ -901,12 +901,12 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
         } else {
             tstr = "print \"Jim broke this!\""
         }
-        
+
         //keep variables so they don't get deleted
         poissonNetconList.append(nc)
         poissonSynList.append(stimHelper)
         handleList.append(fih)
-        
+
         nCreated = nCreated + 1
     }
 }
@@ -930,9 +930,9 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
 proc distributePoissonSynapsesInhomogeneous() { local nCreated, nNeeded, iteration, baseSeed, sectionIndex, weight, substituteCount, tIndex \
     localobj ran1, ran2, apicalPoints, basalPoints, activeSubset, synapseType, synapseConfigure, nc, sf, h5file, tbins, rate, h5reader, vecstim, tbins_vec, rate_vec, inhpoiss, exprng, uniformrng, nil, rngInfo
     strdef tstr, tstr1
-    
+
     //TODO: refactor this code with distributePoissonSynapses
-    
+
     iteration = 0
     nCreated = 0
 
@@ -947,7 +947,7 @@ proc distributePoissonSynapsesInhomogeneous() { local nCreated, nNeeded, iterati
     rate = $o8
     apicalPoints = $o9
     basalPoints = $o10
-    
+
     //determine now if the synapseType is given or we should use the default
     if( object_id($o4,1) < 0 ) {
         synapseType = new String("ExpSyn")
@@ -959,13 +959,13 @@ proc distributePoissonSynapsesInhomogeneous() { local nCreated, nNeeded, iterati
     //open h5file ... only need to read it once for all synapses
     // they all share the same tbins_vec and rate_vec object
     h5reader = new HDF5Reader( h5file.s )
-        
+
     //get tbins from file - put in vector for InhPoissonStim
     h5reader.loadData( tbins.s )
     nrows = h5reader.numberofrows( tbins.s )
-        
+
     tbins_vec = new Vector()
-    for tIndex=0,nrows-1 { 
+    for tIndex=0,nrows-1 {
         //print h5reader.getData( tbins.s, tIndex, 0 )
         tbins_vec.append( h5reader.getData( tbins.s, tIndex, 0 ) )
     }
@@ -973,81 +973,81 @@ proc distributePoissonSynapsesInhomogeneous() { local nCreated, nNeeded, iterati
     //get rate from file - put in vector for InhPoissonStim
     h5reader.loadData( rate.s )
     nrows = h5reader.numberofrows( rate.s )
-        
+
     rate_vec = new Vector()
-    for tIndex=0,nrows-1 { 
+    for tIndex=0,nrows-1 {
         //print h5reader.getData( rate.s, tIndex, 0 )
         rate_vec.append( h5reader.getData( rate.s, tIndex, 0 ) )
     }
-    
+
     vecStimList.append( tbins_vec )
     vecStimList.append( rate_vec )
 
 
     while ( nCreated < nNeeded ) {
-    
+
         //count the iterations and use that to offset the seed
         iteration = iteration + 1
-        
+
         ran2 = new Random(baseSeed + iteration)
         ran2.MCellRan4(baseSeed + iteration, $1+100 )
         ran2.discunif(0,1)
-        
+
         ran1 = new Random(baseSeed + iteration)
         ran1.MCellRan4(baseSeed + iteration, $1+110 )
-        
+
         //first choose to target apical of basal sections
         if(ran2.repick()) {
             activeSubset = basalPoints
         } else {
             activeSubset = apicalPoints
         }
-        
+
         if( activeSubset.count() == 0 ) { continue }
-        
+
         ran1.discunif( 0, activeSubset.count()-1 )
         sectionIndex = ran1.repick()
-        
+
         //do we have random access to TPointList SectionRef members?  how should such a utility function look/behave?
         if( !activeSubset.sclst.o(sectionIndex).exists() ) {  //section not on this cpu
             nCreated = nCreated + 1  //assume another split piece handles it instead
             continue
         }
-        
+
         //the section is on this cpu, so create the synapse and fill the spike train
         activeSubset.access_(sectionIndex)
         sprint(tstr,"stimHelper = new %s(0.5)", synapseType.s )
         execute1(tstr, this)
-        
+
         //do we need to execute some statements on the synapse?
         if( object_id( synapseConfigure, 1 ) != -1 ) {
             sf = new StringFunctions()
-            
+
             //need to replace all '%s' with stimHelper object
             substituteCount = 0
             tstr = synapseConfigure.s
-            
+
             // keep checking the string for '%s'; as long as one is there, rebuild the string around it
             while( sf.substr( tstr, "%s" ) != -1 ) {
                 sf.head( tstr, "%s", tstr1 )
                 sf.tail( tstr, "%s", tstr )
                 sprint( tstr, "%s%s%s", tstr1, stimHelper, tstr )
             }
-            
+
             //surround with curly braces then execute
             sprint(tstr, "{%s}", tstr )
             //print "execute ", tstr
             execute1(tstr,this)
-            
+
             //debug - only works for ExpSyn
             //print stimHelper.e, " ", stimHelper.tau
         }
-        
-        
+
+
         //ignore rate dataset for now
         //h5reader.loadData( rate.s )
         //nrows = h5reader.numberofrows( rate.s )
-        
+
         inhpoiss = new InhPoissonStim(0.5)
         nc = new NetCon(inhpoiss, stimHelper)
 	nc.weight[0] = weight
@@ -1070,7 +1070,7 @@ proc distributePoissonSynapsesInhomogeneous() { local nCreated, nNeeded, iterati
         vecStimList.append( inhpoiss )
         vecStimList.append( exprng )
         vecStimList.append( uniformrng )
-        
+
         nCreated = nCreated + 1
     }
 }
@@ -1090,18 +1090,18 @@ proc distributePoissonSynapsesInhomogeneous() { local nCreated, nNeeded, iterati
 proc FillSpikeTrain() { local i,tmpt, time, index, SpikeNeeded, nSpikeNeeded, SpikeDiff localobj ran, tVec, ran2
     //print "Seed = ", $5
     tVec    =  new Vector()
-    ran     =  new Random()   
-    ran.ACG($5) 
+    ran     =  new Random()
+    ran.ACG($5)
     //ran.MCellRan4()
     ran.negexp(1000/$2)
     //ran.negexp($2)
-    time    = 0    
+    time    = 0
     SpikeNeeded = (($4 * $2)/1000)
     nSpikeNeeded = int (SpikeNeeded)
     if((SpikeNeeded - nSpikeNeeded) >= 0.5){
        nSpikeNeeded = nSpikeNeeded + 1
     }
-   
+
     while (time < $4){
 	tmpt = ran.repick()
         //time = time + ran.repick()
@@ -1112,11 +1112,11 @@ proc FillSpikeTrain() { local i,tmpt, time, index, SpikeNeeded, nSpikeNeeded, Sp
         tVec.append(time)
     }
     if(SpikeNeeded < 1)	  {
-        time = 0 
+        time = 0
     }
-    
+
     for i =0, tVec.size-1 {
-        $o1.event(tVec.x[i] + $3) 
+        $o1.event(tVec.x[i] + $3)
     }
 }
 
@@ -1136,57 +1136,57 @@ proc FillSpikeTrain() { local i,tmpt, time, index, SpikeNeeded, nSpikeNeeded, Sp
  */
 proc replayVoltageTrace() { local gidIndex, x, dtReport, del, dur \
     localobj gids, pts, dataset, filename, voltageReader, vvec, dvec, tvec, stim, pc
-    
+
     del = $4
     dur = $5
-    
+
     dataset = new String()
     filename = new String()
     gids = targetManager.gids( $s1 )
     pts = targetManager.getPointList( $s1 )
-    
+
     for gidIndex=0, gids.size()-1 {
-        
+
         gid = gids.x[gidIndex]
-        sprint( filename.s, "%s/a%d.h5", $s2, gid )        
+        sprint( filename.s, "%s/a%d.h5", $s2, gid )
         voltageReader = new HDF5Reader( filename.s )
-        
-        sprint( dataset.s, "/a%d/%s/data", gid, $s3 )        
+
+        sprint( dataset.s, "/a%d/%s/data", gid, $s3 )
         voltageReader.loadData( dataset.s )
-        
+
         dtReport = voltageReader.getAttributeValue( dataset.s, "Dt" )
-        
-        vvec = new Vector()        
+
+        vvec = new Vector()
         voltageReader.getColumnData( dataset.s, 0, vvec )
-                
+
         // we need to give a tvec to SEClamp, use the stimulation timing values to generate
         tvec = new Vector()
         tvec = tvec.indgen( del, del+dur, dtReport )
-        
+
         // if we have more voltage data than time or the reverse, balance the vectors
         if( vvec.size() > tvec.size() ) {
             vvec.resize( tvec.size() )
         } else if ( tvec.size() < vvec.size() ) {
             tvec.resize( vvec.size() )
         }
-                
+
         for pts.o(gidIndex).each_point(&x) {
             stim = new SEClamp(x)
             stim.rs = 0.01
             stim.dur1 = dur
-            
+
             dvec = vvec.c
             dvec.play_remove()
             dvec.play( &stim.amp1, tvec )
             voltageReplayList.append( dvec )
-            
+
             stimList.append(stim)
         }
-        
+
         timeReplayList.append( tvec )
-        
+
     }
-    
+
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -1212,7 +1212,7 @@ proc reevent() { local eIndex, vIndex, res
         //print synapseEventGenerator.o(eIndex).s
         res = execute1( synapseEventGenerator.o(eIndex).s, this )
     }
-    
+
     //while I am here, let me check all other stims
     /*
     print "replay as needed ", stimList.count()
@@ -1242,19 +1242,19 @@ proc reevent() { local eIndex, vIndex, res
 proc seclamp() { local del, dur, gidIndex, x  localobj pts, stim
     del = $3
     dur = $4
-    
+
     //gids = targetManager.gids( $s1 )
     pts = targetManager.getPointList( $s1 )
-    
+
     for gidIndex=0, pts.count()-1 {
         for pts.o(gidIndex).each_point(&x) {
             stim = new SEClamp(x)
             stim.rs = 0.01
             stim.dur1 = dur
             stim.amp1 = $2
-            
+
             stimList.append(stim)
-        }        
+        }
     }
 
 }

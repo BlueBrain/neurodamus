@@ -98,7 +98,6 @@ obfunc loadSynapseParameters() { local gid, nSyn, synIndex  localobj synParamsLi
 endtemplate SynReaderSynTool
 
 
-
 /*****************************************************************************
  * SYNAPSE READER Using the plain HDF5 reader
  *****************************************************************************/
@@ -210,20 +209,20 @@ obfunc loadSynapseParameters() { local isvalid, gid, ret, nSyn, synIndex  localo
                 tmpParams.x[8] = synapseReader.getData( cellName, synIndex, 11 ) //F
                 tmpParams.x[9] = synapseReader.getData( cellName, synIndex, 12 ) //DTC
                 tmpParams.x[10] = synapseReader.getData( cellName, synIndex, 13 )//isynType
-    
+
                 // if using newer version, we can read nrrp (older version had A_SE in column)
                 if (nrnVersion > 4) {
                     tmpParams.x[11] = synapseReader.getData( cellName, synIndex, 17 ) //nrrp
                 } else {
                     tmpParams.x[11] = -1
                 }
-                
+
                 tmpParams.x[12] = synIndex // use row as index for older circuits
-    
+
                 //compensate for minor floating point inaccuracies in the delay
                 tmpParams.x[1] = int(tmpParams.x[1]/dt + 1e-5)*dt
                 if (dbg && synIndex == 0) tmpParams.printf()
-    
+
                 activeSynParams = new SynapseParameters(tmpParams)
                 synParamsList.append(activeSynParams)
             } //isvalid
