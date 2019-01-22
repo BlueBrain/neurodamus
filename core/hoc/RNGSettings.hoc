@@ -37,7 +37,7 @@ proc interpret() { localobj runInfo, pc, rng
     strdef rngModeField
     runInfo = $o1
 
-    rngMode = RANDOM123
+    rngMode = COMPATIBILITY
     pc = new ParallelContext()
 
     if( simConfig.coreNeuronUsed() ) {
@@ -74,7 +74,7 @@ proc interpret() { localobj runInfo, pc, rng
             rng.Random123_globalindex( globalSeed )
         }
     }
-
+    
     // don't search for indicidual seeds if we are in compatibility mode
     if( rngMode == COMPATIBILITY ) {
         return
