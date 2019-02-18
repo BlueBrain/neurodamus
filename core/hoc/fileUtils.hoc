@@ -1,4 +1,4 @@
-{nrnpython( "import shutil" )}
+{nrnpython( "import shutil, os.path" )}
 
 /**
  * Calls a python shutil command involving src and dst, optionally prepending a given path
@@ -20,12 +20,8 @@ proc shutil() {
 }
 
 
-func fileExists()  {   localobj fileobj
-    fileobj = new File()
-    fileobj.ropen($s1)
-    if( fileobj.isopen() ) {
-        fileobj.close()
-        return 1
-    }
-    return 0
+func fileExists()  { localobj py
+    strdef cmd
+    py = new PythonObject()
+    return py.os.path.isfile($s1)
 }
