@@ -234,6 +234,7 @@ VERBATIM
 #ifndef DISABLE_SYNTOOL
     ReaderState rs = STATE_RESET;
     if( !ifarg(1) ) {
+        getStatePtr() = NULL;
         return;
     }
 
@@ -263,9 +264,14 @@ ENDVERBATIM
 DESTRUCTOR {
 VERBATIM
 #ifndef DISABLE_SYNTOOL
+    // state_ptr shall never be NULL since we attemp to follow RAII. The only exceptions are
+    //  - for Save-State, when Neuron recreates the mechs without params
+    //  - In SynReaders.hoc to know whether Synapsetool is available
     ReaderState* state_ptr = getStatePtr();
-    syn_close(state_ptr->file);
-    free(state_ptr);
+    if (state_ptr) {
+        syn_close(state_ptr->file);
+        free(state_ptr);
+    }
 #endif
 ENDVERBATIM
 }

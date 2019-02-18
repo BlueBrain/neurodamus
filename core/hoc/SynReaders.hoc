@@ -17,7 +17,7 @@
 
 begintemplate SynReaderSynTool
 
-public loadSynapseParameters, isEnabled, dbg, readGaps
+public loadSynapseParameters, dbg, readGaps
 
 objref synapseReader, _emptyList, this
 
@@ -45,11 +45,6 @@ proc init()  {
         hasNrrpField = -1
         if (verbose) print "[SynReader] SynapseTool DISABLED"
     }
-}
-
-
-func isEnabled() {
-    return synapseReader.modEnabled()
 }
 
 
@@ -233,3 +228,15 @@ obfunc loadSynapseParameters() { local isvalid, gid, ret, nSyn, synIndex  localo
 }
 
 endtemplate SynReaderHdf5
+
+
+/**
+ * Detection whether syntool is enabled
+ */
+func _isSyntoolEnabled() { localobj synreader
+    synreader = new SynapseReader()
+    return synreader.modEnabled()
+}
+
+// Public singleton property
+syntoolEnabled = _isSyntoolEnabled()
