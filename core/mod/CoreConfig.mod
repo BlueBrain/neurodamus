@@ -64,7 +64,7 @@ PROCEDURE write_report_config() {
 
             // write report information
             FILE *fp = open_file(filename, "a");
-            fprintf(fp, "%s %s %s %s %s %s %d %lf %lf %lf %d\n",
+            fprintf(fp, "%s %s %s %s %s %s %d %lf %lf %lf %d 8\n",
                     hoc_gargstr(1),
                     hoc_gargstr(2),
                     hoc_gargstr(3),
