@@ -51,9 +51,6 @@ class Progress(object):
     iterables.
     """
 
-    _last_time_taken = None
-    """We keep a reference to the last execution time"""
-
     def __init__(self, end, start=0):
         """ Creates a progress bar
 
@@ -104,9 +101,6 @@ class Progress(object):
     @property
     def time_taken(self):
         return time.time() - self._init_time
-
-    def __del__(self):
-        self.__class__._last_time_taken = self.time_taken
 
     def __call__(self, iterable, end=None, start=0):
         for elem in islice(iterable, start, end):

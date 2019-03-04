@@ -8,7 +8,7 @@ from ._neuron import _Neuron, MPI
 
 LIB_PATH = Path.realpath(Path.join(Path.dirname(__file__), "../../../lib"))
 MOD_LIB = Path.join(LIB_PATH, "modlib", "libnrnmech.so")
-HOC_LIB = Path.join(LIB_PATH, "hoclib", "neurodamus")
+HOC_LIB = "neurodamus"  # neurodamus.hoc should be in HOC_LIBRARY_PATH.
 LOG_FILENAME = "pydamus.log"
 
 
