@@ -5,7 +5,6 @@ Copyright 2018 - Blue Brain Project, EPFL
 """
 from __future__ import absolute_import
 from os import path as Path
-import sys
 import logging
 from .core import MPI, mpi_no_errors
 from .core import NeuronDamus as Nd, ParallelNetManager as pnm
@@ -687,49 +686,16 @@ class Node:
     # -
     @mpi_no_errors
     def run(self, show_progress=False):
-        """ Runs the simulation
+        """Initialize and run the whole simulation according to BlueConfig
         """
-        log_stage("Running")
-        run_conf = self._config_parser.parsedRun
         if show_progress:
             _ = Nd.ShowProgress(Nd.cvode, MPI.rank)  # NOQA (required to keep obj alive)
 
-        pnm.pc.setup_transfer()
-        spike_compress = 3
-
-        pnm.pc.spike_compress(spike_compress, spike_compress != 0, 0)
-        # LFP calculation requires WholeCell balancing and extracellular mechanism.
-        # This is incompatible with efficient caching atm.
-        if run_conf.exists("ElectrodesPath"):
-            Nd.cvode.cache_efficient(0)
-        else:
-            Nd.cvode.cache_efficient(1)
-
-        self.want_all_spikes()
-        pnm.pc.set_maxstep(4)
-        self._runtime = Nd.startsw()
-
-        # Returned timings
+        # Timings structure (being returned)
         tdat = [0] * 7
         tdat[0] = pnm.pc.wait_time()
 
-        Nd.stdinit()
-
-        # check for optional argument "ForwardSkip"
-        fwd_skip = run_conf.valueOf("ForwardSkip") if run_conf.exists("ForwardSkip") else False
-        if fwd_skip:
-            logging.info("Initting with ForwardSkip %d ms", fwd_skip)
-            Nd.t = -1e9
-            prev_dt = Nd.dt
-            Nd.dt = fwd_skip * 0.1
-            for flushIndex in range(10):
-                Nd.fadvance()
-            Nd.dt = prev_dt
-            Nd.t = 0
-            Nd.frecord_init()
-
-        # increase timeout by 10x
-        pnm.pc.timeout(200)
+        self._prepare_run()
 
         # I think I must use continuerun?
         if len(self._connection_weight_delay_list) == 0:
@@ -762,14 +728,62 @@ class Node:
         return tdat
 
     # -
-    def want_all_spikes(self):
-        """setup recording of spike events (crossing of threshold) for the cells on this node
+    def _prepare_run(self, spike_compress=3, timeout=200):
+        """Set up simulation run parameters and init, including
+            setup_transfer, spike_compress, _record_spikes, stdinit, forward_skip, timeout
         """
-        for gid in self.gidvec:
+        log_stage("Preparing run")
+        run_conf = self._config_parser.parsedRun
+        pnm.pc.setup_transfer()
+
+        pnm.pc.spike_compress(spike_compress, spike_compress != 0, 0)
+        # LFP calculation requires WholeCell balancing and extracellular mechanism.
+        # This is incompatible with efficient caching atm.
+        if run_conf.exists("ElectrodesPath"):
+            Nd.cvode.cache_efficient(0)
+        else:
+            Nd.cvode.cache_efficient(1)
+
+        self._record_spikes()
+
+        pnm.pc.set_maxstep(4)
+        self._runtime = Nd.startsw()
+
+        Nd.stdinit()
+
+        # check for optional argument "ForwardSkip"
+        fwd_skip = run_conf.valueOf("ForwardSkip") if run_conf.exists("ForwardSkip") else False
+        if fwd_skip:
+            logging.info("Initting with ForwardSkip %d ms", fwd_skip)
+            Nd.t = -1e9
+            prev_dt = Nd.dt
+            Nd.dt = fwd_skip * 0.1
+            for flushIndex in range(10):
+                Nd.fadvance()
+            Nd.dt = prev_dt
+            Nd.t = 0
+            Nd.frecord_init()
+
+        # increase timeout by 10x
+        pnm.pc.timeout(timeout)
+
+    # -
+    def _record_spikes(self, gids=None):
+        """Setup recording of spike events (crossing of threshold) for cells on this node
+        """
+        for gid in (self.gidvec if gids is None else gids):
             # only want to collect spikes off cell pieces with the soma (i.e. the real gid)
             if self._cell_distributor.getSpGid(gid) == gid:
                 logging.debug("Collecting spikes for gid %d", gid)
                 pnm.spike_record(gid)
+
+    # -
+    def _solve(self, tstop=None):
+        """Call solver with a given stop time (default: whole interval)
+        """
+        if tstop is None:
+            tstop = Nd.tstop
+        pnm.psolve(tstop)
 
     # -
     @mpi_no_errors
@@ -803,7 +817,6 @@ class Node:
         self._elec_manager = None
         self._binreport_helper = None
         self._runtime = 0
-
 
     # -------------------------------------------------------------------------
     #  Data retrieve / output
