@@ -135,7 +135,7 @@ class _Neuron(object):
 Neuron = _Neuron()
 
 
-class _MPI:
+class _MPI(object):
     _size = 1
     _rank = 0
     _pnm = None
@@ -250,7 +250,7 @@ endtemplate {cls_name}
         return self._hoc_obj
 
 
-class Simulation:
+class Simulation(object):
     # Some defaults from stdrun
     v_init = Neuron_Stdrun_Defaults.v_init  # -65V
 

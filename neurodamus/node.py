@@ -6,7 +6,7 @@ Copyright 2018 - Blue Brain Project, EPFL
 from __future__ import absolute_import
 from os import path as Path
 import logging
-from .core import MPI, mpi_no_errors
+from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeuronDamus as Nd, ParallelNetManager as pnm
 from .core.configuration import GlobalConfig, ConfigurationError
 from .cell_distributor import CellDistributor
@@ -684,18 +684,15 @@ class Node:
                     Nd.execute1(tstr, sec=sc.sec)
 
     # -
+    @return_neuron_timings
     @mpi_no_errors
     def run(self, show_progress=False):
         """Initialize and run the whole simulation according to BlueConfig
         """
+        self._prepare_run()
+
         if show_progress:
             _ = Nd.ShowProgress(Nd.cvode, MPI.rank)  # NOQA (required to keep obj alive)
-
-        # Timings structure (being returned)
-        tdat = [0] * 7
-        tdat[0] = pnm.pc.wait_time()
-
-        self._prepare_run()
 
         # I think I must use continuerun?
         if len(self._connection_weight_delay_list) == 0:
@@ -715,17 +712,7 @@ class Node:
         # final flush for reports
         self._binreport_helper.flush()
 
-        tdat[0] = pnm.pc.wait_time() - tdat[0]
-        self._runtime = Nd.startsw() - self._runtime
-        tdat[1] = pnm.pc.step_time()
-        tdat[2] = pnm.pc.send_time()
-        tdat[3] = pnm.pc.vtransfer_time()
-        tdat[4] = pnm.pc.vtransfer_time(1)  # split exchange time
-        tdat[6] = pnm.pc.vtransfer_time(2)  # reduced tree computation time
-        tdat[4] -= tdat[6]
-
         logging.info("Simulation finished.")
-        return tdat
 
     # -
     def _prepare_run(self, spike_compress=3, timeout=200):
