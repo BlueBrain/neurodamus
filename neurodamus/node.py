@@ -443,47 +443,65 @@ class Node:
 
     # -
     def _find_projection_file(self, projection):
-        """Determine where to find the synapse projection files"""
+        """Determine the full path to a projection.
+        The "Path" might specify the filename. If not, it will attempt the old 'proj_nrn.h5'
+        """
         return self._find_input_file("proj_nrn.h5", projection.get("Path").s, ("ProjectionPath",))
 
     def _find_input_file(self, filename, filepath, path_conf_entries=()):
-        """ Determine where to find the synapse files. Try relative path first. Then check for
+        """Determine where to find the synapse files. Try relative path first. Then check for
         given config variables field in Run, finally use CircuitPath.
+            In case filepath already points to a file, filename is disregarded
+            Otherwise filename(s) are attempted (can be a tuple)
 
         Args:
-            filename: The name of the file to find
+            filename: (str,tuple) The name(s) of the file to find
             filepath: The relative or absolute path we obtained in the direct config
-            path_conf_entries: Global path configuration entries to build the absolute path
+            path_conf_entries: (tuple) Global path configuration entries to build the absolute path
         Returns:
             The absolute path to the data file
         Raises:
             (ConfigurationError) If the file could not be found
         """
+        if not isinstance(filename, tuple):
+            filename = (filename,)
+        path_conf_entries += ("CircuitPath",)
         run_config = self._config_parser.parsedRun
 
-        # if it's absolute path then can be used immediately
+        def try_find_in(fullpath):
+            if Path.isfile(fullpath):
+                return fullpath
+            for fname in filename:
+                nrn_path = Path.join(fullpath, fname)
+                if Path.isfile(nrn_path):
+                    return nrn_path
+            return None
+
         if Path.isabs(filepath):
-            nrn_path = Path.join(filepath, filename)
+            # if it's absolute path then can be used immediately
+            file_found = try_find_in(filepath)
         else:
+            file_found = None
             for path_key in path_conf_entries:
                 if run_config.exists(path_key):
-                    base_path = run_config.get(path_key).s,
-                    break
-            else:
-                base_path = run_config.get("CircuitPath").s,
-            nrn_path = Path.join(base_path, filepath, filename)
+                    file_found = try_find_in(Path.join(run_config.get(path_key).s, filepath))
+                    if file_found:
+                        break
 
-        if not Path.isfile(nrn_path):
+        if not file_found:
             raise ConfigurationError("Could not find file %s", filename)
-        logging.debug("data file %s path: %s", filename, nrn_path)
-        return nrn_path
+
+        logging.debug("data file %s path: %s", filename, file_found)
+        return file_found
 
     def _find_config_file(self, filepath):
+        """Attempts to find simulation config files (e.g. user.target or replays)
+           If not an absolute path, searches in blueconfig folder
+        """
         if not Path.isabs(filepath):
             _path = Path.join(self._blueconfig_path, filepath)
             if Path.isfile(_path):
                 filepath = _path
-            # If not uses pwd
         if not Path.isfile(filepath):
             raise ConfigurationError("Config file not found: " + filepath)
         return filepath
