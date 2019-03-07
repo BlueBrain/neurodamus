@@ -65,6 +65,12 @@ class SynapseReader(object):
             reader = cls(args, conn_type, *args, **kw)
         return reader
 
+    @classmethod
+    def is_syntool_enabled(cls):
+        if not hasattr(cls, '_syntool_enabled'):
+            cls._syntool_enabled = ND.SynapseReader().modEnabled()
+        return cls._syntool_enabled
+
 
 class SynReaderSynTool(SynapseReader):
     """ Synapse Reader using synapse tool.

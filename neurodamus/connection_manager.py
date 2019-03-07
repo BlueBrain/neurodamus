@@ -20,6 +20,8 @@ class _ConnectionManagerBase(object):
 
     CIRCUIT_FILENAMES = None
     """The possible circuit filenames specificed in search order"""
+    CONNECTIONS_TYPE = None
+    """The type of connections subclasses handle"""
 
     # We declare class variables which might be used in subclass methods
     # Synapses dont require circuit_target but GapJunctions do
@@ -39,24 +41,21 @@ class _ConnectionManagerBase(object):
         self._synapse_reader = None
         self._local_gids = target_manager.cellDistributor.getGidListForProcessor()
 
-        if Path.isfile(circuit_path):
-            circuit_file = circuit_path
-            circuit_path = Path.dirname(circuit_path)
-        else:
-            circuit_file = self._find_circuit_file(circuit_path) \
-                if Path.isdir(circuit_path) else None
-            assert circuit_file, "Circuit path doesnt contain circuit files"
+        circuit_file = self._find_circuit_file(circuit_path)
+        assert circuit_file, "Circuit path doesnt contain valid circuit files"
 
-        # Find and open the circuit
-        try:
-            self.open_synapse_file(circuit_file, n_synapse_files)
-        except SynToolNotAvail:
-            circuit_file = self._find_fallback_file(circuit_path)
-            assert circuit_file, "No SynTool support and no fallback NRN file"
-            self.open_synapse_file(circuit_file, n_synapse_files)
+        self.open_synapse_file(circuit_file, n_synapse_files)
 
         if GlobalConfig.debug_conn:
             logging.info("Debugging activated for cell/conn %s", GlobalConfig.debug_conn)
+
+    # -
+    def open_synapse_file(self, synapse_file, n_synapse_files=None):
+        """Initializes a reader for Synapses
+        """
+        logging.info("Opening Synapse file %s", synapse_file)
+        self._synapse_reader = SynapseReader.create(
+            synapse_file, self.CONNECTIONS_TYPE, self._local_gids, n_synapse_files)
 
     # -
     def connect_all(self, gidvec, weight_factor=1):
@@ -460,7 +459,15 @@ class _ConnectionManagerBase(object):
 
     @classmethod
     def _find_circuit_file(cls, location):
-        for fname in cls.CIRCUIT_FILENAMES:
+        """Attempts to find a circuit file given any directory or file, and reader"""
+        if Path.isfile(location):
+            if SynapseReader.is_syntool_enabled():
+                return location
+            return cls._find_fallback_file(location)
+
+        fnames = cls.CIRCUIT_FILENAMES if SynapseReader.is_syntool_enabled() \
+            else [cls.CIRCUIT_FILENAMES[-1]]
+        for fname in fnames:
             fullname = Path.join(location, fname)
             if Path.isfile(fullname):
                 return fullname
@@ -491,6 +498,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
     """
 
     CIRCUIT_FILENAMES = ('circuit.sonata', 'circuit.syn2', 'nrn.h5')
+    CONNECTIONS_TYPE = SynapseReader.SYNAPSES
 
     def __init__(self, circuit_path, target_manager, n_synapse_files, synapse_mode=None):
         """ Constructor for SynapseRuleManager, checks that the nrn.h5 synapse file is available
@@ -511,14 +519,6 @@ class SynapseRuleManager(_ConnectionManagerBase):
 
         #  self._rng_list = []
         self._replay_list = []
-
-    # -
-    def open_synapse_file(self, synapse_file, n_synapse_files=None):
-        """Initializes a reader for Synapses
-        """
-        logging.info("Opening Synapse file %s", synapse_file)
-        self._synapse_reader = SynapseReader.create(
-            synapse_file, SynapseReader.SYNAPSES, self._local_gids, n_synapse_files)
 
     # -
     def finalize(self, base_seed=0):
@@ -588,6 +588,7 @@ class GapJunctionManager(_ConnectionManagerBase):
     """
 
     CIRCUIT_FILENAMES = ("gj.sonata", "gj.syn2", "nrn_gj.h5")
+    CONNECTIONS_TYPE = SynapseReader.GAP_JUNCTIONS
 
     def __init__(self, circuit_path, target_manager, n_synapse_files=None, circuit_target=None):
         """Constructor for GapJunctionManager, checks that the nrn_gj.h5 synapse file is available
@@ -615,14 +616,6 @@ class GapJunctionManager(_ConnectionManagerBase):
             # fist gid has no offset.  the final total is not used as an offset at all.
             self._gj_offsets.append(gj_sum)
             gj_sum += 2 * offset
-
-    # -
-    def open_synapse_file(self, synapse_file, n_synapse_files=None):
-        """Initializes a reader for Synapses
-        """
-        logging.info("Opening Gap-Junctions file %s", synapse_file)
-        self._synapse_reader = SynapseReader.create(
-            synapse_file, SynapseReader.GAP_JUNCTIONS, self._local_gids, n_synapse_files)
 
     # -
     def finalize(self):
