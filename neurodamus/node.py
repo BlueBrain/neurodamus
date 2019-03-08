@@ -43,7 +43,7 @@ class Node:
         self._stim_manager = None
         self._elec_manager = None
         self._binreport_helper = None
-        self._runtime = 0
+        self._sim_ready = False
         self._synapse_manager = None  # type: SynapseRuleManager
         self._gj_manager = None       # type: GapJunctionManager
 
@@ -449,10 +449,10 @@ class Node:
         return self._find_input_file("proj_nrn.h5", projection.get("Path").s, ("ProjectionPath",))
 
     def _find_input_file(self, filename, filepath, path_conf_entries=()):
-        """Determine where to find the synapse files. Try relative path first. Then check for
-        given config variables field in Run, finally use CircuitPath.
-            In case filepath already points to a file, filename is disregarded
-            Otherwise filename(s) are attempted (can be a tuple)
+        """Determine where to find the synapse files.
+        Try relative path first, then check for config fields in Run, last use CircuitPath.
+        In case filepath already points to a file, filename is disregarded
+        Otherwise filename(s) are attempted (can be a tuple)
 
         Args:
             filename: (str,tuple) The name(s) of the file to find
@@ -703,29 +703,16 @@ class Node:
 
     # -
     @return_neuron_timings
-    @mpi_no_errors
-    def run(self, show_progress=False):
-        """Initialize and run the whole simulation according to BlueConfig
+    def run_all(self, show_progress=False):
+        """Run the whole simulation according to BlueConfig
         """
-        self._prepare_run()
-
         if show_progress:
             _ = Nd.ShowProgress(Nd.cvode, MPI.rank)  # NOQA (required to keep obj alive)
 
-        # I think I must use continuerun?
-        if len(self._connection_weight_delay_list) == 0:
-            logging.info("Running until the end (%d ms)", Nd.tstop)
-            pnm.psolve(Nd.tstop)
-        else:
-            # handle any delayed blocks
-            for conn in self._connection_weight_delay_list:
-                logging.info(" * Delay: Configuring %s->%s after %d ms",
-                             conn.get("Source").s, conn.get("Destination".s), conn.valueOf("Delay"))
-                pnm.psolve(conn.valueOf("Delay"))
-                self._synapse_manager.configure_connection_config(conn, self.gidvec)
+        if not self._sim_ready:
+            self.sim_init()
 
-            logging.info("Running until the end (%d ms)", Nd.tstop)
-            pnm.psolve(Nd.tstop)
+        self.solve(log=True)
 
         # final flush for reports
         self._binreport_helper.flush()
@@ -733,11 +720,44 @@ class Node:
         logging.info("Simulation finished.")
 
     # -
-    def _prepare_run(self, spike_compress=3, timeout=200):
-        """Set up simulation run parameters and init, including
-            setup_transfer, spike_compress, _record_spikes, stdinit, forward_skip, timeout
+    @mpi_no_errors
+    def solve(self, tstop=None, log=False):
+        """Call solver with a given stop time (default: whole interval).
+        Be sure to have sim_init()'d the simulation beforehand
         """
-        log_stage("Preparing run")
+        if not self._sim_ready:
+            raise ConfigurationError("Initialize simulation first")
+
+        tstart = Nd.t
+        tstop = tstop or Nd.tstop
+
+        # handle any delayed blocks
+        for conn in self._connection_weight_delay_list:
+            conn_start = conn.valueOf("Delay")
+            # If the first connection starts after our tstop -> dont activate anything
+            if conn_start > tstop:
+                break
+            # If the connection was already activated -> skip!
+            if conn_start < tstart:
+                continue
+            if log:
+                logging.info(" * Delay: Configuring %s->%s after %d ms",
+                             conn.get("Source").s, conn.get("Destination".s), conn_start)
+            # Run until the point of activating it, then activate
+            pnm.psolve(conn_start)
+            self._synapse_manager.configure_connection_config(conn, self.gidvec)
+
+        if log:
+            logging.info("Running until t=%d ms", tstop)
+        pnm.psolve(tstop)
+
+    # -
+    @mpi_no_errors
+    def sim_init(self, spike_compress=3, timeout=200):
+        """Set up simulation run parameters and initialization.
+        Handles setup_transfer, spike_compress, _record_spikes, stdinit, forward_skip, timeout
+        """
+        logging.info("Preparing run")
         run_conf = self._config_parser.parsedRun
         pnm.pc.setup_transfer()
 
@@ -750,10 +770,7 @@ class Node:
             Nd.cvode.cache_efficient(1)
 
         self._record_spikes()
-
         pnm.pc.set_maxstep(4)
-        self._runtime = Nd.startsw()
-
         Nd.stdinit()
 
         # check for optional argument "ForwardSkip"
@@ -771,6 +788,8 @@ class Node:
 
         # increase timeout by 10x
         pnm.pc.timeout(timeout)
+        self._sim_ready = True
+        return pnm
 
     # -
     def _record_spikes(self, gids=None):
@@ -783,20 +802,12 @@ class Node:
                 pnm.spike_record(gid)
 
     # -
-    def _solve(self, tstop=None):
-        """Call solver with a given stop time (default: whole interval)
-        """
-        if tstop is None:
-            tstop = Nd.tstop
-        pnm.psolve(tstop)
-
-    # -
     @mpi_no_errors
     def clear_model(self):
-        """Clears appropriate lists and other stored references. For use with intrinsic load
-        balancing. After creating and evaluating the network using round robin distribution, we want
-        to clear the cells and synapses in order to have a clean slate on which to instantiate the
-        balanced cells.
+        """Clears appropriate lists and other stored references.
+        For use with intrinsic load balancing. After creating and evaluating the network using
+        round robin distribution, we want to clear the cells and synapses in order to have a
+        clean slate on which to instantiate the balanced cells.
         """
         logging.info("Clearing model")
         pnm.pc.gid_clear()
@@ -821,7 +832,7 @@ class Node:
         self._stim_manager = None
         self._elec_manager = None
         self._binreport_helper = None
-        self._runtime = 0
+        self._sim_ready = False
 
     # -------------------------------------------------------------------------
     #  Data retrieve / output
@@ -973,7 +984,8 @@ class Neurodamus(Node):
     def run(self, spike_filaname='spikes.dat', show_progress=True):
         """Runs the Simulation, writing the spikes to the given file
         """
-        Node.run(self, show_progress)
+        log_stage("==================== SIMULATION ====================")
+        self.run_all(show_progress)
         self.spike2file(spike_filaname)
 
     def __del__(self):
