@@ -139,8 +139,8 @@ class ProgressBar(Progress):
     """
     _no_tty_bar = "-------20%-------40%-------60%-------80%------100%"  # len 50
 
-    def __init__(self, end, start=0, width=60, fill='=', blank='.', stream=sys.stdout, clear=True,
-                 fmt='[%(fill)s>%(blank)s] %(progress)s', tty_bar=None):
+    def __init__(self, end, start=0, width=60, fill='=', blank='.', stream=sys.stdout,
+                 clear=None, fmt='[%(fill)s>%(blank)s] %(progress)s', tty_bar=None):
         """
         Args:
             end:   State in which the progress has terminated. False for unknown (-> spinner)
@@ -165,7 +165,7 @@ class ProgressBar(Progress):
         self._blank = blank
         self._format = fmt + " "
         self._stream = stream
-        self._clear = clear
+        self._clear = self._tty_mode if clear is None else clear
         self._prev_bar_len = 0
         super(ProgressBar, self).__init__(end, start)
 
@@ -211,8 +211,7 @@ class ProgressBar(Progress):
             self._stream.write("\r{}\r".format(" " * (self._width + 8)))
         else:
             # Output a nice stat about time taken
-            out_str = " [Time taken: %d sec.]" % (self.time_taken,)
-            self._stream.write("\r{}{}\n".format(out_str, " " * (self._width + 8 - len(out_str))))
+            self._stream.write(" [Time taken: {:.2f} s]\n".format(self.time_taken))
 
     def _set_progress(self, val):
         Progress._set_progress(self, val)

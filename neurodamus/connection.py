@@ -4,7 +4,7 @@ import numpy as np
 from six.moves import zip
 from .core import NeuronDamus as ND
 from .utils import compat
-
+from .utils.logging import log_verbose
 
 class SynapseParameters(object):
     """Synapse parameters, internally implemented as numpy record
@@ -351,7 +351,7 @@ class Connection(object):
         """
         if self._synapse_override is not None:
             # there should be a 'Helper' for that syntype in the hoc path.
-            override_helper = self._synapse_override.get("ModOverride") + "Helper"
+            override_helper = self._synapse_override.get("ModOverride").s + "Helper"
             ND.load_hoc(override_helper)
             try:
                 helper_cls = getattr(ND.h, override_helper)
@@ -445,34 +445,33 @@ class Connection(object):
         """
         self.ConnUtils.executeConfigure(self._synapses, configuration)
 
-    #
-    # NOTE: Replay is already implementing Replay with VecStim as in saveupdate_v6support_mask
-    #
-    def replay(self, tvec):
+    def replay(self, tvec, start_delay=.0):
         """ The synapses connecting these gids are to be activated using predetermined timings
         Args:
             tvec: time for spike events from the sgid
+            start_delay: When the events may start to be delivered
         """
         hoc_tvec = ND.Vector()
-        for _t in tvec:
+        for _t in np.sort(tvec[tvec >= start_delay]):
             hoc_tvec.append(_t)
+
+        log_verbose("Replaying %d spikes on %d", hoc_tvec.size(), self.sgid)
+        logging.debug(" > First replay event for connection at %f", hoc_tvec.x[0])
         vstim = ND.VecStim()
         vstim.play(hoc_tvec)
         # vstim.verboseLevel = 1
         self._tvecs.append(hoc_tvec)
         self._stims.append(vstim)
-        logging.debug("Replaying %d spikes on %d", hoc_tvec.size(), self.sgid)
-        logging.debug(" > First replay event for connection at %f", tvec[0])
 
         # Note that synapseLocation.SPLIT = 1
         # All locations, on and off node should be in this list, but only synapses/netcons on-node
         # will receive the events
         for i, (syn_i, sc) in enumerate(self.valid_sections()):
             syn_params = self._synapse_params[syn_i]
-
             nc = ND.NetCon(vstim, self._synapses[i], 10, syn_params.delay, syn_params.weight)
             nc.weight[0] = syn_params.weight * self.weight_factor
             self._replay_netcons.append(nc)
+        return hoc_tvec.size()
 
     # -
     def disable(self, set_zero_conductance=False):

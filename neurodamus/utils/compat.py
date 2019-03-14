@@ -3,7 +3,10 @@ Compatibility Classes to work similar to HOC types, recreating or wrapping them
 """
 from __future__ import absolute_import
 from array import array
-from collections import Mapping
+try:
+    import collections.abc as collections_abc  # Py >= 3.3
+except ImportError:
+    import collections as collections_abc
 
 
 class Vector(array):
@@ -31,7 +34,7 @@ class List(list):
         return self[int(idx)]
 
 
-class Map(Mapping):
+class Map(collections_abc.Mapping):
     """Class which bring Python map API to hoc Maps
     """
     __slots__ = ('_hoc_map', '_size')
@@ -64,3 +67,18 @@ class Map(Mapping):
     @property
     def hoc_map(self):
         return self._hoc_map
+
+    def as_dict(self, parse_strings=False):
+        """Creates a real dictionary from the Map
+        Args:
+            parse_strings: If true converts string objects in both key and values to
+                           real strings (xx.s) and attempts to convert values to float
+        """
+        if parse_strings:
+            def parse(stri):
+                try:
+                    return float(stri)
+                except:
+                    return stri
+            return {key.s: parse(val.s) for key, val in self.items()}
+        return dict(self)

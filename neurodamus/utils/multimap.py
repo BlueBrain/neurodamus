@@ -2,12 +2,12 @@
 A collection of Pure-Python MultiMaps
 """
 import numpy as np
-from collections import Mapping
 from operator import add
 from six.moves import zip, reduce
+from .compat import collections_abc
 
 
-class MultiMap(Mapping):
+class MultiMap(collections_abc.Mapping):
     """A memory-efficient map, which accepts duplicates
     """
     __slots__ = ("_keys", "_values")
@@ -99,6 +99,9 @@ class MultiMap(Mapping):
         return (v1 if isinstance(v1, (list, tuple)) else list(v1)) + \
                (v2 if isinstance(v2, (list, tuple)) else list(v2))
 
+    def data(self):
+        return self._keys, self._values
+
 
 class GroupedMultiMap(MultiMap):
     """ A Multimap which groups values by key in a list
@@ -125,6 +128,10 @@ class GroupedMultiMap(MultiMap):
     def get_items(self, key):
         return self.get(key)
 
+    def size(self):
+        """Number of entries"""
+        return reduce(add, (len(v) for v in self._values))
+
     def __iadd__(self, other):
         MultiMap.__iadd__(self, other)
         self._keys, v_list = self._duplicates_to_list(self._keys, self._values)
@@ -133,3 +140,10 @@ class GroupedMultiMap(MultiMap):
 
     def flat_values(self):
         return reduce(self.concat, self._values)
+
+    def flatten(self):
+        """Transform the current Map to a plain Multimap, without groups.
+        """
+        keys = np.repeat(self._keys, [len(v) for v in self._values])
+        values = np.concatenate(self._values)
+        return MultiMap(keys, values, presorted=True)

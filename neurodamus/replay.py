@@ -14,8 +14,9 @@ class SpikeManager(object):
     Given an out.dat file from a previous run, this object uses a NetStim object to retrigger
     the synapses at the appropriate time as though the presynaptic cells were present and active.
     """
+    _ascii_spike_dtype = [('time', 'double'), ('gid', 'uint32')]
 
-    def __init__(self, spike_filename, delay):
+    def __init__(self, spike_filename, delay=0):
         """Constructor for SynapseReplay
         Args:
             spike_filename: path to spike out file.
@@ -42,15 +43,16 @@ class SpikeManager(object):
         else:
             tvec, gidvec = self._read_spikes_ascii(filename)
 
-        tvec += delay
+        if delay:
+            tvec += delay
 
         self._store_events(tvec, gidvec)
 
-    @staticmethod
-    def _read_spikes_ascii(filename):
+    @classmethod
+    def _read_spikes_ascii(cls, filename):
         log_verbose("Reading ascii spike file %s", filename)
         # first line is '/scatter'
-        spikes = numpy.loadtxt(filename, dtype=[('t', 'd'), ('gid', 'uint32')], skiprows=1)
+        spikes = numpy.loadtxt(filename, dtype=cls._ascii_spike_dtype, skiprows=1)
 
         if len(spikes) > 0:
             log_verbose("Loaded %d spikes", len(spikes))
@@ -58,7 +60,7 @@ class SpikeManager(object):
             logging.warning("No spike/gid found in spike file %s", filename)
             raise Exception("Invalid spike file")
 
-        return spikes["t"], spikes["gid"]
+        return spikes["time"], spikes["gid"]
 
     @staticmethod
     def _read_spikes_binary(filename):
@@ -99,6 +101,9 @@ class SpikeManager(object):
         else:
             self._gid_fire_events += map
 
+    def __len__(self):
+        return len(self._gid_fire_events)
+
     def __getitem__(self, gid):
         return self._gid_fire_events.get(gid)
 
@@ -111,6 +116,19 @@ class SpikeManager(object):
     def filter_map(self, pre_gids):
         return {key: self._gid_fire_events[key] for key in pre_gids}
 
-    # Quick helper to spare users of using get_map()
-    def replay(self, synapse_manager, target):
-        synapse_manager.replay(target, self._gid_fire_events)
+    def dump_ascii(self, f):
+        """Writes the spikes out, in compat ascii format.
+        Args:
+            f: The file name or handle
+        """
+        gids, times = self._gid_fire_events.flatten().data()
+        expanded_ds = numpy.stack((times, gids), axis=-1)
+        logging.info("writing %d entries", len(expanded_ds))
+        if isinstance(f, str):
+            # If given a filename we assume a new file is wanted, with new header
+            with open(f, "w") as fx:
+                fx.write("/scatter\n")
+                numpy.savetxt(fx, expanded_ds, fmt='%.6lf\t%d')
+        else:
+            # If given a file handle, user wants control so we directly dump
+            numpy.savetxt(f, expanded_ds, fmt='%.6lf\t%d')

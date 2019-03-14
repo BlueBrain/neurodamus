@@ -47,6 +47,11 @@ class NeuronDamus(_Neuron):
                 setup_logging(0, LOG_FILENAME, MPI.rank)
             logging.info("Neurodamus Mod & Hoc lib loaded.")
 
+            # Allow non-saveState Neuron's
+            if not hasattr(cls._h, "BBSaveState"):
+                logging.warning("This version of Neuron does NOT support SaveState. All save-state operations will be dummy.")
+                cls._h.execute( "~begintemplate BBSaveState\npublic ignore\nproc ignore(){}\nendtemplate BBSaveState" )
+
     @property
     def pnm(self):
         self._pnm or self._init()

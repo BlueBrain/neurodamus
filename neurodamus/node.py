@@ -558,8 +558,8 @@ class Node:
                 logging.info(" * [SYN REPLAY] %s (%s -> %s, delay: %d)",
                              name, stim_name, target_name, delay)
                 spike_filepath = self._find_config_file(stim.get("SpikeFile").s)
-                spike_manager = SpikeManager(spike_filepath, delay)
-                spike_manager.replay(self._synapse_manager, target_name)
+                spike_manager = SpikeManager(spike_filepath)
+                self._synapse_manager.replay(target_name, spike_manager, delay)
             else:
                 # all other patterns the stim manager will interpret
                 logging.info(" * [STIM] %s (%s -> %s)", name, stim_name, target_name)

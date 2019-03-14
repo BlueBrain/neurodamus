@@ -111,6 +111,7 @@ class _Neuron(object):
     def __getattr__(self, item):
         # We use a cache since going down to hoc costs at least 10us
         # Cache is not expected to grow very large. Unbounded for the moment
+        self._h or self._init()
         cache = self.__class__.__cache
         obj = cache.get(item)
         if obj is None:

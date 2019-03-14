@@ -548,33 +548,35 @@ class SynapseRuleManager(_ConnectionManagerBase):
     finalizeSynapses = finalize  # compat
 
     # -
-    def replay(self, target_name, spike_map):
+    def replay(self, target_name, spike_manager, start_delay=.0):
         """ After all synapses have been placed, we can create special netcons to trigger
         events on those synapses
 
         Args:
             target_name: Target name whose gids should be replayed
-            spike_map: map of gids (pre-synaptic) with vector of spike times
+            spike_manager: map of gids (pre-synaptic) with spike times
+            start_delay: Dont deliver events before t=start_delay
         """
-        log_verbose("Applying replay map with %d src cells...", len(spike_map))
+        log_verbose("Applying replay map with %d src cells...", len(spike_manager))
         target = self._target_manager.getTarget(target_name)
+        replay_count = 0
 
         for tgid, conns in ProgressBar.iteritems(self._connections_map):
             if not target.contains(tgid):
                 continue
 
             for conn in conns:
-                if conn.sgid in spike_map:
-                    conn.replay(spike_map[conn.sgid])
+                if conn.sgid in spike_manager:
+                    replay_count += conn.replay(spike_manager[conn.sgid], start_delay)
                     self._replay_list.append(conn)
 
-        n_replays = len(self._replay_list)
-        total_replays = MPI.allreduce(n_replays, MPI.SUM)
+        total_replays = MPI.allreduce(replay_count, MPI.SUM)
         if MPI.rank == 0:
             if total_replays == 0:
                 logging.warning("No cells were injected replay stimulus")
             else:
-                logging.info(" => Replay applied to %d connections", total_replays)
+                logging.info(" => Replaying total %d stimulus", total_replays)
+        return total_replays
 
 
 # ################################################################################################

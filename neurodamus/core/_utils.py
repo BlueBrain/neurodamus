@@ -22,13 +22,11 @@ class ProgressBarRank0(progressbar.Progress):
 def mpi_no_errors(f):
     """Convenience decorator which checks all processes are fine when f returns
     """
-    if MPI.size == 0:
-        return f
-
     @wraps(f)
     def wrapper(*args, **kw):
         res = f(*args, **kw)
-        MPI.check_no_errors()
+        if MPI.size > 0:
+            MPI.check_no_errors()
         return res
 
     return wrapper
