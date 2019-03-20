@@ -6,18 +6,6 @@
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
 
-objref globrec
-
-// Note: the following is to allow this version with save state to be used by a non-savestate enabled NEURON.
-// maybe we can get rid of it in the future
-objref test
-if( execute1("test = new BBSaveState()", 0) == 0 ) {
-    test = new ParallelContext()
-    if( test.id() == 0 ) {
-        print "Using non-savestate version of NEURON"
-    }
-    execute( "~begintemplate BBSaveState\npublic ignore\nproc ignore(){}\nendtemplate BBSaveState" )
-}
 
 begintemplate Report
 
