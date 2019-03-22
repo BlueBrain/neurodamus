@@ -1,40 +1,55 @@
 from __future__ import absolute_import, print_function
 import logging  # active only in rank 0 (init)
 from os import path as Path
+from lazy_property import LazyProperty
 from . import cell_readers
-from .core import MPI, mpi_no_errors
+from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeuronDamus as Nd
-from .metype import METype
-from .core.configuration import ConfigurationError
 from .core import ProgressBarRank0 as ProgressBar
+from .core.configuration import ConfigurationError
+from .metype import METype
 from .utils import compat
 from .utils.logging import log_verbose
 
 
+class LoadBalanceMode:
+    """An enumeration, inc parser, of the load balance modes.
+    """
+    WholeCell = 1
+    MultiSplit = 2
+
+    @classmethod
+    def parse(cls, lb_mode):
+        _modes = {
+            "WholeCell": cls.WholeCell,
+            "LoadBalance": cls.MultiSplit
+        }
+        return _modes.get(lb_mode)
+
+
 class CellDistributor(object):
-    """Handle assignment of cells to processors, instantiate and store them (locally and in _pnm)
+    """Handle assignment of cells to processors, instantiate and store them (locally and in _pnm).
     """
 
-    def __init__(self, config_parser, target_parser, pnm):
-        """Initializes CellDistributor obj and runs distribution from start.ncs or mvd3.
-        Depending on the Config file, might apply LoadBalancing.
+    def __init__(self, pnm, lb_mode=None, prospective_hosts=None):
+        """Initializes CellDistributor
 
-        Params:
-            config_parser: config parser object
-            target_parser: in case there is a circuit target
-            pnm: The parallel node manager (to know rank and nNodes)
-
-        Returns: gidvec and metypes
+        Args:
+            pnm: The hoc ParallelNetManager object
+            lb_mode (LoadBalanceMode): The load balance mode
+            prospective_hosts (int): The level of parallelism for the simulation run
 
         """
+        self._target_cpu_count = prospective_hosts or MPI.size
+        self._lb_mode = lb_mode
         self._pnm = pnm
-        self._load_balance = None
-        self._lb_flag = False
+
         # These structs are None to mark as un-init'ed
         self._gidvec = None
         self._total_cells = None
-        # These wont ever be init'ed if not using lb
+        # These wont ever be init'ed if not recomputing lb
         self._spgidvec = None   # cell parts gids
+        self._mcomplex = None
         self._binfo = None      # balanceInfo
 
         self._useMVD3 = False
@@ -46,35 +61,89 @@ class CellDistributor(object):
         self._gid2metype = {}
 
         # complexity factor
-        self.msfactor = 0.8
+        self._msfactor = 1e6 if self._lb_mode is LoadBalanceMode.WholeCell else 0.8
 
         # create a tmp netcon objref
         if not hasattr(Nd, "nc_"):
             Nd.execute("objref nc_")
 
-        self._setup(config_parser.parsedRun, target_parser)
+    # read-only properties
+    lb_mode          = property(lambda self: self._lb_mode)
+    target_cpu_count = property(lambda self: self._target_cpu_count)
+    pnm              = property(lambda self: self._pnm)
+    local_gids       = property(lambda self: self._gidvec)
+    total_cells      = property(lambda self: self._total_cells)
+    cell_list        = property(lambda self: self._cell_list)
+    ms_factor        = property(lambda self: self._msfactor)
+    pc               = LazyProperty(lambda self: self._pnm.pc)  # avoid re-fetch hoc attr
 
-    @property
-    def pnm(self):
-        return self._pnm
+    # -
+    def load_or_recompute_mcomplex_balance(self, nrn_path, target_name, build_circuit_f):
+        """Check if valid cx files exist for the cur conf, or create after building circuit.
+        """
+        cxinfo_filename = "cxinfo_%d.txt" % (self._target_cpu_count,)
+        if self._cx_valid(cxinfo_filename, nrn_path, target_name):
+            logging.info("Using existing load balancing info")
+            return True
 
-    @property
-    def cell_list(self):
-        return self._cell_list
+        self._mcomplex = Nd.MComplexLoadBalancer()  # init mcomplex before creating circuit
+        build_circuit_f()
+        self._compute_save_load_balance()
+
+        # Write config in the cxinfo file for future usage
+        if MPI.rank == 0:
+            with open(cxinfo_filename, "w") as cxinfo:
+                print(nrn_path, file=cxinfo)
+                print(target_name or "---", file=cxinfo)
+        return False
+
+    # -
+    @run_only_rank0
+    def _cx_valid(self, cxinfo_filename, nrn_path, target_name):
+        """Determine if we need to regen load balance info, or if it already exists for this config.
+        """
+        if not Path.isfile(cxinfo_filename):
+            logging.info("(Re)Generating load-balancing data. Reason: no cxinfo file")
+            return False
+
+        with open(cxinfo_filename, "r") as cxinfo:
+            cx_nrnpath = cxinfo.readline().strip()
+            cx_target = cxinfo.readline().strip()
+            if target_name is None:  # if there is no circuit target, cmp against "---"
+                target_name = "---"
+
+            if cx_nrnpath != nrn_path:
+                logging.info("(Re)Generating load-balancing data. Reason: nrnPath has changed")
+
+            elif cx_target != target_name:
+                logging.info("(Re)Generating load-balancing data. Reason: %s",
+                             "CircuitTarget has changed. Previously: %s" % cx_target)
+            else:
+                return True
+        return False
 
     # -
     @mpi_no_errors
-    def _setup(self, run_conf, target_parser):
+    def load_cells(self, run_conf, target_parser, load_bal=True):
+        """Distribute and load target cells among CPUs.
+
+        Args:
+            run_conf (dict): Blueconfig 'Run' configuration
+            target_parser (hoc): The Target parser object
+            load_bal (bool): Whether to respect lb_mode or disable it altogether
+        """
         logging.info("Loading cell METypes and Distributing by available CPUs...")
-        morpho_path = run_conf.get("MorphologyPath").s
+        morpho_path = run_conf["MorphologyPath"]
+        if not load_bal:
+            self._lb_mode = None
 
         # for testing if xopen bcast is in use (NEURON 7.3).
         # We will be loading different templates on different cpus, so it must be disabled for now
         Nd.execute("xopen_broadcast_ = 0")
 
         # determine if we should get metype info from start.ncs (current default) or circuit.mvd3
-        if run_conf.exists("CellLibraryFile"):
-            celldb_filename = run_conf.get("CellLibraryFile").s
+        if "CellLibraryFile" in run_conf:
+            celldb_filename = run_conf["CellLibraryFile"]
             if celldb_filename == "circuit.mvd3":
                 log_verbose("Reading [gid:METype] info from circuit.mvd3")
                 self._useMVD3 = True
@@ -89,31 +158,29 @@ class CellDistributor(object):
         gidvec = compat.Vector("I")  # Gids handled by this cpu
         total_cells = None   # total cells in this simulation (can be a subset, e.g.: target)
         circuit_size = None  # total cells in the circuit
-        me_infos = None      # metype info, dict (ncs) or METypeManager (mvd3)
         loader = cell_readers.load_mvd3 if self._useMVD3 else cell_readers.load_ncs
 
         #  are we using load balancing? If yes, init structs accordingly
-        if run_conf.exists("RunMode") and run_conf.get("RunMode").s in ("LoadBalance", "WholeCell"):
+        if self._lb_mode:
             log_verbose("Distributing cells according to load-balance")
-            self._lb_flag = True
-            self._spgidvec = compat.Vector("I")
-
             # read the cx_* files to build the gidvec
-            cx_path = "cx_%d" % MPI.cpu_count
-            if run_conf.exists("CWD"):
+            cx_path = "cx_%d" % MPI.size
+            if "CWD" in run_conf:
                 # Should we allow for another path to facilitate reusing cx* files?
-                cx_path = Path.join(run_conf.get("CWD").s, cx_path)
+                cx_path = Path.join(run_conf["CWD"], cx_path)
 
-            # self.binfo reads the files that have the predistributed cells (and pieces)
-            self._binfo = Nd.BalanceInfo(cx_path, MPI.rank, MPI.cpu_count)
+            assert Path.isfile(cx_path + ".dat"), "cx_path not available when reloading cells"
+
+            self._spgidvec = compat.Vector("I")
+            self._binfo = Nd.BalanceInfo(cx_path, MPI.rank, MPI.size)
 
             # self.binfo has gidlist, but gids can appear multiple times
             gidvec.extend(sorted(set(int(gid) for gid in self._binfo.gids)))
 
             # TODO: do we have any way of knowing that a CircuitTarget found definitively matches
             #       the cells in the balance files? for now, assume the user is being honest
-            if run_conf.exists("CircuitTarget"):
-                target = target_parser.getTarget(run_conf.get("CircuitTarget").s)
+            if "CircuitTarget" in run_conf:
+                target = target_parser.getTarget(run_conf["CircuitTarget"])
                 total_cells = int(target.completegids().size())
             else:
                 # TODO: gidvec doesnt sound it would include all cells. Check this
@@ -121,30 +188,30 @@ class CellDistributor(object):
             # LOAD
             self._gidvec, me_infos, _ = loader(run_conf, gidvec)
 
-        elif run_conf.exists("CircuitTarget"):
+        elif "CircuitTarget" in run_conf:
             log_verbose("Distributing target circuit cells round-robin")
-            target = target_parser.getTarget(run_conf.get("CircuitTarget").s)
+            target = target_parser.getTarget(run_conf["CircuitTarget"])
             target_gids = target.completegids()
             gidvec.extend(int(gid) for gid in target_gids)
             total_cells = int(target_gids.size())
-            # LOAD
-            self._gidvec, me_infos, _ = loader(run_conf, gidvec, MPI.cpu_count, MPI.rank)
+            self._gidvec, me_infos, _ = loader(run_conf, gidvec, MPI.size, MPI.rank)
 
         else:
             log_verbose("Distributing all cells round-robin")
-            # LOAD
-            self._gidvec, me_infos, circuit_size = loader(run_conf, None, MPI.cpu_count, MPI.rank)
+            self._gidvec, me_infos, circuit_size = loader(run_conf, None, MPI.size, MPI.rank)
 
         self._total_cells = total_cells or circuit_size
 
         if len(self._gidvec) == 0:
             logging.warning("Rank %d has no cells assigned.", MPI.rank)
+            # We must not return, we have an allreduce later
 
         log_verbose("Done gid assignment: %d cells in network, %d in rank 0",
                     self._total_cells, len(self._gidvec))
 
         self._pnm.ncell = self._total_cells
-        mepath = run_conf.get("METypePath").s
+        pnm_cells = self._pnm.cells
+        mepath = run_conf["METypePath"]
         logging.info("Instantiating cells...")
         total_created_cells = 0
 
@@ -161,7 +228,7 @@ class CellDistributor(object):
             self._gid2metype[gid] = melabel
             self._cell_list.append(cell)
             self._gid2meobj[gid] = cell
-            self._pnm.cells.append(cell.CellRef)
+            pnm_cells.append(cell.CellRef)
             total_created_cells += 1
 
         global_cells_created = MPI.allreduce(total_created_cells, MPI.SUM)
@@ -196,7 +263,16 @@ class CellDistributor(object):
         Nd.load_hoc(tpl_path)
         return tpl_name
 
-    # ### Accessor methods - They keep CamelCase API for compatibility with existing hoc
+    # -
+    def clear_cells(self):
+        """Clear all cells
+        """
+        for cell in self._cell_list:
+            cell.CellRef.clear()
+        self._cell_list.clear()
+
+    # Accessor methods (Keep CamelCase API for compatibility with existing hoc)
+    # ----------------
 
     def getMEType(self, gid):
         return self._gid2meobj[gid]
@@ -224,10 +300,10 @@ class CellDistributor(object):
         Note that this function handles multisplit cases incl converting to an spgid automatically
         Returns: Cell object
         """
-        # are we in load balance mode? must replace gid with spgid
-        if self._lb_flag:
+        if self._binfo:
+            # are we in load balance mode? must replace gid with spgid
             gid = self._binfo.thishost_gid(gid)
-        return self._pnm.pc.gid2obj(gid)
+        return self.pc.gid2obj(gid)
 
     def getSpGid(self, gid):
         """Retrieve the spgid from a gid (provided we are using loadbalancing)
@@ -238,7 +314,7 @@ class CellDistributor(object):
         Returns: The gid as it appears on this cpu (if this is the same as the base gid,
         then that is the soma piece)
         """
-        if self._lb_flag:
+        if self._binfo:
             return self._binfo.thishost_gid(gid)
         else:
             return gid
@@ -247,82 +323,29 @@ class CellDistributor(object):
         """Iterator over this node GIDs"""
         return iter(self._gidvec)
 
-    # ### Routines to actually compute load balance
+    # Load balance computation
+    # ------------------------
 
-    def load_balance_cells(self, lb_obj, nhost):
-        """Calculate cell complexity and write data to file
-        Args:
-            lb_obj: loadbal neuron object
-            nhost: Number of hosts to compute for load balancing
-        """
-        self._load_balance = lb_obj
-        self._compute_save_load_balance("cx", nhost)
-
-    def _compute_cell_complexity(self, with_total=False):
-        cx_cell = compat.Vector("f")
-        id_cell = compat.Vector("I")
-        ncell = self._gidvec.size()
-
-        for gid in self._gidvec:
-            id_cell.append(gid)
-            cx_cell.append(self._load_balance.cell_complexity(self._pnm.pc.gid2cell(gid)))
-
-        if with_total:
-            ncell = int(self._pnm.pc.allreduce(ncell, 1))
-            return cx_cell, id_cell, ncell
-        else:
-            return cx_cell, id_cell
-
-    def _cell_complexity_total_max(self):
-        """
-        Returns: Tuple of (TotalComplexity, max_complexity)
-        """
-        cx_cells, id_cells = self._compute_cell_complexity()
-        local_max = max(cx_cells) if len(cx_cells) > 0 else .0
-        local_sum = sum(cx_cells) if len(cx_cells) > 0 else .0
-
-        global_total = self._pnm.pc.allreduce(local_sum, 1)
-        global_max = self._pnm.pc.allreduce(local_max, 1)
-        return global_total, global_max
-
-    def _get_optimal_piece_complexity(self, total_cx, max_cx, nhost):
-        """
-        Args:
-            total_cx: Total complexity
-            max_cx: Maximum cell complexity
-            nhost: Prospective no of hosts
-        """
-        lps = total_cx * self.msfactor / nhost
-        return int(lps+1)
-
-    def _cpu_assign(self, prospective_hosts):
-        """
-        Args:
-            prospective_hosts: How many cpus we want running with our LoadBalanced circuit
-        """
-        Nd.mymetis3("cx_%d" % prospective_hosts, prospective_hosts)
-
-    # -
     @mpi_no_errors
-    def _compute_save_load_balance(self, filename, prospective_hosts):
-        if prospective_hosts > 0:
+    def _compute_save_load_balance(self):
+        if self._target_cpu_count > 0:
             total_cx, max_cx = self._cell_complexity_total_max()
-            lcx = self._get_optimal_piece_complexity(total_cx, max_cx, prospective_hosts)
+            lcx = self._get_optimal_piece_complexity(total_cx, self._target_cpu_count)
             # print_load_balance_info(3, lcx, $s1)
-            filename = "%s_%d.dat" % (filename, prospective_hosts)
+            filename = "cx_%d.dat" % self._target_cpu_count
         else:
             total_cx, max_cx = None, None
             lcx = 1e9
-            filename += ".dat"
+            filename = "cx.dat"
 
         ms_list = []
         ms = Nd.Vector()
-        lb = self._load_balance
 
+        lb_obj = self._mcomplex
         for i, gid in enumerate(self._gidvec):
             # what should be passed into this func? the base cell? the CCell?
-            lb.cell_complexity(self._pnm.cells.object(i))
-            lb.multisplit(gid, lcx, ms)
+            lb_obj.cell_complexity(self._pnm.cells.object(i))
+            lb_obj.multisplit(gid, lcx, ms)
             ms_list.append(ms.c())
 
         if MPI.rank == 0:
@@ -332,7 +355,7 @@ class CellDistributor(object):
                          (total_cx, max_cx, lcx, filename))
 
         # Write out, 1 rank at a time
-        for j in range(MPI.cpu_count):
+        for j in range(MPI.size):
             if j == MPI.rank:
                 with open(filename, "a") as fp:
                     for ms in ms_list:
@@ -341,7 +364,45 @@ class CellDistributor(object):
 
         # now assign to the various cpus - use node 0 to do it
         if MPI.rank == 0:
-            self._cpu_assign(prospective_hosts)
+            self._cpu_assign(self._target_cpu_count)
+
+    def _compute_cells_complexity(self):
+        cx_cell = compat.Vector("f")
+        id_cell = compat.Vector("I")
+        pc = self.pc
+
+        for gid in self._gidvec:
+            id_cell.append(gid)
+            cx_cell.append(self._mcomplex.cell_complexity(pc.gid2cell(gid)))
+
+        return cx_cell, id_cell
+
+    def _cell_complexity_total_max(self):
+        """
+        Returns: Tuple of (TotalComplexity, max_complexity)
+        """
+        cx_cells, id_cells = self._compute_cells_complexity()
+        local_max = max(cx_cells) if len(cx_cells) > 0 else .0
+        local_sum = sum(cx_cells) if len(cx_cells) > 0 else .0
+
+        global_total = MPI.allreduce(local_sum, MPI.SUM)
+        global_max = MPI.allreduce(local_max, MPI.MAX)
+        return global_total, global_max
+
+    def _get_optimal_piece_complexity(self, total_cx, nhost):
+        """
+        Args:
+            total_cx: Total complexity
+            nhost: Prospective no of hosts
+        """
+        lps = total_cx * self._msfactor / nhost
+        return int(lps+1)
+
+    @staticmethod
+    def _cpu_assign(prospective_hosts):
+        """Assigns cells to 'prospective_hosts' cpus using mymetis3.
+        """
+        Nd.mymetis3("cx_%d" % prospective_hosts, prospective_hosts)
 
     @staticmethod
     def _write_msdat(fp, ms):
@@ -385,8 +446,9 @@ class CellDistributor(object):
         """
         # First, we need each section of a cell to assign its index value to the voltage field
         # (crazy, huh?) at this moment, this is used later during synapse creation so that sections
-        # can be serialized into a single array for random acess.
+        # can be serialized into a single array for random access.
         rng_info = Nd.RNGSettings()
+        pc = self.pc
         self._global_seed = rng_info.getGlobalSeed()
         self._ionchannel_seed = rng_info.getIonChannelSeed()
 
@@ -405,7 +467,7 @@ class CellDistributor(object):
                     if rng_info.getRNGMode() == rng_info.RANDOM123:
                         Nd.rng123ForStochKvInit(metype.CCell)
                     else:
-                        if metype.gid > 400000:
+                        if gid > 400000:
                             logging.warning("mcellran4 cannot initialize properly with large gids")
                         Nd.rngForStochKvInit(metype.CCell)
 
@@ -416,20 +478,20 @@ class CellDistributor(object):
             else:
                 nc = metype.connect2target(Nd.nil)
 
-            if self._lb_flag:
+            if self._binfo:
                 gid_i = int(self._binfo.gids.indwhere("==", gid))
                 cb = self._binfo.bilist.object(self._binfo.cbindex.x[gid_i])
 
                 if cb.subtrees.count() == 0:
                     #  whole cell, normal creation
                     self._pnm.set_gid2node(gid, MPI.rank)
-                    self._pnm.pc.cell(gid, nc)
+                    pc.cell(gid, nc)
                     self._spgidvec.append(gid)
                 else:
-                    spgid = cb.multisplit(nc, self._binfo.msgid, self._pnm.pc, MPI.rank)
+                    spgid = cb.multisplit(nc, self._binfo.msgid, pc, MPI.rank)
                     self._spgidvec.append(int(spgid))
             else:
                 self._pnm.set_gid2node(gid, self._pnm.myid)
-                self._pnm.pc.cell(gid, nc)
+                pc.cell(gid, nc)
 
-        self._pnm.pc.multisplit()
+        pc.multisplit()

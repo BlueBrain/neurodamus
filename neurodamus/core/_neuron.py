@@ -3,8 +3,6 @@ Internal module which defines several wrapper classes for Hoc entities.
 They are then available as singletons objects in neurodamus.core package
 """
 from __future__ import absolute_import
-import sys
-import time
 import logging
 from contextlib import contextmanager
 from os import path as Path
@@ -136,95 +134,6 @@ class _Neuron(object):
 Neuron = _Neuron()
 
 
-class _MPI(object):
-    _size = 1
-    _rank = 0
-    _pnm = None
-
-    SUM = 1
-    MAX = 2
-    MIN = 3
-
-    @classmethod
-    def _init_pnm(cls):
-        if cls._pnm is not None:
-            return
-        Neuron.load_hoc("netparmpi")
-        cls._pnm = pnm = Neuron.ParallelNetManager(0)
-        cls._rank = int(pnm.pc.id())
-        cls._size = int(pnm.pc.nhost())
-
-        if cls._size <= 1:
-            return  # done
-
-        # When using MPI (and more than 1 rank) we need to MPIAbort on exception to avoid deadlocks
-        def excepthook(etype, value, tb):
-            cls._pnm.pc.allreduce(1, 1)  # Share error state
-            time.sleep(0.1 * cls._rank)  # Order errors
-            logging.critical(str(value))
-            # Print and cleanup exception
-            sys.__excepthook__(etype, value, tb)
-            Neuron.quit()  # With 'special' terminates right here
-            sys.exit(1)
-        sys.excepthook = excepthook
-
-    @classmethod
-    def check_no_errors(cls):
-        # All processes send their status. If one is problematic then quit
-        res = cls._pnm.pc.allreduce(0, 1)
-        if res > 0:
-            sys.exit(1)
-
-    @property
-    def pnm(self):
-        self._init_pnm()
-        return self._pnm
-
-    @property
-    def size(self):
-        self._init_pnm()
-        return self._size
-
-    cpu_count = size
-
-    @property
-    def rank(self):
-        self._init_pnm()
-        return self._rank
-
-    def __getattr__(self, name):
-        return getattr(self._pnm.pc, name)
-
-
-# A singleton
-MPI = _MPI()
-
-
-class _ParallelNetManager(object):
-    __slots__ = ['_pnm', '_cache']
-
-    def __init__(self):
-        self._cache = {}
-        self._pnm = None
-
-    @property
-    def o(self):
-        if not self._pnm:
-            self._pnm = MPI.pnm
-        return self._pnm
-
-    def __getattr__(self, name):
-        if not self._pnm:
-            self._pnm = MPI.pnm
-        obj = self._cache.get(name)
-        if obj is None:
-            obj = self._cache[name] = getattr(self._pnm, name)
-        return obj
-
-
-ParallelNetManager = _ParallelNetManager()
-
-
 class HocEntity(object):
     _hoc_cls = None
     _hoc_obj = None
@@ -310,8 +219,8 @@ class Simulation(object):
         fig.show()
 
 
-class LoadBalance(object):
-    """Wrapper of the load balance Hoc Module.
+class MComplexLoadBalancer(object):
+    """Wrapper of the load balance Hoc Module with mcomplex.
     """
     def __init__(self, force_regenerate=False):
         # Can we use an existing mcomplex.dat?
@@ -339,4 +248,4 @@ class LoadBalance(object):
 # shortcuts
 _Neuron.HocEntity = HocEntity
 _Neuron.Simulation = Simulation
-_Neuron.LoadBalance = LoadBalance
+_Neuron.MComplexLoadBalancer = MComplexLoadBalancer

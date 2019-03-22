@@ -9,7 +9,7 @@ from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core import NeuronDamus as ND
 from .core.configuration import GlobalConfig
 from .connection import Connection, SynapseMode, STDPMode
-from .synapse_reader import SynapseReader, SynToolNotAvail
+from .synapse_reader import SynapseReader
 from .utils import compat, bin_search, OrderedDefaultDict
 from .utils.logging import log_verbose
 
@@ -32,15 +32,16 @@ class _ConnectionManagerBase(object):
     _local_gids = None
 
     # -
-    def __init__(self, circuit_path, target_manager, n_synapse_files=None):
+    def __init__(self, circuit_path, target_manager, cell_distributor, n_synapse_files=None):
         """Base class c-tor for connections (Synapses & Gap-Junctions) manager
         """
         self._target_manager = target_manager
+        self._cell_distibutor = cell_distributor
         # Connections indexed by post-gid, then ordered by pre-gid
         self._connections_map = OrderedDefaultDict()
         self._disabled_conns = OrderedDefaultDict()
         self._synapse_reader = None
-        self._local_gids = target_manager.cellDistributor.getGidListForProcessor()
+        self._local_gids = cell_distributor.getGidListForProcessor()
 
         circuit_file = self._find_circuit_file(circuit_path)
         assert circuit_file, "Circuit path doesnt contain valid circuit files"
@@ -116,8 +117,8 @@ class _ConnectionManagerBase(object):
 
     # -
     def group_connect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
-                      stdp_mode=None, spont_mini_rate=.0, synapse_types=None, synapse_override=None,
-                      creation_mode=True):
+                            stdp_mode=None, spont_mini_rate=.0, synapse_types=None,
+                            synapse_override=None, creation_mode=True):
         """Given source and destination targets, create all connections for post-gids in gidvec.
         Note: the cells in the source list are not limited by what is on this cpu whereas
         the dest list requires the cells be local
@@ -152,7 +153,7 @@ class _ConnectionManagerBase(object):
 
         if synapse_override:
             # Attempt to load the overriding mod Helper (should exist in the hoc path)
-            mod_override_name = synapse_override.get("ModOverride").s
+            mod_override_name = synapse_override["ModOverride"]
             logging.info("  * Overriding mod: %s", mod_override_name)
             override_helper = mod_override_name + "Helper"
             ND.load_hoc(override_helper)
@@ -511,7 +512,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
     CIRCUIT_FILENAMES = ('circuit.sonata', 'circuit.syn2', 'nrn.h5')
     CONNECTIONS_TYPE = SynapseReader.SYNAPSES
 
-    def __init__(self, circuit_path, target_manager, n_synapse_files, synapse_mode=None):
+    def __init__(self, circuit_path, target_manager, cell_dist, n_synapse_files, synapse_mode=None):
         """ Constructor for SynapseRuleManager, checks that the nrn.h5 synapse file is available
         for reading
 
@@ -523,7 +524,8 @@ class SynapseRuleManager(_ConnectionManagerBase):
             synapse_mode: str dictating modifiers to what synapses are placed based on synType
                 (AmpaOnly vs DualSyns). Default: DualSyns
         """
-        _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
+        _ConnectionManagerBase.__init__(self, circuit_path, target_manager, cell_dist,
+                                        n_synapse_files)
 
         self._synapse_mode = SynapseMode.from_str(synapse_mode) \
             if synapse_mode is not None else SynapseMode.default
@@ -540,7 +542,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
             base_seed: optional argument to adjust synapse RNGs (default=0)
         """
         logging.info("Instantiating synapses...")
-        cell_distributor = self._target_manager.cellDistributor
+        cell_distributor = self._cell_distibutor
         n_created_conns = 0
 
         for tgid, conns in ProgressBar.iteritems(self._connections_map):
@@ -559,7 +561,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
     finalizeSynapses = finalize  # compat
 
     # -
-    def replay(self, target_name, spike_manager, start_delay=.0):
+    def replay(self, spike_manager, target_name, start_delay=.0):
         """ After all synapses have been placed, we can create special netcons to trigger
         events on those synapses
 
@@ -603,7 +605,8 @@ class GapJunctionManager(_ConnectionManagerBase):
     CIRCUIT_FILENAMES = ("gj.sonata", "gj.syn2", "nrn_gj.h5")
     CONNECTIONS_TYPE = SynapseReader.GAP_JUNCTIONS
 
-    def __init__(self, circuit_path, target_manager, n_synapse_files=None, circuit_target=None):
+    def __init__(self, circuit_path, target_manager, cell_distributor,
+                       n_synapse_files=None, circuit_target=None):
         """Constructor for GapJunctionManager, checks that the nrn_gj.h5 synapse file is available
         for reading
 
@@ -615,7 +618,8 @@ class GapJunctionManager(_ConnectionManagerBase):
             circuit_target: (optional) Used to know if a given gid is being simulated,
                 including off node. Default: full circuit
         """
-        _ConnectionManagerBase.__init__(self, circuit_path, target_manager, n_synapse_files)
+        _ConnectionManagerBase.__init__(self, circuit_path, target_manager, cell_distributor,
+                                              n_synapse_files)
         self._circuit_target = circuit_target
 
         log_verbose("Computing gap-junction offsets from gjinfo.txt")
@@ -624,8 +628,7 @@ class GapJunctionManager(_ConnectionManagerBase):
         gj_sum = 0
 
         for line in open(gjfname):
-            gid, offset = line.strip().split()
-            gid, offset = int(gid), int(offset)
+            gid, offset = map(int, line.strip().split())
             # fist gid has no offset.  the final total is not used as an offset at all.
             self._gj_offsets.append(gj_sum)
             gj_sum += 2 * offset
@@ -636,7 +639,7 @@ class GapJunctionManager(_ConnectionManagerBase):
         Connections must have been placed and all weight scalars should have their final values.
         """
         logging.info("Instantiating GapJuntions...")
-        cell_distributor = self._target_manager.cellDistributor
+        cell_distributor = self._cell_distibutor
         n_created_conns = 0
 
         for tgid, conns in ProgressBar.iteritems(self._connections_map):

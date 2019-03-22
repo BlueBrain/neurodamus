@@ -51,7 +51,7 @@ def load_ncs(run_conf, gidvec, stride=1, stride_offset=0):
     """
     gids = compat.Vector("I")
     gid2mefile = {}
-    ncs_path = Path.join(run_conf.get("nrnPath").s, "start.ncs")
+    ncs_path = Path.join(run_conf["nrnPath"], "start.ncs")
 
     with open(ncs_path, "r") as ncs_f:
         total_ncs_cells = _ncs_get_total(ncs_f)
@@ -78,7 +78,7 @@ def load_mvd3(run_conf, gidvec, stride=1, stride_offset=0):
     """Load cells from MVD3, required for v6 circuits
     """
     import h5py  # Can be heavy so loaded on demand
-    pth = Path.join(run_conf.get("CircuitPath").s, "circuit.mvd3")
+    pth = Path.join(run_conf["CircuitPath"], "circuit.mvd3")
     mvd = h5py.File(pth, 'r')
 
     mecombo_ds = mvd["/cells/properties/me_combo"]

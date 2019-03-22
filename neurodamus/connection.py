@@ -6,6 +6,7 @@ from .core import NeuronDamus as ND
 from .utils import compat
 from .utils.logging import log_verbose
 
+
 class SynapseParameters(object):
     """Synapse parameters, internally implemented as numpy record
     """
@@ -152,8 +153,10 @@ class Connection(object):
     def override_synapse(self, synapse_conf):
         self._synapse_override = synapse_conf
 
-    def valid_sections(self, push_to_stack=False):
+    @property
+    def valid_sections(self):
         """Generator over all valid sections with index
+           Yielded section are pushed to neuron stack
         """
         # All locations, on and off node should be in this list, but only synapses/netcons on-node
         # should be returned
@@ -161,10 +164,7 @@ class Connection(object):
             if not sc.exists():
                 continue
             # Put the section in the stack, so generic hoc instructions apply to the right section
-            if push_to_stack:
-                with ND.section_in_stack(sc.sec):
-                    yield syn_i, sc.sec
-            else:
+            with ND.section_in_stack(sc.sec):
                 yield syn_i, sc.sec
 
     # ---------------------
@@ -229,7 +229,7 @@ class Connection(object):
         # Note that synapseLocation.SPLIT = 1
         # should get instantiated
 
-        for syn_i, _ in self.valid_sections(True):
+        for syn_i, _ in self.valid_sections:
             x = self._synapse_points.x[syn_i]
             syn_params = self._synapse_params[syn_i]
             syn_obj = self._create_synapse(cell, syn_params, x, self._synapse_ids[syn_i], base_seed)
@@ -350,13 +350,15 @@ class Connection(object):
 
         """
         if self._synapse_override is not None:
-            override_helper = self._synapse_override.get("ModOverride").s + "Helper"
+            override_helper = self._synapse_override["ModOverride"] + "Helper"
             helper_cls = getattr(ND.h, override_helper)
+            add_params = (self._synapse_override['_hoc'],)
         else:
             helper_cls = ND.GABAABHelper if params_obj.synType < 100 \
                 else ND.AMPANMDAHelper  # excitatory
+            add_params = ()
 
-        syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, self._synapse_override)
+        syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, *add_params)
         cell.CellRef.synHelperList.append(syn_helper)
         cell.CellRef.synlist.append(syn_helper.synapse)
         return syn_helper.synapse
@@ -377,7 +379,7 @@ class Connection(object):
 
         # Note that synapseLocation.SPLIT = 1
         # All locations should be in this list, but only synapses/netcons on-node get instantiated
-        for syn_i, sec in self.valid_sections(True):
+        for syn_i, sec in self.valid_sections:
             x = self._synapse_points.x[syn_i]
             active_params = self._synapse_params[syn_i]
             gap_junction = ND.Gap(x)
@@ -461,7 +463,7 @@ class Connection(object):
         # Note that synapseLocation.SPLIT = 1
         # All locations, on and off node should be in this list, but only synapses/netcons on-node
         # will receive the events
-        for i, (syn_i, sc) in enumerate(self.valid_sections()):
+        for i, (syn_i, sc) in enumerate(self.valid_sections):
             syn_params = self._synapse_params[syn_i]
             nc = ND.NetCon(vstim, self._synapses[i], 10, syn_params.delay, syn_params.weight)
             nc.weight[0] = syn_params.weight * self.weight_factor

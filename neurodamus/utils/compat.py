@@ -80,5 +80,8 @@ class Map(collections_abc.Mapping):
                     return float(stri)
                 except:
                     return stri
-            return {key.s: parse(val.s) for key, val in self.items()}
-        return dict(self)
+            new_map = {key: parse(val.s) for key, val in self.items()}
+        else:
+            new_map = dict(self)
+        new_map["_hoc"] = self.hoc_map
+        return new_map

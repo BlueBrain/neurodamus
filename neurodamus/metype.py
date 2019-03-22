@@ -152,7 +152,8 @@ class METypeManager(object):
             combo_list: comboList Combos corresponding to local gids
             morph_list: morphList Morpholgies corresponding to local gids
         """
-        if not run_conf.exists("MEComboInfoFile"):
+        combo_file = run_conf.get("MEComboInfoFile")
+        if not combo_file:
             logging.error("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel.")
             raise ConfigurationError("MEComboInfoFile not specified")
 
@@ -161,7 +162,6 @@ class METypeManager(object):
         for i, c in enumerate(combo_list):
             combo_ids[c].append(i)
 
-        combo_file = run_conf.get("MEComboInfoFile").s
         log_verbose("Loading emodel+additional info from Combo f %s", combo_file)
         f = open(combo_file)
         next(f)  # Skip Header

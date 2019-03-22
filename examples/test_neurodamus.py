@@ -32,7 +32,7 @@ def test_node_run(trace=False):
 
     node = Node(RECIPE_FILE)
     node.load_targets()
-    node.compute_loadbal()
+    node.compute_load_balance()
     node.create_cells()
     node.execute_neuron_configures()
 

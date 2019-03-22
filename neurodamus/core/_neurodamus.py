@@ -4,7 +4,8 @@ import logging
 from ..utils import classproperty
 from ..utils.logging import setup_logging
 from .configuration import GlobalConfig
-from ._neuron import _Neuron, MPI
+from ._neuron import _Neuron
+from ._mpi import MPI
 
 LIB_PATH = Path.realpath(Path.join(Path.dirname(__file__), "../../../lib"))
 MOD_LIB = Path.join(LIB_PATH, "modlib", "libnrnmech.so")
@@ -18,24 +19,27 @@ class NeuronDamus(_Neuron):
     modules loaded
     """
     __slots__ = ()
-    _pnm = None  # ParallelNetManager (used as well to verify init)
+    _pc = None
 
     @classproperty
     def h(cls):
         """The neuron hoc interpreter, initializing if needed
         """
-        cls._pnm or cls._init()
+        cls._pc or cls._init()
         return cls._h
 
     @classmethod
     def _init(cls):
         _Neuron._init()  # if needed, sets cls._h
-        if cls._pnm is None:
+        if cls._pc is None:
             # logging.debug("Loading mods from: " + MOD_LIB)
             # cls.load_dll(MOD_LIB)  # While py neuron doesnt support mpi init use "special"
             logging.debug("Loading master Hoc: " + HOC_LIB)
             cls.load_hoc(HOC_LIB)
-            cls._pnm = MPI.pnm
+            # Additional libraries introduced in saveUpdate
+            cls.load_hoc("CompartmentMapping")
+
+            cls._pc = MPI.pc
 
             # default logging (if set previously this wont have any effect)
             if MPI.rank == 0:
@@ -47,18 +51,16 @@ class NeuronDamus(_Neuron):
                 setup_logging(0, LOG_FILENAME, MPI.rank)
             logging.info("Neurodamus Mod & Hoc lib loaded.")
 
-            # Allow non-saveState Neuron's
-            if not hasattr(cls._h, "BBSaveState"):
-                logging.warning("This version of Neuron does NOT support SaveState. All save-state operations will be dummy.")
-                cls._h.execute( "~begintemplate BBSaveState\npublic ignore\nproc ignore(){}\nendtemplate BBSaveState" )
+            # Attempt to instantiate BBSaveState to early detect errors
+            cls.h.BBSaveState()
 
     @property
-    def pnm(self):
-        self._pnm or self._init()
-        return self._pnm
+    def pc(self):
+        self._pc or self._init()
+        return self._pc
 
     def init(self):
-        self._pnm or self._init()
+        self._pc or self._init()
 
 
 # Singleton
