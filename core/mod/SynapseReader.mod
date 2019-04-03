@@ -36,7 +36,7 @@ NET_RECEIVE(w) {
 VERBATIM
 
 #if defined(DISABLE_HDF5) || defined(CORENEURON_BUILD)
-  #warning "Disabling Synapse Reader since HDF5 is disabled"
+  #pragma message("Disabling Synapse Reader since HDF5 is disabled")
   #define DISABLE_SYNTOOL 1
 #endif
 
@@ -47,11 +47,11 @@ VERBATIM
 
 // Super guard to avoid building mod
 #ifdef DISABLE_SYNTOOL
-#warning "SynapseReader Disabled"
+#pragma message("SynapseReader Disabled")
 #include <signal.h>
 
 #else
-#warning "SynapseReader Enabled"
+#pragma message("SynapseReader Enabled")
 
 #include <stdint.h>
 #include <stdio.h>
