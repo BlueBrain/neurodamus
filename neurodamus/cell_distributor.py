@@ -65,7 +65,7 @@ class CellDistributor(object):
     # -
     @mpi_no_errors
     def _setup(self, run_conf, target_parser):
-        logging.info("Distributing circuit cells by available CPUs")
+        logging.info("Loading cell METypes and Distributing by available CPUs...")
         morpho_path = run_conf.get("MorphologyPath").s
 
         # for testing if xopen bcast is in use (NEURON 7.3).
@@ -183,19 +183,17 @@ class CellDistributor(object):
         """
         #  start.ncs gives metype names with hyphens, but the templates themselves
         #  have those hyphens replaced with underscores.
-        tpl_mod = tpl_filename
-        if tpl_location is not None:
-            tpl_mod = Path.join(tpl_location, tpl_filename)
+        tpl_path = Path.join(tpl_location, tpl_filename) if tpl_location else tpl_filename
 
         # first open the file manually to get the hoc template name
         tpl_name = None
-        with open(tpl_mod + ".hoc", "r") as templateReader:
+        with open(tpl_path + ".hoc", "r") as templateReader:
             for line in templateReader:
                 line = line.strip()
                 if line.startswith("begintemplate"):
                     tpl_name = line.split()[1]
                     break
-        Nd.load_hoc(tpl_mod)
+        Nd.load_hoc(tpl_path)
         return tpl_name
 
     # ### Accessor methods - They keep CamelCase API for compatibility with existing hoc

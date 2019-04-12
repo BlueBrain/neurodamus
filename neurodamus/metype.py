@@ -44,11 +44,7 @@ class METype(object):
     def _instantiate_cell_v6(self, gid, etype_path, emodel, morpho_path, meinfos_v6):
         """Instantiates a SSCx v6 cell
         """
-        etype_mod = Path.join(etype_path, emodel)
-        rc = Nrn.load_hoc(etype_mod)
-        if rc == 0:
-            raise ValueError("Unable to load METype file %s" % etype_mod + ".hoc")
-
+        Nrn.load_hoc(Path.join(etype_path, emodel))
         EModel = getattr(Nrn, emodel)
         self._cellref = EModel(gid, Path.join(morpho_path, "ascii"), meinfos_v6.morph_name + ".asc")
         self._ccell = self._cellref

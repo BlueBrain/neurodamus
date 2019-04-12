@@ -281,7 +281,7 @@ class Connection(object):
                 wa_netcon_pre.append(nc_wa_pre)
                 wa_netcon_post.append(nc_wa_post)
 
-            if self._minis_spont_rate > 0.0:
+            if self._minis_spont_rate > .0:
                 ips = ND.InhPoissonStim(x)
                 # netconMini = pnm.pc.gid_connect(ips, finalgid)
 
@@ -350,13 +350,8 @@ class Connection(object):
 
         """
         if self._synapse_override is not None:
-            # there should be a 'Helper' for that syntype in the hoc path.
             override_helper = self._synapse_override.get("ModOverride").s + "Helper"
-            ND.load_hoc(override_helper)
-            try:
-                helper_cls = getattr(ND.h, override_helper)
-            except AttributeError:
-                raise RuntimeError("Failed to load override helper " + override_helper)
+            helper_cls = getattr(ND.h, override_helper)
         else:
             helper_cls = ND.GABAABHelper if params_obj.synType < 100 \
                 else ND.AMPANMDAHelper  # excitatory

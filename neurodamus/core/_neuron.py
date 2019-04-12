@@ -23,7 +23,7 @@ class _Neuron(object):
     # The neuron hoc interpreter
     # We dont import it at module-level to avoid starting neuron
     _h = None
-    _mods_loaded = set()
+    _hocs_loaded = set()
 
     # No new attributes. __setattr__ can rely on it
     __slots__ = ()
@@ -59,14 +59,14 @@ class _Neuron(object):
         """Loads a hoc module, available in the path.
         E.g.: Neuron.load_mod("loadbal")
         """
-        if mod_name in cls._mods_loaded:
+        if mod_name in cls._hocs_loaded:
             return
         h = (cls._h or cls._init())
         mod_filename = mod_name + ".hoc"
         if not h.load_file(mod_filename):
             raise RuntimeError("Cant load HOC library {}. Consider checking HOC_LIBRARY_PATH"
                                .format(mod_filename))
-        cls._mods_loaded.add(mod_name)
+        cls._hocs_loaded.add(mod_name)
 
     @classmethod
     def require(cls, *hoc_mods):

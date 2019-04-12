@@ -6,6 +6,7 @@ import logging
 from itertools import chain
 from os import path as Path
 from .core import ProgressBarRank0 as ProgressBar, MPI
+from .core import NeuronDamus as ND
 from .core.configuration import GlobalConfig
 from .connection import Connection, SynapseMode, STDPMode
 from .synapse_reader import SynapseReader, SynToolNotAvail
@@ -65,7 +66,7 @@ class _ConnectionManagerBase(object):
             gidvec: The array of local gids
             weight_factor: (Optional) factor to scale all netcon weights
         """
-        log_verbose("Creating connections from synapse params file (NRN)...")
+        logging.info("Creating connections from circuit file")
         total_created_conns = 0
         _dbg_conn = GlobalConfig.debug_conn
 
@@ -148,6 +149,16 @@ class _ConnectionManagerBase(object):
 
         if synapses_restrict and not isinstance(synapse_types, (tuple, list)):
             synapse_types = (synapse_types,)
+
+        if synapse_override:
+            # Attempt to load the overriding mod Helper (should exist in the hoc path)
+            mod_override_name = synapse_override.get("ModOverride").s
+            logging.info("  * Overriding mod: %s", mod_override_name)
+            override_helper = mod_override_name + "Helper"
+            ND.load_hoc(override_helper)
+            # Test it is available
+            if not hasattr(ND.h, override_helper):
+                raise RuntimeError("Override helper without expected template: " + override_helper)
 
         for tgid in gidvec:
             if not dst_target.contains(tgid):
