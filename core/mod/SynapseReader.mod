@@ -59,8 +59,13 @@ VERBATIM
 #include <signal.h>
 #include <syn2/c_reader.h>
 
-#define CONN_SYNAPSES 0
-#define CONN_GAPJUNCTIONS 1
+#define CONN_SYNAPSES_V1 0
+#define CONN_GAPJUNCTIONS_V1 1
+#define CONN_SYNAPSES_V2 2
+#define CONN_GAPJUNCTIONS_V2 3
+#define CONN_CUSTOM 4
+// Due to the inability of accessing the state from non-hoc functions, we pass flags in the fieldset
+#define CONN_REQUIRE_NRRP (1<<16)
 
 
 /// NEURON utility functions we want to use
@@ -107,15 +112,15 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 // ---------------------------------------------------------------------
 //   - connected_neurons_post          | connected_neurons_post (not loaded)
 //   0 connected_neurons_pre      [0]  | connected_neurons_pre
-//   1 delay                      [1]  | N/A
+//   1 delay                      [1]  | (N/A)
 //   2 morpho_section_id_post     [2]  | morpho_section_id_post
 //   3 morpho_segment_id_post     [3]  | morpho_section_id_post
 //   4 morpho_offset_segment_post [4]  | morpho_section_id_post
 //   5 morpho_section_id_pre           | morpho_section_id_pre (unused)
 //   6 morpho_segment_id_pre           | morpho_section_id_pre (unused)
 //   7 morpho_offset_segment_pre       | morpho_section_id_pre (unused)
-//   8 conductance                [5]  | conductance (optional)
-//   9 u_syn                      [6]  | N/A
+//   8 conductance                [5]  | conductance (required)
+//   9 u_syn                      [6]  | (N/A)
 //  10 depression_time            [7]  | junction_id_pre
 //  11 facilitation_time          [8]  | junction_id_post
 //  12 decay_time                 [9]  | N/A
@@ -126,10 +131,30 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 //  17 n_rrp_vesicles (optional)  [11] | N/A
 //  18 morpho_section_type_pos         | N/A
 
+
+// The SYN2 v2 spec fields
+// : This spec deprecates compat with NRN
+// ---------------------------------------------------------------------
+// | Synapse field name     [ND index] |  Gap-J fields name
+// ---------------------------------------------------------------------
+//  connected_neurons_post            | connected_neurons_post (not loaded)
+//  connected_neurons_pre        [0]  | connected_neurons_pre
+//  delay                        [1]  | (N/A)
+//  morpho_section_id_post       [2]  | morpho_section_id_post
+//  (N/A)                        [3]  | (N/A)
+//  morpho_section_fraction_post [4]  | morpho_section_fraction_post
+//  conductance                  [5]  | conductance (required)
+//  u_syn                        [6]  | (N/A)
+//  depression_time              [7]  | junction_id_pre
+//  facilitation_time            [8]  | junction_id_post
+//  decay_time                   [9]  | (N/A)
+//  syn_type_id                  [10] | (N/A)
+//  n_rrp_vesicles  (required)   [11] | (N/A)
+
+
 // C99 Use #define for constants
 #define ND_FIELD_COUNT 12
-#define ND_GJ_PREGID_I 0
-#define ND_GJ_CONDUCTANCE_I 5
+#define ND_PREGID_FIELD_I 0
 
 // The 11 mandatory fields read by neurodamus
 #define BASE_SYN_FIELDS "connected_neurons_pre, \
@@ -141,26 +166,62 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
                          u_syn, depression_time, facilitation_time, \
                          decay_time, \
                          syn_type_id"
+
 #define NRRP_FIELD "n_rrp_vesicles"
+#define POST_FRACTION_FIELD "morpho_section_fraction_post"
 
 // The 6 mandatory fields for GapJunctions read by neurodamus
-#define _BASE_GJ_FIELDS "connected_neurons_pre, \
-                         morpho_section_id_post, \
-                         morpho_segment_id_post, \
-                         morpho_offset_segment_post, \
-                         junction_id_pre, \
-                         junction_id_post"
+#define GJ_FIELDS "connected_neurons_pre, \
+                   morpho_section_id_post, \
+                   morpho_segment_id_post, \
+                   morpho_offset_segment_post, \
+                   conductance, \
+                   junction_id_pre, \
+                   junction_id_post"
+
+// V2 spec must not attempt to load morpho_section_id_pre
+#define SYN_V2_FIELDS "connected_neurons_pre, \
+                       delay, \
+                       morpho_section_id_post, \
+                       morpho_section_fraction_post, \
+                       conductance, \
+                       u_syn, \
+                       depression_time, \
+                       facilitation_time, \
+                       decay_time, \
+                       syn_type_id, \
+                       n_rrp_vesicles"
+
+#define GJ_V2_FIELDS "connected_neurons_pre, \
+                      morpho_section_id_post, \
+                      morpho_section_fraction_post, \
+                      conductance, \
+                      junction_id_pre, \
+                      junction_id_post"
+
+// Internal functions can't call getStatePtr()
+#define HAS_NRRP() (_syn_has_field(NRRP_FIELD, getStatePtr()))
+#define IS_V2() (_syn_has_field(POST_FRACTION_FIELD, getStatePtr()))
 
 static const char* SYN_FIELDS_NO_RRP = BASE_SYN_FIELDS;
 static const char* SYN_FIELDS = BASE_SYN_FIELDS ", " NRRP_FIELD;
-static const char* GJ_FIELDS_NO_CONDUCTANCE = _BASE_GJ_FIELDS;
-static const char* GJ_FIELDS = _BASE_GJ_FIELDS ", conductance" ;
 
 // relative position of the 7 GJ fields into the 12-field neurodamus structure
 // Conductance is fetched last since its optional
 // Why the structure is not packed? Any special meaning for pos 1 and 6?
-static const int ND_GJ_POSITIONS[] = {ND_GJ_PREGID_I, 2, 3, 4, 7, 8, ND_GJ_CONDUCTANCE_I};
+static const int ND_GJ_POSITIONS[] = {ND_PREGID_FIELD_I, 2, 3, 4, 5, 7, 8};
+// V2 relative positions
+static const int ND_SYNv2_POSITIONS[] = {0, 1, 2, 4, 5, 6, 7, 8, 9, 10 ,11};
+static const int ND_GJv2_POSITIONS[]  = {0, 2, 4, 5, 7, 8};
 
+
+/**
+ * INTERNAL FUNCTIONS
+ * ------------------
+ *
+ * These functions are pure-c, not available from the hoc interface,
+ * As so the only way to access state_ptr is to receive it by argument
+ */
 
 static int _syn_is_empty(ReaderState* state_ptr) {
     return state_ptr->fields == NULL;
@@ -201,11 +262,37 @@ static int _store_result(uint64_t tgid, const Syn2Table *tb, ReaderState* state_
 }
 
 
-/// Loads data from synapse file into internal state
+/**
+ * Loads data from synapse file into internal state
+ *
+ * @param tgid: The gid of the post cell to load connectivity
+ * @param conn_type: The type of connectivity/fielset to load
+ * @param fields: custom string of fields in case FIELDSET_CUSTOM specified
+ */
 static int _load_data(uint64_t tgid, int conn_type, const char* fields, ReaderState* state_ptr) {
     if (state_ptr->file == -1)  {
-        fprintf(stderr, "[SynReader] Error: File not initialized.");
+        fprintf(stderr, "[SynReader] Error: File not initialized.\n");
         raise(SIGUSR2);
+    }
+
+    switch(conn_type & 0xffff) {
+        case CONN_SYNAPSES_V1:
+            fields = (conn_type & CONN_REQUIRE_NRRP)? SYN_FIELDS : SYN_FIELDS_NO_RRP;
+            break;
+        case CONN_SYNAPSES_V2:
+            fields = SYN_V2_FIELDS;
+            break;
+        case CONN_GAPJUNCTIONS_V1:
+            fields = GJ_FIELDS;
+            break;
+        case CONN_GAPJUNCTIONS_V2:
+            fields = GJ_V2_FIELDS;
+            break;
+        default:
+            if (fields == NULL) {
+                fprintf(stderr, "[SynReader] Error: FIELDSET_CUSTOM requested but no fields provided.\n");
+                raise(SIGUSR2);
+            }
     }
 
     // Already loaded?
@@ -215,7 +302,6 @@ static int _load_data(uint64_t tgid, int conn_type, const char* fields, ReaderSt
 
     const Syn2Selection sel = syn_select_post(tgid);
     const Syn2Table tb = syn_get_property_table(state_ptr->file, fields, sel);
-    // tb.fields == NULL in case there are no cells (selection). If missing fields then exception
 
     state_ptr->conn_type = conn_type;
     return _store_result(tgid, &tb, state_ptr);
@@ -239,7 +325,7 @@ VERBATIM
     }
 
     if (!hoc_is_str_arg(1)) {
-        fprintf(stderr, "[SynReader] Error: SynapseReader filename must be a string");
+        fprintf(stderr, "[SynReader] Error: SynapseReader filename must be a string\n");
         raise(SIGUSR2);
     }
 
@@ -260,7 +346,6 @@ ENDVERBATIM
 }
 
 
-
 DESTRUCTOR {
 VERBATIM
 #ifndef DISABLE_SYNTOOL
@@ -277,7 +362,6 @@ ENDVERBATIM
 }
 
 
-
 FUNCTION modEnabled() {
 VERBATIM
 #ifndef DISABLE_SYNTOOL
@@ -287,7 +371,6 @@ VERBATIM
 #endif
 ENDVERBATIM
 }
-
 
 
 FUNCTION countProperties(){ : string cellname
@@ -300,7 +383,6 @@ ENDVERBATIM
 }
 
 
-
 FUNCTION countSynapses() { : string cellname
 VERBATIM {
 #ifndef DISABLE_SYNTOOL
@@ -311,27 +393,26 @@ ENDVERBATIM
 }
 
 
-
 FUNCTION hasNrrpField() {
 VERBATIM
 #ifndef DISABLE_SYNTOOL
-    return _syn_has_field(NRRP_FIELD, getStatePtr());
+    return HAS_NRRP();
 #else
     return -1;
 #endif
 ENDVERBATIM
 }
 
-FUNCTION hasConductance() {
+
+FUNCTION isV2() {
 VERBATIM
 #ifndef DISABLE_SYNTOOL
-    return _syn_has_field("conductance", getStatePtr());
+    return IS_V2();
 #else
     return -1;
 #endif
 ENDVERBATIM
 }
-
 
 
 COMMENT
@@ -347,10 +428,12 @@ FUNCTION loadSynapses() { : double tgid, string fields
 VERBATIM
 #ifndef DISABLE_SYNTOOL
     uint64_t tgid = (uint64_t) *getarg(1) - 1;  // 0 based
+    const char* fields = ifarg(2)? gargstr(2): NULL;
     ReaderState* state_ptr = getStatePtr();
-    const char* fields = ifarg(2)? gargstr(2) :
-        (_syn_has_field(NRRP_FIELD, state_ptr)? SYN_FIELDS : SYN_FIELDS_NO_RRP);
-    return _load_data(tgid, CONN_SYNAPSES, fields, state_ptr);
+    int fieldset = (fields != NULL)? CONN_CUSTOM
+                   : IS_V2()? CONN_SYNAPSES_V2
+                   : CONN_SYNAPSES_V1 + (HAS_NRRP()? CONN_REQUIRE_NRRP : 0);
+    return _load_data(tgid, fieldset, fields, state_ptr);
 #else
     fprintf(stderr, "[SynReader] Error: Neurodamus compiled without SYNTOOL\n");
     raise(SIGUSR1);
@@ -366,9 +449,12 @@ ENDCOMMENT
 FUNCTION loadGapJunctions() { : double tgid, string fields
 VERBATIM
 #ifndef DISABLE_SYNTOOL
-    uint64_t tgid = (uint64_t) *getarg(1) - 1;
-    //fields = _syn_has_field("conductance", state_ptr)? GJ_FIELDS : GJ_FIELDS_NO_CONDUCTANCE;
-    return _load_data(tgid, CONN_GAPJUNCTIONS, GJ_FIELDS, getStatePtr());
+    uint64_t tgid = (uint64_t) *getarg(1) - 1;  // 0 based
+    const char* fields = ifarg(2)? gargstr(2): NULL;
+    ReaderState* state_ptr = getStatePtr();
+    int fieldset = (fields != NULL)? CONN_CUSTOM
+                   : IS_V2()? CONN_GAPJUNCTIONS_V2 : CONN_GAPJUNCTIONS_V1;
+    return _load_data(tgid, fieldset, fields, state_ptr);
 #else
     fprintf(stderr, "[SynReader] Error: Neurodamus compiled without SYNTOOL\n");
     raise(SIGUSR1);
@@ -392,7 +478,7 @@ VERBATIM
 #ifndef DISABLE_SYNTOOL
     if (!ifarg(1) || !ifarg(2)) {
         fprintf(stderr, "[SynReader] Error: Function requires two arguments: "
-                        "1. synapse index (row) to retrieve; 2. Destination Vector");
+                        "1. synapse index (row) to retrieve; 2. Destination Vector\n");
         raise(SIGUSR2);
     }
 
@@ -423,8 +509,15 @@ VERBATIM
         out_buf[i] = -1;
     }
 
+    // Except for Synapses v1 and Custom, we have to translate fields position
+    const int * const field_pos =
+        (loaded_conn_type == CONN_GAPJUNCTIONS_V1)? ND_GJ_POSITIONS
+        : (loaded_conn_type == CONN_SYNAPSES_V2)? ND_SYNv2_POSITIONS
+        : (loaded_conn_type == CONN_GAPJUNCTIONS_V2)? ND_GJv2_POSITIONS
+        : NULL;
+
     for (i=0; i<n_fields; i++) {
-        dst_i = (loaded_conn_type == CONN_GAPJUNCTIONS)? ND_GJ_POSITIONS[i] : i;
+        dst_i = (field_pos != NULL)? field_pos[i] : i;
         switch(fields[i].datatype) {
         case SYN2_UINT:
             out_buf[dst_i] = (double) as_uint_array(fields[i].data)[row];
@@ -442,16 +535,17 @@ VERBATIM
     }
 
     // pre-gid (field 0) must be incremented by 1 for neurodamus compat
-    out_buf[ND_GJ_PREGID_I] += 1;
-
+    if(loaded_conn_type != CONN_CUSTOM) {
+        out_buf[ND_PREGID_FIELD_I] += 1;
+    }
     return 0;
 #endif
 ENDVERBATIM
 }
 
 
-VERBATIM
 
+VERBATIM
 /** not executed in coreneuron and hence empty stubs sufficient */
 
 static void bbcore_write(double* x, int* d, int* xx, int* offset, _threadargsproto_) {

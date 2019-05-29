@@ -567,7 +567,11 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
 
     if (tmpSection == nil) {  //assume we are in LoadBalance mode (until we decide to verify this either here or in a higher layer)
         resultPoint.append( deletedSecRef, -1 )
-    }else {
+    } else if (ipt == -1) {
+        // SYN2/Sonata spec have the a pre-calculated distance field.
+        // In such cases segment (ipt) is -1 and offset is that distance.
+        resultPoint.append( tmpSection, offset )
+    } else {
         tmpSection.sec {
             // when a cell is split, the path from the split point
             // to the root gets its 3d points reversed because
