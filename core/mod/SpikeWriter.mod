@@ -59,8 +59,8 @@ PROCEDURE write() {
         // each spike record in the file is max 48 chars
         const int spike_record_length = 48;
 
-        // amount of data for recording spikes
-        unsigned num_bytes = (sizeof(char) * num_entries * spike_record_length);
+        // amount of data for recording spikes +  zero termination
+        unsigned num_bytes = (sizeof(char) * num_entries * spike_record_length) + 1;
 
         char *spike_data = (char *) malloc(num_bytes);
 
