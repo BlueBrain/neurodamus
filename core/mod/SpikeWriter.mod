@@ -49,7 +49,7 @@ PROCEDURE write() {
         } else  {
             if(nrnmpi_myid == 0) {
                 printf(" Error : No spike file path provided, can't write spikes! \n");
-                return 1;
+                MPI_Abort(MPI_COMM_WORLD, 1);
             }
         }
 
@@ -66,7 +66,7 @@ PROCEDURE write() {
 
         if(spike_data == NULL) {
             printf("Error : Memory allocation failed for spike buffer I/O!\n");
-            return 1;
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
         strcpy(spike_data, "");
@@ -79,7 +79,12 @@ PROCEDURE write() {
         int i;
         for(i = 0; i < num_spikes; i++) {
             char str[spike_record_length];
-            snprintf(str, spike_record_length, "%.3f\t%d\n", time[i], (int)gid[i]);
+            int nstr = snprintf(str, spike_record_length, "%.3f\t%d\n", time[i], (int)gid[i]);
+            if (nstr >= spike_record_length) {
+                printf("Error : Record written is larger than spike record buffer\n");
+                free(spike_data);
+                MPI_Abort(MPI_COMM_WORLD, 1);
+            }
             strcat(spike_data, str);
         }
 
@@ -102,6 +107,8 @@ PROCEDURE write() {
         MPI_File_write_at_all(fh, offset, spike_data, num_chars, MPI_BYTE, &status);
 
         MPI_File_close(&fh);
+
+        free(spike_data);
 
     ENDVERBATIM
 }
