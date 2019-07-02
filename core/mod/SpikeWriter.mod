@@ -99,10 +99,11 @@ PROCEDURE write() {
             offset = 0;
         }
 
-        // write to file using parallel mpi i/o
+        // write to file using parallel mpi i/o Remove it first in case it exists.
+        // Must delete because MPI_File_open does not have a Truncate mode
         MPI_File fh;
         MPI_Status status;
-
+        MPI_File_delete(filePath, MPI_INFO_NULL);
         MPI_File_open(MPI_COMM_WORLD, filePath, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh);
         MPI_File_write_at_all(fh, offset, spike_data, num_chars, MPI_BYTE, &status);
 
