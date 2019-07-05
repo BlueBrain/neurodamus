@@ -652,7 +652,13 @@ ENDVERBATIM
 
 CONSTRUCTOR { : double - loc of point process ??? ,string filename
 VERBATIM {
-#ifndef DISABLE_HDF5
+#ifdef DISABLE_HDF5
+    // Neuron might init the mechanism. With args it's the user.
+    if(ifarg(1)) {
+        fprintf(stderr, "HDF5 support is not available");
+        exit(-1);
+    }
+#else
     char nameoffile[512];
     int nFiles = 1;
 
@@ -1035,6 +1041,7 @@ e.g. The row is assumed to be within the dataset; this code is expected to be re
 ENDCOMMENT
 FUNCTION getDataInt() {
 VERBATIM
+#ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
     int value = -1;
@@ -1047,7 +1054,8 @@ VERBATIM
             _lgetDataInt = value;
         }
     }
-    ENDVERBATIM
+#endif
+ENDVERBATIM
 }
 
 
@@ -1059,13 +1067,15 @@ Note that this function doesn't apply as many checks as other functions.
 ENDCOMMENT
 PROCEDURE getDimensions() {
 VERBATIM
+#ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
 
     if( info->file_ >= 0 && ifarg(1) && hoc_is_str_arg(1) ) {
         loadDimensions( info, gargstr(1) );
     }
-    ENDVERBATIM
+#endif
+ENDVERBATIM
 }
 
 
@@ -1080,6 +1090,7 @@ e.g. The row is assumed to be within the dataset; this code is expected to be re
 ENDCOMMENT
 PROCEDURE getDataString() {
 VERBATIM
+#ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
 
@@ -1088,6 +1099,7 @@ VERBATIM
         // Use HDF5 interface to get the requested string item from the dataset
         loadDataString( info, gargstr(1), *getarg(2), hoc_pgargstr(3) );
     }
+#endif
 ENDVERBATIM
 }
 
