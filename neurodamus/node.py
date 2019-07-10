@@ -379,7 +379,7 @@ class Node:
             # -> i.e. only change weights for existing connections
             dont_create = conn_conf.get("CreateMode") == "NoCreate"
             stdp_mode = conn_conf.get("UseSTDP", "STDPoff")
-            mini_spont_rate = conn_conf.get("SpontMinis", .0)
+            mini_spont_rate = conn_conf.get("SpontMinis")
             weight = conn_conf.get("Weight")  # optional, None indicates no change
             # allows a helper object to grab any additional configuration values
             syn_override = conn_conf if "ModOverride" in conn_conf else None

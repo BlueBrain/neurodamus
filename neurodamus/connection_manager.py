@@ -117,7 +117,7 @@ class _ConnectionManagerBase(object):
 
     # -
     def group_connect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
-                            stdp_mode=None, spont_mini_rate=.0, synapse_types=None,
+                            stdp_mode=None, spont_mini_rate=None, synapse_types=None,
                             synapse_override=None, creation_mode=True):
         """Given source and destination targets, create all connections for post-gids in gidvec.
         Note: the cells in the source list are not limited by what is on this cpu whereas
@@ -130,7 +130,7 @@ class _ConnectionManagerBase(object):
             weight_factor: (float) Scaling weight to apply to the synapses. Default: dont change
             configuration: (str) SynapseConfiguration Default: None
             stdp_mode: Which STDP to use. Default: None (=TDPoff for creating, wont change existing)
-            spont_mini_rate: (float) For spontaneous minis trigger rate (default: 0)
+            spont_mini_rate: (float) For spontaneous minis trigger rate. Default: None
             synapse_types: (tuple) To restrict which synapse types are created. Default: None
             synapse_override: An alternative point process configuration.
             creation_mode: By default new connections are created. If False updates existing only
@@ -204,6 +204,8 @@ class _ConnectionManagerBase(object):
                             cur_conn.weight_factor = weight_factor
                         if configuration is not None:
                             cur_conn.add_synapse_configuration(configuration)
+                        if spont_mini_rate is not None:
+                            cur_conn._minis_spont_rate = spont_mini_rate
                         if stdp is not None:
                             cur_conn.stdp = stdp
                         if synapse_override is not None:
@@ -214,6 +216,9 @@ class _ConnectionManagerBase(object):
                             if weight_factor is None:
                                 logging.warning("Conn %d->%d. Invalid weight_factor. Assuming 1.0",
                                                 sgid, tgid)
+                            if spont_mini_rate is None:
+                                # Disable spont minis if rates never specified
+                                spont_mini_rate = .0
                             pend_conn = Connection(
                                 sgid, tgid, weight_factor, configuration, stdp, spont_mini_rate,
                                 self._synapse_mode, synapse_override)
