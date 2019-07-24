@@ -176,7 +176,8 @@ class CellDistributor(object):
                 # Should we allow for another path to facilitate reusing cx* files?
                 cx_path = Path.join(run_conf["CWD"], cx_path)
 
-            assert Path.isfile(cx_path + ".dat"), "cx_path not available when reloading cells"
+            assert Path.isfile(cx_path + ".dat"), \
+                "cx file {} not available when reloading cells".format(cx_path)
 
             self._spgidvec = compat.Vector("I")
             self._binfo = Nd.BalanceInfo(cx_path, MPI.rank, MPI.size)

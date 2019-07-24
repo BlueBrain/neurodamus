@@ -86,17 +86,21 @@ def setup_logging(loglevel, logfile=None, rank=None):
     assert isinstance(loglevel, int)
     loglevel = min(loglevel, 3)
 
-    verbosity_levels = {
-        0: _logging.WARNING,
-        1: _logging.INFO,
-        2: _logging.VERBOSE,
-        3: _logging.DEBUG,
-    }
+    verbosity_levels = [
+        _logging.WARNING,  # pos 0: Minimum possible logging level
+        _logging.INFO,
+        _logging.VERBOSE,
+        _logging.DEBUG,
+    ]
 
     # Stdout
     hdlr = _logging.StreamHandler(sys.stdout)
     hdlr.setFormatter(_LevelFormatter(False, rank))
-    _logging.root.setLevel(verbosity_levels[loglevel])
+    if not rank:
+        _logging.root.setLevel(verbosity_levels[loglevel])
+    else:
+        _logging.root.setLevel(_logging.ERROR)
+
     del _logging.root.handlers[:]
     _logging.root.addHandler(hdlr)
 

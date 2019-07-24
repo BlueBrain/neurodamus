@@ -7,6 +7,7 @@ import itertools
 import logging
 import math
 import operator
+import os
 from os import path as Path
 from collections import namedtuple
 from .core import MPI, mpi_no_errors, return_neuron_timings
@@ -143,46 +144,55 @@ class Node:
 
     # -
     @mpi_no_errors
-    def splitdata_generation(self):
-        """To facilitate CoreNeuron data generation, we allow users to use ProspectiveHosts to
-        indicate that the CircuitTarget should be split among multiple, smaller targets.
+    def multicycle_data_generation(self):
+        """To facilitate CoreNeuron data generation, we allow users to use ModelBuildingSteps to
+        indicate that the CircuitTarget should be split among multiple, smaller targets that will
+        be built step by step.
 
         Returns:
             list with generated targets, or empty if no splitting was done
         """
         run_conf = self._run_conf
-        if "ProspectiveHosts" not in run_conf:
+        if "ModelBuildingSteps" in run_conf:
+            ncycles = int(run_conf["ModelBuildingSteps"])
+        elif "ProspectiveHosts" in run_conf:  # compat syntax
+            nphosts = run_conf["ProspectiveHosts"]
+            ncycles  = int(nphosts // MPI.size) + (1 if nphosts % MPI.size > 0 else 0)
+            # Prospective hosts at some point changed the semantics, as there are parts
+            # in the code that show it was used to do load balance for a different CPU count
+            # For now we mimick what neurodamus hoc does, but in the future the option
+            # shall either be removed or reverted back to the original purpose
+            # This hoc behavior requires resetting "ProspectiveHosts"
+            self._run_conf["ProspectiveHosts"] = MPI.size
+        else:
             return False
+
+        logging.info("Splitting Target for multi-iteration CoreNeuron data generation")
+        assert ncycles > 0, "splitdata_generation yielded 0 cycles. Please check ModelBuildingSteps"
+
         if not self._corenrn_conf:
             logging.warning("Splitdata DISABLED since simulator is not CoreNeuron")
             return False
+
         if "CircuitTarget" not in run_conf:
             raise ConfigurationError(
                 "Multi-iteration coreneuron data generation requires CircuitTarget")
 
-        logging.info("Splitting Target for multi-iteration CoreNeuron data generation")
-        nphosts = run_conf["ProspectiveHosts"]
-        ncycles  = nphosts // MPI.size
-        if nphosts % MPI.size > 0:
-            ncycles += 1
-
-        assert ncycles > 0, "splitdata_generation yielded 0 cycles. Please check ProspectiveHosts"
-        # Avoid neurodamus from quitting after loadbal (??)
-        run_conf["ProspectiveHosts"] = MPI.size
-
         target_name = run_conf["CircuitTarget"]
         target = self._target_parser.getTarget(target_name)
+        allgids = target.completegids()
         new_targets = []
 
         for cycle_i in range(ncycles):
             target = Nd.Target()
-            target.name = "{}_{}".format(target_name.s, cycle_i)
+            target.name = "{}_{}".format(target_name, cycle_i)
             new_targets.append(target)
             self._target_parser.updateTargetList(target)
 
         target_looper = itertools.cycle(new_targets)
-        for gid in target.completegids():
-            next(target_looper).gidMembers.append(gid)
+        for gid in allgids.x:
+            target = next(target_looper)
+            target.gidMembers.append(gid)
 
         return new_targets
 
@@ -247,8 +257,10 @@ class Node:
         # Ready to run with LoadBal. But check if we are launching on a good sized partition
         required_cpus = self._cell_distributor.target_cpu_count
         if required_cpus != MPI.size:
-            raise RuntimeError("Launch on a partition of %d cpus (as per ProspectiveHosts)",
-                               required_cpus)
+            logging.warning("Load Balance computed for %d CPUs (as per ProspectiveHosts). "
+                            "To continue execution launch on a partition of that size",
+                            required_cpus)
+            Nd.quit()
 
         # If there were no cx_files ready and distribution happened, we need to start over
         if not cx_valid:
@@ -511,12 +523,11 @@ class Node:
             self._enable_electrodes()
 
             # for each stimulus defined in the config file, request the stimmanager to instantiate
+            extra_params = []
             if "BaseSeed" in self._run_conf:
-                self._stim_manager = Nd.StimulusManager(
-                    self._target_manager, self._elec_manager, self._run_conf["BaseSeed"])
-            else:
-                self._stim_manager = Nd.StimulusManager(
-                    self._target_manager, self._elec_manager)
+                extra_params.append(self._run_conf["BaseSeed"])
+            self._stim_manager = Nd.StimulusManager(
+                self._target_manager, self._elec_manager, *extra_params)
 
         # build a dictionary of stims for faster lookup : useful when applying 10k+ stims
         # while we are at it, check if any stims are using extracellular
@@ -532,6 +543,7 @@ class Node:
             self._stim_manager.interpretExtracellulars(conf.parsedInjects, conf.parsedStimuli)
 
         logging.info("Instantiating Stimulus Injects:")
+        replay_count = 0
         for name, inject in compat.Map(conf.parsedInjects).items():
             target_name = inject.get("Target").s
             stim_name = inject.get("Stimulus").s
@@ -539,6 +551,7 @@ class Node:
 
             # check the pattern for special cases that are handled here.
             if stim.get("Pattern").s == "SynapseReplay":
+                replay_count = replay_count + 1
                 # Since saveUpdate merge there are two delay concepts:
                 #  - shift: times are shifted (previous delay)
                 #  - delay: Spike replays are suppressed until a certain time
@@ -546,7 +559,7 @@ class Node:
                 delay = stim.valueOf("Delay") if stim.exists("Delay") else 0
                 logging.info(" * [SYN REPLAY] %s (%s -> %s, time shift: %d, delay: %d)",
                              name, stim_name, target_name, tshift, delay)
-                self._enable_replay(target_name, stim, tshift, delay)
+                self._enable_replay(target_name, stim, replay_count, tshift, delay)
 
             elif not only_replay:
                 # all other patterns the stim manager will interpret
@@ -570,19 +583,19 @@ class Node:
         self._elec_manager = Nd.ElectrodeManager(electrodes_path_o, conf.parsedElectrodes)
 
     # -
-    def _enable_replay(self, target_name, stim, tshift=.0, delay=.0):
+    def _enable_replay(self, target_name, stim, replay_count, tshift=.0, delay=.0):
         spike_filepath = self._find_config_file(stim.get("SpikeFile").s)
         spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
 
         # For CoreNeuron, we should put the replays into a single out file to be used as PatternStim
         if self._corenrn_conf:
             # Initialize file if non-existing
-            if not self._core_replay_file:
+            if replay_count == 1 or not self._core_replay_file:
                 self._core_replay_file = Path.join(self._output_root, 'pattern.dat')
                 if MPI.rank == 0:
                     log_verbose("Creating pattern.dat file for CoreNEURON")
                     spike_manager.dump_ascii(self._core_replay_file)
-            else:
+            elif replay_count > 1 and self._core_replay_file:
                 if MPI.rank == 0:
                     log_verbose("Appending to pattern.dat")
                     with open(self._core_replay_file, "a") as f:
@@ -834,7 +847,7 @@ class Node:
         self._pnm.pc.timeout(200)
 
     def _sim_corenrn_write_config(self):
-        logging.info("Starting dataset generation for CoreNEURON")
+        log_stage("Dataset generation for CoreNEURON")
         Nd.registerMapping(self._cell_distributor)
         corenrn_output = self._simulator_conf.getCoreneuronOutputDir().s
         corenrn_data = self._simulator_conf.getCoreneuronDataDir().s
@@ -846,7 +859,7 @@ class Node:
             self._pr_cell_gid or -1, self._core_replay_file
         )
 
-        logging.info("Finished dataset generation for CoreNEURON")
+        logging.info(" => Dataset written to '{}'".format(corenrn_data))
 
     # -
     def run_all(self):
@@ -989,7 +1002,8 @@ class Node:
         pnm.nclist.remove_all()
         pnm.cells.remove_all()
 
-        self._cell_distributor.clear_cells()
+        if self._cell_distributor:
+            self._cell_distributor.clear_cells()
 
         bbss = Nd.BBSaveState()
         bbss.ignore()
@@ -1129,16 +1143,17 @@ class Neurodamus(Node):
             GlobalConfig.verbosity = logging_level
 
         Node.__init__(self, config_file)
+        # Use the run_conf dict to avoid passing it around
+        self._run_conf["EnableReports"] = enable_reports
 
         logging.info("Running Neurodamus with config from " + config_file)
-        self._instantiate_simulation(enable_reports)
+        self._instantiate_simulation()
         # In case an exception occurs we must prevent the destructor from cleaning
         self._init_ok = True
 
     # -
-    def _instantiate_simulation(self, enable_reports=True):
-        log_stage("============= INITIALIZING (& Load-Balancing) =============")
-        self.load_targets()
+    def _build_model(self):
+        log_stage("================ CALCULATING LOAD BALANCE ================")
         self.compute_load_balance()
 
         log_stage("==================== BUILDING CIRCUIT ====================")
@@ -1151,8 +1166,65 @@ class Neurodamus(Node):
 
         self.enable_stimulus()
         self.enable_modifications()
-        if enable_reports:
+
+        if self._run_conf["EnableReports"]:
             self.enable_reports()
+
+        self.sim_init()
+
+    # -
+    def _merge_filesdat(self, ncycles, output_root):
+        log_stage("Generating merged CoreNeuron files.dat")
+
+        cn_entries = []
+        for i in range(ncycles):
+            log_verbose("files_{}.dat".format(i))
+            filename = Path.join(output_root, "coreneuron_input/files_{}.dat".format(i))
+            with open(filename) as fd:
+                first_line = fd.readline()
+                nlines = int(fd.readline())
+                for lineNumber in range(nlines):
+                    line = fd.readline()
+                    cn_entries.append(line)
+
+        cnfilename = Path.join(output_root, "coreneuron_input/files.dat")
+        with open(cnfilename, 'w') as cnfile:
+            cnfile.write(first_line)
+            cnfile.write(str(len(cn_entries)) + '\n')
+            cnfile.writelines(cn_entries)
+
+        logging.info(" => {} files merged successfully".format(ncycles))
+
+    # -
+    def _instantiate_simulation(self):
+        log_stage("====================== INITIALIZING ======================")
+        self.load_targets()
+
+        # Check if user wants to build the model in several steps (only for CoreNeuron)
+        sub_targets = self.multicycle_data_generation()
+
+        # Without multi-cycle, it's a trivial model build
+        if not sub_targets or len(sub_targets) == 1:
+            self._build_model()
+            return
+
+        n_cycles = len(sub_targets)
+        logging.info("MULTI-CYCLE RUN: {} Cycles".format(n_cycles))
+
+        for cycle_i, cur_target in enumerate(sub_targets):
+            log_stage("==> CYCLE {} (OUT OF {})".format(cycle_i + 1, n_cycles))
+
+            self.clear_model()
+            self._run_conf["CircuitTarget"] = cur_target.name
+            self._build_model()
+
+            # Move generated files aside (to be merged later)
+            if MPI.rank == 0:
+                base_filesdat = Path.join(self._output_root, 'coreneuron_input/files')
+                os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
+
+        if MPI.rank == 0:
+            self._merge_filesdat(n_cycles, self._output_root)
 
     # -
     def run(self):

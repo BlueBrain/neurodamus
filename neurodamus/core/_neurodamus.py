@@ -51,14 +51,12 @@ class NeurodamusCore(_Neuron):
 
         cls._pc = MPI.pc
 
-        # default logging (if set previously this wont have any effect)
         if MPI.rank == 0:
             open(LOG_FILENAME, "w").close()  # Truncate
-            MPI.barrier()
-            setup_logging(GlobalConfig.verbosity, LOG_FILENAME, rank=0)
-        else:
-            MPI.barrier()
-            setup_logging(0, LOG_FILENAME, MPI.rank)
+        MPI.barrier()  # Sync so that all processes see the file
+
+        # default logging (if set previously this wont have any effect)
+        setup_logging(GlobalConfig.verbosity, LOG_FILENAME, MPI.rank)
 
         logging.info("Neurodamus Mod & Hoc lib loaded.")
 
