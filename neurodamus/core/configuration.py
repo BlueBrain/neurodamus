@@ -19,6 +19,13 @@ class GlobalConfig:
         os.environ["NEURON_INIT_MPI"] = "1"
 
 
+class RunConfig(ConfigT):
+    build_model = None
+    simulate_model = True
+    model_path = None  # Currently is output-path
+    output_path = None
+
+
 class RNGConfig(ConfigT):
     Modes = Enum("Mode", "COMPATIBILITY RANDOM123 UPMCELLRAN4")
     mode = Modes.COMPATIBILITY
@@ -27,16 +34,6 @@ class RNGConfig(ConfigT):
     StimulusSeed = None
     MinisSeed = None
     SynapseSeed = None
-
-    @classmethod
-    def init(cls, config_map):
-        # type: (dict) -> None
-        mode = config_map.get('RNGMode')
-        if mode is not None:
-            if hasattr(cls.Modes, mode):
-                cls.rng_mode = cls.Modes[mode]
-                config_map.pop("RNGMode")
-        cls.global_init(**config_map)
 
 
 class NeuronStdrunDefaults:

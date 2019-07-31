@@ -13,7 +13,7 @@ from collections import namedtuple
 
 from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeurodamusCore as Nd
-from .core.configuration import GlobalConfig, ConfigurationError
+from .core.configuration import GlobalConfig, RunConfig, ConfigurationError
 from .cell_distributor import CellDistributor, LoadBalanceMode
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
@@ -28,21 +28,26 @@ class Node:
     It is relatively low-level, for a standard run consider using the Neurodamus class instead.
     """
 
-    def __init__(self, recipe):
-        """ Creates a neurodamus executor.
-
+    def __init__(self, recipe, user_config):
+        """ Creates a neurodamus executor
         Args:
             recipe: The BlueRecipe file
+            user_config: An overriding run configuration typically coming from cmd line
         """
         Nd.init()
 
+        # The Recipe being None is allowed internally for e.g. setting up multi-cycle runs
+        # It ishall not be used as Public API
         if recipe is not None:
             # Read configuration
             self._pnm = Nd.ParallelNetManager(0)
-            self._config_parser = self._open_config(recipe)
+            self._config_parser = self._open_config(recipe, user_config)
             self._blueconfig_path = ospath.dirname(recipe)
             self._simulator_conf = Nd.simConfig
             self._run_conf = compat.Map(self._config_parser.parsedRun).as_dict(True)  # type: dict
+            self._only_build_model = user_config.simulate_model is False
+            self._only_run_sim = user_config.build_model is False
+
             self._output_root = self._run_conf["OutputRoot"]
             self._pr_cell_gid = self._run_conf.get("prCellGid")
             self._corenrn_conf = Nd.CoreConfig(self._output_root) \
@@ -89,8 +94,8 @@ class Node:
 
     # -
     @staticmethod
-    def _open_config(recipe):
-        """This function will run the parser and make the data accessible.
+    def _open_config(recipe, user_config):
+        """ Initialize config objects and set Neuron global options from BlueConfig
 
         Args:
             recipe: Name of Config file to load
@@ -100,17 +105,41 @@ class Node:
         if MPI.rank == 0:
             config_parser.toggleVerbose()
 
-        # set some basic information
         if config_parser.parsedRun is None:
             raise ConfigurationError("No Run block parsed from BlueConfig %s", recipe)
         parsed_run = config_parser.parsedRun
 
         # confirm output_path exists and is usable -> use utility.mod
+        if user_config.output_path:
+            parsed_run.get("OutputRoot").s = user_config.output_path
         output_path = parsed_run.get("OutputRoot").s
+
         if MPI.rank == 0:
             if Nd.checkDirectory(output_path) < 0:
                 logging.error("Error with OutputRoot %s. Terminating", output_path)
                 raise ConfigurationError("Output directory error")
+
+        if user_config.build_model is False \
+                and not ospath.isfile(ospath.join(output_path, "sim.conf")):
+            raise ConfigurationError("Model build was disabled, but sim.conf not found")
+
+        if user_config.build_model not in (True, False):
+            user_config.build_model = not ospath.isfile(ospath.join(output_path, "sim.conf"))
+            if user_config.build_model and MPI.rank == 0:
+                logging.info(
+                    "CoreNeuron data do not exist in '{}'".format(output_path) + ". "
+                    "Neurodamus will proceed to model building.")
+
+        if ((not user_config.build_model or not user_config.simulate_model)
+                and (not parsed_run.exists("Simulator") or
+                     parsed_run.get("Simulator").s == "NEURON")):
+            logging.warning("Changing simulator to CORENEURON due to requested run mode")
+            if parsed_run.exists("Simulator"):
+                parsed_run.get("Simulator").s = "CORENEURON"
+            else:
+                simulator = Nd.String("CORENEURON")
+                parsed_run.put("Simulator", simulator)
+
         MPI.check_no_errors()
 
         Nd.execute("cvode = new CVode()")
@@ -1038,7 +1067,7 @@ class Node:
         bbss.ignore()
         self._binreport_helper.clear()
 
-        Node.__init__(self, None)  # Reset vars
+        Node.__init__(self, None, None)  # Reset vars
 
     # -------------------------------------------------------------------------
     #  Data retrieve / output
@@ -1117,7 +1146,8 @@ class Node:
                 if gid in self.gidvec:
                     gids.append(gid)
             if len(gids):
-                print("[INFO] Rank %d: Debugging %d gids in debug_gids.txt" % (MPI.rank, len(gids)))
+                print("[INFO] Rank %d: Debugging %d gids in debug_gids.txt"
+                      % (MPI.rank, len(gids)))
 
         for gid in gids:
             self._pnm.pc.prcellstate(gid, suffix)
@@ -1133,7 +1163,7 @@ class Node:
         mem_usage.print_mem_usage()
 
         # Coreneuron runs clear the model before starting
-        if not self._corenrn_conf:
+        if not self._corenrn_conf or self._only_build_model:
             self.clear_model()
 
         # Runworker starts a server loop in the workers and the process dies on pc.done()
@@ -1151,10 +1181,10 @@ class Neurodamus(Node):
     """A high level interface to Neurodamus
     """
     def __init__(self, config_file,
-                       enable_reports=True,
                        auto_init=True,
-                       logging_level=None):
-        """Creates and initializes a neurodamus run node.
+                       logging_level=None,
+                       **user_opts):
+        """Creates and initializes a neurodamus run node
 
         As part of Initiazation it calls:
          * load_targets
@@ -1165,24 +1195,29 @@ class Neurodamus(Node):
 
         Args:
             config_file: The BlueConfig recipe file
-            enable_reports: Whether reports shall be active (default: True)
             logging_level: (int) Redefine the global logging level.
                 0 - Only warnings / errors
                 1 - Info messages (default)
                 2 - Verbose
                 3 - Debug messages
+            user_opts: Options to Neurodamus overriding BlueConfig
         """
         self._init_ok = False
         if logging_level is not None:
             GlobalConfig.verbosity = logging_level
 
-        Node.__init__(self, config_file)
+        enable_reports = not user_opts.pop("disable_reports", False)
+        user_cfg = RunConfig(**user_opts)
+
+        Node.__init__(self, config_file, user_cfg)
         # Use the run_conf dict to avoid passing it around
         self._run_conf["EnableReports"] = enable_reports
         self._run_conf["AutoInit"] = auto_init
 
         logging.info("Running Neurodamus with config from " + config_file)
-        self._instantiate_simulation()
+        if user_cfg.build_model:
+            self._instantiate_simulation()
+
         # In case an exception occurs we must prevent the destructor from cleaning
         self._init_ok = True
 
@@ -1277,9 +1312,17 @@ class Neurodamus(Node):
     # -
     def run(self):
         """Prepares and launches the simulation according to the loaded config.
+        If '--only-build-model' option is set, simulation is skipped.
         """
-        log_stage("==================== SIMULATION ====================")
-        self.run_all()
+        if self._only_build_model:
+            self.sim_init()
+            log_stage("============= SIMULATION (MODEL BUILD ONLY) =============")
+        elif self._only_run_sim:
+            log_stage("============= SIMULATION (SKIP MODEL BUILD) =============")
+            self._run_coreneuron()
+        else:
+            log_stage("==================== SIMULATION ====================")
+            self.run_all()
 
     def __del__(self):
         if self._init_ok:

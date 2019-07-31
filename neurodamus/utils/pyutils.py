@@ -4,6 +4,7 @@ Collection of generic Python utilities.
 from __future__ import absolute_import, print_function
 from collections import OrderedDict
 from bisect import bisect_left
+from enum import EnumMeta
 
 
 class classproperty(object):
@@ -30,11 +31,34 @@ def dict_filter_map(dic, mapp):
 def docopt_sanitize(docopt_opts):
     """Sanitizes docopt parsed key names
     """
-    return {opt.strip("<>-").replace("-", "_"): val for opt, val in docopt_opts.items()}
+    opts = {}
+    for key, val in docopt_opts.items():
+        key = key.strip("<>-").replace("-", "_")
+        if isinstance(val, str):
+            if val.lower() in ("off", "false"):
+                val = False
+            elif val.lower() in ("on", "true"):
+                val = True
+        opts[key] = val
+    return opts
 
 
 class ConfigT(object):
-    """Base class for configurations"""
+    """ Base class for configurations.
+
+        This class serves as a base for set of configurations.
+        By inheriting and setting several class-level attributes, instances will
+        be able to initialize from kwargs and dictionaries with the same keys,
+        effectivelly working as validators of fields with default values.
+        Furthermore, for validation of values, the attributes may be Enums.
+
+        ```
+        class RunConfig(ConfigT):
+            # NOTE: Enum fields: the FIRST value is the default
+            mode = Enum("Mode", "BUILD_SIMULATE BUILD_ONLY")
+            model_path = None
+        ```
+    """
     def __init__(self, **opts):
         self._init(self, opts)
 
@@ -42,15 +66,23 @@ class ConfigT(object):
     def global_init(cls, **opts):
         cls._init(cls, opts)
 
-    @staticmethod
-    def _init(obj, opts):
+    @classmethod
+    def _init(cls, obj, opts):
         for name, value in opts.items():
             if value is not None and not name.startswith("_") and hasattr(obj, name):
+                default = getattr(obj, name)
+                if type(default) is EnumMeta:
+                    value = default[value]
                 setattr(obj, name, value)
+        # Non initialized enums set default as the first item
+        for name, value in cls.__dict__.items():
+            if name not in obj.__dict__ and type(value) is EnumMeta:
+                setattr(obj, name, getattr(cls, name)(1))
 
-    def _apply_f(self, o, opts_dict):
+    @staticmethod
+    def _apply_f(obj, opts_dict):
         for key, val in opts_dict.items():
-            setattr(o, key, val)
+            setattr(obj, key, val)
 
     def apply(self, obj, subset=None, excludes=(), **overrides):
         """Applies the configuration to one or multiple objects (if tuple)"""
