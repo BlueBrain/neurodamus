@@ -287,7 +287,7 @@ endtemplate {cls_name}"""
     # --------
 
     def add_synapse(self, src_seg, target_seg, syn_props_obj, **conn_options):
-        # type: (Neuron.nrn.Segment, Neuron.nrn.Segment, SynapseProps, **dict) -> object
+        # type: (Neuron.nrn.Segment, Neuron.nrn.Segment, object, **dict) -> object
         """Adds an incoming synapse from another cell, according to the options."""
         synapse = self.add_synaptic_receptor(syn_props_obj, target_seg)
         netcon = self._add_connection(src_seg, synapse, **conn_options)

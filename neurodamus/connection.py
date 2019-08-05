@@ -41,8 +41,8 @@ class SynapseMode:
             return cls.AMPA_ONLY
         elif str_repr.lower().startswith("dual"):
             return cls.DUAL_SYNS
-        raise ValueError("Invalid synapse mode: " + str_repr +
-                         ". Possible values are Ampa% and Dual%")
+        raise ValueError("Invalid synapse mode: " + str_repr + ". "
+                         "Possible values are Ampa* and Dual*")
 
 
 class STDPMode:

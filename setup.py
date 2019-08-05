@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import sys
-from setuptools import setup
+from setuptools import setup, find_packages
 
 VERSION = "0.4.0"
 
@@ -14,26 +14,24 @@ def setup_package():
     setup(
         name='neurodamus',
         version=VERSION,
-        packages=[
-            "neurodamus",
-            "neurodamus.core"
-        ],
+        packages=find_packages(exclude=["tests"]),
         install_requires=[
             'NEURON',
             'h5py',
             'enum34;python_version<"3.4"',
             'lazy-property',
-            'pyyaml',
             'docopt',
             'six',
         ],
         setup_requires=maybe_sphinx,
         tests_require=[
-            "pytest"
+            "pytest",
+            "pytest-runner"
         ],
         extras_require={
             'plotting': ['matplotlib'],
-            'full': ['matplotlib']
+            'full': ['matplotlib'],
+            'future': ['pyyaml']
         },
         entry_points={
             'console_scripts': [

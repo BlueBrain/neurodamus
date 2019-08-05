@@ -78,7 +78,7 @@ class Map(collections_abc.Mapping):
             def parse(stri):
                 try:
                     return float(stri)
-                except:
+                except ValueError:
                     return stri
             new_map = {key: parse(val.s) for key, val in self.items()}
         else:

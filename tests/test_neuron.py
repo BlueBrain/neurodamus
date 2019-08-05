@@ -3,6 +3,7 @@ Test checking hoc entities from neuron are accessible from the high level wrappe
 """
 from neurodamus.core import Neuron
 
+
 def test_base_h():
     print(Neuron.dt)
 

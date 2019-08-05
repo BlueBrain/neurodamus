@@ -15,7 +15,6 @@ class classproperty(object):
 
 
 def dict_filter(dic, filter):
-    # type: (dict, lambda) -> lambda
     """Creates a generator for filtering elements in a dictionary"""
     return ((key, val) for key, val in dic.items() if filter(key, val))
 

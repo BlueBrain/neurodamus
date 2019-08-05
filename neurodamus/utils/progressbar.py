@@ -183,7 +183,7 @@ class ProgressBar(Progress):
         return self._format % {'fill': fill, 'blank': blank, 'progress': progress}
 
     def show_progress(self):
-        if self._end is 0:
+        if self._end == 0:
             return
         if self._tty_mode:
             self._stream.write('\r' + str(self))
