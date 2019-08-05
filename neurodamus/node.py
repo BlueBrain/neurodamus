@@ -571,8 +571,7 @@ class Node:
     # -
     def _enable_replay(self, target_name, stim, tshift=.0, delay=.0):
         spike_filepath = self._find_config_file(stim.get("SpikeFile").s)
-        spike_manager = SpikeManager(spike_filepath, tshift)
-        self._synapse_manager.replay(spike_manager, target_name, delay)
+        spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
 
         # For CoreNeuron, we should put the replays into a single out file to be used as PatternStim
         if self._corenrn_conf:
@@ -580,12 +579,17 @@ class Node:
             if not self._core_replay_file:
                 self._core_replay_file = Path.join(self._output_root, 'pattern.dat')
                 if MPI.rank == 0:
-                    logging.info("Creating pattern.dat file for CoreNEURON")
-                    with open(self._core_replay_file, "w") as core_pattern_dat:
-                        core_pattern_dat.write("/scatter\n")
-                MPI.barrier()
-            with open(self._core_replay_file, "a") as core_pattern_dat:
-                spike_manager.dump_ascii(core_pattern_dat)
+                    log_verbose("Creating pattern.dat file for CoreNEURON")
+                    spike_manager.dump_ascii(self._core_replay_file)
+            else:
+                if MPI.rank == 0:
+                    log_verbose("Appending to pattern.dat")
+                    with open(self._core_replay_file, "a") as f:
+                        spike_manager.dump_ascii(f)
+        else:
+            # Otherwise just apply it to the current connections
+            self._synapse_manager.replay(spike_manager, target_name, delay)
+
 
     # -
     @mpi_no_errors
@@ -612,6 +616,10 @@ class Node:
         sim_end = self._run_conf["Duration"] + cur_t
         reports_conf = compat.Map(self._config_parser.parsedReports)
         self._report_list = []
+
+        # Report count for coreneuron
+        if self._corenrn_conf:
+            self._corenrn_conf.write_report_count(self._config_parser.parsedReports.count())
 
         for rep_name, rep_conf in reports_conf.items():
             rep_conf = compat.Map(rep_conf).as_dict(parse_strings=True)
@@ -827,16 +835,17 @@ class Node:
 
     def _sim_corenrn_write_config(self):
         logging.info("Starting dataset generation for CoreNEURON")
-        # Report count
-        self._corenrn_conf.write_report_count(self._config_parser.parsedReports.count())
-
         Nd.registerMapping(self._cell_distributor)
         corenrn_output = self._simulator_conf.getCoreneuronOutputDir().s
         corenrn_data = self._simulator_conf.getCoreneuronDataDir().s
         fwd_skip = self._run_conf.get("ForwardSkip", 0)
+
         self._pnm.pc.nrnbbcore_write(corenrn_data)
-        self._corenrn_conf.write_sim_config(corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
-                                            self._pr_cell_gid or -1, self._core_replay_file)
+        self._corenrn_conf.write_sim_config(
+            corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
+            self._pr_cell_gid or -1, self._core_replay_file
+        )
+
         logging.info("Finished dataset generation for CoreNEURON")
 
     # -

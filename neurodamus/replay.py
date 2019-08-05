@@ -86,7 +86,7 @@ class SpikeManager(object):
             tvec = numpy.fromfile(reader, "d", n_events)
             gidvec = numpy.fromfile(reader, "d", n_events).astype("uint32")
 
-        log_verbose("Loaded %d spikes", len(tvec))
+        log_verbose("Replay: Loaded %d spikes", len(tvec))
 
         return tvec, gidvec
 
@@ -123,12 +123,14 @@ class SpikeManager(object):
         """
         gids, times = self._gid_fire_events.flatten().data()
         expanded_ds = numpy.stack((times, gids), axis=-1)
-        logging.info("writing %d entries", len(expanded_ds))
+
         if isinstance(f, str):
             # If given a filename we assume a new file is wanted, with new header
             with open(f, "w") as fx:
                 fx.write("/scatter\n")
-                numpy.savetxt(fx, expanded_ds, fmt='%.6lf\t%d')
+                numpy.savetxt(fx, expanded_ds, fmt='%.3lf\t%d')
         else:
             # If given a file handle, user wants control so we directly dump
-            numpy.savetxt(f, expanded_ds, fmt='%.6lf\t%d')
+            numpy.savetxt(f, expanded_ds, fmt='%.3lf\t%d')
+
+        log_verbose("Replay: Written %d entries", len(expanded_ds))
