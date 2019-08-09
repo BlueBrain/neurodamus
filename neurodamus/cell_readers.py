@@ -1,3 +1,6 @@
+"""
+Collection of Cell Readers from different sources (Pure HDF5, SynTool...)
+"""
 from __future__ import absolute_import
 import numpy as np
 import logging
@@ -41,13 +44,13 @@ def _ncs_get_cells(ncs_f):
 def load_ncs(run_conf, gidvec, stride=1, stride_offset=0):
     """ Obtain the gids and the metypes for cells in the base circuit.
 
-    Params:
+    Args:
         run_conf: the Run secgion from the configuration
         gidvec: The cells ids to be loaded. If it's None then all the cells shall be loaded
         stride: If distribution is desired stride can be set to a value > 1
         stride_offset: When using distribution, the offset to be read within the stride
-    Returns: A tuple of (gids, metypes, total_ncs_cells)
-
+    Returns:
+        A tuple of (gids, metypes, total_ncs_cells)
     """
     gids = compat.Vector("I")
     gid2mefile = {}

@@ -4,7 +4,7 @@ Structures holding the several instantiated objects from the configuration
 import numpy
 import logging
 from os import path as Path
-from .core import Neurondamus as Nd
+from .core import NeurodamusCore as Nd
 
 
 class ElectrodeManager(object):

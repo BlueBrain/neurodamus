@@ -6,7 +6,7 @@ from __future__ import absolute_import
 import logging
 from contextlib import contextmanager
 from os import path as Path
-from .configuration import Neuron_Stdrun_Defaults
+from .configuration import NeuronStdrunDefaults
 from .configuration import GlobalConfig
 from ..utils import classproperty
 
@@ -15,12 +15,10 @@ from ..utils import classproperty
 # Singleton, instantiated right below
 #
 class _Neuron(object):
+    """A wrapper over the neuron simulator.
     """
-    A wrapper over the neuron simulator.
-    """
-    # The neuron hoc interpreter
-    # We dont import it at module-level to avoid starting neuron
-    _h = None
+    __name__ = "_Neuron"
+    _h = None  # We dont import it at module-level to avoid starting neuron
     _hocs_loaded = set()
 
     # No new attributes. __setattr__ can rely on it
@@ -28,13 +26,14 @@ class _Neuron(object):
 
     @classproperty
     def h(cls):
-        """The neuron hoc interpreter, initializing if needed
+        """The neuron hoc interpreter, initializing if needed.
         """
         return cls._h or cls._init()
 
     @classmethod
     def _init(cls):
-        """Initializes the Neuron simulator"""
+        """Initializes the Neuron simulator.
+        """
         if cls._h is None:
             cls.__cache = {}
             if GlobalConfig.use_mpi:
@@ -55,7 +54,6 @@ class _Neuron(object):
     @classmethod
     def load_hoc(cls, mod_name):
         """Loads a hoc module, available in the path.
-        E.g.: Neuron.load_mod("loadbal")
         """
         if mod_name in cls._hocs_loaded:
             return
@@ -68,13 +66,16 @@ class _Neuron(object):
 
     @classmethod
     def require(cls, *hoc_mods):
+        """Load a set of hoc mods by name.
+        """
         for mod in hoc_mods:
             cls.load_hoc(mod)
         return cls._h
 
     @classmethod
     def load_dll(cls, dll_path):
-        """Loads a Neuron mod file (typically an .so file in linux)"""
+        """Loads a Neuron mod file (typically an .so file in linux).
+        """
         h = (cls._h or cls._init())
         rc = h.nrn_load_dll(dll_path)
         if rc == 0:
@@ -83,6 +84,8 @@ class _Neuron(object):
 
     @contextmanager
     def section_in_stack(self, sec):
+        """A contect manager to push and pop a section to the Neuron stack.
+        """
         sec.push()
         yield
         self.h.pop_section()
@@ -90,6 +93,7 @@ class _Neuron(object):
     @classmethod
     def run_sim(cls, t_stop, *monitored_sections, **params):
         """A helper to run the simulation, recording the Voltage in the specified cell sections.
+
         Args:
             t_stop: Stop time
             *monitored_sections: Cell sections to be probed.
@@ -109,6 +113,8 @@ class _Neuron(object):
     def __getattr__(self, item):
         # We use a cache since going down to hoc costs at least 10us
         # Cache is not expected to grow very large. Unbounded for the moment
+        if item.startswith("__"):
+            return object.__getattribute__(self, item)
         self._h or self._init()
         cache = self.__class__.__cache
         obj = cache.get(item)
@@ -117,6 +123,8 @@ class _Neuron(object):
         return obj
 
     def __setattr__(self, key, value):
+        if key.startswith("__"):
+            return None
         try:
             object.__setattr__(self, key, value)
         except AttributeError:
@@ -130,8 +138,8 @@ class _Neuron(object):
     Segment = None
 
 
-# The singleton
 Neuron = _Neuron()
+"""A singleton wrapper for the Neuron library"""
 
 
 class HocEntity(object):
@@ -162,7 +170,7 @@ endtemplate {cls_name}
 
 class Simulation(object):
     # Some defaults from stdrun
-    v_init = Neuron_Stdrun_Defaults.v_init  # -65V
+    v_init = NeuronStdrunDefaults.v_init  # -65V
 
     def __init__(self, **args):
         args.setdefault("v_init", self.v_init)

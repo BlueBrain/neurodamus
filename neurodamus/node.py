@@ -10,7 +10,7 @@ import operator
 from os import path as Path
 from collections import namedtuple
 from .core import MPI, mpi_no_errors, return_neuron_timings
-from .core import NeuronDamus as Nd
+from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, ConfigurationError
 from .cell_distributor import CellDistributor, LoadBalanceMode
 from .connection_manager import SynapseRuleManager, GapJunctionManager
@@ -20,14 +20,15 @@ from .utils.logging import log_stage, log_verbose
 
 
 class Node:
-    """
-    The Node class is the main entity for a distributed neurodamus execution.
+    """The Node class is the main entity for a distributed neurodamus execution.
+
     It internally instantiates parallel structures and distributes the cells among all the nodes.
     It is relatively low-level, for a standard run consider using the Neurodamus class instead.
     """
 
     def __init__(self, recipe):
-        """ Creates a neurodamus executor
+        """ Creates a neurodamus executor.
+
         Args:
             recipe: The BlueRecipe file
         """
@@ -590,7 +591,6 @@ class Node:
             # Otherwise just apply it to the current connections
             self._synapse_manager.replay(spike_manager, target_name, delay)
 
-
     # -
     @mpi_no_errors
     def enable_modifications(self):
@@ -1106,9 +1106,18 @@ class Neurodamus(Node):
     """A high level interface to Neurodamus
     """
     def __init__(self, config_file, enable_reports=True, logging_level=None):
-        """Creates and initializes a neurodamus run node
+        """Creates and initializes a neurodamus run node.
+
+        As part of Initiazation it calls:
+         * load_targets
+         * compute_load_balance
+         * Build the circuit (cells, synapses, GJs)
+         * Add stimulus & replays
+         * Activate reports if requested
+
         Args:
             config_file: The BlueConfig recipe file
+            enable_reports: Whether reports shall be active (default: True)
             logging_level: (int) Redefine the global logging level.
                 0 - Only warnings / errors
                 1 - Info messages (default)
@@ -1147,7 +1156,7 @@ class Neurodamus(Node):
 
     # -
     def run(self):
-        """Runs the Simulation, writing the spikes to the given file
+        """Prepares and launches the simulation according to the loaded config.
         """
         log_stage("==================== SIMULATION ====================")
         self.run_all()

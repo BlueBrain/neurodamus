@@ -10,14 +10,19 @@ from .utils.logging import log_verbose
 
 
 class SpikeManager(object):
-    """ A SynapseReplay stim can be used for a single gid that has all the synapses instantiated.
+    """ Holds and manages gid spike time information, specially for Replay.
+
+    A SynapseReplay stim can be used for a single gid that has all the synapses instantiated.
     Given an out.dat file from a previous run, this object uses a NetStim object to retrigger
     the synapses at the appropriate time as though the presynaptic cells were present and active.
+
+    Internally the spikes are stored in a :py:class:`neurodamus.utils.multimap.GroupedMultiMap`
     """
     _ascii_spike_dtype = [('time', 'double'), ('gid', 'uint32')]
 
     def __init__(self, spike_filename, delay=0):
-        """Constructor for SynapseReplay
+        """Constructor for SynapseReplay.
+
         Args:
             spike_filename: path to spike out file.
                 if ext is .bin, interpret as binary file; otherwise, interpret as ascii
@@ -29,7 +34,8 @@ class SpikeManager(object):
 
     #
     def open_spike_file(self, filename, delay):
-        """Opens a given spike file
+        """Opens a given spike file.
+
         Args:
             filename: path to spike out file. Interpret as binary or ascii according to extension
             delay: delay to apply to spike times
@@ -65,6 +71,7 @@ class SpikeManager(object):
     @staticmethod
     def _read_spikes_binary(filename):
         """Read in the binary file with spike events.
+
         Format notes: The first half of file is interpreted as double precision time values
         followed by an equal number of double precision gid values.
         File must be produced on the same architecture where NEURON will run (i.e. no byte-swapping)
@@ -92,14 +99,15 @@ class SpikeManager(object):
 
     #
     def _store_events(self, tvec, gidvec):
-        """Stores the events in the _gid_fire_events GroupedMultiMap
-           tvec and gidvec arguments should be numpy arrays
+        """Stores the events in the _gid_fire_events GroupedMultiMap.
+
+        tvec and gidvec arguments should be numpy arrays
         """
-        map = GroupedMultiMap(gidvec, tvec)
+        spike_map = GroupedMultiMap(gidvec, tvec)
         if self._gid_fire_events is None:
-            self._gid_fire_events = map
+            self._gid_fire_events = spike_map
         else:
-            self._gid_fire_events += map
+            self._gid_fire_events += spike_map
 
     def __len__(self):
         return len(self._gid_fire_events)
@@ -111,13 +119,16 @@ class SpikeManager(object):
         return gid in self._gid_fire_events
 
     def get_map(self):
+        """Returns the :py:class:`GroupedMultiMap` with all the spikes."""
         return self._gid_fire_events
 
     def filter_map(self, pre_gids):
+        """Returns a raw dict of pre_gid->spikes for the given pre gids."""
         return {key: self._gid_fire_events[key] for key in pre_gids}
 
     def dump_ascii(self, f):
         """Writes the spikes out, in compat ascii format.
+
         Args:
             f: The file name or handle
         """

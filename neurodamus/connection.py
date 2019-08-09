@@ -1,8 +1,11 @@
+"""
+Implementation of the core Connection classes
+"""
 from __future__ import absolute_import
 import logging
 import numpy as np
 from six.moves import zip
-from .core import NeuronDamus as ND
+from .core import NeurodamusCore as Nd
 from .utils import compat
 from .utils.logging import log_verbose
 
@@ -91,8 +94,8 @@ class Connection(object):
     @classmethod
     def _init_hmod(cls):
         if cls._AMPAMDA_Helper is not None:
-            return ND.h
-        h = ND.require("AMPANMDAHelper", "GABAABHelper")
+            return Nd.h
+        h = Nd.require("AMPANMDAHelper", "GABAABHelper")
         cls._AMPAMDA_Helper = h.AMPANMDAHelper
         cls._GABAABHelper = h.GABAABHelper
         cls.ConnUtils = h.ConnectionUtils()
@@ -164,7 +167,7 @@ class Connection(object):
             if not sc.exists():
                 continue
             # Put the section in the stack, so generic hoc instructions apply to the right section
-            with ND.section_in_stack(sc.sec):
+            with Nd.section_in_stack(sc.sec):
                 yield syn_i, sc.sec
 
     # ---------------------
@@ -211,10 +214,10 @@ class Connection(object):
         weight_adjusts = []
         wa_netcon_pre = []
         wa_netcon_post = []
-        rng_info = ND.RNGSettings()
-        tbins_vec = ND.Vector(1)
+        rng_info = Nd.RNGSettings()
+        tbins_vec = Nd.Vector(1)
         tbins_vec.x[0] = 0.0
-        rate_vec = ND.Vector(1)
+        rate_vec = Nd.Vector(1)
 
         # Initialize member lists
         self._synapses = compat.List()  # Used by ConnUtils
@@ -253,9 +256,9 @@ class Connection(object):
             #   here and in Connection.init). Instantiates the appropriate StdpWA mod file
             if self._stdp:
                 if self._stdp == STDPMode.DOUBLET_STDP:
-                    weight_adjuster = ND.StdpWADoublet(x)
+                    weight_adjuster = Nd.StdpWADoublet(x)
                 elif self._stdp == STDPMode.TRIPLET_STDP:
-                    weight_adjuster = ND.StdpWATriplet(x)
+                    weight_adjuster = Nd.StdpWATriplet(x)
                 else:
                     raise ValueError("Invalid STDP config")
 
@@ -275,18 +278,18 @@ class Connection(object):
                 nc_wa_post.delay = syn_params.delay
 
                 # Set the pointer to the synapse netcon weight
-                ND.setpointer(nc._ref_weight, "wsyn", weight_adjuster)
+                Nd.setpointer(nc._ref_weight, "wsyn", weight_adjuster)
 
                 weight_adjusts.append(weight_adjuster)
                 wa_netcon_pre.append(nc_wa_pre)
                 wa_netcon_post.append(nc_wa_post)
 
             if self._minis_spont_rate > .0:
-                ips = ND.InhPoissonStim(x)
+                ips = Nd.InhPoissonStim(x)
                 # netconMini = pnm.pc.gid_connect(ips, finalgid)
 
                 # A simple NetCon will do, as the synapse and cell are local.
-                netcon_m = ND.NetCon(ips, syn_obj)
+                netcon_m = Nd.NetCon(ips, syn_obj)
                 netcon_m.delay = 0.1
                 # TODO: better solution here to get the desired behaviour during
                 # delayed connection blocks
@@ -298,7 +301,7 @@ class Connection(object):
                     ips.setRNGs(syn_obj.synapseID+200, self.tgid+250, rng_info.getMinisSeed()+300,
                                 syn_obj.synapseID+200, self.tgid+250, rng_info.getMinisSeed()+350)
                 else:
-                    exprng = ND.Random()
+                    exprng = Nd.Random()
                     if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
                         exprng.MCellRan4(syn_obj.synapseID*100000 + 200,
                                          self.tgid + 250 + base_seed + rng_info.getMinisSeed())
@@ -307,7 +310,7 @@ class Connection(object):
                                          self.tgid + 250 + base_seed + rng_info.getMinisSeed())
 
                     exprng.negexp(1)
-                    uniformrng = ND.Random()
+                    uniformrng = Nd.Random()
                     if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
                         uniformrng.MCellRan4(syn_obj.synapseID*100000 + 300,
                                              self.tgid + 250 + base_seed + rng_info.getMinisSeed())
@@ -351,11 +354,11 @@ class Connection(object):
         """
         if self._synapse_override is not None:
             override_helper = self._synapse_override["ModOverride"] + "Helper"
-            helper_cls = getattr(ND.h, override_helper)
+            helper_cls = getattr(Nd.h, override_helper)
             add_params = (self._synapse_override['_hoc'],)
         else:
-            helper_cls = ND.GABAABHelper if params_obj.synType < 100 \
-                else ND.AMPANMDAHelper  # excitatory
+            helper_cls = Nd.GABAABHelper if params_obj.synType < 100 \
+                else Nd.AMPANMDAHelper  # excitatory
             add_params = ()
 
         syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, *add_params)
@@ -382,7 +385,7 @@ class Connection(object):
         for syn_i, sec in self.valid_sections:
             x = self._synapse_points.x[syn_i]
             active_params = self._synapse_params[syn_i]
-            gap_junction = ND.Gap(x)
+            gap_junction = Nd.Gap(x)
 
             # Using computed offset
             logging.debug("connect %f to %f [D: %f + %f], [F: %f + %f] (weight: %f)",
@@ -448,13 +451,13 @@ class Connection(object):
             tvec: time for spike events from the sgid
             start_delay: When the events may start to be delivered
         """
-        hoc_tvec = ND.Vector()
+        hoc_tvec = Nd.Vector()
         for _t in np.sort(tvec[tvec >= start_delay]):
             hoc_tvec.append(_t)
 
         log_verbose("Replaying %d spikes on %d", hoc_tvec.size(), self.sgid)
         logging.debug(" > First replay event for connection at %f", hoc_tvec.x[0])
-        vstim = ND.VecStim()
+        vstim = Nd.VecStim()
         vstim.play(hoc_tvec)
         # vstim.verboseLevel = 1
         self._tvecs.append(hoc_tvec)
@@ -465,7 +468,7 @@ class Connection(object):
         # will receive the events
         for i, (syn_i, sc) in enumerate(self.valid_sections):
             syn_params = self._synapse_params[syn_i]
-            nc = ND.NetCon(vstim, self._synapses[i], 10, syn_params.delay, syn_params.weight)
+            nc = Nd.NetCon(vstim, self._synapses[i], 10, syn_params.delay, syn_params.weight)
             nc.weight[0] = syn_params.weight * self.weight_factor
             self._replay_netcons.append(nc)
         return hoc_tvec.size()

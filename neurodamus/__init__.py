@@ -6,7 +6,7 @@
     The neurodamus package implements the instantiation of simulations in Neuron
     based on a configuration file, a.k.a. BlueConfigs
     It is deeply based on the HOC implementation, therefore providing python modules like
-    `node`, `cell_distributor`,etc; and still depends on several low-level HOC files at runtime.
+    `node`, `cell_distributor`, etc; and still depends on several low-level HOC files at runtime.
 """
 from __future__ import absolute_import
 import pkg_resources
@@ -20,3 +20,6 @@ __copyright__ = "2018 Blue Brain Project, EPFL"
 
 # Neurodamus node for setting up a neurodamus execution
 from .node import Node, Neurodamus
+
+
+__all__ = ["Node", "Neurodamus"]

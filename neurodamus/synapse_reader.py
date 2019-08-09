@@ -4,7 +4,7 @@ Module implementing interfaces to the several synapse readers (eg.: synapsetool,
 import logging
 from abc import abstractmethod
 from os import path as Path
-from .core import NeuronDamus as ND, MPI
+from .core import NeurodamusCore as Nd, MPI
 from .connection import SynapseParameters
 from .utils.logging import log_verbose
 
@@ -26,6 +26,8 @@ class SynapseReader(object):
         self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
 
     def get_synapse_parameters(self, gid):
+        """Obtains the synapse parameters record for a given gid.
+        """
         syn_params = self._syn_params.get(gid)
         if syn_params is None:
             syn_params = self._syn_params[gid] = self._load_synapse_parameters(gid)
@@ -41,34 +43,40 @@ class SynapseReader(object):
     def _patch_delay_fp_inaccuracies(records):
         if len(records) == 0:
             return
-        dt = ND.dt
+        dt = Nd.dt
         records.delay = (records.delay / dt + 1e-5).astype('i4') * dt
 
     def has_nrrp(self):
+        """Checks whether source data has the nrrp field.
+        """
         if self._has_nrrp is None:
             raise NotImplementedError("Uninitialized _has_nrrp field")
         return self._has_nrrp
 
     @classmethod
     def create(cls, syn_src, conn_type=SYNAPSES, *args, **kw):
+        """Instantiates a synapse reader, giving preference to SynReaderSynTool
+        """
         # If create called from this class then FACTORY, try SynReaderSynTool
         if cls is SynapseReader:
-            try:
-                reader = SynReaderSynTool(syn_src, conn_type, verbose=(MPI.rank == 0))
+            if cls.is_syntool_enabled():
                 log_verbose("[SynReader] Using new-gen SynapseReader.")
-            except SynToolNotAvail as e:
+                return SynReaderSynTool(syn_src, conn_type, verbose=(MPI.rank == 0))
+            else:
                 if not syn_src.endswith(".h5"):
-                    raise  # reraise because we cant use the fallback for non nrn files
-                logging.info("[SynReader] " + str(e) + " Attempting legacy hdf5 reader.")
-                reader = SynReaderNRN(syn_src, conn_type, *args, **kw)
+                    raise SynToolNotAvail(
+                        "Can't load new synapse formats without syntool. File: {}".format(syn_src))
+                logging.info("[SynReader] Attempting legacy hdf5 reader.")
+                return SynReaderNRN(syn_src, conn_type, *args, **kw)
         else:
-            reader = cls(args, conn_type, *args, **kw)
-        return reader
+            return cls(args, conn_type, *args, **kw)
 
     @classmethod
     def is_syntool_enabled(cls):
+        """Checks whether Neurodamus has built-in support for SynapseTool.
+        """
         if not hasattr(cls, '_syntool_enabled'):
-            cls._syntool_enabled = ND.SynapseReader().modEnabled()
+            cls._syntool_enabled = Nd.SynapseReader().modEnabled()
         return cls._syntool_enabled
 
 
@@ -78,7 +86,7 @@ class SynReaderSynTool(SynapseReader):
     """
     def __init__(self, syn_source, conn_type, verbose=False):
         # Instantiate the NMODL reader
-        reader = ND.SynapseReader(syn_source, conn_type, verbose)
+        reader = Nd.SynapseReader(syn_source, conn_type, verbose)
         if not reader.modEnabled():
             raise SynToolNotAvail("SynapseReader support not available.")
         SynapseReader.__init__(self, syn_source, conn_type, reader, reader.hasNrrpField())
@@ -93,7 +101,7 @@ class SynReaderSynTool(SynapseReader):
 
         conn_syn_params = SynapseParameters.create_array(nrow)
         syn_params_mtx = conn_syn_params.view(('f8', len(conn_syn_params.dtype)))
-        tmpParams = ND.Vector(12)
+        tmpParams = Nd.Vector(12)
 
         for syn_i in range(nrow):
             reader.getSynapse(syn_i, tmpParams)
@@ -113,14 +121,14 @@ class SynReaderNRN(SynapseReader):
         if not Path.isfile(syn_src) and not Path.isfile(syn_src + ".1"):
             raise RuntimeError("NRN synapses file not found: " + syn_src)
 
-        reader = ND.HDF5Reader(syn_src, n_synapse_files)
+        reader = Nd.HDF5Reader(syn_src, n_synapse_files)
         self.nrn_version = reader.checkVersion()
         self._n_synapse_files = n_synapse_files
         SynapseReader.__init__(self, syn_src, conn_type, reader, self.nrn_version > 4)
 
         if n_synapse_files > 1:
             # excg-location requires true vector
-            vec = ND.Vector(len(local_gids))
+            vec = Nd.Vector(len(local_gids))
             for num in local_gids:
                 vec.append(num)
             reader.exchangeSynapseLocations(vec)
@@ -162,4 +170,6 @@ class SynReaderNRN(SynapseReader):
 
 
 class SynToolNotAvail(Exception):
+    """Exception thrown when the circuit requires SynapseTool and it is NOT built-in.
+    """
     pass

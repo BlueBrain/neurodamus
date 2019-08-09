@@ -1,10 +1,13 @@
+"""
+Mechanisms to load and balance cells across the computing resources.
+"""
 from __future__ import absolute_import, print_function
 import logging  # active only in rank 0 (init)
 from os import path as Path
 from lazy_property import LazyProperty
 from . import cell_readers
 from .core import MPI, mpi_no_errors, run_only_rank0
-from .core import NeuronDamus as Nd
+from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
 from .core.configuration import ConfigurationError
 from .metype import METype
@@ -15,11 +18,15 @@ from .utils.logging import log_verbose
 class LoadBalanceMode:
     """An enumeration, inc parser, of the load balance modes.
     """
+    RR = None
     WholeCell = 1
     MultiSplit = 2
 
     @classmethod
     def parse(cls, lb_mode):
+        """Parses the load balancing mode from a string.
+        Options other than WholeCell or MultiSplit are considered RR
+        """
         _modes = {
             "WholeCell": cls.WholeCell,
             "LoadBalance": cls.MultiSplit
@@ -242,11 +249,11 @@ class CellDistributor(object):
         The actual template name will have any hyphens (e.g.: R-C261296A-P1_repaired)
         replaced with underscores as hyphens must not appear in template names.
 
-        Params:
+        Args:
             tpl_filename: the template file to load
             tpl_location: (Optional) path for the templates
-
-        Returns: The name of the template as it appears inside the file (sans hyphens)
+        Returns:
+            The name of the template as it appears inside the file (sans hyphens)
         """
         #  start.ncs gives metype names with hyphens, but the templates themselves
         #  have those hyphens replaced with underscores.

@@ -4,7 +4,7 @@ An example on how node can be used to mimick neurodamus behavior
 """
 from __future__ import print_function
 from neurodamus import Node, Neurodamus
-from neurodamus.core import NeuronDamus as Nd
+from neurodamus.core import NeurodamusCore as Nd
 from neurodamus.utils import setup_logging
 import sys
 import logging

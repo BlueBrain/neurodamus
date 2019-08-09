@@ -13,11 +13,12 @@ HOC_LIB = "neurodamus"  # neurodamus.hoc should be in HOC_LIBRARY_PATH.
 LOG_FILENAME = "pydamus.log"
 
 
-class NeuronDamus(_Neuron):
+class NeurodamusCore(_Neuron):
     """
     A wrapper class representing an instance of Neuron with the required neurodamus hoc and mod
     modules loaded
     """
+    __name__ = "NeurodamusCore"
     __slots__ = ()
     _pc = None
 
@@ -64,4 +65,4 @@ class NeuronDamus(_Neuron):
 
 
 # Singleton
-NeuronDamus = NeuronDamus()
+NeurodamusCore = NeurodamusCore()

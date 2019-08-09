@@ -7,7 +7,10 @@ import time
 from ._neuron import Neuron
 
 
-class _MPI(object):
+class MPI(object):
+    """A singleton of MPI runtime information
+    """
+    __name__ = "MPI"
     _size = 1
     _rank = 0
     _pc = None
@@ -63,9 +66,11 @@ class _MPI(object):
         return self._pc
 
     def __getattr__(self, name):
+        if name.startswith("__"):
+            return object.__getattribute__(self, name)
         self._init_pc()
         return getattr(self._pc, name)
 
 
-# A singleton
-MPI = _MPI()
+MPI = MPI()
+"""A singleton of MPI runtime information"""

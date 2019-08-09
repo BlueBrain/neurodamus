@@ -1,8 +1,8 @@
 ============
-Neurodamus
+PyNeurodamus
 ============
 
-This is the documentation of **neurodamus** Python API.
+This is the documentation of **PyNeurodamus**.
 
 
 Contents
@@ -11,8 +11,7 @@ Contents
 .. toctree::
    :maxdepth: 2
 
-   License <license>
-   Authors <authors>
+   Overview <overview>
    Changelog <changes>
    Module Reference <api/modules>
 

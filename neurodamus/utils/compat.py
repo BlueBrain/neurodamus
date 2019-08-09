@@ -69,10 +69,11 @@ class Map(collections_abc.Mapping):
         return self._hoc_map
 
     def as_dict(self, parse_strings=False):
-        """Creates a real dictionary from the Map
+        """Creates a real dictionary from the Map.
+
         Args:
             parse_strings: If true converts string objects in both key and values to
-                           real strings (xx.s) and attempts to convert values to float
+                real strings (xx.s) and attempts to convert values to float
         """
         if parse_strings:
             def parse(stri):

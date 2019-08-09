@@ -1,3 +1,6 @@
+"""
+Collection of generic Python utilities.
+"""
 from __future__ import absolute_import, print_function
 from collections import OrderedDict
 from bisect import bisect_left
@@ -97,6 +100,8 @@ class OrderedDefaultDict(OrderedDict):
 
 
 class ConsoleColors:
+    """Helper class for formatting console text.
+    """
     BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, _, DEFAULT = range(10)
     NORMAL, BOLD, DIM, UNDERLINED, BLINK, INVERTED, HIDDEN = [a << 4 for a in range(7)]
 

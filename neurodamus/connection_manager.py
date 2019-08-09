@@ -6,7 +6,7 @@ import logging
 from itertools import chain
 from os import path as Path
 from .core import ProgressBarRank0 as ProgressBar, MPI
-from .core import NeuronDamus as ND
+from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig
 from .connection import Connection, SynapseMode, STDPMode
 from .synapse_reader import SynapseReader
@@ -156,9 +156,9 @@ class _ConnectionManagerBase(object):
             mod_override_name = synapse_override["ModOverride"]
             logging.info("  * Overriding mod: %s", mod_override_name)
             override_helper = mod_override_name + "Helper"
-            ND.load_hoc(override_helper)
+            Nd.load_hoc(override_helper)
             # Test it is available
-            if not hasattr(ND.h, override_helper):
+            if not hasattr(Nd.h, override_helper):
                 raise RuntimeError("Override helper without expected template: " + override_helper)
 
         for tgid in gidvec:
@@ -327,6 +327,7 @@ class _ConnectionManagerBase(object):
     # -----------------------------------------------------------------------------
     def _find_connection(self, sgid, tgid, exact=True):
         """Finds a connection, given its source and destination gids.
+
         Returns:
             tuple: connection list and index. If the element doesnt exist, index depends on the
             exact flag: None if exact=True, otherwise the possible insertion index.
@@ -343,6 +344,7 @@ class _ConnectionManagerBase(object):
     # -
     def get_connection(self, sgid, tgid):
         """Retrieves a connection from the pre and post gids.
+
         Returns:
             Connection: A connection object if it exists. None otherwise.
         """
@@ -369,12 +371,12 @@ class _ConnectionManagerBase(object):
         return chain.from_iterable(self._connections_map.values())
 
     def get_connections(self, target_gid):
-        """Get an iterator over all the connections of a target cell
+        """Get an iterator over all the connections of a target cell.
         """
         return self._connections_map[target_gid]
 
     def get_synapse_params_gid(self, target_gid):
-        """Get an iterator over all the synapse parameters of a target cell connections
+        """Get an iterator over all the synapse parameters of a target cell connections.
         """
         conns = self._connections_map[target_gid]
         return chain.from_iterable(c.synapse_params for c in conns)
@@ -384,6 +386,7 @@ class _ConnectionManagerBase(object):
     # -----------------------------------------------------------------------------
     def delete(self, sgid, tgid):
         """Deletes a connection given source and target gids.
+
         This action can't be undone. To have the connection again it must be recreated.
         For temporarily ignoring a connection see disable()
         NOTE: Contrary to disable(), deleting a connection will effectively remove them

@@ -70,7 +70,8 @@ class CurrentSource(object):
         return self
 
     def add_segment(self, amp, duration, amp2=None):
-        """Sets a linear voltage for a certain duration
+        """Sets a linear voltage for a certain duration.
+
         If amp2 is None (default) then we have constant voltage
         """
         self._add_point(amp)
@@ -80,6 +81,7 @@ class CurrentSource(object):
 
     def add_pulse(self, max_amp, duration, **kw):
         """Adds a pulse.
+
         A pulse is characterized by raising from a base voltage, default 0, for a certain duration.
         """
         base_amp = kw.get("base_amp", self._base_amp)
@@ -90,6 +92,7 @@ class CurrentSource(object):
 
     def add_ramp(self, amp1, amp2, duration, **kw):
         """Adds a ramp.
+
         A ramp is characterized by a pulse whose peak changes uniformly during its length.
         """
         base_amp = kw.get("base_amp", self._base_amp)
@@ -100,12 +103,13 @@ class CurrentSource(object):
 
     def add_train(self, amp, frequency, pulse_duration, total_duration, **kw):
         """Stimulus with repeated pulse injections at a specified frequency.
+
         Args:
-          amp: the amplitude of a each pulse
-          frequency: determines the number of pulses per second (hz)
-          pulse_duration: the duration of a single pulse (peak time) (ms)
-          total_duration: duration of the whole train (ms)
-          base_amp: The base amplitude
+            amp: the amplitude of a each pulse
+            frequency: determines the number of pulses per second (hz)
+            pulse_duration: the duration of a single pulse (peak time) (ms)
+            total_duration: duration of the whole train (ms)
+            base_amp: The base amplitude
         """
         base_amp = kw.get("base_amp", self._base_amp)
         tau = 1000 // frequency
@@ -125,7 +129,7 @@ class CurrentSource(object):
         return self
 
     def add_sin(self, amp, total_duration, freq, step=0.025):
-        """ Builds a sinusoidal signal
+        """ Builds a sinusoidal signal.
         Args:
             amp: The max amplitude of the wave
             total_duration: Total duration, in ms
@@ -149,7 +153,8 @@ class CurrentSource(object):
 
     def add_pulses(self, pulse_duration, amp, *more_amps, **kw):
         """Appends a set of voltages without returning to zero
-           Each voltage is applied 'dur' time\
+           Each voltage is applied 'dur' time.
+
         Args:
           pulse_duration: The duration of each pulse
           amp: The amplitude of the first pulse
@@ -167,6 +172,8 @@ class CurrentSource(object):
         return self
 
     def add_noise(self, mean, variance, duration, dt=0.5):
+        """Adds a noise component to the signal.
+        """
         rng = self._rng or RNG()  # Creates a default RNG
         if not self._rng:
             logging.warn("Using a default RNG for noise generation")

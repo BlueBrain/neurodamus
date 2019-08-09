@@ -36,7 +36,7 @@ class RNGConfig(ConfigT):
         cls.global_init(**config_map)
 
 
-class Neuron_Stdrun_Defaults:
+class NeuronStdrunDefaults:
     """Neuron stdrun default (src: share/lib/hoc/stdrun.hoc"""
     using_cvode_ = 0
     stdrun_quiet = 0

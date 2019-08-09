@@ -1,10 +1,5 @@
-#!/usr/bin/env python
 """
-progressbar.py
-
-A Python module with a ProgressBar class which can be used to represent a
-task's progress in the form of a progress bar and it can be formated in a
-basic way.
+Classes to represent a task's progress in the form of a progress bar.
 
 Here is some basic usage with the default options:
 
@@ -46,6 +41,7 @@ from itertools import islice
 
 class Progress(object):
     """Progress class holds the progress information.
+
     It can be queried for the current progress, and overloads __repr__ for a simple display.
     It can be managed manually, via '+=' and -= operators, or automatically by consuming
     iterables.
@@ -112,6 +108,7 @@ class Progress(object):
     @classmethod
     def iter(cls, iterable, end=None, start=0):
         """Consumes (a slice of) an iterable.
+
         Args:
             iterable: the iterable to consume and monitor progress
             end: The end index. Alternatively None will automatically detect size,

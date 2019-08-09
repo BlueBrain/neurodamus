@@ -104,7 +104,7 @@ class MultiMap(collections_abc.Mapping):
 
 
 class GroupedMultiMap(MultiMap):
-    """ A Multimap which groups values by key in a list
+    """A Multimap which groups values by key in a list.
     """
     def __init__(self, np_keys, values, presorted=False):
         MultiMap.__init__(self, np_keys, values, presorted)

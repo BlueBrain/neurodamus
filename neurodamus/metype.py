@@ -6,7 +6,7 @@ from os import path as Path
 import logging
 from collections import defaultdict
 from .core.configuration import ConfigurationError
-from .core import NeuronDamus as Nrn
+from .core import NeurodamusCore as Nd
 from .utils.logging import log_verbose
 
 
@@ -44,19 +44,19 @@ class METype(object):
     def _instantiate_cell_v6(self, gid, etype_path, emodel, morpho_path, meinfos_v6):
         """Instantiates a SSCx v6 cell
         """
-        Nrn.load_hoc(Path.join(etype_path, emodel))
-        EModel = getattr(Nrn, emodel)
+        Nd.load_hoc(Path.join(etype_path, emodel))
+        EModel = getattr(Nd, emodel)
         self._cellref = EModel(gid, Path.join(morpho_path, "ascii"), meinfos_v6.morph_name + ".asc")
         self._ccell = self._cellref
-        self._synapses = Nrn.List()
-        self._syn_helper_list = Nrn.List()
+        self._synapses = Nd.List()
+        self._syn_helper_list = Nd.List()
         self._threshold_current = meinfos_v6.threshold_current
         self._hypAmp_current = meinfos_v6.holding_current
 
     def _instantiate_cell_v5(self, gid, emodel, morpho_path):
         """Instantiates a cell v5 or before. Asssumes emodel hoc templates are loaded
         """
-        EModel = getattr(Nrn, emodel)
+        EModel = getattr(Nd, emodel)
         self._ccell = ccell = EModel(gid, Path.join(morpho_path, "ascii"))
         self._cellref = ccell.CellRef
         self._synapses = ccell.CellRef.synlist
@@ -105,7 +105,7 @@ class METype(object):
 
         Returns: NetCon obj
         """
-        netcon = Nrn.NetCon(self.CellRef.soma[0](1)._ref_v, target_pp,
+        netcon = Nd.NetCon(self.CellRef.soma[0](1)._ref_v, target_pp,
                             sec=self.CellRef.soma[0])
         netcon.threshold = -30
         self._netcons.append(netcon)
@@ -117,7 +117,7 @@ class METype(object):
         Args:
             ion_seed: ion channel seed
         """
-        Nrn.execute1("re_init_rng(%d)" % ion_seed, self._ccell, 0)
+        Nd.execute1("re_init_rng(%d)" % ion_seed, self._ccell, 0)
 
 
 class METypeItem(object):

@@ -1,3 +1,0 @@
-[submodule "deps/neurodamus-core"]
-	path = deps/neurodamus-core
-	url = ssh://bbpcode.epfl.ch/sim/neurodamus-core
