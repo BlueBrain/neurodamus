@@ -4,8 +4,8 @@ They are then available as singletons objects in neurodamus.core package
 """
 from __future__ import absolute_import
 import logging
+import os.path
 from contextlib import contextmanager
-from os import path as Path
 from .configuration import NeuronStdrunDefaults
 from .configuration import GlobalConfig
 from ..utils import classproperty
@@ -31,25 +31,23 @@ class _Neuron(object):
         return cls._h or cls._init()
 
     @classmethod
-    def _init(cls):
+    def _init(cls, mpi=False):
         """Initializes the Neuron simulator.
         """
-        if cls._h is None:
-            cls.__cache = {}
-            if GlobalConfig.use_mpi:
-                pass
-                # Currently _init_mpi is based on MPI4Py which is problematic in bbp5
-                # Please start with nrniv -mpi -python
-                # _init_mpi()
-            from neuron import h
-            from neuron import nrn
-            cls._h = h
-            cls.Section = nrn.Section
-            cls.Segment = nrn.Segment
-            h.load_file("stdrun.hoc")
-            h("objref nil")
-            h.init()
-        return cls._h
+        if cls._h is not None:
+            return cls._h
+        if mpi:
+            GlobalConfig.set_mpi()
+        from neuron import h
+        from neuron import nrn
+        cls.__cache = {}
+        cls._h = h
+        cls.Section = nrn.Section
+        cls.Segment = nrn.Segment
+        h.load_file("stdrun.hoc")
+        h("objref nil")
+        h.init()
+        return h
 
     @classmethod
     def load_hoc(cls, mod_name):
@@ -119,12 +117,10 @@ class _Neuron(object):
         cache = self.__class__.__cache
         obj = cache.get(item)
         if obj is None:
-            obj = cache[item] = getattr(self.h, item)
+            obj = cache[item] = getattr(self._h, item)
         return obj
 
     def __setattr__(self, key, value):
-        if key.startswith("__"):
-            return None
         try:
             object.__setattr__(self, key, value)
         except AttributeError:
@@ -232,7 +228,7 @@ class MComplexLoadBalancer(object):
     """
     def __init__(self, force_regenerate=False):
         # Can we use an existing mcomplex.dat?
-        if force_regenerate or not Path.isfile("mcomplex.dat"):
+        if force_regenerate or not os.path.isfile("mcomplex.dat"):
             logging.info("Generating mcomplex.dat...")
             self._create_mcomplex()
         else:

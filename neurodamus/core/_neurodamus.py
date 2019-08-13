@@ -1,15 +1,13 @@
 from __future__ import absolute_import
-from os import path as Path
+import os
 import logging
 from ..utils import classproperty
-from ..utils.logging import setup_logging
+from ..utils.logging import setup_logging, log_verbose
 from .configuration import GlobalConfig
 from ._neuron import _Neuron
 from ._mpi import MPI
 
-LIB_PATH = Path.realpath(Path.join(Path.dirname(__file__), "../../../lib"))
-MOD_LIB = Path.join(LIB_PATH, "modlib", "libnrnmech.so")
-HOC_LIB = "neurodamus"  # neurodamus.hoc should be in HOC_LIBRARY_PATH.
+HOCLIB = "neurodamus"  # neurodamus.hoc should be in HOC_LIBRARY_PATH.
 LOG_FILENAME = "pydamus.log"
 
 
@@ -31,29 +29,43 @@ class NeurodamusCore(_Neuron):
 
     @classmethod
     def _init(cls):
-        _Neuron._init()  # if needed, sets cls._h
-        if cls._pc is None:
-            # logging.debug("Loading mods from: " + MOD_LIB)
-            # cls.load_dll(MOD_LIB)  # While py neuron doesnt support mpi init use "special"
-            logging.debug("Loading master Hoc: " + HOC_LIB)
-            cls.load_hoc(HOC_LIB)
-            # Additional libraries introduced in saveUpdate
-            cls.load_hoc("CompartmentMapping")
+        _Neuron._init(mpi=True)  # if needed, sets cls._h
+        if cls._pc is not None:
+            return
 
-            cls._pc = MPI.pc
+        # Load mods if not available
+        if not hasattr(cls._h, "SpikeWriter"):
+            cls._load_nrnmechlib()
 
-            # default logging (if set previously this wont have any effect)
-            if MPI.rank == 0:
-                open(LOG_FILENAME, "w").close()  # Truncate
-                MPI.barrier()
-                setup_logging(GlobalConfig.verbosity, LOG_FILENAME, rank=0)
-            else:
-                MPI.barrier()
-                setup_logging(0, LOG_FILENAME, MPI.rank)
-            logging.info("Neurodamus Mod & Hoc lib loaded.")
+        # Load main Hoc
+        cls.load_hoc(HOCLIB)
 
-            # Attempt to instantiate BBSaveState to early detect errors
-            cls.h.BBSaveState()
+        # Additional libraries introduced in saveUpdate
+        cls.load_hoc("CompartmentMapping")
+        # Attempt to instantiate BBSaveState to early detect errors
+        cls._h.BBSaveState()
+
+        cls._pc = MPI.pc
+
+        # default logging (if set previously this wont have any effect)
+        if MPI.rank == 0:
+            open(LOG_FILENAME, "w").close()  # Truncate
+            MPI.barrier()
+            setup_logging(GlobalConfig.verbosity, LOG_FILENAME, rank=0)
+        else:
+            MPI.barrier()
+            setup_logging(0, LOG_FILENAME, MPI.rank)
+
+        logging.info("Neurodamus Mod & Hoc lib loaded.")
+
+    @classmethod
+    def _load_nrnmechlib(cls):
+        mechlib = os.environ.get("NRNMECH_LIB_PATH")
+        assert mechlib is not None, "NRNMECH_LIB_PATH not found. Please load neurodamus-xxx."
+        modlib = os.path.join(os.path.dirname(mechlib),
+                              "libnrnmech_nd" + os.path.splitext(mechlib)[1])
+        log_verbose("Loading mods from: " + modlib)
+        cls.load_dll(modlib)
 
     @property
     def pc(self):

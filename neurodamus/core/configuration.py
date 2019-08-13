@@ -9,11 +9,14 @@ from neurodamus.utils import ConfigT
 
 class GlobalConfig:
     verbosity = 1
-    use_mpi = True
     debug_conn = os.getenv('ND_DEBUG_CONN', [])
     if debug_conn:
         debug_conn = [int(gid) for gid in os.getenv('ND_DEBUG_CONN', '').split(',')]
         verbosity = 3
+
+    @classmethod
+    def set_mpi(cls):
+        os.environ["NEURON_INIT_MPI"] = "1"
 
 
 class RNGConfig(ConfigT):

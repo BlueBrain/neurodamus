@@ -66,6 +66,8 @@ class Map(collections_abc.Mapping):
 
     @property
     def hoc_map(self):
+        """Returns the raw hoc map
+        """
         return self._hoc_map
 
     def as_dict(self, parse_strings=False):

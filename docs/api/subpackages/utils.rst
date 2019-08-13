@@ -9,6 +9,7 @@ neurodamus.utils.compat
 .. automodule:: neurodamus.utils.compat
    :members:
    :undoc-members:
+   :special-members:
 
    .. rubric:: Classes
 

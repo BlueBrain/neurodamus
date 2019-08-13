@@ -12,7 +12,7 @@ def neurodamus():
     """neurodamus
 
     Usage:
-        neurodamus <BlueConfig> [--verbose] [--debug]
+        neurodamus <BlueConfig> [options]
         neurodamus --help
 
     Options:
@@ -24,8 +24,5 @@ def neurodamus():
         GlobalConfig.verbosity = 3
     elif options["verbose"]:
         GlobalConfig.verbosity = 2
-    # Some .mods require MPI
-    # if options["no_mpi"]:
-    #    GlobalConfig.use_mpi = False
 
     Neurodamus(options["BlueConfig"]).run()
