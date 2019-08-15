@@ -55,7 +55,7 @@ def setup_package():
     maybe_test_runner = ['pytest-runner'] if "test" in sys.argv else []
 
     setup(
-        name='neurodamus',
+        name='neurodamus-py',
         version=__version__,
         packages=find_packages(exclude=["tests"]),
         install_requires=[

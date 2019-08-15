@@ -29,7 +29,11 @@ class NeurodamusCore(_Neuron):
 
     @classmethod
     def _init(cls):
-        _Neuron._init(mpi=True)  # if needed, sets cls._h
+        # Neurodamus will generally require MPI
+        # However if launched without, attempt
+        within_mpi = (os.environ.get("PMI_RANK") is not None
+                      or os.environ.get("OMPI_COMM_WORLD_RANK") is not None)
+        _Neuron._init(mpi=within_mpi)  # if needed, sets cls._h
         if cls._pc is not None:
             return
 
