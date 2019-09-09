@@ -19,7 +19,7 @@ begintemplate TargetParser
 objref targetList
 
 //public functions
-public init, open, targetList, getTarget, updateTargets, updateTargetList
+public init, open, targetList, getTarget, updateTargets, updateTargetList, printCellCounts
 
 //allow some nodes (i.e. node 1) to output messages to the console
 public isVerbose
@@ -37,11 +37,28 @@ proc init() {
 //------------------------------------------------------------------------------------------------------------
 
 /*!
+ * Counts total number of cells for every target and prints it if needed
+ */
+
+proc printCellCounts() { local targetIndex, subtargets localobj activeTarget
+    for targetIndex=0, targetList.count()-1 {
+        activeTarget = targetList.object(targetIndex)
+        subtargets = activeTarget.subtargets.count()
+        if( subtargets ) {
+            printf("  * Target %-10.10s %6d cells [%d subtargets]\n", activeTarget.name, activeTarget.getCellCount(), subtargets)
+        } else {
+            printf("  * Target %-10.10s %6d cells\n", activeTarget.name, activeTarget.getCellCount())
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
  * read the given file for targets and store them in this parser object until they are ready to
  * be passed to the TargetManager later in the simulation (after distribution/load balancing have completed)
  *
  * @param $s1 Target file name, to be opened and parsed.
- * @param $2 showCellCounts (default 0 - Dont)
  */
 proc open() { local nErrors localobj tFile, targetInstance
     strdef tstr, tstr1, typeString
@@ -49,11 +66,6 @@ proc open() { local nErrors localobj tFile, targetInstance
     tFile.ropen($s1)
     if( isVerbose ) {
         print "Reading target file ", $s1
-    }
-
-    showCellCounts = 0
-    if (numarg() > 1) {
-        showCellCounts = $2
     }
 
     nErrors = 0
@@ -187,9 +199,6 @@ func parseCellTargetContents() { local potentialGid, numberToken localobj tFile,
         tFile.scanstr(tstr1)
     }
 
-    if (isVerbose && showCellCounts) {
-        print "  * Target ", targetInstance.name, ": ", numberToken, "cells"
-    }
 
     validateTargetTermination(targetInstance.name, tstr1)
 

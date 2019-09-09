@@ -148,7 +148,7 @@ public cellExtraValues, targetExtraValues
 //! memberfunctions - see below for detailed information
 public evalType, isCellTarget, isSectionTarget, isCompartmentTarget, isSynapseTarget
 public update, getgid, gids, completegids, getCellExtraValues, getCellSubset, evaluateSynapses, getPointList, getCompletePointList
-public isDefined, isEmpty, completeContains, contains, localCount
+public isDefined, isEmpty, completeContains, contains, localCount, getCellCount
 
 //------------------------------------------------------------------------------------------------------------
 // Member functions
@@ -200,6 +200,8 @@ proc init() {
 
     //flag indicating that addressing functions (address*Points) should fill in nils
     completeMode = 0
+
+    hasCellsCounted = 0
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -321,6 +323,22 @@ proc update() { local gid, cellIndex, binsrch_low, binsrch_high, binsrch_mid  lo
 *****************************************************************/
 func localCount() {
 	return localCellsMap.size()
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Count the total number of cells of a target (cells and subtargets)
+ */
+func getCellCount() { local subtargetIndex
+    if (!hasCellsCounted) {
+        cellCount = gidMembers.size()
+        for subtargetIndex=0, subtargets.count()-1 {
+            cellCount += subtargets.o(subtargetIndex).getCellCount()
+        }
+        hasCellsCounted = 1
+    }
+    return cellCount
 }
 
 //------------------------------------------------------------------------------------------------------------
