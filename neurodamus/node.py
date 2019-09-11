@@ -215,7 +215,10 @@ class Node:
 
         if run_conf.exists("TargetFile"):
             user_target = self._find_config_file(run_conf.get("TargetFile").s)
-            self._target_parser.open(user_target, 1)
+            self._target_parser.open(user_target)
+
+        if MPI.rank == 0:
+            self._target_parser.printCellCounts()
 
     # -
     @mpi_no_errors

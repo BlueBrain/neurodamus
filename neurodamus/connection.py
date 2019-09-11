@@ -359,7 +359,7 @@ class Connection(object):
         else:
             helper_cls = Nd.GABAABHelper if params_obj.synType < 100 \
                 else Nd.AMPANMDAHelper  # excitatory
-            add_params = ()
+            add_params = (0, 0)
 
         syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, *add_params)
         cell.CellRef.synHelperList.append(syn_helper)
