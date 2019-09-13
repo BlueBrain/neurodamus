@@ -319,7 +319,7 @@ CONSTRUCTOR { : string filepath
 VERBATIM
 #ifndef DISABLE_SYNTOOL
     ReaderState rs = STATE_RESET;
-    if( !ifarg(1) ) {
+    if (!ifarg(1)) {
         getStatePtr() = NULL;
         return;
     }
@@ -331,6 +331,7 @@ VERBATIM
 
     if (ifarg(2)) {
         verboseLevel = *getarg(2);
+        syn_set_verbose(verboseLevel);
     }
 
     // normal case - open a file and be ready to load data as needed
