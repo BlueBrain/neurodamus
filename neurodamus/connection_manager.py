@@ -4,7 +4,9 @@ Main module for handling and instantiating synaptical connections and gap-juncti
 from __future__ import absolute_import, print_function
 import logging
 from itertools import chain
+from collections import defaultdict
 from os import path as Path
+
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig
@@ -37,8 +39,13 @@ class _ConnectionManagerBase(object):
         """
         self._target_manager = target_manager
         self._cell_distibutor = cell_distributor
+
+        # Multipopulation support
+        self._population_connections = defaultdict(OrderedDefaultDict)
+        self._population_ids = None
+
         # Connections indexed by post-gid, then ordered by pre-gid
-        self._connections_map = OrderedDefaultDict()
+        self._connections_map = None  # initialized by select_population
         self._disabled_conns = OrderedDefaultDict()
         self._synapse_reader = None
         self._local_gids = cell_distributor.getGidListForProcessor()
@@ -58,6 +65,14 @@ class _ConnectionManagerBase(object):
         logging.info("Opening Synapse file %s", synapse_file)
         self._synapse_reader = SynapseReader.create(
             synapse_file, self.CONNECTIONS_TYPE, self._local_gids, n_synapse_files)
+        self.select_populations(0, 0)
+
+    # -
+    def select_populations(self, src_id, dst_id):
+        """Set different populations IDs for different seeding with multiple projections
+        """
+        self._population_ids = (src_id, dst_id)
+        self._connections_map = self._population_connections["{}-{}".format(*self._population_ids)]
 
     # -
     def connect_all(self, gidvec, weight_factor=1):
@@ -70,6 +85,7 @@ class _ConnectionManagerBase(object):
         logging.info("Creating connections from circuit file")
         total_created_conns = 0
         _dbg_conn = GlobalConfig.debug_conn
+        adv_options = {'synapse_mode': self._synapse_mode}
 
         for tgid in ProgressBar.iter(gidvec):
             synapses_params = self._synapse_reader.get_synapse_parameters(tgid)
@@ -93,8 +109,8 @@ class _ConnectionManagerBase(object):
                 # If the nrn.h5 file changes in the future we must update the code accordingly
 
                 if cur_conn is None or cur_conn.sgid != sgid:
-                    cur_conn = Connection(
-                        sgid, tgid, weight_factor, None, STDPMode.NO_STDP, 0, self._synapse_mode)
+                    conn_params = (weight_factor, 0)  + self._population_ids
+                    cur_conn = Connection(sgid, tgid, *conn_params, **adv_options)
                     # Store immediately, even though we still append synapses
                     self.store_connection(cur_conn)
                     gid_created_conns += 1
@@ -129,7 +145,7 @@ class _ConnectionManagerBase(object):
             gidvec: Vector of gids on the local cpu
             weight_factor: (float) Scaling weight to apply to the synapses. Default: dont change
             configuration: (str) SynapseConfiguration Default: None
-            stdp_mode: Which STDP to use. Default: None (=TDPoff for creating, wont change existing)
+            stdp_mode: Which STDP to use. Default: None (STDPoff for creating, wont change existing)
             spont_mini_rate: (float) For spontaneous minis trigger rate. Default: None
             synapse_types: (tuple) To restrict which synapse types are created. Default: None
             synapse_override: An alternative point process configuration.
@@ -146,6 +162,13 @@ class _ConnectionManagerBase(object):
         total_gids_group = 0
         total_created_conns = 0
         total_configd_conns = 0
+        adv_options = {k: v for k, v in {
+            'synapse_mode': self._synapse_mode,
+            'configuration': configuration,
+            'stdp_mode': stdp,
+            'synapse_override': synapse_override
+        }.items() if v is not None}
+
         _dbg_conn = GlobalConfig.debug_conn
 
         if synapses_restrict and not isinstance(synapse_types, (tuple, list)):
@@ -219,9 +242,8 @@ class _ConnectionManagerBase(object):
                             if spont_mini_rate is None:
                                 # Disable spont minis if rates never specified
                                 spont_mini_rate = .0
-                            pend_conn = Connection(
-                                sgid, tgid, weight_factor, configuration, stdp, spont_mini_rate,
-                                self._synapse_mode, synapse_override)
+                            conn_params = (weight_factor, spont_mini_rate) + self._population_ids
+                            pend_conn = Connection(sgid, tgid, *conn_params, **adv_options)
                             gid_created_conns += 1
 
                 # if we have a pending connection we place the current synapse(s)

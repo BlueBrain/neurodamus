@@ -10,6 +10,7 @@ import operator
 import os
 from os import path as Path
 from collections import namedtuple
+
 from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, ConfigurationError
@@ -359,6 +360,10 @@ class Node:
 
                 nrn_path = self._find_projection_file(projection)
                 self._synapse_manager.open_synapse_file(nrn_path, n_synapse_files)
+
+                # Temporarily patch for population IDs in BlueConfig
+                if projection.exists("PopulationID"):
+                    self._synapse_manager.select_populations(projection.valueOf("PopulationID"), 0)
 
                 # Go ahead and make all the Projection connections
                 self._synapse_manager.connect_all(self.gidvec)

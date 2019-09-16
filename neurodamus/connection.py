@@ -86,7 +86,7 @@ class Connection(object):
     A Connection object serves as a container for synapses formed from a presynaptic and a
     postsynaptic gid, including Points where those synapses are placed (stored in TPointList)
     """
-    __slots__ = ("sgid", "tgid", "weight_factor", "__dict__")
+    __slots__ = ("sgid", "tgid", "_conn_params", "__dict__")
     _AMPAMDA_Helper = None
     _GABAAB_Helper = None
     ConnUtils = None  # Collection of hoc routines to speedup execution
@@ -102,8 +102,10 @@ class Connection(object):
         return h
 
     # -
-    def __init__(self, sgid, tgid, weight_factor=1.0, configuration=None, stdp=None,
-                 minis_spont_rate=.0, synapse_mode=SynapseMode.DUAL_SYNS, synapse_override=None):
+    def __init__(self, sgid, tgid,
+                 weight_factor=1.0, minis_spont_rate=.0, src_pop_id=0, dst_pop_id=0,
+                 configuration=None, stdp_mode=None, synapse_mode=SynapseMode.DUAL_SYNS,
+                 synapse_override=None):
         """Creates a connection object
 
         Args:
@@ -121,12 +123,15 @@ class Connection(object):
         h = self._init_hmod()
         self.sgid = sgid
         self.tgid = tgid
-        self.weight_factor = weight_factor
+        self._conn_params = np.recarray(1, dtype=dict(
+            names=['weight_factor', 'minis_spont_rate', 'src_pop_id', 'dst_pop_id'],
+            formats=['f8', 'f8', 'i4', 'i4']
+        ))[0]
+        self._conn_params.put(0, (weight_factor, minis_spont_rate, src_pop_id, dst_pop_id))
         self._synapse_mode = synapse_mode
         self._synapse_override = synapse_override
         self._done_replay_register = False
-        self._stdp = STDPMode.validate(stdp)
-        self._minis_spont_rate = minis_spont_rate
+        self._stdp = STDPMode.validate(stdp_mode)
         self._synapse_points = h.TPointList(tgid, 1)
         self._synapse_params = []
         self._synapse_ids = compat.Vector("i")
@@ -146,12 +151,13 @@ class Connection(object):
     # read-only properties
     synapse_params = property(lambda self: self._synapse_params)
     synapse_mode = property(lambda self: self._synapse_mode)
-
-    # Read-write
-    def _set_stdp(self, stdp):
-        self._stdp = STDPMode.validate(stdp)
-
-    stdp = property(lambda self: self._stdp, _set_stdp)
+    # R/W properties
+    weight_factor = property(
+        lambda self: self._conn_params.weight_factor,
+        lambda self, weight: setattr(self._conn_params, 'weight_factor', weight))
+    stdp = property(
+        lambda self: self._stdp,
+        lambda self, stdp: setattr(self, '_stdp', STDPMode.validate(stdp)))
 
     def override_synapse(self, synapse_conf):
         self._synapse_override = synapse_conf
@@ -248,7 +254,7 @@ class Connection(object):
                                      syn_params.delay, syn_params.weight)
             nc = pnm.nclist.object(nc_index)  # Netcon object
             nc.delay = syn_params.delay
-            nc.weight[0] = syn_params.weight * self.weight_factor
+            nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
             nc.threshold = -30
             self._netcons.append(nc)
 
@@ -284,7 +290,7 @@ class Connection(object):
                 wa_netcon_pre.append(nc_wa_pre)
                 wa_netcon_post.append(nc_wa_post)
 
-            if self._minis_spont_rate > .0:
+            if self._conn_params.minis_spont_rate > .0:
                 ips = Nd.InhPoissonStim(x)
                 # netconMini = pnm.pc.gid_connect(ips, finalgid)
 
@@ -294,7 +300,7 @@ class Connection(object):
                 # TODO: better solution here to get the desired behaviour during
                 # delayed connection blocks
                 # Right now spontaneous minis should be unaffected by delays
-                netcon_m.weight[0] = syn_params.weight * self.weight_factor
+                netcon_m.weight[0] = syn_params.weight * self._conn_params.weight_factor
                 self._minis_netcons.append(netcon_m)
 
                 if rng_info.getRNGMode() == rng_info.RANDOM123:
@@ -331,7 +337,7 @@ class Connection(object):
                 self._minis_RNGs.append(rate_vec)
 
                 # set the rate of the ips
-                rate_vec.x[0] = self._minis_spont_rate
+                rate_vec.x[0] = self._conn_params.minis_spont_rate
                 ips.setTbins(tbins_vec)
                 ips.setRate(rate_vec)
 
@@ -359,7 +365,7 @@ class Connection(object):
         else:
             helper_cls = Nd.GABAABHelper if params_obj.synType < 100 \
                 else Nd.AMPANMDAHelper  # excitatory
-            add_params = (0, 0)
+            add_params = (self._conn_params.src_pop_id, self._conn_params.dst_pop_id)
 
         syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, *add_params)
         cell.CellRef.synHelperList.append(syn_helper)
@@ -469,7 +475,7 @@ class Connection(object):
         for i, (syn_i, sc) in enumerate(self.valid_sections):
             syn_params = self._synapse_params[syn_i]
             nc = Nd.NetCon(vstim, self._synapses[i], 10, syn_params.delay, syn_params.weight)
-            nc.weight[0] = syn_params.weight * self.weight_factor
+            nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
             self._replay_netcons.append(nc)
         return hoc_tvec.size()
 

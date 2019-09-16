@@ -78,7 +78,7 @@ class METype(object):
 
     def getHypAmp(self):
         if self._hypAmp_current is None:
-            logging.warning("EModel %s doesnt define HypAmp current" % self._emodel_name)
+            logging.warning("EModel %s doesnt define HypAmp current", self._emodel_name)
             return 0
         return self._hypAmp_current
 
@@ -106,7 +106,7 @@ class METype(object):
         Returns: NetCon obj
         """
         netcon = Nd.NetCon(self.CellRef.soma[0](1)._ref_v, target_pp,
-                            sec=self.CellRef.soma[0])
+                           sec=self.CellRef.soma[0])
         netcon.threshold = -30
         self._netcons.append(netcon)
         return netcon
