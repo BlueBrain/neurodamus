@@ -40,14 +40,19 @@ proc init() {
  * Counts total number of cells for every target and prints it if needed
  */
 
-proc printCellCounts() { local targetIndex, subtargets localobj activeTarget
+proc printCellCounts() { local targetIndex, subtargets localobj activeTarget, strf
+    strf = new StringFunctions()
     for targetIndex=0, targetList.count()-1 {
         activeTarget = targetList.object(targetIndex)
         subtargets = activeTarget.subtargets.count()
+        // Skip non-relevant and avoid 1000s of minicolumn targets
+        if( (activeTarget.gidMembers.size() == 0 && subtargets < 2) || strf.substr(activeTarget.name, "MiniColumn_") == 0 ) {
+            continue
+        }
         if( subtargets ) {
-            printf("  * Target %-10.10s %6d cells [%d subtargets]\n", activeTarget.name, activeTarget.getCellCount(), subtargets)
+            printf("  * Target %-15.15s %6d cells [%d subtargets]\n", activeTarget.name, activeTarget.getCellCount(), subtargets)
         } else {
-            printf("  * Target %-10.10s %6d cells\n", activeTarget.name, activeTarget.getCellCount())
+            printf("  * Target %-15.15s %6d cells\n", activeTarget.name, activeTarget.getCellCount())
         }
     }
 }
@@ -76,52 +81,53 @@ proc open() { local nErrors localobj tFile, targetInstance
             print "Error : Could not open target file :[", $s1,"]"
         }
         quit()
-    }else {
-        //Read till end of file
-        while(tFile.gets(tstr) >= 0){
+    }
+
+    //Read till end of file
+    while(tFile.gets(tstr) >= 0){
+        sscanf(tstr, "%s",tstr1)
+        if( 0 == strcmp (tstr1, "Target")) {  //have reached a target block
+            targetInstance = new Target()
+            sscanf(tstr, "%*s%s%s", typeString, targetInstance.name )  //extract target type and name
+
+            //if this target was seen before (e.g. used as subtarget), a reference already exists in the list and needs to be populated;
+            // otherwise the new reference we just made will be inserted into the list and given back directly
+            targetInstance = updateTargetList( targetInstance )
+
+            //make sure that contents for this target haven't been seen before
+            if( targetInstance.isDefined ) {
+                if( isVerbose != 0 ) {
+                    print "Error.  Multiple definitions for Target ", targetInstance.name
+                }
+                nErrors = nErrors + 1
+            }
+
+            targetInstance.type = typeString
+
+            targetInstance.evalType()
+
+            //target contents
+            tFile.gets(tstr) //Grab '{'
             sscanf(tstr, "%s",tstr1)
-            if( 0 == strcmp (tstr1, "Target")) {  //have reached a target block
-                targetInstance = new Target()
-                sscanf(tstr, "%*s%s%s", typeString, targetInstance.name )  //extract target type and name
+            if( targetInstance.isCellTarget() ) {  //only need to parse into cellnames and target names
+                targetInstance.isEmpty = parseCellTargetContents( tFile, targetInstance )
+            } else {
+                targetInstance.isEmpty = parseOtherTargetContents( tFile, targetInstance )
+            }
 
-                //if this target was seen before (e.g. used as subtarget), a reference already exists in the list and needs to be populated;
-                // otherwise the new reference we just made will be inserted into the list and given back directly
-                targetInstance = updateTargetList( targetInstance )
+            //note that the closing '}' was grabbed during whichever parse*Contents function call
+            targetInstance.isDefined = 1
 
-                //make sure that contents for this target haven't been seen before
-                if( targetInstance.isDefined ) {
-                    if( isVerbose != 0 ) {
-                        print "Error.  Multiple definitions for Target ", targetInstance.name
-                    }
-                    nErrors = nErrors + 1
-                }
-
-                targetInstance.type = typeString
-
-                targetInstance.evalType()
-
-                //target contents
-                tFile.gets(tstr) //Grab '{'
-                sscanf(tstr, "%s",tstr1)
-                if( targetInstance.isCellTarget() ) {  //only need to parse into cellnames and target names
-                    targetInstance.isEmpty = parseCellTargetContents( tFile, targetInstance )
-                } else {
-                    targetInstance.isEmpty = parseOtherTargetContents( tFile, targetInstance )
-                }
-
-                //note that the closing '}' was grabbed during whichever parse*Contents function call
-                targetInstance.isDefined = 1
-
-                //Display msg to default output if target instance is empty
-                if (targetInstance.isEmpty && isVerbose) {
-                    print "Warning: Following target is empty: ", targetInstance.name
-                }
+            //Display msg to default output if target instance is empty
+            if (targetInstance.isEmpty && isVerbose) {
+                print "Warning: Following target is empty: ", targetInstance.name
             }
         }
-        tFile.close()
-        if (nErrors > 0) {
-            quit()
-        }
+    }
+
+    tFile.close()
+    if (nErrors > 0) {
+        quit()
     }
 }
 

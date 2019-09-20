@@ -99,7 +99,7 @@ endtemplate SynReaderSynTool
 
 begintemplate SynReaderHdf5
 
-external timeit, prtime, timeit_init, timeit_setVerbose, timeit_register, timeit_start, timeit_add
+external timeit, timeit_setVerbose, timeit_register, timeit_start, timeit_add
 
 public loadSynapseParameters, setMaskReader, dbg
 
