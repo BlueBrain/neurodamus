@@ -49,8 +49,7 @@ class Node:
                 if self._simulator_conf.coreNeuronUsed() else None
 
             # BinReportHelper required for Save-Restore
-            self._binreport_helper = Nd.BinReportHelper(Nd.dt)
-            self._t0, self._restore_src = self.check_resume(self._run_conf, self._binreport_helper)
+            self._binreport_helper = Nd.BinReportHelper(Nd.dt, not self._corenrn_conf)
             self._buffer_time = 25 * self._run_conf.get("FlushBufferScalar", 1)
             self._core_replay_file = ''
             self._target_parser = None
@@ -130,18 +129,14 @@ class Node:
         return config_parser
 
     # -
-    @staticmethod
-    def check_resume(run_conf, binreport_helper):
-        if "Restore" not in run_conf:
-            return .0, None
-
+    def check_resume(self):
+        """Checks run_config for Restore info and sets simulation accordingly"""
+        if "Restore" not in self._run_conf:
+            return
         _ = Nd.BBSaveState()
-        restore_src = run_conf.get("Restore")
-        binreport_helper.restoretime(restore_src)
-        t0 = Nd.t
-        Nd.tstop = Nd.tstop + t0
-        logging.info("RESTORE: Recovered previous time: %f ms", t0)
-        return t0, restore_src
+        restore_path = self._run_conf["Restore"]
+        self._binreport_helper.restoretime(restore_path)
+        logging.info("RESTORE: Recovered previous time: %.3f ms", Nd.t)
 
     # -
     @mpi_no_errors
@@ -556,22 +551,24 @@ class Node:
             target_name = inject.get("Target").s
             stim_name = inject.get("Stimulus").s
             stim = stim_dict.get(stim_name)
+            stim_map = compat.Map(stim).as_dict(True)
 
             # check the pattern for special cases that are handled here.
-            if stim.get("Pattern").s == "SynapseReplay":
+            if stim_map["Pattern"] == "SynapseReplay":
                 replay_count = replay_count + 1
                 # Since saveUpdate merge there are two delay concepts:
                 #  - shift: times are shifted (previous delay)
                 #  - delay: Spike replays are suppressed until a certain time
-                tshift = 0 if stim.exists("Timing") and stim.get("Timing").s == "Absolute" else Nd.t
-                delay = stim.valueOf("Delay") if stim.exists("Delay") else 0
+                tshift = 0 if stim_map.get("Timing") == "Absolute" else Nd.t
+                delay = stim_map.get("Delay", .0)
                 logging.info(" * [SYN REPLAY] %s (%s -> %s, time shift: %d, delay: %d)",
                              name, stim_name, target_name, tshift, delay)
-                self._enable_replay(target_name, stim, replay_count, tshift, delay)
+                self._enable_replay(target_name, stim_map, replay_count, tshift, delay)
 
             elif not only_replay:
                 # all other patterns the stim manager will interpret
-                logging.info(" * [STIM] %s (%s -> %s)", name, stim_name, target_name)
+                logging.info(" * [STIM] %s: %s (%s) -> %s",
+                             name, stim_name, stim_map["Pattern"], target_name)
                 self._stim_manager.interpret(target_name, stim)
 
     # -
@@ -591,11 +588,11 @@ class Node:
         self._elec_manager = Nd.ElectrodeManager(electrodes_path_o, conf.parsedElectrodes)
 
     # -
-    def _enable_replay(self, target_name, stim, replay_count, tshift=.0, delay=.0):
-        spike_filepath = self._find_config_file(stim.get("SpikeFile").s)
+    def _enable_replay(self, target_name, stim_conf, replay_count, tshift=.0, delay=.0):
+        spike_filepath = self._find_config_file(stim_conf["SpikeFile"])
         spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
 
-        # For CoreNeuron, we should put the replays into a single out file to be used as PatternStim
+        # For CoreNeuron, we should put the replays into a single file to be used as PatternStim
         if self._corenrn_conf:
             # Initialize file if non-existing
             if replay_count == 1 or not self._core_replay_file:
@@ -633,8 +630,9 @@ class Node:
         log_stage("Reports Enabling")
         n_errors = 0
         cur_t = Nd.t
-        cur_t == 0 or logging.info("Restoring sim at t=%f (report times are absolute!)", cur_t)
-        sim_end = self._run_conf["Duration"] + cur_t
+        if cur_t:
+            logging.info("Restoring sim at t=%f (report times are absolute!)", cur_t)
+        sim_end = self._run_conf["Duration"]
         reports_conf = compat.Map(self._config_parser.parsedReports)
         self._report_list = []
 
@@ -850,6 +848,11 @@ class Node:
             self._stim_manager.saveStatePreparation(bbss)
             bbss.ignore(self._binreport_helper)
             self._binreport_helper.restorestate(restore_path)
+            self._stim_manager.reevent()
+            bbss.vector_play_init()
+
+            if self._pr_cell_gid:
+                self._pnm.pc.prcellstate(self._pr_cell_gid, "pydamus_t{}".format(Nd.t))
 
         # increase timeout by 10x
         self._pnm.pc.timeout(200)
@@ -888,7 +891,8 @@ class Node:
     # -
     @return_neuron_timings
     def _run_neuron(self):
-        _ = Nd.ShowProgress(Nd.cvode, MPI.rank)  # NOQA (required to keep obj alive)
+        progress = Nd.ShowProgress(Nd.cvode, MPI.rank)
+        progress.updateProgress()
         self.solve()
         logging.info("Simulation finished.")
 
@@ -954,14 +958,19 @@ class Node:
                                     "Setting SaveTime to tstop.")
 
             def event_f():
-                logging.info("\rSaving state (t=%f)", tsave)
+                logging.info("Saving State... (t=%f)", tsave)
                 bbss = Nd.BBSaveState()
+                MPI.barrier()
                 self._stim_manager.saveStatePreparation(bbss)
                 bbss.ignore(self._binreport_helper)
+                log_verbose("SaveState Initialization Done")
+
                 self._binreport_helper.pre_savestate(self._run_conf["Save"])
+
                 # If event at the end of the sim we can actually clearModel() before savestate()
                 if not has_save_time:
-                    self.clearModel()
+                    self.clear_model()
+
                 self._binreport_helper.savestate()
 
             events.append((tsave, event_f))
@@ -1171,6 +1180,9 @@ class Neurodamus(Node):
         # Create connections
         self.create_synapses()
         self.create_gap_junctions()
+
+        # Init resume if requested
+        self.check_resume()
 
         self.enable_stimulus()
         self.enable_modifications()

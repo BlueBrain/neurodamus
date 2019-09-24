@@ -71,11 +71,9 @@ class STDPMode:
 
     @classmethod
     def validate(cls, value):
-        if value is None:
+        if value in (None, cls.NO_STDP):
             return cls.NO_STDP
-        if value not in cls._str_val.values():
-            raise ValueError("Invalid STDP value: " + value)
-        return value
+        raise Exception("Starting 2019-01 Stdp no longer supported")
 
 
 # -------------------------------------------------------------------------------------
@@ -155,6 +153,9 @@ class Connection(object):
     weight_factor = property(
         lambda self: self._conn_params.weight_factor,
         lambda self, weight: setattr(self._conn_params, 'weight_factor', weight))
+    minis_spont_rate = property(
+        lambda self: self._conn_params.minis_spont_rate,
+        lambda self, rate: setattr(self._conn_params, 'minis_spont_rate', rate))
     stdp = property(
         lambda self: self._stdp,
         lambda self, stdp: setattr(self, '_stdp', STDPMode.validate(stdp)))
@@ -217,13 +218,11 @@ class Connection(object):
 
         """
         target_spgid = spgid or self.tgid
-        weight_adjusts = []
-        wa_netcon_pre = []
-        wa_netcon_post = []
         rng_info = Nd.RNGSettings()
         tbins_vec = Nd.Vector(1)
         tbins_vec.x[0] = 0.0
         rate_vec = Nd.Vector(1)
+        bbss = Nd.BBSaveState()
 
         # Initialize member lists
         self._synapses = compat.List()  # Used by ConnUtils
@@ -257,38 +256,6 @@ class Connection(object):
             nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
             nc.threshold = -30
             self._netcons.append(nc)
-
-            # If the config has UseSTDP, do STDP stuff (can add more options later
-            #   here and in Connection.init). Instantiates the appropriate StdpWA mod file
-            if self._stdp:
-                if self._stdp == STDPMode.DOUBLET_STDP:
-                    weight_adjuster = Nd.StdpWADoublet(x)
-                elif self._stdp == STDPMode.TRIPLET_STDP:
-                    weight_adjuster = Nd.StdpWATriplet(x)
-                else:
-                    raise ValueError("Invalid STDP config")
-
-                # The synapse ID is useful for synapse reporting
-                weight_adjuster.synapseID = syn_obj.synapseID
-
-                # Create netcons for the pre and post synaptic cells
-                #   with weights of 1 and -1, respectively
-                nc_wa_pre = pnm.pc.gid_connect(self.sgid, weight_adjuster)
-                nc_wa_pre.threshold = -30
-                nc_wa_pre.weight[0] = 1
-                nc_wa_pre.delay = syn_params.delay
-
-                nc_wa_post = pnm.pc.gid_connect(target_spgid, weight_adjuster)
-                nc_wa_post.threshold = -30
-                nc_wa_post.weight[0] = -1
-                nc_wa_post.delay = syn_params.delay
-
-                # Set the pointer to the synapse netcon weight
-                Nd.setpointer(nc._ref_weight, "wsyn", weight_adjuster)
-
-                weight_adjusts.append(weight_adjuster)
-                wa_netcon_pre.append(nc_wa_pre)
-                wa_netcon_post.append(nc_wa_post)
 
             if self._conn_params.minis_spont_rate > .0:
                 ips = Nd.InhPoissonStim(x)
@@ -340,6 +307,7 @@ class Connection(object):
                 rate_vec.x[0] = self._conn_params.minis_spont_rate
                 ips.setTbins(tbins_vec)
                 ips.setRate(rate_vec)
+                bbss.ignore(ips)
 
         # Apply configurations to the synapses
         self._configure_synapses()

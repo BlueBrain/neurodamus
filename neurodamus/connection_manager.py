@@ -228,7 +228,7 @@ class _ConnectionManagerBase(object):
                         if configuration is not None:
                             cur_conn.add_synapse_configuration(configuration)
                         if spont_mini_rate is not None:
-                            cur_conn._minis_spont_rate = spont_mini_rate
+                            cur_conn.minis_spont_rate = spont_mini_rate
                         if stdp is not None:
                             cur_conn.stdp = stdp
                         if synapse_override is not None:
@@ -236,13 +236,10 @@ class _ConnectionManagerBase(object):
                         gid_configd_conns += 1
                     else:
                         if creation_mode:
-                            if weight_factor is None:
-                                logging.warning("Conn %d->%d. Invalid weight_factor. Assuming 1.0",
-                                                sgid, tgid)
-                            if spont_mini_rate is None:
-                                # Disable spont minis if rates never specified
-                                spont_mini_rate = .0
-                            conn_params = (weight_factor, spont_mini_rate) + self._population_ids
+                            conn_params = (
+                                weight_factor if weight_factor is not None else 1.0,
+                                spont_mini_rate if spont_mini_rate is not None else .0
+                            ) + self._population_ids
                             pend_conn = Connection(sgid, tgid, *conn_params, **adv_options)
                             gid_created_conns += 1
 
@@ -387,10 +384,11 @@ class _ConnectionManagerBase(object):
             return
         cell_conns.insert(pos, conn)
 
-    def all_connections(self):
+    def all_connections(self, conn_map=None):
         """Get an iterator over all the connections.
         """
-        return chain.from_iterable(self._connections_map.values())
+        conn_map = conn_map or self._connections_map
+        return chain.from_iterable(conn_map.values())
 
     def get_connections(self, target_gid):
         """Get an iterator over all the connections of a target cell.
