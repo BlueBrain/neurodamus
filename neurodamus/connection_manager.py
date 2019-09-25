@@ -5,11 +5,11 @@ from __future__ import absolute_import, print_function
 import logging
 from itertools import chain
 from collections import defaultdict
-from os import path as Path
+from os import path as ospath
 
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core import NeurodamusCore as Nd
-from .core.configuration import GlobalConfig
+from .core.configuration import GlobalConfig, ConfigurationError
 from .connection import Connection, SynapseMode, STDPMode
 from .synapse_reader import SynapseReader
 from .utils import compat, bin_search, OrderedDefaultDict
@@ -50,10 +50,11 @@ class _ConnectionManagerBase(object):
         self._synapse_reader = None
         self._local_gids = cell_distributor.getGidListForProcessor()
 
-        circuit_file = self._find_circuit_file(circuit_path)
-        assert circuit_file, "Circuit path doesnt contain valid circuit files"
+        if ospath.isdir(circuit_path):
+            circuit_path = self._find_circuit_file(circuit_path)
+        assert ospath.isfile(circuit_path), "Circuit path doesnt contain valid circuit files"
 
-        self.open_synapse_file(circuit_file, n_synapse_files)
+        self.open_synapse_file(circuit_path, n_synapse_files)
 
         if GlobalConfig.debug_conn:
             logging.info("Debugging activated for cell/conn %s", GlobalConfig.debug_conn)
@@ -500,25 +501,21 @@ class _ConnectionManagerBase(object):
     @classmethod
     def _find_circuit_file(cls, location):
         """Attempts to find a circuit file given any directory or file, and reader"""
-        if Path.isfile(location):
-            if SynapseReader.is_syntool_enabled():
-                return location
-            return cls._find_fallback_file(location)
-
-        fnames = cls.CIRCUIT_FILENAMES if SynapseReader.is_syntool_enabled() \
-            else [cls.CIRCUIT_FILENAMES[-1]]
-        for fname in fnames:
-            fullname = Path.join(location, fname)
-            if Path.isfile(fullname):
-                return fullname
-        else:
-            return None
-
-    @classmethod
-    def _find_fallback_file(cls, location):
-        location = location if Path.isdir(location) else Path.dirname(location)
-        fullname = Path.join(location, cls.CIRCUIT_FILENAMES[-1])
-        return fullname if Path.isfile(fullname) else None
+        compat_file = cls.CIRCUIT_FILENAMES[-1]  # last is the nrn.h5 format
+        files_avail = [f for f in cls.CIRCUIT_FILENAMES
+                       if ospath.isfile(ospath.join(location, f))]
+        if not files_avail:
+            raise ConfigurationError(
+                "nrnPath is not a file and could not find any synapse file within.")
+        if not SynapseReader.is_syntool_enabled() and compat_file not in files_avail:
+            raise ConfigurationError(
+                "Found synapse file requires synapsetool, which is not available")
+        if len(files_avail) > 1:
+            logging.warning("DEPRECATION: Found several synapse file formats in nrnPath. "
+                            "Auto-select is deprecated and will be removed")
+            if not SynapseReader.is_syntool_enabled():
+                files_avail[0] = compat_file
+        return ospath.join(location, files_avail[0])
 
 
 # ################################################################################################
@@ -537,7 +534,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
     Once all synapses are preped with final weights, the netcons can be created.
     """
 
-    CIRCUIT_FILENAMES = ('circuit.sonata', 'circuit.syn2', 'nrn.h5')
+    CIRCUIT_FILENAMES = ('edges.sonata', 'edges.h5', 'circuit.syn2', 'nrn.h5')
     CONNECTIONS_TYPE = SynapseReader.SYNAPSES
 
     def __init__(self, circuit_path, target_manager, cell_dist, n_synapse_files, synapse_mode=None):
@@ -652,7 +649,7 @@ class GapJunctionManager(_ConnectionManagerBase):
 
         log_verbose("Computing gap-junction offsets from gjinfo.txt")
         self._gj_offsets = compat.Vector("I")
-        gjfname = Path.join(circuit_path, "gjinfo.txt")
+        gjfname = ospath.join(circuit_path, "gjinfo.txt")
         gj_sum = 0
 
         for line in open(gjfname):

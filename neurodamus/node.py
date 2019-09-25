@@ -8,7 +8,7 @@ import logging
 import math
 import operator
 import os
-from os import path as Path
+from os import path as ospath
 from collections import namedtuple
 
 from .core import MPI, mpi_no_errors, return_neuron_timings
@@ -40,7 +40,7 @@ class Node:
             # Read configuration
             self._pnm = Nd.ParallelNetManager(0)
             self._config_parser = self._open_config(recipe)
-            self._blueconfig_path = Path.dirname(recipe)
+            self._blueconfig_path = ospath.dirname(recipe)
             self._simulator_conf = Nd.simConfig
             self._run_conf = compat.Map(self._config_parser.parsedRun).as_dict(True)  # type: dict
             self._output_root = self._run_conf["OutputRoot"]
@@ -201,16 +201,24 @@ class Node:
         instantiated, and potentially split.
         """
         log_stage("Loading Targets")
+        run_conf = self._run_conf
         self._target_parser = Nd.TargetParser()
-        run_conf = self._config_parser.parsedRun
         if MPI.rank == 0:
             self._target_parser.isVerbose = 1
 
-        target_f = Path.join(run_conf.get("nrnPath").s, "start.target")
-        self._target_parser.open(target_f)
+        start_target_file = ospath.join(run_conf["CircuitPath"], "start.target")
+        if not ospath.isfile(start_target_file):
+            logging.warning("DEPRECATION: start.target shall be within CircuitPath. "
+                            "Within nrnPath is deprecated and will be removed")
+            start_target_file = ospath.join(run_conf["nrnPath"], "start.target")  # fallback
 
-        if run_conf.exists("TargetFile"):
-            user_target = self._find_config_file(run_conf.get("TargetFile").s)
+        if not ospath.isfile(start_target_file):
+            raise ConfigurationError("start.target not found! Check circuit.")
+
+        self._target_parser.open(start_target_file)
+
+        if "TargetFile" in run_conf:
+            user_target = self._find_config_file(run_conf["TargetFile"])
             self._target_parser.open(user_target)
 
         if MPI.rank == 0:
@@ -304,13 +312,15 @@ class Node:
 
         nrn_path = self._run_conf["nrnPath"]
         synapse_mode = self._run_conf.get("SynapseMode")
-
-        # with larger scale circuits, we may divide synapses among several files
-        nrn_filepath = Path.join(nrn_path, "nrn.h5")
         n_synapse_files = 1
-        if not Path.isfile(nrn_filepath):
-            n_synapse_files = self._run_conf.get("NumSynapseFiles", 1)
 
+        if ospath.isdir(nrn_path):
+            # legacy nrnreader may require manual NumSynapseFiles
+            # But with a wrapper nrn.h5 dont change from 1
+            if not ospath.isfile(ospath.join(nrn_path, "nrn.h5")):
+                n_synapse_files = self._run_conf.get("NumSynapseFiles", 1)
+
+        # Pass on to Managers the given path
         self._synapse_manager = SynapseRuleManager(
             nrn_path, self._target_manager, self._cell_distributor, n_synapse_files, synapse_mode)
 
@@ -468,22 +478,22 @@ class Node:
         run_config = self._config_parser.parsedRun
 
         def try_find_in(fullpath):
-            if Path.isfile(fullpath):
+            if ospath.isfile(fullpath):
                 return fullpath
             for fname in filename:
-                nrn_path = Path.join(fullpath, fname)
-                if Path.isfile(nrn_path):
+                nrn_path = ospath.join(fullpath, fname)
+                if ospath.isfile(nrn_path):
                     return nrn_path
             return None
 
-        if Path.isabs(filepath):
+        if ospath.isabs(filepath):
             # if it's absolute path then can be used immediately
             file_found = try_find_in(filepath)
         else:
             file_found = None
             for path_key in path_conf_entries:
                 if run_config.exists(path_key):
-                    file_found = try_find_in(Path.join(run_config.get(path_key).s, filepath))
+                    file_found = try_find_in(ospath.join(run_config.get(path_key).s, filepath))
                     if file_found:
                         break
 
@@ -497,11 +507,11 @@ class Node:
         """Attempts to find simulation config files (e.g. user.target or replays)
            If not an absolute path, searches in blueconfig folder
         """
-        if not Path.isabs(filepath):
-            _path = Path.join(self._blueconfig_path, filepath)
-            if Path.isfile(_path):
+        if not ospath.isabs(filepath):
+            _path = ospath.join(self._blueconfig_path, filepath)
+            if ospath.isfile(_path):
                 filepath = _path
-        if not Path.isfile(filepath):
+        if not ospath.isfile(filepath):
             raise ConfigurationError("Config file not found: " + filepath)
         return filepath
 
@@ -583,7 +593,7 @@ class Node:
             electrodes_path_o = conf.parsedRun.get("ElectrodesPath")
             logging.info("ElectrodeManager using electrodes from %s", electrodes_path_o.s)
         else:
-            logging.info("No electrodes Path. Extracellular class of stimuli will be unavailable")
+            logging.info("No electrodes ospath. Extracellular class of stimuli will be unavailable")
 
         self._elec_manager = Nd.ElectrodeManager(electrodes_path_o, conf.parsedElectrodes)
 
@@ -596,7 +606,7 @@ class Node:
         if self._corenrn_conf:
             # Initialize file if non-existing
             if replay_count == 1 or not self._core_replay_file:
-                self._core_replay_file = Path.join(self._output_root, 'pattern.dat')
+                self._core_replay_file = ospath.join(self._output_root, 'pattern.dat')
                 if MPI.rank == 0:
                     log_verbose("Creating pattern.dat file for CoreNEURON")
                     spike_manager.dump_ascii(self._core_replay_file)
@@ -1068,7 +1078,7 @@ class Node:
         Nodes will write in order, one after the other.
         """
         logging.info("Writing spikes to %s", outfile)
-        outfile = Path.join(self._output_root, outfile)
+        outfile = ospath.join(self._output_root, outfile)
         pnm = self._pnm
 
         # root node opens file for writing, all others append
@@ -1091,7 +1101,7 @@ class Node:
         log_stage("Dumping cells state")
         Nd.stdinit()
 
-        if not Path.isfile("debug_gids.txt"):
+        if not ospath.isfile("debug_gids.txt"):
             logging.info("Debugging all gids")
             gids = self.gidvec
         else:
@@ -1187,6 +1197,9 @@ class Neurodamus(Node):
         self.enable_stimulus()
         self.enable_modifications()
 
+        if ospath.isfile("debug_gids.txt"):
+            self.dump_circuit_config()
+
         if self._run_conf["EnableReports"]:
             self.enable_reports()
 
@@ -1199,7 +1212,7 @@ class Neurodamus(Node):
         cn_entries = []
         for i in range(ncycles):
             log_verbose("files_{}.dat".format(i))
-            filename = Path.join(output_root, "coreneuron_input/files_{}.dat".format(i))
+            filename = ospath.join(output_root, "coreneuron_input/files_{}.dat".format(i))
             with open(filename) as fd:
                 first_line = fd.readline()
                 nlines = int(fd.readline())
@@ -1207,7 +1220,7 @@ class Neurodamus(Node):
                     line = fd.readline()
                     cn_entries.append(line)
 
-        cnfilename = Path.join(output_root, "coreneuron_input/files.dat")
+        cnfilename = ospath.join(output_root, "coreneuron_input/files.dat")
         with open(cnfilename, 'w') as cnfile:
             cnfile.write(first_line)
             cnfile.write(str(len(cn_entries)) + '\n')
@@ -1240,7 +1253,7 @@ class Neurodamus(Node):
 
             # Move generated files aside (to be merged later)
             if MPI.rank == 0:
-                base_filesdat = Path.join(self._output_root, 'coreneuron_input/files')
+                base_filesdat = ospath.join(self._output_root, 'coreneuron_input/files')
                 os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
 
         if MPI.rank == 0:
