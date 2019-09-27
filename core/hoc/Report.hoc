@@ -312,6 +312,11 @@ proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
             bbss = new BBSaveState()
             bbss.ignore(ALUhelper)
         } else {
+            // Enable fast_imem calculation in Neuron
+            if ( strcmp(reportOn, "i_membrane") == 0 ) {
+                execute("cvode.use_fast_imem(1)", this)
+                reportOn = "i_membrane_"
+            }
             //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
             if( 0 == strcmp(format, "Bin") ) {
                 sprint(tstr, "rec.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
@@ -365,8 +370,8 @@ obfunc get_memory_report() {
 proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, useElectrode, secType, secNum \
     localobj intrinsicList, ptProcessList, mechtype, internalVar, nil, bbss
     strdef tstr
-    if( numarg() >= 5 && $5 ) {  // Skip when in coreNeuron mode
-        return
+    if( numarg() >= 5 && $5 ) {  // Exit when in CoreNeuron mode
+        execerror( "Summation report not supported in CoreNeuron\n" )
     }
 
     evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
