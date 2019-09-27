@@ -72,6 +72,8 @@ class _ConnectionManagerBase(object):
     def select_populations(self, src_id, dst_id):
         """Set different populations IDs for different seeding with multiple projections
         """
+        if src_id or dst_id:
+            log_verbose("  * Appending to population id %d-%d", src_id, dst_id)
         self._population_ids = (src_id, dst_id)
         self._connections_map = self._population_connections["{}-{}".format(*self._population_ids)]
 
@@ -83,7 +85,7 @@ class _ConnectionManagerBase(object):
             gidvec: The array of local gids
             weight_factor: (Optional) factor to scale all netcon weights
         """
-        logging.info("Creating connections from circuit file")
+        logging.info("Creating all connections from the circuit file")
         total_created_conns = 0
         _dbg_conn = GlobalConfig.debug_conn
         adv_options = {'synapse_mode': self._synapse_mode}
@@ -569,17 +571,18 @@ class SynapseRuleManager(_ConnectionManagerBase):
         logging.info("Instantiating synapses...")
         cell_distributor = self._cell_distibutor
         n_created_conns = 0
+        for popid, population in self._population_connections.items():
+            for tgid, conns in ProgressBar.iteritems(population, name="PopID " + popid):
+                metype = cell_distributor.getMEType(tgid)
+                spgid = cell_distributor.getSpGid(tgid)
+                # NOTE: neurodamus hoc keeps connections in reversed order.
+                # To exactly replicate results we temporarily finalize conns in reversed order
+                for conn in reversed(conns):  # type: Connection
+                    conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
+                # logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
+                n_created_conns += len(conns)
 
-        for tgid, conns in ProgressBar.iteritems(self._connections_map):
-            metype = cell_distributor.getMEType(tgid)
-            spgid = cell_distributor.getSpGid(tgid)
-            # NOTE: neurodamus hoc keeps connections in reversed order.
-            # To exactly replicate results we temporarily finalize conns in reversed order
-            for conn in reversed(conns):  # type: Connection
-                conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
-            logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
-            n_created_conns += len(conns)
-
+        MPI.check_no_errors()
         all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
         logging.info(" => Created %d connections", all_ranks_total)
 

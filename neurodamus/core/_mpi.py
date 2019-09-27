@@ -34,9 +34,9 @@ class MPI(object):
 
         # When using MPI (and more than 1 rank) we need to MPIAbort on exception to avoid deadlocks
         def excepthook(etype, value, tb):
-            pc.allreduce(1, 1)  # Share error state
             time.sleep(0.1 * cls._rank)  # Order errors
             logging.critical(str(value))
+            pc.allreduce(1, 1)  # Share error state
             # Print and cleanup exception
             sys.__excepthook__(etype, value, tb)
             Neuron.quit()  # With 'special' terminates right here
@@ -48,6 +48,9 @@ class MPI(object):
         # All processes send their status. If one is problematic then quit
         res = cls._pc.allreduce(0, 1)
         if res > 0:
+            if MPI.rank == 0:
+                logging.critical("Another rank raised an irrecoverable error. Check log file.")
+            Neuron.quit()
             sys.exit(1)
 
     @property

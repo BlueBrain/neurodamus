@@ -271,25 +271,30 @@ class Connection(object):
                 self._minis_netcons.append(netcon_m)
 
                 if rng_info.getRNGMode() == rng_info.RANDOM123:
-                    ips.setRNGs(syn_obj.synapseID+200, self.tgid+250, rng_info.getMinisSeed()+300,
-                                syn_obj.synapseID+200, self.tgid+250, rng_info.getMinisSeed()+350)
+                    seed2 = (self._conn_params.src_pop_id * 65536
+                             + self._conn_params.dst_pop_id + rng_info.getMinisSeed())
+                    ips.setRNGs(syn_obj.synapseID + 200, self.tgid + 250, seed2 + 300,
+                                syn_obj.synapseID + 200, self.tgid + 250, seed2 + 350)
                 else:
+                    seed2 = self._conn_params.src_pop_id * 16777216
                     exprng = Nd.Random()
                     if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
-                        exprng.MCellRan4(syn_obj.synapseID*100000 + 200,
+                        exprng.MCellRan4(syn_obj.synapseID * 100000 + 200,
                                          self.tgid + 250 + base_seed + rng_info.getMinisSeed())
                     else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
-                        exprng.MCellRan4(syn_obj.synapseID*1000 + 200,
-                                         self.tgid + 250 + base_seed + rng_info.getMinisSeed())
+                        exprng.MCellRan4(
+                            syn_obj.synapseID * 1000 + 200,
+                            seed2 + self.tgid + 250 + base_seed + rng_info.getMinisSeed())
 
                     exprng.negexp(1)
                     uniformrng = Nd.Random()
                     if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
-                        uniformrng.MCellRan4(syn_obj.synapseID*100000 + 300,
+                        uniformrng.MCellRan4(syn_obj.synapseID * 100000 + 300,
                                              self.tgid + 250 + base_seed + rng_info.getMinisSeed())
                     else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
-                        uniformrng.MCellRan4(syn_obj.synapseID*1000 + 300,
-                                             self.tgid + 250 + base_seed + rng_info.getMinisSeed())
+                        uniformrng.MCellRan4(
+                            syn_obj.synapseID * 1000 + 300,
+                            seed2 + self.tgid + 250 + base_seed + rng_info.getMinisSeed())
 
                     uniformrng.uniform(0.0, 1.0)
                     ips.setRNGs(exprng, uniformrng)

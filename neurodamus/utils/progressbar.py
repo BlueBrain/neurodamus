@@ -47,7 +47,7 @@ class Progress(object):
     iterables.
     """
 
-    def __init__(self, end, start=0):
+    def __init__(self, end, start=0, **kw):
         """ Creates a progress bar
 
         Args:
@@ -106,7 +106,7 @@ class Progress(object):
     # Helpers to monitor/show progress while consuming an iterable
     # ------------------------------------------------------------
     @classmethod
-    def iter(cls, iterable, end=None, start=0):
+    def iter(cls, iterable, end=None, start=0, **kw):
         """Consumes (a slice of) an iterable.
 
         Args:
@@ -119,15 +119,15 @@ class Progress(object):
             try: end = len(iterable)
             except TypeError: end = False
         # __call__ 'end' cant be False -> None
-        return cls(end, start)(iterable, end or None, start)
+        return cls(end, start, **kw)(iterable, end or None, start)
 
     @classmethod
-    def itervalues(cls, iterable):
-        return cls.iter(iterable.values(), len(iterable))
+    def itervalues(cls, iterable, **kw):
+        return cls.iter(iterable.values(), len(iterable), **kw)
 
     @classmethod
-    def iteritems(cls, iterable):
-        return cls.iter(iterable.items(), len(iterable))
+    def iteritems(cls, iterable, **kw):
+        return cls.iter(iterable.items(), len(iterable), **kw)
 
 
 class ProgressBar(Progress):
@@ -137,7 +137,7 @@ class ProgressBar(Progress):
     _no_tty_bar = "-------20%-------40%-------60%-------80%------100%"  # len 50
 
     def __init__(self, end, start=0, width=60, fill='=', blank='.', stream=sys.stdout,
-                 clear=None, fmt='[%(fill)s>%(blank)s] %(progress)s', tty_bar=None):
+                 clear=None, fmt='[%(fill)s>%(blank)s] %(progress)s', tty_bar=None, name=''):
         """
         Args:
             end:   State in which the progress has terminated. False for unknown (-> spinner)
@@ -163,7 +163,8 @@ class ProgressBar(Progress):
         self._format = fmt + " "
         self._stream = stream
         self._clear = self._tty_mode if clear is None else clear
-        self._prev_bar_len = 0
+        self._prev_bar_len = None
+        self._name = name
         super(ProgressBar, self).__init__(end, start)
 
     def _bar_len_progress(self):
@@ -177,7 +178,7 @@ class ProgressBar(Progress):
         bar_len, progress = self._bar_len_progress()
         fill = self._fill * bar_len
         blank = self._blank * (self._width - bar_len)
-        return self._format % {'fill': fill, 'blank': blank, 'progress': progress}
+        return self._name + self._format % {'fill': fill, 'blank': blank, 'progress': progress}
 
     def show_progress(self):
         if self._end == 0:
@@ -190,9 +191,9 @@ class ProgressBar(Progress):
 
     def _show_incremental_bar(self):
         bar_len, _ = self._bar_len_progress()
-        if bar_len < self._prev_bar_len:
+        if self._prev_bar_len is None or bar_len < self._prev_bar_len:
             # We need to produce a new bar.
-            self._stream.write("\r|")
+            self._stream.write("\r{}|".format(self._name))
             self._prev_bar_len = 0
 
         if bar_len > self._prev_bar_len:
@@ -205,10 +206,10 @@ class ProgressBar(Progress):
             self._show_incremental_bar()
 
         if self._clear:
-            self._stream.write("\r{}\r".format(" " * (self._width + 8)))
+            self._stream.write("\r{}\r".format(" " * (self._width + 8 + len(self._name))))
         else:
             # Output a nice stat about time taken
-            self._stream.write(" [Time taken: {:.2f} s]\n".format(self.time_taken))
+            self._stream.write("| [Time taken: {:.2f} s]\n".format(self.time_taken))
 
     def _set_progress(self, val):
         Progress._set_progress(self, val)

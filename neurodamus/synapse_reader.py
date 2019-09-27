@@ -86,7 +86,7 @@ class SynReaderSynTool(SynapseReader):
     """
     def __init__(self, syn_source, conn_type, verbose=False):
         # Instantiate the NMODL reader
-        reader = Nd.SynapseReader(syn_source, conn_type, verbose)
+        reader = Nd.SynapseReader(syn_source, verbose)
         if not reader.modEnabled():
             raise SynToolNotAvail("SynapseReader support not available.")
         SynapseReader.__init__(self, syn_source, conn_type, reader, reader.hasNrrpField())

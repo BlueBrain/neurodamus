@@ -356,19 +356,19 @@ class Node:
 
             for pname, projection in compat.Map(self._config_parser.parsedProjections).items():
                 logging.info(" * %s", pname)
-                n_synapse_files = projection.valueOf("NumSynapseFiles") \
-                    if projection.exists("NumSynapseFiles") else 1
+                projection = compat.Map(projection).as_dict(True)
+                n_synapse_files = projection.get("NumSynapseFiles", 1)
 
                 # Skip projection blocks for gap junctions
-                if projection.exists("Type") and projection.get("Type").s == "GapJunction":
+                if projection.get("Type") == "GapJunction":
                     continue
 
-                nrn_path = self._find_projection_file(projection)
+                nrn_path = self._find_projection_file(projection["Path"])
                 self._synapse_manager.open_synapse_file(nrn_path, n_synapse_files)
 
                 # Temporarily patch for population IDs in BlueConfig
-                if projection.exists("PopulationID"):
-                    self._synapse_manager.select_populations(projection.valueOf("PopulationID"), 0)
+                if "PopulationID" in projection:
+                    self._synapse_manager.select_populations(int(projection["PopulationID"]), 0)
 
                 # Go ahead and make all the Projection connections
                 self._synapse_manager.connect_all(self.gidvec)
@@ -377,7 +377,7 @@ class Node:
         # Check if we need to override the base seed for synapse RNGs
         base_seed = self._run_conf.get("BaseSeed", 0)
 
-        self._synapse_manager.finalizeSynapses(base_seed)
+        self._synapse_manager.finalize(base_seed)
 
     # -
     def _interpret_connections(self, extend_info=True):
@@ -451,11 +451,11 @@ class Node:
             logging.info("No Gap-junctions found")
 
     # -
-    def _find_projection_file(self, projection):
+    def _find_projection_file(self, proj_path):
         """Determine the full path to a projection.
         The "Path" might specify the filename. If not, it will attempt the old 'proj_nrn.h5'
         """
-        return self._find_input_file("proj_nrn.h5", projection.get("Path").s, ("ProjectionPath",))
+        return self._find_input_file("proj_nrn.h5", proj_path, ("ProjectionPath",))
 
     def _find_input_file(self, filename, filepath, path_conf_entries=()):
         """Determine where to find the synapse files.
