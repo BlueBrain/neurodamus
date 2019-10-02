@@ -324,55 +324,48 @@ class Node:
         self._synapse_manager = SynapseRuleManager(
             nrn_path, self._target_manager, self._cell_distributor, n_synapse_files, synapse_mode)
 
+        logging.info("Creating circuit connections...")
         if self._config_parser.parsedConnects.count() == 0:
-            self._synapse_manager.connect_all(self.gidvec)
+            self._synapse_manager.connect_all()
         else:
-            # Do a quick scan for any ConnectionBlocks with 'Delay' keyword and put a reference on
-            # a separate list to be adjusted until later. Note that this requires that another
-            # connection block without a delay will connect the cells.
-            for conn in compat.Map(self._config_parser.parsedConnects).values():
-                if conn.exists("Delay"):
-                    self._connection_weight_delay_list.append(conn)
-
-            # Now handle the connection blocks as normal
-            self._interpret_connections()
+            self._create_group_connections()
 
         # Check for additional synapse files.  Now requires a connection block.
         # Continue support for compatibility, but new BlueConfigs should use Projection blocks
         bonus_file = self._run_conf.get("BonusSynapseFile")
         if bonus_file:
-            logging.info("Handle Bonus synapse file")
+            logging.info("Creating connections from Bonus synapse file...")
             bonus_n_synapse_files = int(self._run_conf.get("NumBonusFiles", 1))
             self._synapse_manager.open_synapse_file(bonus_file, bonus_n_synapse_files)
 
             if self._config_parser.parsedConnects.count() == 0:
-                self._synapse_manager.connect_all(self.gidvec)
+                self._synapse_manager.connect_all()
             else:
-                self._interpret_connections(extend_info=False)
+                self._create_group_connections()
 
         # Check for Projection blocks
         if self._config_parser.parsedProjections.count() > 0:
-            logging.info("Handling projections...")
+            logging.info("Creating Projections connections...")
 
             for pname, projection in compat.Map(self._config_parser.parsedProjections).items():
                 logging.info(" * %s", pname)
                 projection = compat.Map(projection).as_dict(True)
-                n_synapse_files = projection.get("NumSynapseFiles", 1)
 
                 # Skip projection blocks for gap junctions
                 if projection.get("Type") == "GapJunction":
                     continue
 
                 nrn_path = self._find_projection_file(projection["Path"])
-                self._synapse_manager.open_synapse_file(nrn_path, n_synapse_files)
 
                 # Temporarily patch for population IDs in BlueConfig
-                if "PopulationID" in projection:
-                    self._synapse_manager.select_populations(int(projection["PopulationID"]), 0)
-
+                pop_id = int(projection.get("PopulationID", 0))
+                self._synapse_manager.open_synapse_file(nrn_path, n_synapse_files,
+                                                        population_id=pop_id)
                 # Go ahead and make all the Projection connections
-                self._synapse_manager.connect_all(self.gidvec)
-                self._interpret_connections(extend_info=False)
+                self._synapse_manager.connect_all()
+
+        # Configure all created connections in one go
+        self._configure_connections(self._synapse_manager)
 
         # Check if we need to override the base seed for synapse RNGs
         base_seed = self._run_conf.get("BaseSeed", 0)
@@ -380,42 +373,46 @@ class Node:
         self._synapse_manager.finalize(base_seed)
 
     # -
-    def _interpret_connections(self, extend_info=True):
-        """Aux method for creating/updating connections
-
-        Args:
-            extend_info (bool): Output (log) pathsways being processed
+    def _create_group_connections(self):
+        """Creates connections according to loaded parameters in 'Connection'
+           blocks of the BlueConfig
         """
-        _logmsg = "Creating connections from BlueConfig..."
-        if extend_info: logging.info(_logmsg)
-        else: log_verbose(_logmsg)
-
         for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
             conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
             if "Delay" in conn_conf:
-                # Connection blocks using a 'Delay' option are handled later
+                self._connection_weight_delay_list.append(conn_conf)
+                continue
+
+            # check if we are not supposed to create (only configure later)
+            if conn_conf.get("CreateMode") == "NoCreate":
                 continue
 
             conn_src = conn_conf["Source"]
             conn_dst = conn_conf["Destination"]
-            if extend_info:
-                logging.info(" * Pathway %s -> %s ", conn_src, conn_dst)
+            synapse_id = conn_conf.get("SynapseID")
+            created_conns = self._synapse_manager.connect_group(conn_src, conn_dst, synapse_id)
+            if created_conns:
+                logging.info(" * Pathway %s -> %s. [Rank 0]: Created %d connections",
+                             conn_src, conn_dst, created_conns)
 
-            # check if we are supposed to disable creation
-            # -> i.e. only change weights for existing connections
-            dont_create = conn_conf.get("CreateMode") == "NoCreate"
-            stdp_mode = conn_conf.get("UseSTDP", "STDPoff")
-            mini_spont_rate = conn_conf.get("SpontMinis")
-            weight = conn_conf.get("Weight")  # optional, None indicates no change
-            # allows a helper object to grab any additional configuration values
-            syn_override = conn_conf if "ModOverride" in conn_conf else None
-            syn_config = conn_conf.get("SynapseConfigure")
-            syn_t = conn_conf.get("SynapseID")
+    # -
+    def _configure_connections(self, manager):
+        """Configure-only circuit connections according to BlueConfig Connection blocks
+        """
+        logging.info("Configuring all connections...")
+        for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
+            conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
+            if "Delay" in conn_conf:
+                continue
+            conn_src = conn_conf["Source"]
+            conn_dst = conn_conf["Destination"]
 
-            # finally we have all the options checked and can now invoke the SynapseRuleManager
-            self._synapse_manager.group_connect(
-                conn_src, conn_dst, self.gidvec, weight, syn_config, stdp_mode,
-                mini_spont_rate, syn_t, syn_override, creation_mode=not dont_create)
+            log_msg = " * Pathway {:s} -> {:s}".format(conn_src, conn_dst)
+            if "SynapseConfigure" in conn_conf:
+                log_msg += ":\tconfigure with '{:s}'".format(conn_conf["SynapseConfigure"])
+            logging.info(log_msg)
+
+            manager.configure_group(conn_conf)
 
     # -
     @mpi_no_errors
@@ -444,11 +441,13 @@ class Node:
                 self._gj_manager = GapJunctionManager(
                     nrn_path, self._target_manager, self._cell_distributor, 1, target)
 
-        if self._gj_manager is not None:
-            self._gj_manager.connect_all(self.gidvec, 1)
-            self._gj_manager.finalizeGapJunctions()
-        else:
+        if self._gj_manager is None:
             logging.info("No Gap-junctions found")
+            return
+        self._gj_manager.connect_all()
+        # Currently gap junctions are not configured. Future?
+        # self._configure_connections(self._gj_manager)
+        self._gj_manager.finalize()
 
     # -
     def _find_projection_file(self, proj_path):
@@ -904,8 +903,7 @@ class Node:
     # -
     @return_neuron_timings
     def _run_neuron(self):
-        progress = Nd.ShowProgress(Nd.cvode, MPI.rank)
-        progress.updateProgress()
+        _ = Nd.ShowProgress(Nd.cvode, MPI.rank)
         self.solve()
         logging.info("Simulation finished.")
 
@@ -944,7 +942,7 @@ class Node:
 
         # handle any delayed blocks
         for conn in self._connection_weight_delay_list:
-            conn_start = conn.valueOf("Delay")
+            conn_start = conn["Delay"]
             # If the first connection starts after our tstop -> dont activate anything
             if conn_start > tstop:
                 break
@@ -954,8 +952,9 @@ class Node:
 
             def event_f():
                 logging.info("\rDelay: Configuring %s->%s after %d ms",
-                             conn.get("Source").s, conn.get("Destination").s, conn_start)
-                self._synapse_manager.configure_connection_config(conn, self.gidvec)
+                             conn["Source"], conn["Destination"], conn_start)
+                self._synapse_manager.configure_connection_config(
+                    conn, self.gidvec, conn.get("populationID", 0))
 
             events.append((conn_start, event_f))
 

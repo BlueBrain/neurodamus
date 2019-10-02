@@ -22,6 +22,11 @@ def dict_filter(dic, filter):
     return ((key, val) for key, val in dic.items() if filter(key, val))
 
 
+def dict_filter_map(dic, mapp):
+    """Filters a dict and converts the keys according to a given map"""
+    return {mapp[key]: val for key, val in dic.items() if key in mapp}
+
+
 def docopt_sanitize(docopt_opts):
     """Sanitizes docopt parsed key names
     """

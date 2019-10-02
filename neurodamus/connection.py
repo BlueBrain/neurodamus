@@ -100,10 +100,9 @@ class Connection(object):
         return h
 
     # -
-    def __init__(self, sgid, tgid,
-                 weight_factor=1.0, minis_spont_rate=.0, src_pop_id=0, dst_pop_id=0,
-                 configuration=None, stdp_mode=None, synapse_mode=SynapseMode.DUAL_SYNS,
-                 synapse_override=None):
+    def __init__(self, sgid, tgid, src_pop_id=0, dst_pop_id=0,
+                 weight_factor=1.0, minis_spont_rate=.0, configuration=None, mod_override=None,
+                 synapse_mode=SynapseMode.DUAL_SYNS):
         """Creates a connection object
 
         Args:
@@ -119,22 +118,22 @@ class Connection(object):
                 Default: None (use standard Inh/Exc)
         """
         h = self._init_hmod()
-        self.sgid = sgid
-        self.tgid = tgid
+        self.sgid = int(sgid)
+        self.tgid = int(tgid)
         self._conn_params = np.recarray(1, dtype=dict(
             names=['weight_factor', 'minis_spont_rate', 'src_pop_id', 'dst_pop_id'],
             formats=['f8', 'f8', 'i4', 'i4']
         ))[0]
         self._conn_params.put(0, (weight_factor, minis_spont_rate, src_pop_id, dst_pop_id))
         self._synapse_mode = synapse_mode
-        self._synapse_override = synapse_override
+        self._mod_override = mod_override
         self._done_replay_register = False
-        self._stdp = STDPMode.validate(stdp_mode)
         self._synapse_points = h.TPointList(tgid, 1)
         self._synapse_params = []
         self._synapse_ids = compat.Vector("i")
         self._configurations = [configuration] \
             if configuration is not None else []
+        self.locked = False
         # Lists defined in finalize
         self._netcons = None
         self._synapses = None
@@ -156,12 +155,18 @@ class Connection(object):
     minis_spont_rate = property(
         lambda self: self._conn_params.minis_spont_rate,
         lambda self, rate: setattr(self._conn_params, 'minis_spont_rate', rate))
-    stdp = property(
-        lambda self: self._stdp,
-        lambda self, stdp: setattr(self, '_stdp', STDPMode.validate(stdp)))
 
-    def override_synapse(self, synapse_conf):
-        self._synapse_override = synapse_conf
+    # -
+    def add_synapse_configuration(self, configuration):
+        """Add a synapse configuration command to the list.
+        All commands are executed on synapse creation
+        """
+        if configuration is not None:
+            self._configurations.append(configuration)
+
+    def override_mod(self, mod_override):
+        assert mod_override.exists("ModOverride"), "ModOverride requires hoc config obj"
+        self._mod_override = mod_override
 
     @property
     def valid_sections(self):
@@ -197,14 +202,6 @@ class Connection(object):
             self._synapse_ids.append(syn_id)
         else:
             self._synapse_ids.append(self._synapse_points.count())
-
-    # -
-    def add_synapse_configuration(self, configuration):
-        """Add a synapse configuration command to the list.
-        All commands are executed on synapse creation
-        """
-        if configuration is not None:
-            self._configurations.append(configuration)
 
     # -
     def finalize(self, pnm, cell, base_seed=None, spgid=None):
@@ -331,10 +328,10 @@ class Connection(object):
             base_seed: base seed to adjust synapse RNG - added to MCellRan4's low index parameter
 
         """
-        if self._synapse_override is not None:
-            override_helper = self._synapse_override["ModOverride"] + "Helper"
+        if self._mod_override is not None:
+            override_helper = self._mod_override.get("ModOverride").s + "Helper"
             helper_cls = getattr(Nd.h, override_helper)
-            add_params = (self._synapse_override['_hoc'],)
+            add_params = (self._mod_override,)
         else:
             helper_cls = Nd.GABAABHelper if params_obj.synType < 100 \
                 else Nd.AMPANMDAHelper  # excitatory
@@ -377,7 +374,7 @@ class Connection(object):
             self._configure_cell(cell)
 
     # ------------------------------------------------------------------
-    # Parameters update / Configuration
+    # Parameters Live update / Configuration
     # ------------------------------------------------------------------
     def update_conductance(self, new_g):
         """ Updates all synapses conductance
@@ -385,7 +382,7 @@ class Connection(object):
         for syn in self._synapses:
             syn.g = new_g
 
-    def update_synapse_params(self, **params):
+    def update_synapse_parameters(self, **params):
         """A generic function to update several parameters of all synapses
         """
         for syn in self._synapses:

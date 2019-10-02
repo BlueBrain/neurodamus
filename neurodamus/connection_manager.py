@@ -7,12 +7,12 @@ from itertools import chain
 from collections import defaultdict
 from os import path as ospath
 
-from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core import NeurodamusCore as Nd
+from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core.configuration import GlobalConfig, ConfigurationError
-from .connection import Connection, SynapseMode, STDPMode
+from .connection import Connection, SynapseMode
 from .synapse_reader import SynapseReader
-from .utils import compat, bin_search, OrderedDefaultDict
+from .utils import compat, bin_search, OrderedDefaultDict, dict_filter_map
 from .utils.logging import log_verbose
 
 
@@ -42,7 +42,7 @@ class _ConnectionManagerBase(object):
 
         # Multipopulation support
         self._population_connections = defaultdict(OrderedDefaultDict)
-        self._population_ids = None
+        self._cur_population_ids = None
 
         # Connections indexed by post-gid, then ordered by pre-gid
         self._connections_map = None  # initialized by select_population
@@ -55,18 +55,20 @@ class _ConnectionManagerBase(object):
         assert ospath.isfile(circuit_path), "Circuit path doesnt contain valid circuit files"
 
         self.open_synapse_file(circuit_path, n_synapse_files)
+        self.__created_conns = 0
 
         if GlobalConfig.debug_conn:
             logging.info("Debugging activated for cell/conn %s", GlobalConfig.debug_conn)
 
     # -
-    def open_synapse_file(self, synapse_file, n_synapse_files=None):
+    def open_synapse_file(self, synapse_file, n_synapse_files=None, population_id=0):
         """Initializes a reader for Synapses
         """
         logging.info("Opening Synapse file %s", synapse_file)
         self._synapse_reader = SynapseReader.create(
             synapse_file, self.CONNECTIONS_TYPE, self._local_gids, n_synapse_files)
-        self.select_populations(0, 0)
+        self.select_populations(population_id, 0)
+        self._unlock_all_connections()  # Allow appending synapses from new sources
 
     # -
     def select_populations(self, src_id, dst_id):
@@ -74,51 +76,60 @@ class _ConnectionManagerBase(object):
         """
         if src_id or dst_id:
             log_verbose("  * Appending to population id %d-%d", src_id, dst_id)
-        self._population_ids = (src_id, dst_id)
-        self._connections_map = self._population_connections["{}-{}".format(*self._population_ids)]
+        self._cur_population_ids = (src_id, dst_id)
+        self._connections_map = self.get_population(src_id, dst_id)
 
     # -
-    def connect_all(self, gidvec, weight_factor=1):
+    def get_population(self, src_id, dst_id=0):
+        return self._population_connections[(src_id, dst_id)]
+
+    # -
+    def _get_or_create_connection(self, sgid, tgid, *conn_params, **kwargs):
+        cur_conn = self.get_connection(sgid, tgid)
+        if cur_conn is not None:
+            return cur_conn
+        cur_conn = Connection(sgid, tgid, *conn_params, **kwargs)
+        self.store_connection(cur_conn)  # Store immediately
+        self.__created_conns += 1
+        return cur_conn
+
+    # -
+    def connect_all(self, weight_factor=1):
         """For every gid access its synapse parameters and instantiate all synapses.
 
         Args:
             gidvec: The array of local gids
             weight_factor: (Optional) factor to scale all netcon weights
         """
-        logging.info("Creating all connections from the circuit file")
-        total_created_conns = 0
+        conn_options = {'weight_factor': weight_factor,
+                        'synapse_mode': self._synapse_mode}
         _dbg_conn = GlobalConfig.debug_conn
-        adv_options = {'synapse_mode': self._synapse_mode}
+        total_created_conns = 0
 
-        for tgid in ProgressBar.iter(gidvec):
+        for tgid in ProgressBar.iter(self._local_gids):
             synapses_params = self._synapse_reader.get_synapse_parameters(tgid)
             cur_conn = None
             logging.debug("Connecting post neuron a%d: %d synapses", tgid, len(synapses_params))
-            gid_created_conns = 0
+            self.__created_conns = 0
 
             if len(_dbg_conn) == 1 and _dbg_conn[0] == tgid:
                 print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, synapses_params))
 
             for i, syn_params in enumerate(synapses_params):
+                # sgids expected to come sorted
                 sgid = int(syn_params.sgid)
+
                 # Only applicable to GAP-Junctions
                 if self._circuit_target and not self._circuit_target.completeContains(sgid):
                     continue
 
-                # should still need to check that the other side of the gap junction will
-                # be there by ensuring that other gid is in the circuit target
-                # Note: The sgids in any given dataset from nrn.h5 will come in sorted order,
-                # low to high. This code therefore doesn't search or sort on its own.
-                # If the nrn.h5 file changes in the future we must update the code accordingly
-
+                # Do we need to change/create connection? (or append to existing?)
+                # When tgid changes cur_conn is also set no None
                 if cur_conn is None or cur_conn.sgid != sgid:
-                    conn_params = (weight_factor, 0)  + self._population_ids
-                    cur_conn = Connection(sgid, tgid, *conn_params, **adv_options)
-                    # Store immediately, even though we still append synapses
-                    self.store_connection(cur_conn)
-                    gid_created_conns += 1
-
+                    cur_conn = self._get_or_create_connection(sgid, tgid, *self._cur_population_ids,
+                                                              **conn_options)
                 # placeSynapses() called from connection.finalize
+                # NOTE: Here we dont need to lock since the whole file is consumed at once
                 point = self._target_manager.locationToPoint(
                     tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
                 cur_conn.add_synapse(point, syn_params, i)
@@ -126,152 +137,130 @@ class _ConnectionManagerBase(object):
                 if _dbg_conn == [tgid, sgid]:
                     print("[ DEBUG ] -> Tgid={} Sgid={} Params: {}".format(tgid, sgid, syn_params))
 
-            if gid_created_conns > 0:
-                logging.debug("[post-gid %d] 0: Created %d connections", tgid, gid_created_conns)
-                total_created_conns += gid_created_conns
+            if self.__created_conns  > 0:
+                total_created_conns += self.__created_conns
+                logging.debug("[post-gid %d] 0: Created %d connections",
+                              tgid, self.__created_conns)
 
-        log_verbose("(rank0) ConnectAll: Created %d connections", total_created_conns)
-
-    connectAll = connect_all  # Compatibility
+        return total_created_conns
 
     # -
-    def group_connect(self, src_target, dst_target, gidvec, weight_factor=None, configuration=None,
-                            stdp_mode=None, spont_mini_rate=None, synapse_types=None,
-                            synapse_override=None, creation_mode=True):
-        """Given source and destination targets, create all connections for post-gids in gidvec.
-        Note: the cells in the source list are not limited by what is on this cpu whereas
-        the dest list requires the cells be local
-
-        Args:
-            src_target: Name of Source Target
-            dst_target: Name of Destination Target
-            gidvec: Vector of gids on the local cpu
-            weight_factor: (float) Scaling weight to apply to the synapses. Default: dont change
-            configuration: (str) SynapseConfiguration Default: None
-            stdp_mode: Which STDP to use. Default: None (STDPoff for creating, wont change existing)
-            spont_mini_rate: (float) For spontaneous minis trigger rate. Default: None
-            synapse_types: (tuple) To restrict which synapse types are created. Default: None
-            synapse_override: An alternative point process configuration.
-            creation_mode: By default new connections are created. If False updates existing only
-        """
-        # unlike connectAll, we must look through self._connections_map to see if sgid->tgid exists
-        # because it may be getting weights updated.
-        # Note: it is better to get the whole target over just the gid vector since then we can use
-        # utility functions like 'contains'
-        src_target = self._target_manager.getTarget(src_target)
-        dst_target = self._target_manager.getTarget(dst_target)
-        stdp = STDPMode.from_str(stdp_mode) if stdp_mode is not None else None
-        synapses_restrict = synapse_types is not None
-        total_gids_group = 0
-        total_created_conns = 0
-        total_configd_conns = 0
-        adv_options = {k: v for k, v in {
-            'synapse_mode': self._synapse_mode,
-            'configuration': configuration,
-            'stdp_mode': stdp,
-            'synapse_override': synapse_override
-        }.items() if v is not None}
+    def connect_group(self, src_target_name, dst_target_name, synapse_type_restrict=None):
+        src_target = self._target_manager.getTarget(src_target_name)
+        dst_target = self._target_manager.getTarget(dst_target_name)
+        conn_kwargs = {'synapse_mode': self._synapse_mode}
 
         _dbg_conn = GlobalConfig.debug_conn
+        self.__created_conns = 0
+        cur_conn = None
 
-        if synapses_restrict and not isinstance(synapse_types, (tuple, list)):
-            synapse_types = (synapse_types,)
-
-        if synapse_override:
-            # Attempt to load the overriding mod Helper (should exist in the hoc path)
-            mod_override_name = synapse_override["ModOverride"]
-            logging.info("  * Overriding mod: %s", mod_override_name)
-            override_helper = mod_override_name + "Helper"
-            Nd.load_hoc(override_helper)
-            # Test it is available
-            if not hasattr(Nd.h, override_helper):
-                raise RuntimeError("Override helper without expected template: " + override_helper)
-
-        for tgid in gidvec:
+        for tgid in self._local_gids:
             if not dst_target.contains(tgid):
                 continue
 
             # this cpu owns some or all of the destination gid
             syns_params = self._synapse_reader.get_synapse_parameters(tgid)
-            gid_created_conns = 0
-            gid_configd_conns = 0
             prev_sgid = None
-            pend_conn = None
 
             if len(_dbg_conn) == 1 and _dbg_conn[0] == tgid:
                 print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, syns_params))
 
             for i, syn_params in enumerate(syns_params):
-                if synapses_restrict and syn_params.synType not in synapse_types:
-                    continue
-
-                # if this gid in the source target?
                 sgid = int(syn_params.sgid)
-                if not src_target.completeContains(sgid):
+                if synapse_type_restrict and syn_params.synType != synapse_type_restrict:
                     continue
 
-                # Only applicable to GAP-Junctions
-                if self._circuit_target and not self._circuit_target.completeContains(sgid):
-                    continue
-
-                # When the sgdig changes we are in a new connection. Can save the previous
                 if sgid != prev_sgid:
-                    if pend_conn:
-                        self.store_connection(pend_conn)
-                        pend_conn = None
+                    if not src_target.completeContains(sgid):
+                        continue
                     prev_sgid = sgid
+                    if cur_conn:
+                        cur_conn.locked = True
 
-                    # determine what we will do with the new sgid
-                    # update params if seen before, or create connection
-                    cur_conn = self.get_connection(sgid, tgid)  # type: Connection
+                    cur_conn = self._get_or_create_connection(sgid, tgid, *self._cur_population_ids,
+                                                              **conn_kwargs)
+                if cur_conn.locked:
+                    continue
 
-                    if cur_conn is not None:
-                        if weight_factor is not None:
-                            cur_conn.weight_factor = weight_factor
-                        if configuration is not None:
-                            cur_conn.add_synapse_configuration(configuration)
-                        if spont_mini_rate is not None:
-                            cur_conn.minis_spont_rate = spont_mini_rate
-                        if stdp is not None:
-                            cur_conn.stdp = stdp
-                        if synapse_override is not None:
-                            cur_conn.override_synapse(synapse_override)
-                        gid_configd_conns += 1
-                    else:
-                        if creation_mode:
-                            conn_params = (
-                                weight_factor if weight_factor is not None else 1.0,
-                                spont_mini_rate if spont_mini_rate is not None else .0
-                            ) + self._population_ids
-                            pend_conn = Connection(sgid, tgid, *conn_params, **adv_options)
-                            gid_created_conns += 1
+                point = self._target_manager.locationToPoint(
+                    tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
+                cur_conn.add_synapse(point, syn_params, i)
 
-                # if we have a pending connection we place the current synapse(s)
-                if pend_conn is not None:
-                    point = self._target_manager.locationToPoint(
-                        tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
-                    pend_conn.add_synapse(point, syn_params, i)
+        if cur_conn:
+            cur_conn.locked = True  # Lock last conn
 
-                    if _dbg_conn == [tgid, sgid]:
-                        print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, syn_params))
-
-            # store any remaining pending connection
-            if pend_conn is not None:
-                self.store_connection(pend_conn)
-
-            # Info ------
-            logging.debug("[post-gid %d] Created %d connections, %d configured",
-                          tgid, gid_created_conns, gid_configd_conns)
-            total_created_conns += gid_created_conns
-            total_configd_conns += gid_configd_conns
-            total_gids_group += 1
-
-        log_verbose("(Rank0) Group target cells: %d. Connections created: %d, configured: %d",
-                    total_gids_group, total_created_conns, total_configd_conns)
+        return self.__created_conns
 
     # -
-    def configure_connection(self, src_target, dst_target, gidvec,
-                             configuration=None, weight=None, **syn_params):
+    def _get_target_connections(self, src_target_name, dst_target_name,
+                                      gidvec=None, population_id=None):
+        src_target = self._target_manager.getTarget(src_target_name)
+        dst_target = self._target_manager.getTarget(dst_target_name)
+        gidvec = self._local_gids if gidvec is None else gidvec
+        if isinstance(population_id, int):
+            populations = (self.get_population(population_id),)
+        elif isinstance(population_id, tuple):
+            populations = (self.get_population(*population_id),)
+        elif population_id is None:
+            populations = self._population_connections.values()
+        else:
+            raise ValueError("Invalid population id: %s" % str(population_id))
+
+        for population in populations:
+            for tgid in gidvec:
+                if not dst_target.contains(tgid) or tgid not in population:
+                    continue
+                for conn in population[tgid]:
+                    sgid = conn.sgid
+                    if not src_target.completeContains(sgid):
+                        continue
+                    yield conn
+
+    # -
+    def configure_group(self, conn_config, gidvec=None, population=None):
+        """Configure connections according to a BlueConfig Connection block
+
+        Args:
+            conn_config: The connection configuration dict
+            populations(optional): A tuple of populations' connections. Defaul: all
+        """
+        src_target = conn_config["Source"]
+        dst_target = conn_config["Destination"]
+        _properties = {
+            "Weight": "weight_factor",
+            "SpontMinis": "minis_spont_rate",
+        }
+        syn_params = dict_filter_map(conn_config, _properties)
+
+        # Load eventual mod override helper
+        if "ModOverride" in conn_config:
+            logging.info("   => Overriding mod: %s", conn_config["ModOverride"])
+            override_helper = conn_config["ModOverride"] + "Helper"
+            Nd.load_hoc(override_helper)
+            assert hasattr(Nd.h, override_helper), \
+                "ModOverride helper doesn't define expected hoc template: " + override_helper
+
+        for conn in self._get_target_connections(src_target, dst_target, gidvec, population):
+            for key, val in syn_params.items():
+                setattr(conn, key, val)
+            if "ModOverride" in conn_config:
+                conn.override_mod(conn_config['_hoc'])
+            if "SynapseConfigure" in conn_config:
+                conn.add_synapse_configuration(conn_config["SynapseConfigure"])
+
+    # -
+    def configure_group_delayed(self, conn_config, gidvec=None, population=None):
+        """Update existing connections with info from delayed Connections blocks
+        """
+        self.update_connections(
+            conn_config["Source"], conn_config["Destination"], gidvec, population,
+            conn_config.get("SynapseConfigure"), conn_config.get("Weight")
+        )
+
+    # Live connections update Helpers
+    # -------------------------------
+    def update_connections(self, src_target, dst_target, gidvec=None, population=None,
+                                 syn_configure=None, weight=None, **syn_params):
         """ Given some gidlists, recover the connection objects for those gids involved and
         adjust params.
         NOTE: Keyword arguments override the same-name properties in the provided hoc configuration
@@ -279,70 +268,22 @@ class _ConnectionManagerBase(object):
         Args:
             src_target: Name of Source Target
             dst_target: Name of Destination Target
-            gidvec: A list of gids to apply configuration
+            gidvec: (optional) A list of gids to apply configuration. Default: all cells
             configuration: (optional) A hoc configuration str to be executed over synapse objects
             weight: (optional) new weights for the netcons
             **syn_params: Keyword arguments of synapse properties to be changed, e.g. conductance(g)
         """
-        if configuration is None and weight is None and not syn_params:
-            logging.warning("No parameters adjustement being made to synpases in Targets %s->%s",
+        if syn_configure is None and weight is None and not syn_params:
+            logging.warning("No synpases parameters being updated for Targets %s->%s",
                             src_target, dst_target)
             return
-
-        # unlike connectAll, we must look through self._connections_map to see if sgid->tgid exists
-        # because it may be getting weights updated. Note that it is better to get the whole target
-        # over just the gid vector, since then we can use utility functions like 'contains'
-        src_target = self._target_manager.getTarget(src_target)
-        dst_target = self._target_manager.getTarget(dst_target)
-
-        for tgid in gidvec:
-            if not dst_target.contains(tgid):
-                continue
-
-            sgids = src_target.completegids()
-            for sgid in sgids:
-                sgid = int(sgid)
-                conn = self.get_connection(sgid, tgid)
-                if conn is not None:
-                    # change params for all synapses
-                    if configuration is not None:
-                        conn.configure_synapses(configuration)
-                    if syn_params:
-                        conn.update_synapse_params(**syn_params)
-                    # Change params for all netcons
-                    if weight is not None:
-                        conn.update_weights(weight)
-
-    # -
-    def configure_connection_config(self, conn_parsed_config, gidvec):
-        """Change connection configuration after finalize, according to parsed config
-
-        Args:
-            conn_parsed_config: The parsed connection configuration object
-            gidvec: A list of gids to apply configuration
-        """
-        src_target = conn_parsed_config.get("Source").s
-        dst_target = conn_parsed_config.get("Destination").s
-
-        weight = conn_parsed_config.valueOf("Weight") \
-            if conn_parsed_config.exists("Weight") else None
-        config = conn_parsed_config.get("SynapseConfigure").s \
-            if conn_parsed_config.exists("SynapseConfigure") else None
-
-        self.configure_connection(src_target, dst_target, gidvec, config, weight)
-
-    # Global update Helpers
-    # ---------------------
-    def update_weights(self, new_weight, also_replay_netcons=False):
-        for conn in self.all_connections():  # type: Connection
-            conn.update_weights(new_weight, also_replay_netcons)
-
-    def update_parameters_all(self, **params):
-        for conn in self.all_connections():  # type: Connection
-            conn.update_synapse_params(**params)
-
-    def update_conductances(self, new_g):
-        self.update_parameters_all(g=new_g)
+        for conn in self._get_target_connections(src_target, dst_target, gidvec, population):
+            if weight is not None:
+                conn.update_weights(weight)
+            if syn_configure is not None:
+                conn.configure_synapses(syn_configure)
+            if syn_params:
+                conn.update_synpase_parameters(**syn_params)
 
     # -----------------------------------------------------------------------------
     # THESE METHODS ARE HELPERS FOR HANDLING OBJECTS IN THE INTERNAL STRUCTURES
@@ -519,6 +460,13 @@ class _ConnectionManagerBase(object):
                 files_avail[0] = compat_file
         return ospath.join(location, files_avail[0])
 
+    def _unlock_all_connections(self):
+        """Unlock all, mainly when we load a new connectivity source"""
+        for conn_map in self._population_connections.values():
+            for conns in conn_map.values():
+                for conn in conns:
+                    conn.locked = False
+
 
 # ################################################################################################
 # SynapseRuleManager
@@ -572,7 +520,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
         cell_distributor = self._cell_distibutor
         n_created_conns = 0
         for popid, population in self._population_connections.items():
-            for tgid, conns in ProgressBar.iteritems(population, name="PopID " + popid):
+            for tgid, conns in ProgressBar.iteritems(population, name="Pop:" + str(popid)):
                 metype = cell_distributor.getMEType(tgid)
                 spgid = cell_distributor.getSpGid(tgid)
                 # NOTE: neurodamus hoc keeps connections in reversed order.

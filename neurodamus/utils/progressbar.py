@@ -152,12 +152,9 @@ class ProgressBar(Progress):
             tty_mode: Controls whether the bar should be enhanced for text terminals.
                       Default: None (auto-detect), False, True
         """
-        self._tty_mode = (hasattr(stream, 'isatty') and stream.isatty()) \
-            if tty_bar is None else tty_bar
-        if not self._tty_mode:
-            stream.write('|')
-            width = 50
-        self._width = width
+        self._tty_mode = ((hasattr(stream, 'isatty') and stream.isatty())
+                          if tty_bar is None else tty_bar)
+        self._width = width if self._tty_mode else 50
         self._fill = fill
         self._blank = blank
         self._format = fmt + " "
