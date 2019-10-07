@@ -1,6 +1,6 @@
-============
-PyNeurodamus
-============
+=============
+Neurodamus-py
+=============
 
 Neurodamus is a BBP Simulation Control application for Neuron.
 

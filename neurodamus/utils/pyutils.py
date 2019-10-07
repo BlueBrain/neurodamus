@@ -2,7 +2,6 @@
 Collection of generic Python utilities.
 """
 from __future__ import absolute_import, print_function
-from collections import OrderedDict
 from bisect import bisect_left
 from enum import EnumMeta
 
@@ -44,20 +43,19 @@ def docopt_sanitize(docopt_opts):
 
 
 class ConfigT(object):
-    """ Base class for configurations.
+    """Base class for configurations.
 
-        This class serves as a base for set of configurations.
-        By inheriting and setting several class-level attributes, instances will
-        be able to initialize from kwargs and dictionaries with the same keys,
-        effectivelly working as validators of fields with default values.
-        Furthermore, for validation of values, the attributes may be Enums.
+    This class serves as a base for set of configurations.
+    By inheriting and setting several class-level attributes, instances will
+    be able to initialize from kwargs and dictionaries with the same keys,
+    effectively working as validators of fields with default values.
+    Furthermore, for validation of values, the attributes may be Enums.
 
-        ```
-        class RunConfig(ConfigT):
-            # NOTE: Enum fields: the FIRST value is the default
-            mode = Enum("Mode", "BUILD_SIMULATE BUILD_ONLY")
-            model_path = None
-        ```
+    ::\n
+     class RunConfig(ConfigT):
+        # NOTE: Enum fields: the FIRST value is the default
+        mode = Enum("Mode", "BUILD_SIMULATE BUILD_ONLY")
+        model_path = None
     """
     def __init__(self, **opts):
         self._init(self, opts)
@@ -124,16 +122,6 @@ def bin_search(container, key, keyf=None):
         else:
             binsrch_high = binsrch_mid
     return binsrch_low
-
-
-class OrderedDefaultDict(OrderedDict):
-    """A simple though elegant Ordered and Default dict
-    """
-    factory = list
-
-    def __missing__(self, key):
-        self[key] = value = self.factory()
-        return value
 
 
 class ConsoleColors:

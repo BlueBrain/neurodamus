@@ -403,8 +403,7 @@ class Node:
 
                 # Temporarily patch for population IDs in BlueConfig
                 pop_id = int(projection.get("PopulationID", 0))
-                self._synapse_manager.open_synapse_file(nrn_path, n_synapse_files,
-                                                        population_id=pop_id)
+                self._synapse_manager.open_synapse_file(nrn_path, n_synapse_files, pop_id)
                 # Go ahead and make all the Projection connections
                 self._synapse_manager.connect_all()
 
@@ -829,6 +828,7 @@ class Node:
         self._finalize_model(**sim_opts)
 
         if self._pr_cell_gid:
+            logging.info("Dumping info about cell %d", self._pr_cell_gid)
             self._pnm.pc.prcellstate(self._pr_cell_gid, "pydamus_t0")
 
         if corenrn_gen:
@@ -992,7 +992,7 @@ class Node:
             def event_f():
                 logging.info("\rDelay: Configuring %s->%s after %d ms",
                              conn["Source"], conn["Destination"], conn_start)
-                self._synapse_manager.configure_connection_config(
+                self._synapse_manager.configure_group_delayed(
                     conn, self.gidvec, conn.get("populationID", 0))
 
             events.append((conn_start, event_f))
@@ -1108,11 +1108,6 @@ class Node:
             return self._target_manager.compartmentCast(target, "") \
                 .getPointList(self._cell_distributor)
         return target.getPointList(self._cell_distributor)
-
-    # -
-    def get_synapse_data_gid(self, gid):
-        raise DeprecationWarning("Please use directly the synapse_manager object API, "
-                                 "method: get_synapse_params_gid")
 
     # -
     @mpi_no_errors
@@ -1258,6 +1253,7 @@ class Neurodamus(Node):
         """Explictly initialize, allowing the user to make last changes before sim
         """
         # Check if we need to override the base seed for synapse RNGs
+        log_stage("Building Simulation...")
         base_seed = self._run_conf.get("BaseSeed", 0)
         self._synapse_manager.finalize(base_seed, self._corenrn_conf)
 

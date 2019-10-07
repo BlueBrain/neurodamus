@@ -4,10 +4,10 @@ import subprocess
 
 sims = os.path.abspath(os.path.join(os.path.dirname(__file__), "simulations"))
 
-
 requires_mpi = pytest.mark.skipif(
     os.environ.get("SLURM_JOB_ID") is None and os.environ.get("RUN_MPI") is None,
-    reason="Simulation tests require MPI")
+    reason="Simulation tests require MPI"
+)
 
 
 @pytest.mark.slow

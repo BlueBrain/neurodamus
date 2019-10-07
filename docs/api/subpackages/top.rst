@@ -47,7 +47,6 @@ neurodamus.connection
 
    .. autosummary::
       Connection
-      STDPMode
       SynapseMode
       SynapseParameters
 
@@ -62,8 +61,13 @@ neurodamus.connection\_manager
    .. rubric:: Classes
 
    .. autosummary::
-      GapJunctionManager
+      ConnectionSet
       SynapseRuleManager
+      GapJunctionManager
+
+   .. autoclass:: SynapseRuleManager
+      :members:
+      :inherited-members:
 
 
 neurodamus.managers

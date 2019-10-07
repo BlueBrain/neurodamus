@@ -12,6 +12,7 @@ Contents
    :maxdepth: 2
 
    Overview <overview>
+   Examples <examples>
    Changelog <changes>
    Module Reference <api/modules>
 

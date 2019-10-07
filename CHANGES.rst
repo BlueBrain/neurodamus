@@ -2,6 +2,29 @@
 Change Log
 ==========
 
+Version 0.8.1
+=============
+*Not released*
+
+*Improvements*
+  * Refactoring for ConnectionSet class
+  * Documentation
+
+Version 0.8.0
+=============
+**Jan. 14, 2020**
+
+*New features*
+  * Allow selecting which phases to run with --build-model --simulate-model --output-path
+  * Will delete intermediate CoreNeuron files, unless --keep-build option is set
+  * Ability to load multiple mod libraries. NRNMECH_LIBRARY_PATH should point to a
+    library containing at least the neurodamus aux mods. Libraries of cell mechanisms
+    alone shall go into BGLIBPY_MOD_LIBRARY_PATH (multiple accepted)
+
+*Bug Fixes*
+  * BBPBGLIB-554 Finalize connections only at init() time
+
+
 Version 0.7.2
 =============
 **Dec. 19, 2019**
@@ -9,7 +32,6 @@ Version 0.7.2
 *Improvements*
   * Support loading of several mech lib (: separated)
   * Fixed & cleanup options to detect build model
-  * Added options --build-model --simulate-model --output-path --keep-build
 
 Version 0.7.1
 =============
