@@ -35,6 +35,7 @@ begintemplate TStim
 		ic = new IClamp(x = $1)
 		ic.del = 0
 		ic.dur = 1e308
+		ic.amp = 0  // shall be overriden
 		stim = new Vector()
 		tvec = new Vector()
 		if(numarg()>1) rand = $o2
@@ -209,11 +210,11 @@ begintemplate TStim
         }
 
         addpoint(0,0)
-        }
+    }
 
-	proc delay(/*dur*/){
-		tvec.add($1)
-	}
+    proc delay(/*dur*/){
+        tvec.add($1)
+    }
 
 
 /**
