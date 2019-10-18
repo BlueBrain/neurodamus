@@ -328,8 +328,9 @@ proc indexSections() { local index  localobj tmpString, s
  * entity watching reference counts can work.
  */
 proc clear() { localobj nil
+    // CCellRef is the wrapper in v5, so CCellRef.CellRef is "this"!
+    // Need to break this reference loop to release mem
     CCellRef.CellRef = nil
-    //CCellRef = nil
 }
 
 //-----------------------------------------------------------------------------------------------
