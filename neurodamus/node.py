@@ -783,6 +783,9 @@ class Node:
         if self._sim_ready:
             return self._cell_distributor.pnm
 
+        if self._cell_distributor is None or self._cell_distributor._gidvec is None:
+            raise RuntimeError("No CellDistributor was initialized. Please create a circuit.")
+
         if corenrn_gen is None:
             corenrn_gen = self._simulator_conf.generateData()
 
@@ -1044,6 +1047,8 @@ class Node:
 
     @property
     def gidvec(self):
+        if self._cell_distributor is None or self._cell_distributor._gidvec is None:
+            raise RuntimeError("No CellDistributor was initialized. Please create a circuit.")
         return self._cell_distributor.getGidListForProcessor()
 
     # -
