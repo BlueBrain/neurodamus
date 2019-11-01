@@ -8,15 +8,16 @@
 
 begintemplate ShowProgress
 
-objref fihTimer, cvode, this
+objref cvode, this
 public init, updateProgress
 
 external tstop
 
 /**
  * Utility function which will set up a timer to perioducally check the amount of time lapsed
- * in the simulation compared to the final tstop value.  This is converted into a percentage of the job complete
- * which is then printed to the console.
+ * in the simulation compared to the final tstop value.  This is converted into a percentage
+ * of the job complete which is then printed to the console.
+ * NOTE: Please build the timer after finitialize / stdinit
  *
  * @param $o1 Reference to cvode object
  * @param $2 cpu rank, since only cpu id 0 needs to execute anything
@@ -27,7 +28,7 @@ proc init() {
     if( $2 == 0 ) {
         lastTimeCheck = startsw()
 	simStart = lastTimeCheck
-        fihTimer = new FInitializeHandler("updateProgress()", this)
+        updateProgress()
     }
 }
 
@@ -36,12 +37,11 @@ proc init() {
  * inserts the next call into the event queue
  */
 proc updateProgress() {
-    if(((startsw()-lastTimeCheck) > 0.10 ) && (t>0)) {
-	lastTimeCheck = startsw()
-	NumSecRemain = (lastTimeCheck-simStart)*(tstop/t-1)
-        printf(" Completed =%02d%% ETA =%d:%02d:%02d  \r",  (t*100/tstop), int(NumSecRemain/3600), int(NumSecRemain%3600/60), int(NumSecRemain%3600%60) )
-
-
+    if( (startsw() - lastTimeCheck > 0.75) && (t > 0) ) {
+        lastTimeCheck = startsw()
+        NumSecRemain = (lastTimeCheck - simStart) * (tstop / t - 1)
+        printf("\r[t=%5.2f] Completed %2.f%% ETA: %02.f:%02.f:%02.f  ",\
+               t, (t*100/tstop), NumSecRemain/3600, NumSecRemain%3600/60, NumSecRemain%3600%60)
     }
 
     cvode.event(t+1, "updateProgress()")
