@@ -1151,7 +1151,10 @@ class Node:
 class Neurodamus(Node):
     """A high level interface to Neurodamus
     """
-    def __init__(self, config_file, enable_reports=True, logging_level=None):
+    def __init__(self, config_file,
+                       enable_reports=True,
+                       auto_init=True,
+                       logging_level=None):
         """Creates and initializes a neurodamus run node.
 
         As part of Initiazation it calls:
@@ -1177,6 +1180,7 @@ class Neurodamus(Node):
         Node.__init__(self, config_file)
         # Use the run_conf dict to avoid passing it around
         self._run_conf["EnableReports"] = enable_reports
+        self._run_conf["AutoInit"] = auto_init
 
         logging.info("Running Neurodamus with config from " + config_file)
         self._instantiate_simulation()
@@ -1205,6 +1209,13 @@ class Neurodamus(Node):
         if ospath.isfile("debug_gids.txt"):
             self.dump_circuit_config()
 
+        if self._run_conf["AutoInit"]:
+            self.init()
+
+    # -
+    def init(self):
+        """Explictly initialize, allowing the user to make last changes before sim
+        """
         if self._run_conf["EnableReports"]:
             self.enable_reports()
 
