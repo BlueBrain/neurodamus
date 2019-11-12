@@ -1,29 +1,12 @@
 {nrnpython( "import shutil, os.path" )}
 
-/**
- * Calls a python shutil command involving src and dst, optionally prepending a given path
- * @param $s1 shutil command
- * @param $s2 source
- * @param $s3 dest
- * @param $s4 path
- */
-proc shutil() {
-    strdef cmd, src, dst
-    src = $s2
-    dst = $s3
-    if( numarg() == 4 ) {
-        sprint( src, "%s/%s", $s4, src )
-        sprint( dst, "%s/%s", $s4, dst )
-    }
-    sprint( cmd, "shutil.%s(\"%s\", \"%s\")", $s1, src, dst )
-    nrnpython(cmd)
-}
 
 
 // Use helper functions from python os.path
-objref _py, ospath
+objref _py, ospath, shutil
 _py = new PythonObject()
 ospath = _py.os.path
+shutil = _py.shutil
 
 
 
