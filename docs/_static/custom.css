@@ -1,0 +1,20 @@
+.md-typeset ol li blockquote, .md-typeset ol li p, .md-typeset ul li blockquote, .md-typeset ul li p {
+    margin: 0.1em 0;
+}
+
+.md-typeset blockquote, .md-typeset ol, .md-typeset ul {
+    margin: 0.2em 0;
+}
+
+.md-typeset dd {
+    margin-top: 0.2em;
+    margin-bottom: 0.3em;
+}
+
+.md-typeset ol li, .md-typeset ul li {
+    margin-bottom: 0.1em;
+}
+
+.md-typeset p {
+    font-size: 0.7rem;
+}

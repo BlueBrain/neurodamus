@@ -108,6 +108,10 @@ autodoc_mock_imports = [
 # a list of builtin themes.
 html_theme = 'sphinx-limestone-theme'
 
+# Static files
+html_static_path = ['_static']
+html_css_files = ['custom.css']
+
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.

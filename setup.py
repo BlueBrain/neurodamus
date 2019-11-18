@@ -1,10 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import subprocess
 import sys
 from setuptools import setup, find_packages, Command
 
-__version__ = "0.6.0"
+try:
+    __version__ = subprocess.run(['git', 'describe', '--tags'],
+                                 stdout=subprocess.PIPE).stdout.strip().decode()
+    if '-' in __version__: __version__ = __version__[:-9]
+except Exception as e:
+    raise RuntimeError("Could not get version from Git repo") from e
 
 
 class Docs(Command):
