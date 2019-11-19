@@ -95,7 +95,7 @@ pygments_style = 'sphinx'
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
 
-autosummary_generate = False
+autosummary_generate = []
 
 autodoc_mock_imports = [
     "neuron", "lazy_property", "numpy", "mapping", "docopt",
