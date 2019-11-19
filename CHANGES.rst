@@ -9,6 +9,7 @@ Version 0.7.2
 *Improvements*
   * Support loading of several mech lib (: separated)
   * Fixed & cleanup options to detect build model
+  * Added options --build-model --simulate-model --output-path --keep-build
 
 Version 0.7.1
 =============

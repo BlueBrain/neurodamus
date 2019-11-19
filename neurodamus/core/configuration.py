@@ -24,6 +24,7 @@ class RunConfig(ConfigT):
     simulate_model = True
     model_path = None  # Currently is output-path
     output_path = None
+    keep_build = False
 
 
 class RNGConfig(ConfigT):

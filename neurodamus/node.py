@@ -8,6 +8,7 @@ import logging
 import math
 import operator
 import os
+import shutil
 from os import path as ospath
 from collections import namedtuple
 
@@ -37,7 +38,7 @@ class Node:
         Nd.init()
 
         # The Recipe being None is allowed internally for e.g. setting up multi-cycle runs
-        # It ishall not be used as Public API
+        # It shall not be used as Public API
         if recipe is not None:
             # Read configuration
             self._pnm = Nd.ParallelNetManager(0)
@@ -58,6 +59,10 @@ class Node:
             self._buffer_time = 25 * self._run_conf.get("FlushBufferScalar", 1)
             self._core_replay_file = ''
             self._target_parser = None
+            self._keep_corenrn_data = (user_config.keep_build is True
+                                       or self._run_conf.get("keepModelData", False)
+                                       or self._only_build_model
+                                       or "Save" in self._run_conf)
 
         self._target_manager = None
         self._stim_list = None
@@ -955,6 +960,7 @@ class Node:
                 for opt, core_opt in neurodamus2core.items()
                 if opt in self._run_conf]
         opts_expanded = functools.reduce(operator.iconcat, opts, [])
+
         log_verbose("solve_core(..., %s)", ", ".join(opts_expanded))
         self._corenrn_conf.psolve_core(*opts_expanded)
 
@@ -1176,10 +1182,13 @@ class Node:
         if not self._corenrn_conf or self._only_build_model:
             self.clear_model()
 
-        # Runworker starts a server loop in the workers and the process dies on pc.done()
-        # This shall not be required anymore since we're not using timeit
-        # pnm.pc.runworker()  #
-        # pnm.pc.done()
+        if self._corenrn_conf and not self._keep_corenrn_data:
+            data_folder = ospath.join(self._output_root, "coreneuron_input")
+            logging.info("Deleting intermediate data in %s", data_folder)
+            if MPI.rank == 0:
+                shutil.rmtree(data_folder, 1)
+                os.remove(ospath.join(self._output_root, "sim.conf"))
+            MPI.barrier()
 
         logging.info("Finished")
         Nd.quit()  # this stops neuron, so if runing with special process quits immediately
