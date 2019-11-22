@@ -2,6 +2,14 @@
 Change Log
 ==========
 
+Version 0.7.1
+=============
+**Nov. 22, 2019**
+
+*New Features*
+  * Adding option to initialize later
+  * Refactor for Single configure step, allowing for split-file conections
+
 
 Version 0.7.0
 =============
