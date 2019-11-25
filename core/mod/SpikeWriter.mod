@@ -10,8 +10,11 @@ NEURON {
 }
 
 VERBATIM
+#include <stdlib.h>
 
+#ifndef DISABLE_MPI
 #include <mpi.h>
+#endif
 
 extern double* vector_vec();
 extern int vector_capacity();
@@ -47,10 +50,15 @@ PROCEDURE write() {
         if(ifarg(3)) {
             filePath = hoc_gargstr(3);
         } else  {
+#ifndef DISABLE_MPI
             if(nrnmpi_myid == 0) {
-                printf(" Error : No spike file path provided, can't write spikes! \n");
+                fprintf(stderr, " Error : No spike file path provided, can't write spikes! \n");
                 MPI_Abort(MPI_COMM_WORLD, 1);
             }
+#else
+            fprintf(stderr, " Error : No spike file path provided, can't write spikes! \n");
+            exit(-1);
+#endif
         }
 
         // rank 0 write extra string at the begining as "/scatter"
@@ -65,8 +73,12 @@ PROCEDURE write() {
         char *spike_data = (char *) malloc(num_bytes);
 
         if(spike_data == NULL) {
-            printf("Error : Memory allocation failed for spike buffer I/O!\n");
+            fprintf(stderr, "Error : Memory allocation failed for spike buffer I/O!\n");
+#ifndef DISABLE_MPI
             MPI_Abort(MPI_COMM_WORLD, 1);
+#else
+            exit(-1);
+#endif
         }
 
         strcpy(spike_data, "");
@@ -81,9 +93,13 @@ PROCEDURE write() {
             char str[spike_record_length];
             int nstr = snprintf(str, spike_record_length, "%.3f\t%d\n", time[i], (int)gid[i]);
             if (nstr >= spike_record_length) {
-                printf("Error : Record written is larger than spike record buffer\n");
+                fprintf(stderr, "Error : Record written is larger than spike record buffer\n");
                 free(spike_data);
+#ifndef DISABLE_MPI
                 MPI_Abort(MPI_COMM_WORLD, 1);
+#else
+                exit(-1);
+#endif
             }
             strcat(spike_data, str);
         }
@@ -92,7 +108,9 @@ PROCEDURE write() {
         // num_bytes but only "populated" characters
         unsigned long num_chars = strlen(spike_data);
 
+#ifndef DISABLE_MPI
         unsigned long offset = 0;
+
         MPI_Exscan(&num_chars, &offset, 1, MPI_UNSIGNED_LONG, MPI_SUM, MPI_COMM_WORLD);
 
         if (nrnmpi_myid == 0) {
@@ -108,6 +126,11 @@ PROCEDURE write() {
         MPI_File_write_at_all(fh, offset, spike_data, num_chars, MPI_BYTE, &status);
 
         MPI_File_close(&fh);
+#else
+        FILE *spike_file = fopen(filePath, "w");
+        fprintf(spike_file, spike_data);
+        fclose(spike_file);
+#endif
 
         free(spike_data);
 

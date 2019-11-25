@@ -41,7 +41,11 @@ VERBATIM
 #undef ptr
 #define H5_USE_16_API 1
 #include "hdf5.h"
+
+#ifndef DISABLE_MPI
 #include "mpi.h"
+#endif
+
 #include <stdlib.h>
 
 /// NEURON utility functions we want to use
@@ -320,32 +324,36 @@ int openFile( Info* info, const char *filename, int fileID, int nRanksPerFile, i
     }
 
     info->name_group[0]='\0';
+
+    hid_t file_driver = (info->acc_tpl1 != -1)? info->acc_tpl1 : H5P_DEFAULT;
+
+    // Opens the file with the alternate handler
+    info->file_ = H5Fopen( nameoffile, H5F_ACC_RDONLY, file_driver);
+    int result = (info->file_ < 0);
+    int failed = result;
+
+#ifndef DISABLE_MPI
     if( info->acc_tpl1 != -1 ) {
-       info->file_ = H5Fopen( nameoffile, H5F_ACC_RDONLY, info->acc_tpl1 );
+        MPI_Allreduce( &result, &failed, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
 
-       // ensure collectively that open suceeded; if not print 1 message
-       int result = (info->file_ < 0), nfail = 0;
-       MPI_Allreduce( &result, &nfail, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
+        if( failed ) {
+            int canreport = (result<0)?nrnmpi_myid:nrnmpi_numprocs, willreport = 0;
+            MPI_Allreduce( &canreport, &willreport, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD );
 
-       if( nfail > 0 ) {
-         int canreport = (result<0)?nrnmpi_myid:nrnmpi_numprocs, willreport = 0;
-         MPI_Allreduce( &canreport, &willreport, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD );
-
-         if( willreport == nrnmpi_myid ) {
-             printf( "%d ERROR: %d ranks failed collective open of synapse file: %s\n", nrnmpi_myid, nfail, nameoffile );
-         }
-
-         H5Eprint (stderr);
-       }
-    } else {
-       info->file_ = H5Fopen( nameoffile, H5F_ACC_RDONLY, H5P_DEFAULT );
-
-       if( info->file_ < 0 ) {
+            if( willreport == nrnmpi_myid ) {
+                fprintf(stderr, "%d ERROR: %d ranks failed collective open of synapse file: %s\n", nrnmpi_myid, failed, nameoffile );
+            }
+            info->file_ = -1;
+            H5Eprint(stderr);
+            return -1;
+        }
+    } else  // to the serial-version if
+#endif
+    if( failed ) {
         info->file_ = -1;
-        printf( "ERROR: Failed to open synapse file: %s\n", nameoffile );
-        H5Eprint (stderr);
+        fprintf(stderr, "ERROR: Failed to open synapse file: %s\n", nameoffile );
+        H5Eprint(stderr);
         return -1;
-       }
     }
 
     if( nRanksPerFile == 0 ) {
@@ -391,7 +399,7 @@ int openFile( Info* info, const char *filename, int fileID, int nRanksPerFile, i
 
     //fprintf( stderr, "load datasets %d through %d (max %d)\n", startIndex, startIndex+nDatasetsToImport, (int) nObjects );
 
-    int i, verify=startIndex, result;
+    int i, verify=startIndex;
     for( i=startIndex; i<startIndex+nDatasetsToImport && i<nObjects; i++ ) {
         assert( verify == i );
         result = H5Giterate( info->file_, "/", &verify, loadShareData, NULL );
@@ -422,7 +430,7 @@ int loadDimensions( Info *info, char* name )
 
     if( H5Lexists(info->file_, name, H5P_DEFAULT) == 0)
     {
-        printf("Error accessing to dataset %s in synapse file\n", name);
+        fprintf(stderr, "Error accessing to dataset %s in synapse file\n", name);
         return -1;
     }
     dataset_id = H5Dopen(info->file_, name);
@@ -514,7 +522,7 @@ int loadDataVector( Info *info, char* name )
 
     if( H5Lexists(info->file_, name, H5P_DEFAULT) == 0)
     {
-        printf("Error accessing to dataset %s in synapse file\n", name);
+        fprintf(stderr, "Error accessing to dataset %s in synapse file\n", name);
         return -1;
     }
     dataset_id = H5Dopen(info->file_, name);
@@ -563,7 +571,7 @@ int loadDataInt( Info* info, char* name, hid_t row, int *dest )
     long long temp;
 
     if( H5Lexists(info->file_, name, H5P_DEFAULT) == 0) {
-        printf("Error accessing to dataset %s in h5 file\n", name);
+        fprintf(stderr, "Error accessing to dataset %s in h5 file\n", name);
         return -1;
     }
 
@@ -606,7 +614,7 @@ int loadDataString( Info* info, char* name, hid_t row, char **hoc_dest )
 
     if( H5Lexists(info->file_, name, H5P_DEFAULT) == 0)
     {
-        printf("Error accessing to dataset %s in h5 file\n", name);
+        fprintf(stderr, "Error accessing to dataset %s in h5 file\n", name);
         return -1;
     }
     dataset_id = H5Dopen(info->file_, name);
@@ -645,7 +653,7 @@ int loadDataString( Info* info, char* name, hid_t row, char **hoc_dest )
     return 0;
 }
 
-#endif
+#endif  // DISABLE_HDF5
 ENDVERBATIM
 
 
@@ -655,7 +663,7 @@ VERBATIM {
 #ifdef DISABLE_HDF5
     // Neuron might init the mechanism. With args it's the user.
     if(ifarg(1)) {
-        fprintf(stderr, "HDF5 support is not available");
+        fprintf(stderr, "HDF5 support is not available\n");
         exit(-1);
     }
 #else
@@ -694,15 +702,15 @@ VERBATIM {
             // normal case - open a file and be ready to load data as needed
             openFile( info, nameoffile, -1, 0, 0, 0 );
         }
-        else
-        {
+        else {
             // Each cpu is reponsible for a portion of the data
             info->synapseCatalog.rootName = strdup( nameoffile );
 
-            int mpi_size, mpi_rank;
+            int mpi_size=1, mpi_rank=0;
+#ifndef DISABLE_MPI
             MPI_Comm_size( MPI_COMM_WORLD, &mpi_size );
             MPI_Comm_rank( MPI_COMM_WORLD, &mpi_rank );
-
+#endif
             //fprintf( stderr, "%d vs %d\n", mpi_size, nFiles );
             // attempt to use the merge script to catalog files.  Only if it is not found should we then go to the
             // individual files and iterate the datasets
@@ -773,7 +781,7 @@ VERBATIM {
             }
         }
     }
-#endif
+#endif  // DISABLE_HDF5
 }
 ENDVERBATIM
 }
@@ -815,6 +823,7 @@ ENDVERBATIM
 FUNCTION redirect() {
 VERBATIM {
 #ifndef DISABLE_HDF5
+#ifndef DISABLE_MPI
     FILE *fout;
     char fname[128];
 
@@ -839,7 +848,8 @@ VERBATIM {
         fout = freopen( fname, "w", stderr );
         setbuf( fout, NULL );
     }
-#endif
+#endif  // DISABLE_MPI
+#endif  // DISABLE_HDF5
 }
 ENDVERBATIM
 }
@@ -850,11 +860,13 @@ VERBATIM {
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
-    int mpi_size, mpi_rank;
+    int mpi_size=1, mpi_rank=0;
 
+#ifndef DISABLE_MPI
     // get MPI info
     MPI_Comm_size (MPI_COMM_WORLD, &mpi_size);
     MPI_Comm_rank (MPI_COMM_WORLD, &mpi_rank);
+#endif
 
     if( mpi_rank == 0 )
     {
@@ -869,13 +881,16 @@ VERBATIM {
         }
     }
 
+#ifndef DISABLE_MPI
     MPI_Bcast( &versionNumber, 1, MPI_INT, 0, MPI_COMM_WORLD );
-
 #endif
+
+#endif  // DISABLE_HDF5
     return versionNumber;
 }
 ENDVERBATIM
 }
+
 
 FUNCTION loadData() {
 VERBATIM {
@@ -918,7 +933,7 @@ VERBATIM {
     }
 
     return -1;
-#endif
+#endif  // DISABLE_HDF5
 }
 ENDVERBATIM
 }
@@ -978,7 +993,7 @@ VERBATIM {
     }
     else
     {
-        printf( "general error: bad file handle, missing arg?" );
+        fprintf(stderr, "general error: bad file handle, missing arg?");
         return 0;
     }
 #endif
@@ -1004,7 +1019,7 @@ VERBATIM {
             column = (hsize_t) *getarg(3);
             if(row<0 || row >=info->rowsize_ || column < 0 || column>=info->columnsize_)
             {
-                printf("ERROR: trying to access to a row and column erroneus on %s, size: %d,%d accessing to %d,%d\n ",name,info->rowsize_,info->columnsize_,row,column);
+                fprintf(stderr, "ERROR: trying to access to a row and column erroneus on %s, size: %d,%d accessing to %d,%d\n ",name,info->rowsize_,info->columnsize_,row,column);
                 return 0;
             }
 
@@ -1016,7 +1031,7 @@ VERBATIM {
                 fprintf( stderr, "unexpected mode: %d\n", info->mode );
             }
         }
-        printf("(Getting data)Error on the name of last loaded data: access:%s loaded:%s\n",name,info->name_group);
+        fprintf(stderr, "(Getting data)Error on the name of last loaded data: access:%s loaded:%s\n",name,info->name_group);
         return 0;
     }
     else
@@ -1124,7 +1139,7 @@ VERBATIM {
             column  = (hsize_t) *getarg(2);
             if(column<0 || column >=info->columnsize_ )
             {
-                printf("ERROR: trying to access to a column erroneus on %s, size: %d,%d accessing to column %d\n ",name,info->rowsize_,info->columnsize_,column);
+                fprintf(stderr, "ERROR: trying to access to a column erroneus on %s, size: %d,%d accessing to column %d\n ",name,info->rowsize_,info->columnsize_,column);
                 return 0;
             }
             pdVec = vector_arg(3);
@@ -1141,7 +1156,7 @@ VERBATIM {
             //float res = info->datamatrix_[row*info->columnsize_ + column];
             return 1;
         }
-        printf("(Getting data)Error on the name of last loaded data: access:%s loaded:%s\n",name,info->name_group);
+        fprintf(stderr, "(Getting data)Error on the name of last loaded data: access:%s loaded:%s\n",name,info->name_group);
         return 0;
     }
     else
@@ -1183,7 +1198,7 @@ VERBATIM {
             column  = (hsize_t) *getarg(2);
             if(column<0 || column >=info->columnsize_ )
             {
-                printf("ERROR: trying to access to a column erroneus on %s, size: %d,%d accessing to column %d\n ",name,info->rowsize_,info->columnsize_,column);
+                fprintf(stderr, "ERROR: trying to access to a column erroneus on %s, size: %d,%d accessing to column %d\n ",name,info->rowsize_,info->columnsize_,column);
                 return 0;
             }
             pdVec = vector_arg(3);
@@ -1196,7 +1211,7 @@ VERBATIM {
             //float res = info->datamatrix_[row*info->columnsize_ + column];
             return 1;
         }
-        printf("(Getting data)Error on the name of last loaded data: access:%s loaded:%s\n",name,info->name_group);
+        fprintf(stderr, "(Getting data)Error on the name of last loaded data: access:%s loaded:%s\n",name,info->name_group);
         return 0;
     }
     else
@@ -1288,6 +1303,7 @@ ENDCOMMENT
 FUNCTION exchangeSynapseLocations() {
 VERBATIM
 #ifndef DISABLE_HDF5
+#ifndef DISABLE_MPI
     INFOCAST;
     Info* info = *ip;
 
@@ -1302,6 +1318,7 @@ VERBATIM
     }
 
     int mpi_size, mpi_rank;
+
     MPI_Comm_size (MPI_COMM_WORLD, &mpi_size);
     MPI_Comm_rank (MPI_COMM_WORLD, &mpi_rank);
 
@@ -1377,6 +1394,7 @@ VERBATIM
     free(fileIDsFound);
     free(foundCountsAcrossCPUs);
     free(foundDispls);
-#endif
+#endif  // DISABLE_MPI
+#endif  // DISABLE_HDF5
 ENDVERBATIM
 }
