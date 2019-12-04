@@ -2,11 +2,19 @@
 Change Log
 ==========
 
+Version 0.7.2
+=============
+**Dec. 19, 2019**
+
+*Improvements*
+  * Support loading of several mech lib (: separated)
+  * Fixed & cleanup options to detect build model
+
 Version 0.7.1
 =============
 **Nov. 22, 2019**
 
-*New Features*
+*Improvements*
   * Adding option to initialize later
   * Refactor for Single configure step, allowing for split-file conections
 

@@ -1,14 +1,16 @@
 from __future__ import absolute_import
 import os
+import sys
 import logging
+from time import strftime
 from ..utils import classproperty
-from ..utils.logging import setup_logging, log_verbose
+from ..utils.logging import setup_logging, log_stage, log_verbose
 from .configuration import GlobalConfig
 from ._neuron import _Neuron
 from ._mpi import MPI
 
 HOCLIB = "neurodamus"  # neurodamus.hoc should be in HOC_LIBRARY_PATH.
-LOG_FILENAME = "pydamus.log"
+LOG_FILENAME = "pydamus_{}.log".format(strftime("%Y-%m-%d_%Hh%M"))
 
 
 class NeurodamusCore(_Neuron):
@@ -29,45 +31,77 @@ class NeurodamusCore(_Neuron):
 
     @classmethod
     def _init(cls):
+        if cls._pc is not None:
+            return
         # Neurodamus will generally require MPI
         # However if launched without, attempt
         within_mpi = (os.environ.get("PMI_RANK") is not None
                       or os.environ.get("OMPI_COMM_WORLD_RANK") is not None)
         _Neuron._init(mpi=within_mpi)  # if needed, sets cls._h
-        if cls._pc is not None:
-            return
+
+        # Init logging
+        if MPI.rank == 0:
+            open(LOG_FILENAME, "w").close()  # Truncate
+        MPI.barrier()  # Sync so that all processes see the file
+        setup_logging(GlobalConfig.verbosity, LOG_FILENAME, MPI.rank)
+        log_stage("Initializing Neurodamus... Logfile: " + LOG_FILENAME)
 
         # Load mods if not available
-        if not hasattr(cls._h, "SpikeWriter"):
-            cls._load_nrnmechlib()
+        cls._load_nrnmechlibs()
+        log_verbose("Mechanisms (mod) library(s) successfully loaded")
 
         # Load main Hoc
         cls.load_hoc(HOCLIB)
 
         # Additional libraries introduced in saveUpdate
+        sys.path.append(os.environ['HOC_LIBRARY_PATH'])
         cls.load_hoc("CompartmentMapping")
+
         # Attempt to instantiate BBSaveState to early detect errors
         cls._h.BBSaveState()
-
         cls._pc = MPI.pc
-
-        if MPI.rank == 0:
-            open(LOG_FILENAME, "w").close()  # Truncate
-        MPI.barrier()  # Sync so that all processes see the file
-
-        # default logging (if set previously this wont have any effect)
-        setup_logging(GlobalConfig.verbosity, LOG_FILENAME, MPI.rank)
-
-        logging.info("Neurodamus Mod & Hoc lib loaded.")
+        logging.info(" => Neurodamus Mod & Hoc lib loaded.")
 
     @classmethod
-    def _load_nrnmechlib(cls):
+    def _load_nrnmechlibs(cls):
+        """Loads the required mods for neurodamus to work
+
+        Two sets are required (which eventually came from the same lib):
+          1. model mechanisms: synapse mechanisms, etc...
+          2. neurodamus mechanisms: "Extensions" for reports, edges, etc
+        """
+        mech_avail = (hasattr(cls._h, "ProbAMPANMDA_EMS"), hasattr(cls._h, "SpikeWriter"))
+        if all(mech_avail):
+            return
+        elif any(mech_avail):
+            logging.warning("Loaded partial mech sets (Model / Neurodamus): %s", str(mech_avail))
+
         mechlib = os.environ.get("NRNMECH_LIB_PATH")
-        assert mechlib is not None, "NRNMECH_LIB_PATH not found. Please load neurodamus-xxx."
-        modlib = os.path.join(os.path.dirname(mechlib),
-                              "libnrnmech_nd" + os.path.splitext(mechlib)[1])
-        log_verbose("Loading mods from: " + modlib)
-        cls.load_dll(modlib)
+        if mechlib is None:
+            logging.error("No required mechanisms found and no NRNMECH_LIB_PATH set. "
+                          "Please load the desired model-x module or neurodamus-x")
+            sys.exit(1)
+
+        if ':' not in mechlib:
+            # This is the previous logic to find a combined mechlib
+            modlib = os.path.join(os.path.dirname(mechlib),
+                                  "libnrnmech_nd" + os.path.splitext(mechlib)[1])
+            if os.path.isfile(modlib):
+                logging.info("Loading MECH lib: " + modlib)
+                cls.load_dll(modlib)
+                return
+
+        for libpath in mechlib.split(":"):
+            libpath = libpath.strip()
+            if os.path.isfile(libpath):
+                logging.info("Loading MECH lib: " + libpath)
+                cls.load_dll(libpath)
+            else:
+                logging.warning("Invalid entry in NRNMECH_LIB_PATH: %s", libpath)
+
+        if any(not hasattr(cls._h, mech) for mech in ("ProbAMPANMDA_EMS", "SpikeWriter")):
+            logging.error("Neurodamus could not load all required mechanisms")
+            sys.exit(1)
 
     @property
     def pc(self):

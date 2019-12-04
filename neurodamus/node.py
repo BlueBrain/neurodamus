@@ -259,7 +259,9 @@ class Node:
             self._target_parser.open(user_target)
 
         if MPI.rank == 0:
-            self._target_parser.printCellCounts()
+            logging.info(" => Loaded %d targets", self._target_parser.targetList.count())
+            if GlobalConfig.verbosity >= 2:
+                self._target_parser.printCellCounts()
 
     # -
     @mpi_no_errors
@@ -1288,7 +1290,6 @@ class Neurodamus(Node):
 
     # -
     def _instantiate_simulation(self):
-        log_stage("====================== INITIALIZING ======================")
         self.load_targets()
 
         # Check if user wants to build the model in several steps (only for CoreNeuron)
