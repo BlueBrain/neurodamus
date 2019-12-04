@@ -93,8 +93,8 @@ class Node:
     cellDistributor = CellDistributor
 
     # -
-    @staticmethod
-    def _open_config(recipe, user_config):
+    @classmethod
+    def _open_config(cls, recipe, user_config):
         """ Initialize config objects and set Neuron global options from BlueConfig
 
         Args:
@@ -119,26 +119,7 @@ class Node:
                 logging.error("Error with OutputRoot %s. Terminating", output_path)
                 raise ConfigurationError("Output directory error")
 
-        if user_config.build_model is False \
-                and not ospath.isfile(ospath.join(output_path, "sim.conf")):
-            raise ConfigurationError("Model build was disabled, but sim.conf not found")
-
-        if user_config.build_model not in (True, False):
-            user_config.build_model = not ospath.isfile(ospath.join(output_path, "sim.conf"))
-            if user_config.build_model and MPI.rank == 0:
-                logging.info(
-                    "CoreNeuron data do not exist in '{}'".format(output_path) + ". "
-                    "Neurodamus will proceed to model building.")
-
-        if ((not user_config.build_model or not user_config.simulate_model)
-                and (not parsed_run.exists("Simulator") or
-                     parsed_run.get("Simulator").s == "NEURON")):
-            logging.warning("Changing simulator to CORENEURON due to requested run mode")
-            if parsed_run.exists("Simulator"):
-                parsed_run.get("Simulator").s = "CORENEURON"
-            else:
-                simulator = Nd.String("CORENEURON")
-                parsed_run.put("Simulator", simulator)
+        cls._check_model_build_mode(user_config, parsed_run, output_path)
 
         MPI.check_no_errors()
 
@@ -156,6 +137,33 @@ class Node:
         h.dt = parsed_run.valueOf("Dt")
         h.steps_per_ms = 1.0 / h.dt
         return config_parser
+
+    @staticmethod
+    def _check_model_build_mode(user_config, parsed_run, output_path):
+        core_config_exists = ospath.isfile(ospath.join(output_path, "sim.conf"))
+        if user_config.build_model is False and not core_config_exists:
+            raise ConfigurationError("Model build was disabled, but sim.conf not found")
+
+        if user_config.build_model not in (True, False):
+            # No sim.conf -> can leave as is
+            if not core_config_exists:
+                logging.info("CoreNeuron data do not exist in '%s'. "
+                             "Neurodamus will proceed to model building.", output_path)
+                user_config.build_model = True
+                return
+
+            # Otherwise we can activate if the simulator supports it
+            if parsed_run.exists("Simulator"):
+                if parsed_run.get("Simulator").s == "CORENEURON":
+                    user_config.build_model = False
+                    logging.info("CoreNeuron data found. Attempting to resume execution")
+                else:
+                    logging.warning("CoreNeuron data found but simulator is NEURON. To reuse "
+                                    "please unset Simulator or set it to CORENEURON.")
+            else:
+                logging.warning("Setting simulator to CORENEURON to resume execution")
+                parsed_run.put("Simulator", Nd.String("CORENEURON"))
+                user_config.build_model = False
 
     # -
     def check_resume(self):
