@@ -215,13 +215,15 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
     vgid = $3
 
     sprint( strCellName, "a%d", $o1.gid )
-
-    if( 0 == strcmp( format, "Bin")) {
+    if( 0 == strcmp( format, "Bin") || 0 == strcmp( format, "SONATA")) {
         rpt = -1
-        if (0 == strcmp(iscParam, "")) {
-          rec = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit)
+        if (0 == strcmp( format, "SONATA")) {
+            rec = new SonataReport( 0.5, reportName, outputDir, startTime, endTime, reportDt, "compartment")
+            rec.AddNode($o1.gid)
+        } else if (0 == strcmp( format, "Bin") && 0 == strcmp(iscParam, "")) {
+            rec = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit )
         } else {
-          rec = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit, iscParam )
+            rec = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit, iscParam )
         }
         binList.append( rec )
     } else {
@@ -248,7 +250,7 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
     sumSectionCounts( $o2 )
 
     //for ascii/hdf5 reports, must give section counts now to allocate memory - can I give it to Bin reports, too?
-    if (0 == strcmp(iscParam, "")) {
+    if (0 == strcmp(iscParam, "") && 0 != strcmp( format, "SONATA")) {
         if( 0 != strcmp( format, "Bin")) {
             rec.newMapping(rpt, "compartment", nAll, nSoma, nAxon, nBasal, nApical)
         } else {
@@ -318,8 +320,8 @@ proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
                 reportOn = "i_membrane_"
             }
             //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
-            if( 0 == strcmp(format, "Bin") ) {
-                sprint(tstr, "rec.AddVar( &%s(%lf), %d )", reportOn, x, sectionNo( $o1 ) )
+            if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
+                sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d )", reportOn, x, sectionNo( $o1 ), $o1.gid)
                 execute(tstr, this)
             } else if( 0 == strcmp(format, "Memory") ) {
                 // in-memory report
