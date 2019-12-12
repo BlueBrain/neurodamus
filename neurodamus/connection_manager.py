@@ -406,6 +406,7 @@ class _ConnectionManagerBase(object):
     def disable_group(self, post_gids, pre_gids=None, also_zero_conductance=False):
         """Disable a number of connections given lists of pre and post gids.
         Note: None will match all gids.
+              Should be called before Neurodamus.init() for CORENEURON
 
         Args:
             post_gids: The target gids of the connections to be disabled. None for all
@@ -509,7 +510,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
         self._replay_list = []
 
     # -
-    def finalize(self, base_seed=0):
+    def finalize(self, base_seed=0, use_corenrn=False):
         """Create the actual synapses and netcons.
         All weight scalars should have their final values.
 
@@ -529,6 +530,19 @@ class SynapseRuleManager(_ConnectionManagerBase):
                     conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
                 # logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
                 n_created_conns += len(conns)
+
+        # When the simulator is CoreNeuron there is no 'disable' conn state so we dont
+        # instantiate. This is ok since there is no chance the user to reenable them later
+        if not use_corenrn:
+            for tgid, conns in self._disabled_conns.items():
+                for conn in reversed(conns):
+                    if conn._netcons is not None:
+                        continue
+                    metype = cell_distributor.getMEType(tgid)
+                    spgid = cell_distributor.getSpGid(tgid)
+                    conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
+                    conn.disable()
+                    n_created_conns += 1
 
         MPI.check_no_errors()
         all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)

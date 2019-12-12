@@ -411,11 +411,6 @@ class Node:
         # Configure all created connections in one go
         self._configure_connections(self._synapse_manager)
 
-        # Check if we need to override the base seed for synapse RNGs
-        base_seed = self._run_conf.get("BaseSeed", 0)
-
-        self._synapse_manager.finalize(base_seed)
-
     # -
     def _create_group_connections(self):
         """Creates connections according to loaded parameters in 'Connection'
@@ -491,7 +486,6 @@ class Node:
         self._gj_manager.connect_all()
         # Currently gap junctions are not configured. Future?
         # self._configure_connections(self._gj_manager)
-        self._gj_manager.finalize()
 
     # -
     def _find_projection_file(self, proj_path):
@@ -1256,12 +1250,6 @@ class Neurodamus(Node):
         # Init resume if requested
         self.check_resume()
 
-        self.enable_stimulus()
-        self.enable_modifications()
-
-        if ospath.isfile("debug_gids.txt"):
-            self.dump_circuit_config()
-
         if self._run_conf["AutoInit"]:
             self.init()
 
@@ -1269,6 +1257,19 @@ class Neurodamus(Node):
     def init(self):
         """Explictly initialize, allowing the user to make last changes before sim
         """
+        # Check if we need to override the base seed for synapse RNGs
+        base_seed = self._run_conf.get("BaseSeed", 0)
+        self._synapse_manager.finalize(base_seed, self._corenrn_conf)
+
+        if self._gj_manager is not None:
+            self._gj_manager.finalize()
+
+        self.enable_stimulus()
+        self.enable_modifications()
+
+        if ospath.isfile("debug_gids.txt"):
+            self.dump_circuit_config()
+
         if self._run_conf["EnableReports"]:
             self.enable_reports()
 

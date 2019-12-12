@@ -458,6 +458,8 @@ class Connection(object):
             set_zero_conductance: (bool) Sets synapses' conductance to zero [default: False]
 
         """
+        if self._netcons is None:
+            return
         for nc in self._netcons:
             nc.active(False)
         if set_zero_conductance:
@@ -467,6 +469,8 @@ class Connection(object):
     def enable(self):
         """(Re)enables connections. It will activate all netcons and restore conductance values
         had they been set to zero"""
+        if self._netcons is None:
+            return
         for nc in self._netcons:
             nc.active(True)
         if self._conductances_bk:
