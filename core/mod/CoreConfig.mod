@@ -31,7 +31,7 @@ extern int nrnmpi_myid;
 static const char* const SIM_CONFIG_FILE = "sim.conf";
 static const char* const REPORT_CONFIG_FILE = "report.conf";
 static const int DEFAULT_CELL_PERMUTE = 0;
-static const char* outputdir = NULL;
+static char* outputdir = NULL;
 
 
 

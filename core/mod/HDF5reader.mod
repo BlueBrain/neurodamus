@@ -1019,7 +1019,8 @@ VERBATIM {
             column = (hsize_t) *getarg(3);
             if(row<0 || row >=info->rowsize_ || column < 0 || column>=info->columnsize_)
             {
-                fprintf(stderr, "ERROR: trying to access to a row and column erroneus on %s, size: %d,%d accessing to %d,%d\n ",name,info->rowsize_,info->columnsize_,row,column);
+                fprintf(stderr, "ERROR: trying to access to a row and column erroneus on %s, size: %lld,%lld accessing to %lld,%lld\n",
+                        name, info->rowsize_, info->columnsize_, row, column);
                 return 0;
             }
 
@@ -1139,7 +1140,7 @@ VERBATIM {
             column  = (hsize_t) *getarg(2);
             if(column<0 || column >=info->columnsize_ )
             {
-                fprintf(stderr, "ERROR: trying to access to a column erroneus on %s, size: %d,%d accessing to column %d\n ",name,info->rowsize_,info->columnsize_,column);
+                fprintf(stderr, "ERROR: trying to access to a column erroneus on %s, size: %lld,%lld accessing to column %lld\n ",name,info->rowsize_,info->columnsize_,column);
                 return 0;
             }
             pdVec = vector_arg(3);
@@ -1198,7 +1199,7 @@ VERBATIM {
             column  = (hsize_t) *getarg(2);
             if(column<0 || column >=info->columnsize_ )
             {
-                fprintf(stderr, "ERROR: trying to access to a column erroneus on %s, size: %d,%d accessing to column %d\n ",name,info->rowsize_,info->columnsize_,column);
+                fprintf(stderr, "ERROR: trying to access to a column erroneus on %s, size: %lld,%lld accessing to column %lld\n ",name,info->rowsize_,info->columnsize_,column);
                 return 0;
             }
             pdVec = vector_arg(3);
