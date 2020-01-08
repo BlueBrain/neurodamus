@@ -15,8 +15,8 @@ LOG_FILENAME = "pydamus_{}.log".format(strftime("%Y-%m-%d_%Hh%M"))
 
 class NeurodamusCore(_Neuron):
     """
-    A wrapper class representing an instance of Neuron with the required neurodamus hoc and mod
-    modules loaded
+    A wrapper class representing an instance of Neuron with the required
+    neurodamus hoc and mod modules loaded
     """
     __name__ = "NeurodamusCore"
     __slots__ = ()
@@ -66,41 +66,53 @@ class NeurodamusCore(_Neuron):
     def _load_nrnmechlibs(cls):
         """Loads the required mods for neurodamus to work
 
-        Two sets are required (which eventually came from the same lib):
-          1. model mechanisms: synapse mechanisms, etc...
-          2. neurodamus mechanisms: "Extensions" for reports, edges, etc
+        Two sets are required:
+          1. neurodamus mechanisms: "Extensions" for reports, edges, etc
+            (built-in or exclusively from NRNMECH_LIB_PATH)
+          2. model mechanisms: synapse mechanisms, etc...
+            (built-in or coming from BGLIBPY_MOD_LIBRARY_PATH)
+
+        As so, the models may be combined in a library pointed by
+        NRNMECH_LIB_PATH which is searched first. Nevertheless
+        BGLIBPY_MOD_LIBRARY_PATH must exclusively contain model mechs
+
+        Env vars can also point to several libs separated by ':'
         """
-        mech_avail = (hasattr(cls._h, "ProbAMPANMDA_EMS"), hasattr(cls._h, "SpikeWriter"))
-        if all(mech_avail):
-            return
-        elif any(mech_avail):
-            logging.warning("Loaded partial mech sets (Model / Neurodamus): %s", str(mech_avail))
 
-        mechlib = os.environ.get("NRNMECH_LIB_PATH")
-        if mechlib is None:
-            logging.error("No required mechanisms found and no NRNMECH_LIB_PATH set. "
-                          "Please load the desired model-x module or neurodamus-x")
+        def check_load_lib(mech, env_lib_path):
+            if hasattr(cls._h, mech):
+                return True
+            mechlib = os.environ.get(env_lib_path)
+            if mechlib is None:
+                return False
+
+            if env_lib_path == "NRNMECH_LIB_PATH":
+                modlib = os.path.join(os.path.dirname(mechlib),
+                                      "libnrnmech_nd" + os.path.splitext(mechlib)[1])
+                if os.path.isfile(modlib):
+                    logging.warning("Deprecation: NRNMECH_LIB_PATH points to model mechs. "
+                                    "Consider using a more recent build of neurodamus")
+                    mechlib = modlib
+
+            for libpath in mechlib.split(":"):
+                libpath = libpath.strip()
+                if os.path.isfile(libpath):
+                    logging.info("Loading MECH lib: " + libpath)
+                    cls.load_dll(libpath)
+                else:
+                    logging.warning("Invalid entry in %s: %s", env_lib_path, libpath)
+            return hasattr(cls._h, mech)
+
+        # DEV NOTE: model mods may together with core mods, so check for it first
+        # Two independent env vars are required since we want to support "special -python"
+        # which might not bring the model (support for split neurodamus) in which case
+        # we should load only the model libs pointed by BGLIBPY_MOD_LIBRARY_PATH.
+
+        if not check_load_lib("SpikeWriter", "NRNMECH_LIB_PATH"):
+            logging.error("Could not load neurodamus core mechs from NRNMECH_LIB_PATH")
             sys.exit(1)
-
-        if ':' not in mechlib:
-            # This is the previous logic to find a combined mechlib
-            modlib = os.path.join(os.path.dirname(mechlib),
-                                  "libnrnmech_nd" + os.path.splitext(mechlib)[1])
-            if os.path.isfile(modlib):
-                logging.info("Loading MECH lib: " + modlib)
-                cls.load_dll(modlib)
-                return
-
-        for libpath in mechlib.split(":"):
-            libpath = libpath.strip()
-            if os.path.isfile(libpath):
-                logging.info("Loading MECH lib: " + libpath)
-                cls.load_dll(libpath)
-            else:
-                logging.warning("Invalid entry in NRNMECH_LIB_PATH: %s", libpath)
-
-        if any(not hasattr(cls._h, mech) for mech in ("ProbAMPANMDA_EMS", "SpikeWriter")):
-            logging.error("Neurodamus could not load all required mechanisms")
+        if not check_load_lib("ProbAMPANMDA_EMS", "BGLIBPY_MOD_LIBRARY_PATH"):
+            logging.error("Could not load mod library from BGLIBPY_MOD_LIBRARY_PATH")
             sys.exit(1)
 
     @property
