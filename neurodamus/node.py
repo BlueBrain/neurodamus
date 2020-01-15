@@ -727,7 +727,6 @@ class Node:
             )
 
             target_name = rep_conf["Target"]
-            target = self._target_manager.getTarget(target_name)
 
             if self._corenrn_conf and MPI.rank == 0:
                 # Init report config
@@ -737,7 +736,7 @@ class Node:
                     rep_params.format, ptarget.isCellTarget(), rep_params.dt, rep_params.start,
                     rep_params.end, ptarget.completegids(), self._output_root)
 
-            if not target:
+            if not self._target_manager:
                 # When restoring with coreneuron we dont even need to initialize reports
                 continue
 
@@ -747,6 +746,7 @@ class Node:
             # For summation targets - check if we were given a Cell target because we really want
             # all points of the cell which will ultimately be collapsed to a single value
             # on the soma. Otherwise, get target points as normal.
+            target = self._target_manager.getTarget(target_name)
             points = self.get_target_points(target, rep_type.lower() == "summation")
 
             for point in points:
@@ -910,14 +910,17 @@ class Node:
         # increase timeout by 10x
         self._pnm.pc.timeout(200)
 
-    def _sim_corenrn_write_config(self):
+    def _sim_corenrn_write_config(self, corenrn_restore=False):
         log_stage("Dataset generation for CoreNEURON")
-        Nd.registerMapping(self._cell_distributor)
+
         corenrn_output = self._simulator_conf.getCoreneuronOutputDir().s
         corenrn_data = self._simulator_conf.getCoreneuronDataDir().s
         fwd_skip = self._run_conf.get("ForwardSkip", 0)
 
-        self._pnm.pc.nrnbbcore_write(corenrn_data)
+        if not corenrn_restore:
+            Nd.registerMapping(self._cell_distributor)
+            self._pnm.pc.nrnbbcore_write(corenrn_data)
+
         self._corenrn_conf.write_sim_config(
             corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
             self._pr_cell_gid or -1, self._core_replay_file
@@ -952,7 +955,7 @@ class Node:
     def _run_coreneuron(self):
         logging.info("Launching simulation with CoreNEURON")
         neurodamus2core = {"Save": "--checkpoint",
-                           "Restore:": "--restore"}
+                           "Restore": "--restore"}
         opts = [(core_opt, self._run_conf[opt])
                 for opt, core_opt in neurodamus2core.items()
                 if opt in self._run_conf]
@@ -1178,7 +1181,11 @@ class Node:
             data_folder = ospath.join(self._output_root, "coreneuron_input")
             logging.info("Deleting intermediate data in %s", data_folder)
             if MPI.rank == 0:
-                shutil.rmtree(data_folder, True)
+                if os.path.islink(data_folder):
+                    # in restore, coreneuron data is a symbolic link
+                    os.unlink(data_folder)
+                else:
+                    shutil.rmtree(data_folder, True)
                 os.remove(ospath.join(self._output_root, "sim.conf"))
             MPI.barrier()
 
@@ -1225,7 +1232,10 @@ class Neurodamus(Node):
         self._run_conf["AutoInit"] = auto_init
 
         logging.info("Running Neurodamus with config from " + config_file)
-        if user_cfg.build_model:
+
+        if self._corenrn_conf and "Restore" in self._run_conf:
+            self._coreneuron_restore()
+        elif user_cfg.build_model:
             self._instantiate_simulation()
 
         # In case an exception occurs we must prevent the destructor from cleaning
@@ -1244,15 +1254,16 @@ class Neurodamus(Node):
         self.create_synapses()
         self.create_gap_junctions()
 
-        # Init resume if requested
-        self.check_resume()
+        # Init resume for NEURON if requested
+        if not self._corenrn_conf:
+            self.check_resume()
 
         if self._run_conf["AutoInit"]:
             self.init()
 
     # -
     def init(self):
-        """Explictly initialize, allowing the user to make last changes before sim
+        """Explicitly initialize, allowing the user to make last changes before sim
         """
         # Check if we need to override the base seed for synapse RNGs
         log_stage("Building Simulation...")
@@ -1295,6 +1306,15 @@ class Neurodamus(Node):
             cnfile.writelines(cn_entries)
 
         logging.info(" => {} files merged successfully".format(ncycles))
+
+    # -
+    def _coreneuron_restore(self):
+        self.load_targets()
+        self.enable_stimulus(only_replay=True)
+        if self._run_conf["EnableReports"]:
+            self.enable_reports()
+        self._sim_corenrn_write_config(corenrn_restore=True)
+        self._only_run_sim = True
 
     # -
     def _instantiate_simulation(self):
