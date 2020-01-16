@@ -6,6 +6,7 @@ All rights reserved
 """
 import sys
 from neurodamus import commands
+import logging
 
 
 def main():
@@ -27,8 +28,14 @@ def main():
 
     args = [config_file] + sys.argv[first_argument_pos:]
 
-    commands.neurodamus(args)
+    try:
+        commands.neurodamus(args)
+    except Exception:
+        logging.exception("Neurodamus execution FAILED.")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    # We truly require this so that, when launched with special, the process finishes
+    sys.exit(main())

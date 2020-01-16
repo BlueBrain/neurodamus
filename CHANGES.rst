@@ -10,6 +10,9 @@ Version 0.8.1
   * Refactoring for ConnectionSet class
   * Documentation
 
+*Bug fixes*
+  * Cached Hoc values were not being updated
+
 Version 0.8.0
 =============
 **Jan. 14, 2020**

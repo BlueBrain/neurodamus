@@ -117,7 +117,9 @@ class _Neuron(object):
         cache = self.__class__.__cache
         obj = cache.get(item)
         if obj is None:
-            obj = cache[item] = getattr(self._h, item)
+            obj = getattr(self._h, item)
+            if type(obj) is not float:
+                cache[item] = obj
         return obj
 
     def __setattr__(self, key, value):

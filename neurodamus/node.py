@@ -1032,7 +1032,7 @@ class Node:
         events.sort()
 
         logging.info("Running simulation until t=%d ms", tstop)
-        t = tstart
+        t = tstart  # default if there are no events
         for t, event in events:
             self._psolve_loop(t)
             event()
@@ -1051,6 +1051,7 @@ class Node:
             self._pnm.psolve(next_flush)
             self._binreport_helper.flush()
             cur_t = next_flush
+        Nd.t = cur_t
 
     # -
     @mpi_no_errors
@@ -1158,14 +1159,13 @@ class Node:
             self._pnm.pc.prcellstate(gid, suffix)
 
     # ---------------------------------------------------------------------------
-    # Note: This method is called automatically from Neurodamus.__del__
+    # Note: This method may be called automatically from Neurodamus.__del__
     #     and therefore it must stay as simple as possible as exceptions are ignored
     def cleanup(self):
         """Have the compute nodes wrap up tasks before exiting.
         """
         # MemUsage constructor will do MPI communications
-        mem_usage = Nd.MemUsage()
-        mem_usage.print_mem_usage()
+        Nd.MemUsage().print_mem_usage()
 
         # Coreneuron runs clear the model before starting
         if not self._corenrn_conf or self._only_build_model:
@@ -1175,12 +1175,11 @@ class Node:
             data_folder = ospath.join(self._output_root, "coreneuron_input")
             logging.info("Deleting intermediate data in %s", data_folder)
             if MPI.rank == 0:
-                shutil.rmtree(data_folder, 1)
+                shutil.rmtree(data_folder, True)
                 os.remove(ospath.join(self._output_root, "sim.conf"))
             MPI.barrier()
 
         logging.info("Finished")
-        Nd.quit()  # this stops neuron, so if runing with special process quits immediately
 
 
 # Helper class
