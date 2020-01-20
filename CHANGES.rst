@@ -12,6 +12,7 @@ Version 0.8.1
 
 *Bug fixes*
   * Cached Hoc values were not being updated
+  * Resume w CoreNeuron: dont init circuit
 
 Version 0.8.0
 =============

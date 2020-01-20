@@ -14,7 +14,7 @@ from collections import namedtuple
 
 from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeurodamusCore as Nd
-from .core.configuration import GlobalConfig, RunConfig, ConfigurationError
+from .core.configuration import GlobalConfig, RunOptions, ConfigurationError
 from .cell_distributor import CellDistributor, LoadBalanceMode
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
@@ -29,40 +29,33 @@ class Node:
     It is relatively low-level, for a standard run consider using the Neurodamus class instead.
     """
 
-    def __init__(self, recipe, user_config):
+    def __init__(self, config_file, options=None):
         """ Creates a neurodamus executor
         Args:
-            recipe: The BlueRecipe file
-            user_config: An overriding run configuration typically coming from cmd line
+            config_file: A BlueConfig file
+            options: A dictionary of run options typically coming from cmd line
         """
         Nd.init()
 
         # The Recipe being None is allowed internally for e.g. setting up multi-cycle runs
         # It shall not be used as Public API
-        if recipe is not None:
-            # Read configuration
+        if config_file is not None:
+            self._target_parser = None
             self._pnm = Nd.ParallelNetManager(0)
-            self._config_parser = self._open_config(recipe, user_config)
-            self._blueconfig_path = ospath.dirname(recipe)
-            self._simulator_conf = Nd.simConfig
-            self._run_conf = compat.Map(self._config_parser.parsedRun).as_dict(True)  # type: dict
-            self._only_build_model = user_config.simulate_model is False
-            self._only_run_sim = user_config.build_model is False
+            self._options = opts = RunOptions(**(options or {}))
+            self._blueconfig_path = ospath.dirname(config_file)
+            self._core_replay_file = ''
 
+            self._config_parser = self._open_check_config(config_file, opts)
+            self._run_conf = compat.Map(self._config_parser.parsedRun).as_dict(True)
             self._output_root = self._run_conf["OutputRoot"]
             self._pr_cell_gid = self._run_conf.get("prCellGid")
-            self._corenrn_conf = Nd.CoreConfig(self._output_root) \
-                if self._simulator_conf.coreNeuronUsed() else None
 
-            # BinReportHelper required for Save-Restore
-            self._binreport_helper = Nd.BinReportHelper(Nd.dt, not self._corenrn_conf)
-            self._buffer_time = 25 * self._run_conf.get("FlushBufferScalar", 1)
-            self._core_replay_file = ''
-            self._target_parser = None
-            self._keep_corenrn_data = (user_config.keep_build is True
-                                       or self._run_conf.get("keepModelData", False)
-                                       or self._only_build_model
-                                       or "Save" in self._run_conf)
+            self._simulator_conf = self._configure_simulator(self._run_conf, opts)
+            self._corenrn_conf = self._simulator_conf.core_config
+            self._binreport_helper = Nd.BinReportHelper(Nd.dt, True) \
+                if self._simulator_conf.runNeuron() else None
+            MPI.check_no_errors()  # Ensure no rank terminated unexpectedly
 
         self._target_manager = None
         self._stim_list = None
@@ -76,6 +69,7 @@ class Node:
         self._gj_manager = None        # type: GapJunctionManager
         self._connection_weight_delay_list = []
 
+    #
     # public 'read-only' properties - object modification on user responsibility
     target_manager = property(lambda self: self._target_manager)
     synapse_manager = property(lambda self: self._synapse_manager)
@@ -87,36 +81,28 @@ class Node:
     reports = property(lambda self: self._report_list)
 
     # Compat
-    def __getattr__(self, item):
-        # parts = item.split("_")
-        # new_name = "".join(["_" + parts[0]] + [p.capitalize() for p in parts[1:]])
-        logging.warning("Accessing {} via compat API".format(item))
-        new_name = "".join(["_" + c.lower() if c.isupper() else c for c in item])
-        return self.__getattribute__(new_name)
-
-    # Compat
     cellDistributor = CellDistributor
 
-    # -
     @classmethod
-    def _open_config(cls, recipe, user_config):
+    def _open_check_config(cls, config_file, user_options):
         """ Initialize config objects and set Neuron global options from BlueConfig
 
         Args:
-            recipe: Name of Config file to load
+            config_file: Name of Config file to load
+            user_options: The object of user options
         """
         config_parser = Nd.ConfigParser()
-        config_parser.open(recipe)
+        config_parser.open(config_file)
         if MPI.rank == 0:
             config_parser.toggleVerbose()
 
         if config_parser.parsedRun is None:
-            raise ConfigurationError("No Run block parsed from BlueConfig %s", recipe)
+            raise ConfigurationError("No 'Run' block found in BlueConfig %s", config_file)
         parsed_run = config_parser.parsedRun
 
         # confirm output_path exists and is usable -> use utility.mod
-        if user_config.output_path:
-            parsed_run.get("OutputRoot").s = user_config.output_path
+        if user_options.output_path:
+            parsed_run.get("OutputRoot").s = user_options.output_path
         output_path = parsed_run.get("OutputRoot").s
 
         if MPI.rank == 0:
@@ -124,28 +110,29 @@ class Node:
                 logging.error("Error with OutputRoot %s. Terminating", output_path)
                 raise ConfigurationError("Output directory error")
 
-        cls._check_model_build_mode(user_config, parsed_run, output_path)
+        cls._check_model_build_mode(user_options, parsed_run, output_path)
 
-        MPI.check_no_errors()
+        # BlueConfig integrity checks
+        if parsed_run.exists("Restore"):
+            user_options.build_model = False
+            if not user_options.simulate_model:
+                raise ConfigurationError("CoreNeuron Restore with simulate_model=OFF")
 
-        Nd.execute("cvode = new CVode()")
-        Nd.execute("celsius=34")
+        if not user_options.simulate_model and not user_options.build_model:
+            raise ConfigurationError("NoOP: Both build and simulation have been disabled")
 
-        Nd.simConfig.interpret(parsed_run)
-
-        # Make sure Random Numbers are prepped
-        rng_info = Nd.RNGSettings()
-        rng_info.interpret(parsed_run)  # this sets a few global vars in hoc
-
-        h = Nd.h
-        h.tstop = parsed_run.valueOf("Duration")
-        h.dt = parsed_run.valueOf("Dt")
-        h.steps_per_ms = 1.0 / h.dt
         return config_parser
 
     @staticmethod
     def _check_model_build_mode(user_config, parsed_run, output_path):
         core_config_exists = ospath.isfile(ospath.join(output_path, "sim.conf"))
+        simulator = parsed_run.get("Simulator").s if parsed_run.exists("Simulator") \
+            else None
+        if simulator == "NEURON" and (user_config.build_model is False
+                                      or user_config.simulate_model is False):
+            raise ConfigurationError("Disabling model building or simulation is only"
+                                     " compatible with CoreNEURON")
+
         if user_config.build_model is False and not core_config_exists:
             raise ConfigurationError("Model build was disabled, but sim.conf not found")
 
@@ -158,17 +145,48 @@ class Node:
                 return
 
             # Otherwise we can activate if the simulator supports it
-            if parsed_run.exists("Simulator"):
-                if parsed_run.get("Simulator").s == "CORENEURON":
-                    user_config.build_model = False
-                    logging.info("CoreNeuron data found. Attempting to resume execution")
-                else:
-                    logging.warning("CoreNeuron data found but simulator is NEURON. To reuse "
-                                    "please unset Simulator or set it to CORENEURON.")
+            if simulator == "CORENEURON":
+                user_config.build_model = False
+                logging.info("CoreNeuron data found. Attempting to resume execution")
+            elif simulator == "NEURON":
+                logging.warning("CoreNeuron data found but simulator is NEURON. "
+                                "To reuse please set 'Simulator' to CORENEURON.")
             else:
                 logging.warning("Setting simulator to CORENEURON to resume execution")
                 parsed_run.put("Simulator", Nd.String("CORENEURON"))
                 user_config.build_model = False
+
+    @staticmethod
+    def _configure_simulator(run_conf, user_options):
+        Nd.execute("cvode = new CVode()")
+        Nd.execute("celsius=34")
+
+        sim_config = Nd.SimConfig(run_conf['_hoc'])
+
+        # Make sure Random Numbers are prepped
+        rng_info = Nd.RNGSettings()
+        rng_info.interpret(run_conf['_hoc'])  # this sets a few global vars in hoc
+
+        sim_config.buffer_time = 25 * run_conf.get("FlushBufferScalar", 1)
+
+        sim_config.core_config = Nd.CoreConfig(run_conf["OutputRoot"]) \
+            if sim_config.coreNeuronUsed() else None
+
+        keep_core_data = False
+        if sim_config.core_config:
+            if user_options.keep_build or run_conf.get("keepModelData", False):
+                keep_core_data = True
+            elif not user_options.simulate_model or "Save" in run_conf:
+                logging.warning("Keeping coreneuron data for CoreNeuron Save-Restore")
+                keep_core_data = True
+        sim_config.delete_corenrn_data = sim_config.core_config and not keep_core_data
+
+        h = Nd.h
+        h.tstop = run_conf["Duration"]
+        h.dt = run_conf["Dt"]
+        h.steps_per_ms = 1.0 / h.dt
+
+        return sim_config
 
     # -
     def check_resume(self):
@@ -772,12 +790,14 @@ class Node:
 
         MPI.check_no_errors()
 
-        # Report Buffer Size hint in MB.
-        if "ReportingBufferSize" in self._run_conf:
-            self._binreport_helper.set_max_buffer_size_hint(self._run_conf["ReportingBufferSize"])
+        if not self._corenrn_conf:
+            # Report Buffer Size hint in MB.
+            reporting_buffer_size = self._run_conf.get("ReportingBufferSize")
+            if reporting_buffer_size is not None:
+                self._binreport_helper.set_max_buffer_size_hint(reporting_buffer_size)
 
-        # once all reports are created, we finalize the communicator for any bin reports
-        self._binreport_helper.make_comm()
+            # once all reports are created, we finalize the communicator for any bin reports
+            self._binreport_helper.make_comm()
 
         # electrode manager is no longer needed. free the memory
         if self._elec_manager is not None:
@@ -1052,8 +1072,9 @@ class Node:
     # Default is 25 ms / cycle
     def _psolve_loop(self, tstop):
         cur_t = Nd.t
-        for _ in range(math.ceil((tstop - cur_t) / self._buffer_time)):
-            next_flush = min(tstop, cur_t + self._buffer_time)
+        buffer_t = self._simulator_conf.buffer_time
+        for _ in range(math.ceil((tstop - cur_t) / buffer_t)):
+            next_flush = min(tstop, cur_t + buffer_t)
             self._pnm.psolve(next_flush)
             self._binreport_helper.flush()
             cur_t = next_flush
@@ -1082,7 +1103,8 @@ class Node:
 
         bbss = Nd.BBSaveState()
         bbss.ignore()
-        self._binreport_helper.clear()
+        if self._binreport_helper:
+            self._binreport_helper.clear()
 
         Node.__init__(self, None, None)  # Reset vars
 
@@ -1174,10 +1196,10 @@ class Node:
         Nd.MemUsage().print_mem_usage()
 
         # Coreneuron runs clear the model before starting
-        if not self._corenrn_conf or self._only_build_model:
+        if not self._corenrn_conf or self._options.simulate_model is False:
             self.clear_model()
 
-        if self._corenrn_conf and not self._keep_corenrn_data:
+        if self._simulator_conf.delete_corenrn_data:
             data_folder = ospath.join(self._output_root, "coreneuron_input")
             logging.info("Deleting intermediate data in %s", data_folder)
             if MPI.rank == 0:
@@ -1224,9 +1246,8 @@ class Neurodamus(Node):
             GlobalConfig.verbosity = logging_level
 
         enable_reports = not user_opts.pop("disable_reports", False)
-        user_cfg = RunConfig(**user_opts)
 
-        Node.__init__(self, config_file, user_cfg)
+        Node.__init__(self, config_file, user_opts)
         # Use the run_conf dict to avoid passing it around
         self._run_conf["EnableReports"] = enable_reports
         self._run_conf["AutoInit"] = auto_init
@@ -1235,7 +1256,7 @@ class Neurodamus(Node):
 
         if self._corenrn_conf and "Restore" in self._run_conf:
             self._coreneuron_restore()
-        elif user_cfg.build_model:
+        elif self._options.build_model:
             self._instantiate_simulation()
 
         # In case an exception occurs we must prevent the destructor from cleaning
@@ -1254,7 +1275,7 @@ class Neurodamus(Node):
         self.create_synapses()
         self.create_gap_junctions()
 
-        # Init resume for NEURON if requested
+        # Init resume for NEURON if requested. For CoreNeuron there _coreneuron_restore
         if not self._corenrn_conf:
             self.check_resume()
 
@@ -1266,7 +1287,7 @@ class Neurodamus(Node):
         """Explicitly initialize, allowing the user to make last changes before sim
         """
         # Check if we need to override the base seed for synapse RNGs
-        log_stage("Building Simulation...")
+        log_stage("Instantiating Simulation...")
         base_seed = self._run_conf.get("BaseSeed", 0)
         self._synapse_manager.finalize(base_seed, self._corenrn_conf)
 
@@ -1314,7 +1335,6 @@ class Neurodamus(Node):
         if self._run_conf["EnableReports"]:
             self.enable_reports()
         self._sim_corenrn_write_config(corenrn_restore=True)
-        self._only_run_sim = True
 
     # -
     def _instantiate_simulation(self):
@@ -1351,10 +1371,10 @@ class Neurodamus(Node):
         """Prepares and launches the simulation according to the loaded config.
         If '--only-build-model' option is set, simulation is skipped.
         """
-        if self._only_build_model:
+        if not self._options.simulate_model:
             self.sim_init()
             log_stage("============= SIMULATION (MODEL BUILD ONLY) =============")
-        elif self._only_run_sim:
+        elif not self._options.build_model:
             log_stage("============= SIMULATION (SKIP MODEL BUILD) =============")
             self._run_coreneuron()
         else:

@@ -123,6 +123,18 @@ class NeurodamusCore(_Neuron):
     def init(self):
         self._pc or self._init()
 
+    class SimConfig(object):
+        """
+        A wrapper over the simConfig object
+        """
+
+        def __init__(self, parsed_run):
+            self._simconf = NeurodamusCore.h.simConfig
+            self._simconf.interpret(parsed_run)
+
+        def __getattr__(self, item):
+            return getattr(self._simconf, item)
+
 
 # Singleton
 NeurodamusCore = NeurodamusCore()

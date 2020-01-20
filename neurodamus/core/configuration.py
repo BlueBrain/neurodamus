@@ -19,7 +19,7 @@ class GlobalConfig:
         os.environ["NEURON_INIT_MPI"] = "1"
 
 
-class RunConfig(ConfigT):
+class RunOptions(ConfigT):
     build_model = None
     simulate_model = True
     model_path = None  # Currently is output-path

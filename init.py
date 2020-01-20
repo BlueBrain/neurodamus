@@ -6,7 +6,6 @@ All rights reserved
 """
 import sys
 from neurodamus import commands
-import logging
 
 
 def main():
@@ -28,12 +27,7 @@ def main():
 
     args = [config_file] + sys.argv[first_argument_pos:]
 
-    try:
-        commands.neurodamus(args)
-    except Exception:
-        logging.exception("Neurodamus execution FAILED.")
-        return 1
-    return 0
+    return commands.neurodamus(args)
 
 
 if __name__ == "__main__":

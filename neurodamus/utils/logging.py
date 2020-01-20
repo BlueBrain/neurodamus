@@ -96,7 +96,7 @@ def setup_logging(loglevel, logfile=None, rank=None):
     # Stdout
     hdlr = _logging.StreamHandler(sys.stdout)
     hdlr.setFormatter(_LevelFormatter(False, rank))
-    if not rank:
+    if rank == 0:
         _logging.root.setLevel(verbosity_levels[loglevel])
     else:
         _logging.root.setLevel(_logging.ERROR)

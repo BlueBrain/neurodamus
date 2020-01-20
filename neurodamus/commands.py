@@ -3,8 +3,11 @@ Module implementing entry functions
 """
 from __future__ import absolute_import
 from docopt import docopt
+import logging
 from pprint import pprint
 from . import Neurodamus
+from .core import MPI
+from .core.configuration import ConfigurationError
 from .utils.pyutils import docopt_sanitize
 
 
@@ -42,4 +45,14 @@ def neurodamus(args=None):
     if log_level > 2:
         pprint(options)
 
-    Neurodamus(config_file, log_level, **options).run()
+    try:
+        Neurodamus(config_file, log_level, **options).run()
+    except ConfigurationError as e:
+        if MPI._rank == 0:  # Use _raw so that we avoid init
+            logging.error(str(e))
+        return 1
+    except Exception as e:
+        logging.critical(str(e), exc_info=True)
+        MPI._pc and MPI.allreduce(1, 1)  # Share error state
+        return 1
+    return 0
