@@ -592,7 +592,8 @@ class Node:
             self._stim_manager.interpretExtracellulars(conf.parsedInjects, conf.parsedStimuli)
 
         logging.info("Instantiating Stimulus Injects:")
-        replay_count = 0
+        done_corenrn_replay = bool(self._core_replay_file)
+
         for name, inject in compat.Map(conf.parsedInjects).items():
             target_name = inject.get("Target").s
             stim_name = inject.get("Stimulus").s
@@ -601,7 +602,9 @@ class Node:
 
             # check the pattern for special cases that are handled here.
             if stim_map["Pattern"] == "SynapseReplay":
-                replay_count = replay_count + 1
+                if self._corenrn_conf and done_corenrn_replay:
+                    logging.info(" -> [REPLAY] Reusing stim file from previous cycle")
+                    continue
                 # Since saveUpdate merge there are two delay concepts:
                 #  - shift: times are shifted (previous delay)
                 #  - delay: Spike replays are suppressed until a certain time
@@ -609,7 +612,7 @@ class Node:
                 delay = stim_map.get("Delay", .0)
                 logging.info(" * [SYN REPLAY] %s (%s -> %s, time shift: %d, delay: %d)",
                              name, stim_name, target_name, tshift, delay)
-                self._enable_replay(target_name, stim_map, replay_count, tshift, delay)
+                self._enable_replay(target_name, stim_map, tshift, delay)
 
             elif not only_replay:
                 # all other patterns the stim manager will interpret
@@ -634,19 +637,19 @@ class Node:
         self._elec_manager = Nd.ElectrodeManager(electrodes_path_o, conf.parsedElectrodes)
 
     # -
-    def _enable_replay(self, target_name, stim_conf, replay_count, tshift=.0, delay=.0):
+    def _enable_replay(self, target_name, stim_conf, tshift=.0, delay=.0):
         spike_filepath = self._find_config_file(stim_conf["SpikeFile"])
         spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
 
         # For CoreNeuron, we should put the replays into a single file to be used as PatternStim
         if self._corenrn_conf:
             # Initialize file if non-existing
-            if replay_count == 1 or not self._core_replay_file:
+            if not self._core_replay_file:
                 self._core_replay_file = ospath.join(self._output_root, 'pattern.dat')
                 if MPI.rank == 0:
                     log_verbose("Creating pattern.dat file for CoreNEURON")
                     spike_manager.dump_ascii(self._core_replay_file)
-            elif replay_count > 1 and self._core_replay_file:
+            else:
                 if MPI.rank == 0:
                     log_verbose("Appending to pattern.dat")
                     with open(self._core_replay_file, "a") as f:
