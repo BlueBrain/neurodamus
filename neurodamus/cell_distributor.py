@@ -2,6 +2,7 @@
 Mechanisms to load and balance cells across the computing resources.
 """
 from __future__ import absolute_import, print_function
+from enum import IntEnum
 import logging  # active only in rank 0 (init)
 from os import path as Path
 from lazy_property import LazyProperty
@@ -9,7 +10,6 @@ from . import cell_readers
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
-from .core.configuration import ConfigurationError
 from .metype import METype
 from .utils import compat
 from .utils.logging import log_verbose
@@ -34,9 +34,20 @@ class LoadBalanceMode:
         return _modes.get(lb_mode)
 
 
+class NodeFormat(IntEnum):
+    ncs = 1
+    mvd3 = 2
+    sonata = 3
+
+
 class CellDistributor(object):
     """Handle assignment of cells to processors, instantiate and store them (locally and in _pnm).
     """
+    cell_loader_dict = {
+        NodeFormat.ncs: cell_readers.load_ncs,
+        NodeFormat.mvd3: cell_readers.load_mvd3,
+        NodeFormat.sonata: cell_readers.load_nodes
+    }
 
     def __init__(self, pnm, lb_mode=None, prospective_hosts=None):
         """Initializes CellDistributor
@@ -59,7 +70,8 @@ class CellDistributor(object):
         self._mcomplex = None
         self._binfo = None      # balanceInfo
 
-        self._useMVD3 = False
+        self._nodeFormat = 0
+
         self._global_seed = 0
         self._ionchannel_seed = 0
 
@@ -148,24 +160,29 @@ class CellDistributor(object):
         # We will be loading different templates on different cpus, so it must be disabled for now
         Nd.execute("xopen_broadcast_ = 0")
 
-        # determine if we should get metype info from start.ncs (current default) or circuit.mvd3
+        # determine if we should get metype info from start.ncs (default), circuit.mvd3 or sonata
         if "CellLibraryFile" in run_conf:
             celldb_filename = run_conf["CellLibraryFile"]
             if celldb_filename == "circuit.mvd3":
                 log_verbose("Reading [gid:METype] info from circuit.mvd3")
-                self._useMVD3 = True
-
-            elif celldb_filename != "start.ncs":
-                logging.error("Invalid CellLibraryFile %s. Terminating", celldb_filename)
-                raise ConfigurationError("Invalid CellLibraryFile {}".format(celldb_filename))
-        # Default
-        if not self._useMVD3:
+                self._nodeFormat = NodeFormat.mvd3
+            elif celldb_filename == "start.ncs":
+                log_verbose("Reading [gid:METype] info from start.ncs")
+                self._nodeFormat = NodeFormat.ncs
+            else:
+                # Pass other types to mvdtool to detect
+                log_verbose("Reading [gid:METype] info using MVDTool")
+                self._nodeFormat = NodeFormat.sonata
+        else:
+            # Default
+            self._nodeFormat = NodeFormat.ncs
             log_verbose("Reading [gid:METype] info from start.ncs")
 
         gidvec = compat.Vector("I")  # Gids handled by this cpu
         total_cells = None   # total cells in this simulation (can be a subset, e.g.: target)
         circuit_size = None  # total cells in the circuit
-        loader = cell_readers.load_mvd3 if self._useMVD3 else cell_readers.load_ncs
+        loader = self.cell_loader_dict[self._nodeFormat] \
+            if self._nodeFormat in self.cell_loader_dict else None
 
         #  are we using load balancing? If yes, init structs accordingly
         if self._lb_mode:
@@ -224,7 +241,8 @@ class CellDistributor(object):
         total_created_cells = 0
 
         for gid in ProgressBar.iter(self._gidvec):
-            if self._useMVD3:
+            if self._nodeFormat > 1:
+                # mvd3, Sonata
                 meinfo_v6 = me_infos.retrieve_info(gid)
                 melabel = meinfo_v6.emodel
                 cell = METype(gid, mepath, melabel, morpho_path, meinfo_v6)
@@ -465,19 +483,16 @@ class CellDistributor(object):
             metype = self._cell_list[i]  # type: METype
 
             #  for v6 and beyond - we can just try to invoke rng initialization
-            if self._useMVD3 or rng_info.getRNGMode() == rng_info.COMPATIBILITY:
-                metype.re_init_rng(self._ionchannel_seed)
-            else:
-                # for v5 circuits and earlier check if cell has re_init function.
-                # Instantiate random123 or mcellran4 as appropriate
-                # Note: should CellDist be aware that metype has CCell member?
-                if hasattr(metype.CCell, "re_init_rng"):
-                    if rng_info.getRNGMode() == rng_info.RANDOM123:
-                        Nd.rng123ForStochKvInit(metype.CCell)
-                    else:
-                        if gid > 400000:
-                            logging.warning("mcellran4 cannot initialize properly with large gids")
-                        Nd.rngForStochKvInit(metype.CCell)
+            # for v5 circuits and earlier check if cell has re_init function.
+            # Instantiate random123 or mcellran4 as appropriate
+            # Note: should CellDist be aware that metype has CCell member?
+            need_invoke = self._nodeFormat > 1 or rng_info.getRNGMode() == rng_info.COMPATIBILITY
+            if not need_invoke:
+                if hasattr(metype.CCell, "re_init_rng") and \
+                   rng_info.getRNGMode() != rng_info.RANDOM123:
+                    if gid > 400000:
+                        logging.warning("mcellran4 cannot initialize properly with large gids")
+            metype.re_init_rng(self._ionchannel_seed, need_invoke)
 
             version = metype.getVersion()
             if version < 2:

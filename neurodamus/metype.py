@@ -111,21 +111,31 @@ class METype(object):
         self._netcons.append(netcon)
         return netcon
 
-    def re_init_rng(self, ion_seed):
+    def re_init_rng(self, ion_seed, need_invoke):
         """Re-Init RNG for cell
 
         Args:
             ion_seed: ion channel seed
+            need_revoke : True, invoke rng initialization (v6 circuits and beyond)
+                          False, check if cell has re_init function (v5 and earlier)
         """
-        Nd.execute1("re_init_rng(%d)" % ion_seed, self._ccell, 0)
+        if need_invoke:
+            Nd.execute1("re_init_rng(%d)" % ion_seed, self._ccell, 0)
+        else:
+            rng_info = Nd.RNGSettings()
+            if hasattr(self.CCell, "re_init_rng"):
+                if rng_info.getRNGMode() == rng_info.RANDOM123:
+                    Nd.rng123ForStochKvInit(self.CCell)
+                else:
+                    Nd.rngForStochKvInit(self.CCell)
 
 
 class METypeItem(object):
     __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
                  "threshold_current", "holding_current")
 
-    def __init__(self, morph_name, layer, fullmtype, etype, emodel, combo_name,
-                 threshold_current=0, holding_current=0):
+    def __init__(self, morph_name, layer=None, fullmtype=None, etype=None, emodel=None,
+                 combo_name=None, threshold_current=0, holding_current=0):
         self.morph_name = morph_name
         self.layer = layer
         self.fullmtype = fullmtype
@@ -186,6 +196,15 @@ class METypeManager(object):
                 logging.error("MEComboInfoFile: No MEInfo for gid %d", gid)
                 nerr += 1
         return -nerr
+
+    def load_infoNP(self, gidvec, morph_list, emodels,
+                    threshold_currents=None, holding_currents=None):
+        for idx, gid in enumerate(gidvec):
+            th_current = threshold_currents[idx] if threshold_currents is not None else 0
+            hd_current = holding_currents[idx] if holding_currents is not None else 0
+            meItem = METypeItem(morph_list[idx], emodel=emodels[idx],
+                                threshold_current=th_current, holding_current=hd_current)
+            self._me_map[gid] = meItem
 
     def retrieve_info(self, gid):
         return self._me_map.get(gid) \

@@ -121,6 +121,13 @@ class Node:
         if not user_options.simulate_model and not user_options.build_model:
             raise ConfigurationError("NoOP: Both build and simulation have been disabled")
 
+        # Make sure we can load mvdtool if CellLibraryFile is sonata file
+        if parsed_run.get('CellLibraryFile', 'start.ncs') not in ('start.ncs', 'circuit.mvd3'):
+            try:
+                import mvdtool  # noqa: F401
+            except ImportError as e:
+                raise ConfigurationError("cannot load mvdtool, please install py-mvdtool") from e
+
         return config_parser
 
     @staticmethod
