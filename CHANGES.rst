@@ -6,6 +6,9 @@ Version 0.8.1
 =============
 *Not released*
 
+*New features*
+  * Added CLI option --modelbuilding-steps to set the number of steps for the model building
+
 *Improvements*
   * Refactoring for ConnectionSet class
   * Documentation

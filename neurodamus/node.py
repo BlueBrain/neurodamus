@@ -216,7 +216,9 @@ class Node:
             list with generated targets, or empty if no splitting was done
         """
         run_conf = self._run_conf
-        if "ModelBuildingSteps" in run_conf:
+        if self._options.modelbuilding_steps is not None:
+            ncycles = int(self._options.modelbuilding_steps)
+        elif "ModelBuildingSteps" in run_conf:
             ncycles = int(run_conf["ModelBuildingSteps"])
         elif "ProspectiveHosts" in run_conf:  # compat syntax
             nphosts = run_conf["ProspectiveHosts"]

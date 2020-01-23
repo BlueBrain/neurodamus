@@ -30,6 +30,7 @@ def neurodamus(args=None):
         --simulate-model=[ON, OFF]     Shall the simulation start automatically? [default: ON]
         --output-path=PATH      Alternative output directory, overriding BlueConfigs
         --keep-build            Keep coreneuron intermediate data. Otherwise deleted at the end
+        --modelbuilding-steps=<number> Set the number of ModelBuildingSteps for the CoreNeuron sim
 
     """
     options = docopt_sanitize(docopt(neurodamus.__doc__, args))
