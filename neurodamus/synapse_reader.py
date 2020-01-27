@@ -4,8 +4,8 @@ Module implementing interfaces to the several synapse readers (eg.: synapsetool,
 import logging
 from abc import abstractmethod
 from os import path as Path
-from .core import NeurodamusCore as Nd, MPI
 from .connection import SynapseParameters
+from .core import NeurodamusCore as Nd, MPI
 from .utils.logging import log_verbose
 
 

@@ -2,9 +2,10 @@
 Collection of Cell Readers from different sources (Pure HDF5, SynTool...)
 """
 from __future__ import absolute_import
-import numpy as np
 import logging
-from os import path as Path
+import numpy as np
+from os import path as ospath
+from .core.configuration import ConfigurationError
 from .metype import METypeManager
 from .utils import compat
 from .utils.logging import log_verbose
@@ -12,6 +13,31 @@ from .utils.logging import log_verbose
 
 class CellReaderError(Exception):
     pass
+
+
+class TargetSpec:
+    """Definition of a new-style target, accounting for multipopulation
+    """
+
+    def __init__(self, target_name):
+        """Initialize a target specification
+
+        Args:
+            target_name: the target name. For specifying a population use
+                the format ``population:target_name``
+        """
+        if target_name and ':' in target_name:
+            self.population, self.name = target_name.split(':')
+        else:
+            self.name = target_name
+            self.population = None
+
+    def __str__(self):
+        return self.name if self.population is None \
+            else "{}:{}".format(self.population, self.name)
+
+    def __bool__(self):
+        return bool(self.name)
 
 
 def _ncs_get_total(ncs_f):
@@ -71,7 +97,7 @@ def load_ncs(run_conf, gidvec, stride=1, stride_offset=0):
     """
     gids = compat.Vector("I")
     gid2mefile = {}
-    ncs_path = Path.join(run_conf["nrnPath"], "start.ncs")
+    ncs_path = ospath.join(run_conf["nrnPath"], "start.ncs")
 
     with open(ncs_path, "r") as ncs_f:
         total_ncs_cells = _ncs_get_total(ncs_f)
@@ -98,7 +124,7 @@ def load_mvd3(run_conf, gidvec, stride=1, stride_offset=0):
     """Load cells from MVD3, required for v6 circuits
     """
     import h5py  # Can be heavy so loaded on demand
-    pth = Path.join(run_conf["CircuitPath"], "circuit.mvd3")
+    pth = ospath.join(run_conf["CircuitPath"], "circuit.mvd3")
     mvd = h5py.File(pth, 'r')
 
     mecombo_ds = mvd["/cells/properties/me_combo"]
@@ -137,35 +163,37 @@ def load_mvd3(run_conf, gidvec, stride=1, stride_offset=0):
 def load_nodes(run_conf, gidvec, stride=1, stride_offset=0):
     """Load cells from SONATA file
     """
-    logging.info("Load SONATA file")
     import mvdtool
-    pth = Path.join(run_conf["CircuitPath"], run_conf["CellLibraryFile"])
-    nodeReader = mvdtool.open(pth)
+    pth = run_conf["CellLibraryFile"]
+    if not ospath.isfile(pth):
+        pth = ospath.join(run_conf["CircuitPath"], run_conf["CellLibraryFile"])
+    if not ospath.isfile(pth):
+        raise ConfigurationError("Could not find Nodes: " + run_conf["CellLibraryFile"])
 
-    total_cells = len(nodeReader)
-
+    node_population = TargetSpec(run_conf.get("CircuitTarget")).population
+    node_reader = mvdtool.open(pth, node_population or "")
+    total_cells = len(node_reader)
     gidvec = _preprocess_gidvec(gidvec, stride, stride_offset, total_cells)
 
     if not len(gidvec):
         # Not enough cells to give this rank a few
         return compat.Vector('I'), METypeManager(), total_cells
 
-    # Indexes are 0-based, and cant be numpy
-    indexes = compat.Vector("I", gidvec - 1)
-
-    morpho_names = nodeReader.morphologies(indexes)
-    emodels = nodeReader.emodels(indexes)
-
-    # We require gidvec as compat.Vector
-    gidvec = compat.Vector("I", gidvec)
     meinfo = METypeManager()
+    indexes = gidvec - 1  # MVDtool requires 0-indexed ids.
+    if len(indexes) < 10:  # Ensure array is not too small (pybind11 #1392)
+        indexes = indexes.tolist()
 
-    if not nodeReader.hasCurrents():
-        log_verbose("WARNING: Sonata file doesn't have currents fields. Assuming 0.")
+    morpho_names = node_reader.morphologies(indexes)
+    emodels = node_reader.emodels(indexes)
+    gidvec = compat.Vector("I", gidvec)  # gidvec output format
+
+    if not node_reader.hasCurrents():
+        logging.warning("Sonata file doesn't have currents fields. Assuming 0.")
         meinfo.load_infoNP(gidvec, morpho_names, emodels)
     else:
-        threshold_currents = nodeReader.threshold_currents(indexes)
-        holding_currents = nodeReader.holding_currents(indexes)
+        threshold_currents = node_reader.threshold_currents(indexes)
+        holding_currents = node_reader.holding_currents(indexes)
         meinfo.load_infoNP(gidvec, morpho_names, emodels, threshold_currents, holding_currents)
 
     return gidvec, meinfo, total_cells

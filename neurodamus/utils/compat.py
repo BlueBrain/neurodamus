@@ -56,7 +56,10 @@ class Map(collections_abc.Mapping):
     keys = __iter__
 
     def __getitem__(self, item):
-        return self._hoc_map.get(item)
+        value = self._hoc_map.get(item)
+        if hasattr(value, 's'):  # hoc strings have the value in .s attribute
+            value = value.s
+        return value
 
     def __contains__(self, item):
         return self._hoc_map.exists(item) > 0

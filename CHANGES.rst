@@ -2,12 +2,18 @@
 Change Log
 ==========
 
-Version 0.8.1
+Version 0.9.0
 =============
 *Not released*
 
 *New features*
   * Added CLI option --modelbuilding-steps to set the number of steps for the model building
+  * Initial support for Sonata node populations, specified via the target pop:target_name
+
+
+Version 0.8.1
+=============
+**Feb 20, 2020**
 
 *Improvements*
   * Refactoring for ConnectionSet class
@@ -16,6 +22,7 @@ Version 0.8.1
 *Bug fixes*
   * Cached Hoc values were not being updated
   * Resume w CoreNeuron: dont init circuit
+
 
 Version 0.8.0
 =============
@@ -39,6 +46,7 @@ Version 0.7.2
 *Improvements*
   * Support loading of several mech lib (: separated)
   * Fixed & cleanup options to detect build model
+
 
 Version 0.7.1
 =============

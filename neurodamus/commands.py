@@ -7,7 +7,7 @@ import logging
 from pprint import pprint
 from . import Neurodamus
 from .core import MPI
-from .core.configuration import ConfigurationError
+from .core.configuration import ConfigurationError, LogLevel
 from .utils.pyutils import docopt_sanitize
 
 
@@ -37,17 +37,17 @@ def neurodamus(args=None):
 
     config_file = options.pop("BlueConfig")
 
-    log_level = 1  # default
+    log_level = LogLevel.DEFAULT
     if options.pop("debug", False):
-        log_level = 3
+        log_level = LogLevel.DEBUG
     elif options.pop("verbose", False):
-        log_level = 2
+        log_level = LogLevel.VERBOSE
 
-    if log_level > 2:
+    if log_level >= 3:
         pprint(options)
 
     try:
-        Neurodamus(config_file, log_level, **options).run()
+        Neurodamus(config_file, True, log_level, **options).run()
     except ConfigurationError as e:
         if MPI._rank == 0:  # Use _raw so that we avoid init
             logging.error(str(e))

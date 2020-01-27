@@ -2,11 +2,12 @@
 Mechanisms to load and balance cells across the computing resources.
 """
 from __future__ import absolute_import, print_function
-from enum import IntEnum
 import logging  # active only in rank 0 (init)
-from os import path as Path
+from enum import IntEnum
 from lazy_property import LazyProperty
+from os import path as ospath
 from . import cell_readers
+from .cell_readers import TargetSpec
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
@@ -35,18 +36,18 @@ class LoadBalanceMode:
 
 
 class NodeFormat(IntEnum):
-    ncs = 1
-    mvd3 = 2
-    sonata = 3
+    NCS = 1
+    MVD3 = 2
+    SONATA = 3
 
 
 class CellDistributor(object):
     """Handle assignment of cells to processors, instantiate and store them (locally and in _pnm).
     """
     cell_loader_dict = {
-        NodeFormat.ncs: cell_readers.load_ncs,
-        NodeFormat.mvd3: cell_readers.load_mvd3,
-        NodeFormat.sonata: cell_readers.load_nodes
+        NodeFormat.NCS: cell_readers.load_ncs,
+        NodeFormat.MVD3: cell_readers.load_mvd3,
+        NodeFormat.SONATA: cell_readers.load_nodes
     }
 
     def __init__(self, pnm, lb_mode=None, prospective_hosts=None):
@@ -70,7 +71,7 @@ class CellDistributor(object):
         self._mcomplex = None
         self._binfo = None      # balanceInfo
 
-        self._nodeFormat = 0
+        self._node_format = None
 
         self._global_seed = 0
         self._ionchannel_seed = 0
@@ -121,7 +122,7 @@ class CellDistributor(object):
     def _cx_valid(self, cxinfo_filename, nrn_path, target_name):
         """Determine if we need to regen load balance info, or if it already exists for this config.
         """
-        if not Path.isfile(cxinfo_filename):
+        if not ospath.isfile(cxinfo_filename):
             logging.info("(Re)Generating load-balancing data. Reason: no cxinfo file")
             return False
 
@@ -151,7 +152,6 @@ class CellDistributor(object):
             target_parser (hoc): The Target parser object
             load_bal (bool): Whether to respect lb_mode or disable it altogether
         """
-        logging.info("Loading cell METypes and Distributing by available CPUs...")
         morpho_path = run_conf["MorphologyPath"]
         if not load_bal:
             self._lb_mode = None
@@ -164,36 +164,35 @@ class CellDistributor(object):
         if "CellLibraryFile" in run_conf:
             celldb_filename = run_conf["CellLibraryFile"]
             if celldb_filename == "circuit.mvd3":
-                log_verbose("Reading [gid:METype] info from circuit.mvd3")
-                self._nodeFormat = NodeFormat.mvd3
+                self._node_format = NodeFormat.MVD3
             elif celldb_filename == "start.ncs":
-                log_verbose("Reading [gid:METype] info from start.ncs")
-                self._nodeFormat = NodeFormat.ncs
+                self._node_format = NodeFormat.NCS
             else:
                 # Pass other types to mvdtool to detect
-                log_verbose("Reading [gid:METype] info using MVDTool")
-                self._nodeFormat = NodeFormat.sonata
-        else:
-            # Default
-            self._nodeFormat = NodeFormat.ncs
-            log_verbose("Reading [gid:METype] info from start.ncs")
+                self._node_format = NodeFormat.SONATA
+        else:  # Default
+            self._node_format = NodeFormat.NCS
+            celldb_filename = "start.ncs"
+
+        logging.info("Reading Nodes (METype) info from '%s' (format: %s)",
+                     celldb_filename, self._node_format.name)
 
         gidvec = compat.Vector("I")  # Gids handled by this cpu
         total_cells = None   # total cells in this simulation (can be a subset, e.g.: target)
         circuit_size = None  # total cells in the circuit
-        loader = self.cell_loader_dict[self._nodeFormat] \
-            if self._nodeFormat in self.cell_loader_dict else None
+        loader = self.cell_loader_dict[self._node_format]
+        target_spec = TargetSpec(run_conf.get("CircuitTarget"))
 
         #  are we using load balancing? If yes, init structs accordingly
         if self._lb_mode:
-            log_verbose("Distributing cells according to load-balance")
+            log_verbose("Distributing cells according to existing Load-Balance")
             # read the cx_* files to build the gidvec
             cx_path = "cx_%d" % MPI.size
             if "CWD" in run_conf:
                 # Should we allow for another path to facilitate reusing cx* files?
-                cx_path = Path.join(run_conf["CWD"], cx_path)
+                cx_path = ospath.join(run_conf["CWD"], cx_path)
 
-            assert Path.isfile(cx_path + ".dat"), \
+            assert ospath.isfile(cx_path + ".dat"), \
                 "cx file {} not available when reloading cells".format(cx_path)
 
             self._spgidvec = compat.Vector("I")
@@ -204,25 +203,25 @@ class CellDistributor(object):
 
             # TODO: do we have any way of knowing that a CircuitTarget found definitively matches
             #       the cells in the balance files? for now, assume the user is being honest
-            if "CircuitTarget" in run_conf:
-                target = target_parser.getTarget(run_conf["CircuitTarget"])
-                total_cells = int(target.completegids().size())
+            if target_spec:
+                target = target_parser.getTarget(target_spec.name)
+                total_cells = int(target.getCellCount())
             else:
                 # TODO: gidvec doesnt sound it would include all cells. Check this
                 total_cells = len(gidvec)
             # LOAD
             self._gidvec, me_infos, _ = loader(run_conf, gidvec)
 
-        elif "CircuitTarget" in run_conf:
-            log_verbose("Distributing target circuit cells round-robin")
-            target = target_parser.getTarget(run_conf["CircuitTarget"])
+        elif target_spec:
+            log_verbose("Distributing '%s' target cells Round-Robin", target_spec.name)
+            target = target_parser.getTarget(target_spec.name)
             target_gids = target.completegids()
             gidvec.extend(int(gid) for gid in target_gids)
             total_cells = int(target_gids.size())
             self._gidvec, me_infos, _ = loader(run_conf, gidvec, MPI.size, MPI.rank)
 
         else:
-            log_verbose("Distributing all cells round-robin")
+            log_verbose("Distributing ALL cells Round-Robin")
             self._gidvec, me_infos, circuit_size = loader(run_conf, None, MPI.size, MPI.rank)
 
         self._total_cells = total_cells or circuit_size
@@ -231,8 +230,8 @@ class CellDistributor(object):
             logging.warning("Rank %d has no cells assigned.", MPI.rank)
             # We must not return, we have an allreduce later
 
-        log_verbose("Done gid assignment: %d cells in network, %d in rank 0",
-                    self._total_cells, len(self._gidvec))
+        logging.info(" => Cells distributed. %d cells in network, %d in rank 0",
+                     self._total_cells, len(self._gidvec))
 
         self._pnm.ncell = self._total_cells
         pnm_cells = self._pnm.cells
@@ -241,7 +240,7 @@ class CellDistributor(object):
         total_created_cells = 0
 
         for gid in ProgressBar.iter(self._gidvec):
-            if self._nodeFormat > 1:
+            if self._node_format != NodeFormat.NCS:
                 # mvd3, Sonata
                 meinfo_v6 = me_infos.retrieve_info(gid)
                 melabel = meinfo_v6.emodel
@@ -276,7 +275,8 @@ class CellDistributor(object):
         """
         #  start.ncs gives metype names with hyphens, but the templates themselves
         #  have those hyphens replaced with underscores.
-        tpl_path = Path.join(tpl_location, tpl_filename) if tpl_location else tpl_filename
+        tpl_path = ospath.join(tpl_location, tpl_filename) \
+            if tpl_location else tpl_filename
 
         # first open the file manually to get the hoc template name
         tpl_name = None
@@ -486,7 +486,7 @@ class CellDistributor(object):
             # for v5 circuits and earlier check if cell has re_init function.
             # Instantiate random123 or mcellran4 as appropriate
             # Note: should CellDist be aware that metype has CCell member?
-            need_invoke = self._nodeFormat > 1 or rng_info.getRNGMode() == rng_info.COMPATIBILITY
+            need_invoke = self._node_format > 1 or rng_info.getRNGMode() == rng_info.COMPATIBILITY
             if not need_invoke:
                 if hasattr(metype.CCell, "re_init_rng") and \
                    rng_info.getRNGMode() != rng_info.RANDOM123:

@@ -7,8 +7,15 @@ import os
 from neurodamus.utils import ConfigT
 
 
+class LogLevel:
+    ERROR_ONLY = 0
+    DEFAULT = 1
+    VERBOSE = 2
+    DEBUG = 3
+
+
 class GlobalConfig:
-    verbosity = 1
+    verbosity = LogLevel.DEFAULT
     debug_conn = os.getenv('ND_DEBUG_CONN', [])
     if debug_conn:
         debug_conn = [int(gid) for gid in os.getenv('ND_DEBUG_CONN', '').split(',')]

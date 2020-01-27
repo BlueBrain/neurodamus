@@ -16,6 +16,7 @@ from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, RunOptions, ConfigurationError
 from .cell_distributor import CellDistributor, LoadBalanceMode
+from .cell_readers import TargetSpec
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
 from .utils import compat
@@ -55,6 +56,7 @@ class Node:
             self._corenrn_conf = self._simulator_conf.core_config
             self._binreport_helper = Nd.BinReportHelper(Nd.dt, True) \
                 if self._simulator_conf.runNeuron() else None
+            self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
             MPI.check_no_errors()  # Ensure no rank terminated unexpectedly
 
         self._target_manager = None
@@ -110,10 +112,10 @@ class Node:
                 logging.error("Error with OutputRoot %s. Terminating", output_path)
                 raise ConfigurationError("Output directory error")
 
-        cls._check_model_build_mode(user_options, parsed_run, output_path)
+        simulator = cls._check_model_build_mode(user_options, parsed_run, output_path)
 
         # BlueConfig integrity checks
-        if parsed_run.exists("Restore"):
+        if parsed_run.exists("Restore") and simulator == "CORENEURON":
             user_options.build_model = False
             if not user_options.simulate_model:
                 raise ConfigurationError("CoreNeuron Restore with simulate_model=OFF")
@@ -122,12 +124,15 @@ class Node:
             raise ConfigurationError("NoOP: Both build and simulation have been disabled")
 
         # Make sure we can load mvdtool if CellLibraryFile is sonata file
-        if parsed_run.exists("CellLibraryFile") and parsed_run.get('CellLibraryFile', 'start.ncs') \
-                not in ('start.ncs', 'circuit.mvd3'):
+        run_conf = compat.Map(parsed_run)
+        if run_conf.get('CellLibraryFile', 'start.ncs') not in ('start.ncs', 'circuit.mvd3'):
             try:
                 import mvdtool  # noqa: F401
             except ImportError as e:
-                raise ConfigurationError("cannot load mvdtool, please install py-mvdtool") from e
+                raise ConfigurationError("Cannot import mvdtool, please install py-mvdtool") from e
+        else:
+            if TargetSpec(run_conf.get("CircuitTarget")).population is not None:
+                raise ConfigurationError("Targets with population require Sonata Node file")
 
         return config_parser
 
@@ -163,6 +168,7 @@ class Node:
                 logging.warning("Setting simulator to CORENEURON to resume execution")
                 parsed_run.put("Simulator", Nd.String("CORENEURON"))
                 user_config.build_model = False
+        return simulator
 
     @staticmethod
     def _configure_simulator(run_conf, user_options):
@@ -244,14 +250,14 @@ class Node:
             raise ConfigurationError(
                 "Multi-iteration coreneuron data generation requires CircuitTarget")
 
-        target_name = run_conf["CircuitTarget"]
-        target = self._target_parser.getTarget(target_name)
+        target_spec = TargetSpec(run_conf["CircuitTarget"])
+        target = self._target_parser.getTarget(target_spec.name)
         allgids = target.completegids()
         new_targets = []
 
         for cycle_i in range(ncycles):
             target = Nd.Target()
-            target.name = "{}_{}".format(target_name, cycle_i)
+            target.name = "{}_{}".format(target_spec.name, cycle_i)
             new_targets.append(target)
             self._target_parser.updateTargetList(target)
 
@@ -305,6 +311,16 @@ class Node:
         log_stage("Computing Load Balance")
         lb_mode = LoadBalanceMode.parse(self._run_conf.get("RunMode"))
 
+        # Info about the cells to be distributed
+        target = self._target_spec
+        if target.name:
+            logging.info("CIRCUIT: Population: %s, Target: %s (%d Cells)",
+                         target.population or "(default)",
+                         target.name,
+                         self._target_parser.getTarget(target.name).getCellCount())
+        else:
+            logging.warning("No Target defined. Loading ALL circuit cells")
+
         if lb_mode is LoadBalanceMode.MultiSplit:
             if not self._corenrn_conf:
                 logging.info("Load Balancing ENABLED. Mode: MultiSplit")
@@ -353,6 +369,7 @@ class Node:
         """Instantiate and distributes the cells of the network.
         Any targets will be updated to know which cells are local to the cpu.
         """
+        log_stage("Loading circuit cells")
         if self._cell_distributor is None:
             logging.warning("Load balancer object not present. Continuing with Round-Robin")
             self._cell_distributor = CellDistributor(self._pnm)
@@ -499,11 +516,9 @@ class Node:
         defined as projections with type GapJunction.
         """
         log_stage("Gap Junctions create")
-        target_name = self._run_conf.get("CircuitTarget")
-        if target_name is None:
+        if self._target_spec.name is None:
             raise ConfigurationError("No circuit target. Required when using GapJunctions")
-
-        target = self._target_manager.getTarget(target_name)
+        target = self._target_manager.getTarget(self._target_spec.name)
 
         for name, projection in compat.Map(self._config_parser.parsedProjections).items():
             # check if this Projection block is for gap junctions
@@ -1373,11 +1388,14 @@ class Neurodamus(Node):
         n_cycles = len(sub_targets)
         logging.info("MULTI-CYCLE RUN: {} Cycles".format(n_cycles))
 
+        tmp_target_spec = TargetSpec(self._run_conf["CircuitTarget"])
+
         for cycle_i, cur_target in enumerate(sub_targets):
             log_stage("==> CYCLE {} (OUT OF {})".format(cycle_i + 1, n_cycles))
 
             self.clear_model()
-            self._run_conf["CircuitTarget"] = cur_target.name
+            tmp_target_spec.name = cur_target.name
+            self._run_conf["CircuitTarget"] = str(tmp_target_spec)  # FQN
             self._build_model()
 
             # Move generated files aside (to be merged later)

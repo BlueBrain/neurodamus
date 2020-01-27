@@ -7,7 +7,6 @@ import numpy as np
 from six.moves import zip
 from .core import NeurodamusCore as Nd
 from .utils import compat
-from .utils.logging import log_verbose
 
 
 class SynapseParameters(object):
@@ -424,7 +423,7 @@ class Connection(object):
         for _t in np.sort(tvec[tvec >= start_delay]):
             hoc_tvec.append(_t)
 
-        log_verbose("Replaying %d spikes on %d", hoc_tvec.size(), self.sgid)
+        logging.debug("Replaying %d spikes on %d", hoc_tvec.size(), self.sgid)
         logging.debug(" > First replay event for connection at %f", hoc_tvec.x[0])
         vstim = Nd.VecStim()
         vstim.play(hoc_tvec)
