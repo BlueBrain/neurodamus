@@ -393,8 +393,10 @@ class Node:
         self._synapse_manager = SynapseRuleManager(
             nrn_path, self._target_manager, self._cell_distributor, n_synapse_files, synapse_mode)
 
+        connection_blocks = self._config_parser.parsedConnects
+
         logging.info("Creating circuit connections...")
-        if self._config_parser.parsedConnects.count() == 0:
+        if connection_blocks.count() == 0:
             self._synapse_manager.connect_all()
         else:
             self._create_group_connections()
@@ -407,7 +409,7 @@ class Node:
             bonus_n_synapse_files = int(self._run_conf.get("NumBonusFiles", 1))
             self._synapse_manager.open_synapse_file(bonus_file, bonus_n_synapse_files)
 
-            if self._config_parser.parsedConnects.count() == 0:
+            if connection_blocks.count() == 0:
                 self._synapse_manager.connect_all()
             else:
                 self._create_group_connections()
@@ -429,8 +431,18 @@ class Node:
                 # Temporarily patch for population IDs in BlueConfig
                 pop_id = int(projection.get("PopulationID", 0))
                 self._synapse_manager.open_synapse_file(nrn_path, n_synapse_files, pop_id)
-                # Go ahead and make all the Projection connections
-                self._synapse_manager.connect_all()
+
+                # Make all the Projection connections if no Connection blocks use
+                # that source. Otherwise create only specified connections
+                src = projection.get("Source")
+                has_connections = src is not None and \
+                    any(connection_blocks.o(i).get("Source").s == src
+                        for i in range(int(connection_blocks.count())))
+
+                if has_connections:
+                    self._create_group_connections()
+                else:
+                    self._synapse_manager.connect_all()
 
         # Configure all created connections in one go
         self._configure_connections(self._synapse_manager)
