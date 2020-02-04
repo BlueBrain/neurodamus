@@ -8,7 +8,7 @@ import logging
 import math
 import operator
 import os
-import shutil
+import subprocess
 from os import path as ospath
 from collections import namedtuple
 
@@ -122,7 +122,8 @@ class Node:
             raise ConfigurationError("NoOP: Both build and simulation have been disabled")
 
         # Make sure we can load mvdtool if CellLibraryFile is sonata file
-        if parsed_run.get('CellLibraryFile', 'start.ncs') not in ('start.ncs', 'circuit.mvd3'):
+        if parsed_run.exists("CellLibraryFile") and parsed_run.get('CellLibraryFile', 'start.ncs') \
+                not in ('start.ncs', 'circuit.mvd3'):
             try:
                 import mvdtool  # noqa: F401
             except ImportError as e:
@@ -181,7 +182,7 @@ class Node:
 
         keep_core_data = False
         if sim_config.core_config:
-            if user_options.keep_build or run_conf.get("keepModelData", False):
+            if user_options.keep_build or run_conf.get("KeepModelData", False) == "True":
                 keep_core_data = True
             elif not user_options.simulate_model or "Save" in run_conf:
                 logging.warning("Keeping coreneuron data for CoreNeuron Save-Restore")
@@ -1228,7 +1229,7 @@ class Node:
                     # in restore, coreneuron data is a symbolic link
                     os.unlink(data_folder)
                 else:
-                    shutil.rmtree(data_folder, True)
+                    subprocess.call(['/bin/rm', '-rf', data_folder])
                 os.remove(ospath.join(self._output_root, "sim.conf"))
             MPI.barrier()
 
