@@ -47,6 +47,21 @@ class SynapseMode:
                          "Possible values are Ampa* and Dual*")
 
 
+class ReplayMode:
+    """Replay instantiation mode.
+    """
+    DISABLED = 0
+    """INstantiate no replay NetCons"""
+
+    AS_REQUIRED = 1
+    """Instantiate Replay netcons as required for this run.
+    Subsequent Save-Restore may not work"""
+
+    COMPLETE = 2
+    """Instantiate Replay Netcons on all Connections so that
+    users may add arbitrary new replays in Restore phases"""
+
+
 # ----------------------------------------------------------------------
 # Connection class
 # ----------------------------------------------------------------------
@@ -115,12 +130,13 @@ class Connection(object):
         self._netcons = None
         self._synapses = None
         self._conductances_bk = None  # Store for re-enabling
+        self._minis_netstims = None
         self._minis_netcons = None
         self._minis_RNGs = None
         # Used for replay
+        self._replay_tvec = None  # replay times vec
         self._replay_netcons = None
-        self._stims = None
-        self._tvecs = None
+        self._vecstims = None  # VecStims VCells
 
     # read-only properties
     synapse_params = property(lambda self: self._synapse_params)
@@ -148,22 +164,18 @@ class Connection(object):
         self._mod_override = mod_override
 
     @property
-    def valid_sections(self):
-        """Generator over all valid sections with index.
-        Yielded section are pushed to neuron stack
+    def sections_with_netcons(self):
+        """Generator over all sections containing netcons, yielding pairs
+        (section_index, section)
         """
         for syn_i, sc in enumerate(self._synapse_points.sclst):
             # All locations, on and off node should be in this list, but
             # only synapses/netcons on-node should be returned
             if not sc.exists():
                 continue
-            # Put the section in the stack, so generic hoc instructions
-            # apply to the right section
-            with Nd.section_in_stack(sc.sec):
-                yield syn_i, sc.sec
+            yield syn_i, sc.sec
 
-    # ---------------------
-
+    # -
     def add_synapse(self, syn_tpoints, params_obj, syn_id=None):
         """Adds a synapse in given location to this Connection.
 
@@ -184,7 +196,8 @@ class Connection(object):
             self._synapse_ids.append(self._synapse_points.count())
 
     # -
-    def finalize(self, pnm, cell, base_seed=None, spgid=None):
+    def finalize(self, pnm, cell, base_seed=None, spgid=None,
+                       replay_mode=ReplayMode.AS_REQUIRED, skip_disabled=False):
         """ When all parameters are set, create synapses and netcons
 
         Args:
@@ -193,8 +206,12 @@ class Connection(object):
                 directly rather than via pnm to avoid loadbalance issues
             base_seed: base seed value (Default: None - no adjustment)
             spgid: Part id, required With multisplit
-
+            replay_mode: Policy to initialize replay in this conection
+            skip_disabled: Dont instantiate at all if conn was disabled. Mostly
+                useful for CoreNeuron
         """
+        if skip_disabled and self._disabled:
+            return False
         target_spgid = spgid or self.tgid
         rng_info = Nd.RNGSettings()
         tbins_vec = Nd.Vector(1)
@@ -205,18 +222,24 @@ class Connection(object):
         # Initialize member lists
         self._synapses = compat.List()  # Used by ConnUtils
         self._netcons = []
+        self._minis_netstims = []
         self._minis_netcons = []
         self._minis_RNGs = []
-        # Prepare for replay
-        self._replay_netcons = []
-        self._stims = []
-        self._tvecs = []
+        shall_create_replay = replay_mode == ReplayMode.COMPLETE or \
+            replay_mode == ReplayMode.AS_REQUIRED and self._replay_tvec is not None
 
-        for syn_i, _ in self.valid_sections:
+        if shall_create_replay:
+            if self._replay_tvec is None:
+                self._replay_tvec = Nd.Vector()
+            self._vecstims = []
+            self._replay_netcons = []
+
+        for syn_i, sec in self.sections_with_netcons:
             x = self._synapse_points.x[syn_i]
             syn_params = self._synapse_params[syn_i]
-            syn_obj = self._create_synapse(
-                cell, syn_params, x, self._synapse_ids[syn_i], base_seed)
+            with Nd.section_in_stack(sec):
+                syn_obj = self._create_synapse(
+                    cell, syn_params, x, self._synapse_ids[syn_i], base_seed)
             cell_syn_list = cell.CellRef.synlist
             self._synapses.append(syn_obj)
 
@@ -224,9 +247,9 @@ class Connection(object):
             # if sgid exists (i.e. both gids are local), makes netcon connection (c/c++) immediately
             # if sgid not exist, creates an input PreSyn to receive spikes transited over the net.
             # PreSyn is the source to the NetCon, cannot ask netcon about the preloc, but srcgid ok
-
-            nc_index = pnm.nc_append(self.sgid, target_spgid, cell_syn_list.count()-1,
-                                     syn_params.delay, syn_params.weight)
+            with Nd.section_in_stack(sec):
+                nc_index = pnm.nc_append(self.sgid, target_spgid, cell_syn_list.count()-1,
+                                         syn_params.delay, syn_params.weight)
             nc = pnm.nclist.object(nc_index)  # Netcon object
             nc.delay = syn_params.delay
             nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
@@ -234,11 +257,11 @@ class Connection(object):
             self._netcons.append(nc)
 
             if self._conn_params.minis_spont_rate > .0:
-                ips = Nd.InhPoissonStim(x)
+                ips = Nd.InhPoissonStim(x, sec=sec)
                 # netconMini = pnm.pc.gid_connect(ips, finalgid)
 
                 # A simple NetCon will do, as the synapse and cell are local.
-                netcon_m = Nd.NetCon(ips, syn_obj)
+                netcon_m = Nd.NetCon(ips, syn_obj, sec=sec)
                 netcon_m.delay = 0.1
                 # TODO: better solution here to get the desired behaviour during
                 # delayed connection blocks
@@ -281,8 +304,7 @@ class Connection(object):
                     self._minis_RNGs.append(exprng)
                     self._minis_RNGs.append(uniformrng)
 
-                # we never use this list, so I can put the ips in here too
-                self._minis_RNGs.append(ips)
+                self._minis_netstims.append(ips)
                 self._minis_RNGs.append(tbins_vec)
                 self._minis_RNGs.append(rate_vec)
 
@@ -292,8 +314,18 @@ class Connection(object):
                 ips.setRate(rate_vec)
                 bbss.ignore(ips)
 
+            if shall_create_replay:
+                vecstim = Nd.VecStim()
+                vecstim.play(self._replay_tvec)
+                bbss.ignore(vecstim)
+                self._vecstims.append(vecstim)
+                nc = Nd.NetCon(vecstim, syn_obj, 10, syn_params.delay, syn_params.weight)
+                nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
+                self._replay_netcons.append(nc)
+
         # Apply configurations to the synapses
         self._configure_synapses()
+        return True
 
     # -
     def _create_synapse(self, cell, params_obj, x, syn_id, base_seed):
@@ -343,18 +375,18 @@ class Connection(object):
         self._synapses = compat.List()
         self._netcons = []
 
-        for syn_i, sec in self.valid_sections:
+        for syn_i, sec in self.sections_with_netcons:
             x = self._synapse_points.x[syn_i]
             active_params = self._synapse_params[syn_i]
-            gap_junction = Nd.Gap(x)
+            gap_junction = Nd.Gap(x, sec=sec)
 
             # Using computed offset
             logging.debug("connect %f to %f [D: %f + %f], [F: %f + %f] (weight: %f)",
                           self.tgid, self.sgid, offset, active_params.D,
                           end_offset, active_params.F, active_params.weight)
-            pnm.pc.target_var(
-                gap_junction, gap_junction._ref_vgap, (offset + active_params.D))
-            pnm.pc.source_var(sec(x)._ref_v, (end_offset + active_params.F))
+            with Nd.section_in_stack(sec):
+                pnm.pc.target_var(gap_junction, gap_junction._ref_vgap, (offset + active_params.D))
+                pnm.pc.source_var(sec(x)._ref_v, (end_offset + active_params.F))
             gap_junction.g = active_params.weight
             self._synapses.append(gap_junction)
             self._configure_cell(cell)
@@ -419,27 +451,26 @@ class Connection(object):
             tvec: time for spike events from the sgid
             start_delay: When the events may start to be delivered
         """
-        hoc_tvec = Nd.Vector()
-        for _t in np.sort(tvec[tvec >= start_delay]):
-            hoc_tvec.append(_t)
-
+        hoc_tvec = Nd.Vector(tvec[tvec >= start_delay])
         logging.debug("Replaying %d spikes on %d", hoc_tvec.size(), self.sgid)
         logging.debug(" > First replay event for connection at %f", hoc_tvec.x[0])
-        vstim = Nd.VecStim()
-        vstim.play(hoc_tvec)
-        # vstim.verboseLevel = 1
-        self._tvecs.append(hoc_tvec)
-        self._stims.append(vstim)
 
-        for i, (syn_i, sc) in enumerate(self.valid_sections):
-            syn_params = self._synapse_params[syn_i]
-            nc = Nd.NetCon(
-                vstim, self._synapses[i], 10, syn_params.delay, syn_params.weight)
-            nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
-            self._replay_netcons.append(nc)
+        # If _replay_tvec is None we may not instantiate netcons
+        if self._replay_tvec is None:
+            self._replay_tvec = hoc_tvec
+        else:
+            self._replay_tvec.append(hoc_tvec)
+        self._replay_tvec.sort()
         return hoc_tvec.size()
 
-    # -
+    def restart_events(self):
+        """Restart the artificial events, coming from Replay or Spont Minis"""
+        for netstim in self._minis_netstims:
+            netstim.restartEvent()
+        # Replay
+        for vecstim in (self._vecstims or ()):
+            vecstim.restartEvent()
+
     def disable(self, set_zero_conductance=False):
         """Deactivates a connection.
 
@@ -451,9 +482,9 @@ class Connection(object):
             set_zero_conductance: (bool) Sets synapses' conductance
                 to zero [default: False]
         """
+        self._disabled = True
         if self._netcons is None:
             return
-        self._disabled = True
         for nc in self._netcons:
             nc.active(False)
         if set_zero_conductance:
@@ -464,9 +495,9 @@ class Connection(object):
         """(Re)enables connections. It will activate all netcons and restore
         conductance values had they been set to zero
         """
+        self._disabled = False
         if self._netcons is None:
             return
-        self._disabled = False
         for nc in self._netcons:
             nc.active(True)
         if self._conductances_bk:

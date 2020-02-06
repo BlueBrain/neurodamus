@@ -17,7 +17,7 @@ from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, RunOptions, ConfigurationError
 from .cell_distributor import CellDistributor, LoadBalanceMode
 from .cell_readers import TargetSpec
-from .connection_manager import SynapseRuleManager, GapJunctionManager
+from .connection_manager import SynapseRuleManager, GapJunctionManager, ReplayMode
 from .replay import SpikeManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose
@@ -70,6 +70,7 @@ class Node:
         self._synapse_manager = None   # type: SynapseRuleManager
         self._gj_manager = None        # type: GapJunctionManager
         self._connection_weight_delay_list = []
+        self._jumpstarters = []
 
     #
     # public 'read-only' properties - object modification on user responsibility
@@ -128,8 +129,8 @@ class Node:
         if run_conf.get('CellLibraryFile', 'start.ncs') not in ('start.ncs', 'circuit.mvd3'):
             try:
                 import mvdtool  # noqa: F401
-            except ImportError as e:
-                raise ConfigurationError("Cannot import mvdtool, please install py-mvdtool") from e
+            except ImportError:
+                raise ConfigurationError("Cannot import mvdtool, please install py-mvdtool")
         else:
             if TargetSpec(run_conf.get("CircuitTarget")).population is not None:
                 raise ConfigurationError("Targets with population require Sonata Node file")
@@ -325,8 +326,7 @@ class Node:
             if not self._corenrn_conf:
                 logging.info("Load Balancing ENABLED. Mode: MultiSplit")
             else:
-                if MPI.rank == 0:
-                    logging.warning("Load Balancing mode CHANGED to WholeCell for CoreNeuron")
+                logging.warning("Load Balancing mode CHANGED to WholeCell for CoreNeuron")
                 lb_mode = LoadBalanceMode.WholeCell
         elif lb_mode is LoadBalanceMode.WholeCell:
             logging.info("Load Balancing ENABLED. Mode: WholeCell")
@@ -608,30 +608,25 @@ class Node:
 
     # -
     @mpi_no_errors
-    def enable_stimulus(self, only_replay=False):
+    def enable_stimulus(self):
         """Iterate over any stimuli/stim injects defined in the config file given to the simulation
         and instantiate them.
         This iterates over the injects, getting the stim/target combinations
         and passes the raw text in field/value pairs to a StimulusManager object to interpret the
         text and instantiate an actual stimulus object.
-
-        Args:
-            only_replay: if True, dont enable other classes of stimulus -> No ElectrodeManager and
-                no StimulusManager. Only spike replays are applied. Useful for coreneuron restore.
         """
-        log_stage("Stimulus apply. [only replay: %s]", only_replay)
+        log_stage("Stimulus Apply.")
         conf = self._config_parser
 
-        if not only_replay:
-            # Setup of Electrode objects part of enable stimulus
-            self._enable_electrodes()
+        # Setup of Electrode objects part of enable stimulus
+        self._enable_electrodes()
 
-            # for each stimulus defined in the config file, request the stimmanager to instantiate
-            extra_params = []
-            if "BaseSeed" in self._run_conf:
-                extra_params.append(self._run_conf["BaseSeed"])
-            self._stim_manager = Nd.StimulusManager(
-                self._target_manager, self._elec_manager, *extra_params)
+        # for each stimulus defined in the config file, request the stimmanager to instantiate
+        extra_params = []
+        if "BaseSeed" in self._run_conf:
+            extra_params.append(self._run_conf["BaseSeed"])
+        self._stim_manager = Nd.StimulusManager(
+            self._target_manager, self._elec_manager, *extra_params)
 
         # build a dictionary of stims for faster lookup : useful when applying 10k+ stims
         # while we are at it, check if any stims are using extracellular
@@ -643,34 +638,22 @@ class Node:
                 has_extra_cellular = True
 
         # Treat extracellular stimuli
-        if not only_replay and has_extra_cellular:
+        if has_extra_cellular:
             self._stim_manager.interpretExtracellulars(conf.parsedInjects, conf.parsedStimuli)
 
         logging.info("Instantiating Stimulus Injects:")
-        done_corenrn_replay = bool(self._core_replay_file)
 
         for name, inject in compat.Map(conf.parsedInjects).items():
             target_name = inject.get("Target").s
             stim_name = inject.get("Stimulus").s
             stim = stim_dict.get(stim_name)
+            if stim is None:
+                logging.error("Stimulus Inject %s uses non-existing Stim %s",
+                              name, stim_name)
+
             stim_map = compat.Map(stim).as_dict(True)
-
-            # check the pattern for special cases that are handled here.
-            if stim_map["Pattern"] == "SynapseReplay":
-                if self._corenrn_conf and done_corenrn_replay:
-                    logging.info(" -> [REPLAY] Reusing stim file from previous cycle")
-                    continue
-                # Since saveUpdate merge there are two delay concepts:
-                #  - shift: times are shifted (previous delay)
-                #  - delay: Spike replays are suppressed until a certain time
-                tshift = 0 if stim_map.get("Timing") == "Absolute" else Nd.t
-                delay = stim_map.get("Delay", .0)
-                logging.info(" * [SYN REPLAY] %s (%s -> %s, time shift: %d, delay: %d)",
-                             name, stim_name, target_name, tshift, delay)
-                self._enable_replay(target_name, stim_map, tshift, delay)
-
-            elif not only_replay:
-                # all other patterns the stim manager will interpret
+            if stim_map["Pattern"] != "SynapseReplay":
+                # stim manager will interpret non-replay stimulus
                 logging.info(" * [STIM] %s: %s (%s) -> %s",
                              name, stim_name, stim_map["Pattern"], target_name)
                 self._stim_manager.interpret(target_name, stim)
@@ -690,6 +673,39 @@ class Node:
             logging.info("No electrodes ospath. Extracellular class of stimuli will be unavailable")
 
         self._elec_manager = Nd.ElectrodeManager(electrodes_path_o, conf.parsedElectrodes)
+
+    # -
+    def enable_replay(self):
+        """Activate replay according to BlueConfig. Call before connManager.finalize
+        """
+        log_stage("Handling Replay")
+        conf = self._config_parser
+
+        if self._corenrn_conf and bool(self._core_replay_file):
+            logging.info(" -> [REPLAY] Reusing stim file from previous cycle")
+            return
+
+        stim_dict = {}
+        for stim_name, stim in compat.Map(conf.parsedStimuli).items():
+            if stim.get("Pattern").s == "SynapseReplay":
+                stim_dict.setdefault(stim_name, stim)
+
+        for name, inject in compat.Map(conf.parsedInjects).items():
+            target_name = inject.get("Target").s
+            stim_name = inject.get("Stimulus").s
+            stim = stim_dict.get(stim_name)
+            if stim is None:
+                continue
+
+            # Since saveUpdate merge there are two delay concepts:
+            #  - shift: times are shifted (previous delay)
+            #  - delay: Spike replays are suppressed until a certain time
+            stim = compat.Map(stim).as_dict(True)
+            tshift = Nd.t if stim.get("Timing") == "Relative" else .0
+            delay = stim.get("Delay", .0)
+            logging.info(" * [SYN REPLAY] %s (%s -> %s, time shift: %d, delay: %d)",
+                         name, stim_name, target_name, tshift, delay)
+            self._enable_replay(target_name, stim, tshift, delay)
 
     # -
     def _enable_replay(self, target_name, stim_conf, tshift=.0, delay=.0):
@@ -733,9 +749,6 @@ class Node:
         """
         log_stage("Reports Enabling")
         n_errors = 0
-        cur_t = Nd.t
-        if cur_t:
-            logging.info("Restoring sim at t=%f (report times are absolute!)", cur_t)
         sim_end = self._run_conf["Duration"]
         reports_conf = compat.Map(self._config_parser.parsedReports)
         self._report_list = []
@@ -749,17 +762,22 @@ class Node:
             logging.info(" * " + rep_name)
             rep_type = rep_conf["Type"]
             start_time = rep_conf["StartTime"]
-            end_time = min(rep_conf["EndTime"], sim_end)
+            end_time = rep_conf.get("EndTime", sim_end)
 
             if rep_type.lower() not in ("compartment", "summation", "synapse"):
                 if MPI.rank == 0:
                     logging.error("Unsupported report type: %s.", rep_type)
                 n_errors += 1
                 continue
+
+            if Nd.t > 0:
+                start_time += Nd.t
+                end_time += Nd.t
+            if end_time > sim_end:
+                end_time = sim_end
             if start_time > end_time:
-                if MPI.rank == 0:
-                    logging.warning("Report/Sim End-time (%s) before Start (%g). Skipping!",
-                                    end_time, start_time)
+                logging.warning("Report/Sim End-time (%s) before Start (%g). Skipping!",
+                                end_time, start_time)
                 continue
 
             electrode = self._elec_manager.getElectrode(rep_conf["Electrode"]) \
@@ -877,7 +895,7 @@ class Node:
             sim_opts - override _finalize_model options. E.g. spike_compress
         """
         if self._sim_ready:
-            return self._cell_distributor.pnm
+            return self._pnm
 
         if self._cell_distributor is None or self._cell_distributor._gidvec is None:
             raise RuntimeError("No CellDistributor was initialized. Please create a circuit.")
@@ -887,15 +905,13 @@ class Node:
 
         self._finalize_model(**sim_opts)
 
-        if self._pr_cell_gid:
-            logging.info("Dumping info about cell %d", self._pr_cell_gid)
-            self._pnm.pc.prcellstate(self._pr_cell_gid, "pydamus_t0")
-
         if corenrn_gen:
             self._sim_corenrn_write_config()
 
         if self._simulator_conf.runNeuron():
             self._sim_init_neuron()
+
+        self.dump_cell_config()
 
         self._sim_ready = True
         return self._pnm
@@ -910,10 +926,11 @@ class Node:
             spike_compress: The spike_compress() parameters (tuple or int)
         """
         logging.info("Preparing to run simulation...")
+        is_save_state = any(c in self._run_conf for c in ("SaveTime", "Save", "Restore"))
         pc = self._pnm.pc
         pc.setup_transfer()
 
-        if spike_compress:
+        if spike_compress and not is_save_state:
             # multisend 13 is combination of multisend(1) + two_phase(8) + two_intervals(4)
             # to activate set spike_compress=(0, 0, 13)
             if not isinstance(spike_compress, tuple):
@@ -939,8 +956,23 @@ class Node:
     # -
     def _sim_init_neuron(self):
         # === Neuron specific init ===
-        self._record_spikes()
+        restore_path = self._run_conf.get("Restore")
         fwd_skip = self._run_conf.get("ForwardSkip", 0)
+        self._record_spikes()
+        self._pnm.pc.timeout(200)  # increase by 10x
+
+        if restore_path:
+            logging.info("Restoring state...")
+            bbss = Nd.BBSaveState()
+            self._stim_manager.saveStatePreparation(bbss)
+            bbss.ignore(self._binreport_helper)
+            self._binreport_helper.restorestate(restore_path)
+            self._stim_manager.reevent()
+            bbss.vector_play_init()
+
+            self._restart_events()  # On restore the event queue is cleared
+            return  # Upon restore sim is ready
+
         if fwd_skip:
             logging.info("Initializing with ForwardSkip %d ms", fwd_skip)
             Nd.t = -1e9
@@ -952,27 +984,26 @@ class Node:
             Nd.t = 0
             Nd.frecord_init()
 
-        restore_path = self._run_conf.get("Restore")
-        if restore_path:
-            bbss = Nd.BBSaveState()
-            self._stim_manager.saveStatePreparation(bbss)
-            bbss.ignore(self._binreport_helper)
-            self._binreport_helper.restorestate(restore_path)
-            self._stim_manager.reevent()
-            bbss.vector_play_init()
+    # -
+    def _restart_events(self):
+        logging.info("Restarting connections events (Replay and Spont Minis)")
+        self._synapse_manager.restart_events()
 
-            if self._pr_cell_gid:
-                self._pnm.pc.prcellstate(self._pr_cell_gid, "pydamus_t{}".format(Nd.t))
+        logging.info("Restarting Reports events")
+        nc = Nd.NetCon(None, self._binreport_helper, 10, 1, 1)
+        nc.event(Nd.t)
+        self._jumpstarters.append(nc)
 
-        # increase timeout by 10x
-        self._pnm.pc.timeout(200)
+        # TODO: ASCII and HDF5 reports
+        # TODO: reports might have ALU objects which need to reactivate
 
+    # -
     def _sim_corenrn_write_config(self, corenrn_restore=False):
         log_stage("Dataset generation for CoreNEURON")
 
         corenrn_output = self._simulator_conf.getCoreneuronOutputDir().s
         corenrn_data = self._simulator_conf.getCoreneuronDataDir().s
-        fwd_skip = self._run_conf.get("ForwardSkip", 0)
+        fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
         if not corenrn_restore:
             Nd.registerMapping(self._cell_distributor)
@@ -1021,26 +1052,13 @@ class Node:
         log_verbose("solve_core(..., %s)", ", ".join(opts_expanded))
         self._corenrn_conf.psolve_core(*opts_expanded)
 
-    # -
-    @mpi_no_errors
-    def solve(self, tstop=None):
-        """Call solver with a given stop time (default: whole interval).
-        Be sure to have sim_init()'d the simulation beforehand
+    #
+    def _sim_event_handlers(self, tstart, tstop):
+        """Create handlers for "in-simulation" events, like activating delayed
+        connections, execute Save-State, etc
         """
-        if not self._sim_ready:
-            raise ConfigurationError("Initialize simulation first")
 
-        tstart = Nd.t
-        tstop = tstop or Nd.tstop
-        events = []  # format: [(time, handler), ...]
-
-        # NOTE:
-        # The next events are defined as function handlers so that they can be sorted.
-        # In between each event _psolve_loop() is called in order to eventually split long
-        # simulation blocks, where one or more report flush(es) can happen. It is a simplified
-        # design relatively to the original version where the report checkpoint would not happen
-        # before the checkpoint timeout (25ms default). However there shouldn't be almost any
-        # performance penalty since the simulation is already halted between events.
+        events = []  # Events are function handlers which can be sorted.
 
         # handle any delayed blocks
         for conn in self._connection_weight_delay_list:
@@ -1061,38 +1079,62 @@ class Node:
             events.append((conn_start, event_f))
 
         # Handle Save
-        has_save_time = "SaveTime" in self._run_conf
+        save_time_config = self._run_conf.get("SaveTime")
+
         if "Save" in self._run_conf:
             tsave = tstop
-            if has_save_time:
-                tsave = tstart + self._run_conf["SaveTime"]
+            if save_time_config is not None:
+                tsave = save_time_config
                 if tsave > tstop:
                     tsave = tstop
                     logging.warning("SaveTime specified beyond Simulation Duration. "
                                     "Setting SaveTime to tstop.")
 
-            def event_f():
+            def save_f():
                 logging.info("Saving State... (t=%f)", tsave)
                 bbss = Nd.BBSaveState()
                 MPI.barrier()
                 self._stim_manager.saveStatePreparation(bbss)
                 bbss.ignore(self._binreport_helper)
+                self._binreport_helper.pre_savestate(self._run_conf["Save"])
                 log_verbose("SaveState Initialization Done")
 
-                self._binreport_helper.pre_savestate(self._run_conf["Save"])
-
                 # If event at the end of the sim we can actually clearModel() before savestate()
-                if not has_save_time:
+                if save_time_config is None:
+                    log_verbose("Clearing model prior to final save")
+                    self._binreport_helper.flush()
                     self.clear_model()
 
+                self.dump_cell_config()
                 self._binreport_helper.savestate()
+                logging.info(" => Save done successfully")
 
-            events.append((tsave, event_f))
+            events.append((tsave, save_f))
 
-        elif has_save_time:
+        elif save_time_config is not None:
             logging.warning("SaveTime IGNORED. Reason: no 'Save' config entry")
 
         events.sort()
+        return events
+
+    # -
+    @mpi_no_errors
+    def solve(self, tstop=None):
+        """Call solver with a given stop time (default: whole interval).
+        Be sure to have sim_init()'d the simulation beforehand
+        """
+        if not self._sim_ready:
+            raise ConfigurationError("Initialize simulation first")
+
+        tstart = Nd.t
+        tstop = tstop or Nd.tstop
+        events = self._sim_event_handlers(tstart, tstop)
+
+        # NOTE: _psolve_loop is called among events in order to eventually split long
+        # simulation blocks, where one or more report flush(es) can happen. It is a simplified
+        # design relatively to the original version where the report checkpoint would not happen
+        # before the checkpoint timeout (25ms default). However there shouldn't be almost any
+        # performance penalty since the simulation is already halted between events.
 
         logging.info("Running simulation until t=%d ms", tstop)
         t = tstart  # default if there are no events
@@ -1103,7 +1145,7 @@ class Node:
         if t < tstop:
             self._psolve_loop(tstop)
 
-    # reporting - There was an issue where MPI collective routines for reporting and spike exchange
+    # psolve_loop: There was an issue where MPI collective routines for reporting and spike exchange
     # are mixed such that some cpus are blocked waiting to complete reporting while others to
     # finish spike exchange. As a work-around, periodically halt simulation and flush reports
     # Default is 25 ms / cycle
@@ -1152,7 +1194,7 @@ class Node:
     @property
     def gidvec(self):
         if self._cell_distributor is None or self._cell_distributor._gidvec is None:
-            raise RuntimeError("No CellDistributor was initialized. Please create a circuit.")
+            logging.error("No CellDistributor was initialized. Please create a circuit.")
         return self._cell_distributor.getGidListForProcessor()
 
     # -
@@ -1200,10 +1242,17 @@ class Node:
                     for i, gid in enumerate(pnm.idvec):
                         f.write("%.3f\t%d\n" % (pnm.spikevec.x[i], gid))
 
+    def dump_cell_config(self):
+        if not self._pr_cell_gid:
+            return
+        log_verbose("Dumping info about cell %d", self._pr_cell_gid)
+        simulator = "CoreNeuron" if self._corenrn_conf else "Neuron"
+        self._pnm.pc.prcellstate(self._pr_cell_gid, "py_{}_t{}".format(simulator, Nd.t))
+
     # -
-    def dump_circuit_config(self, suffix="dbg"):
+    def dump_circuit_config(self, suffix="nrn_python"):
         log_stage("Dumping cells state")
-        Nd.stdinit()
+        suffix += "_t=" + str(Nd.t)
 
         if not ospath.isfile("debug_gids.txt"):
             logging.info("Debugging all gids")
@@ -1312,21 +1361,25 @@ class Neurodamus(Node):
         self.create_synapses()
         self.create_gap_junctions()
 
-        # Init resume for NEURON if requested. For CoreNeuron there _coreneuron_restore
+        log_stage("================ INSTANTIATING SIMULATION ================")
+
         if not self._corenrn_conf:
-            self.check_resume()
+            self.check_resume()  # For CoreNeuron there _coreneuron_restore
+
+        # Apply replay
+        self.enable_replay()
 
         if self._run_conf["AutoInit"]:
             self.init()
 
     # -
     def init(self):
-        """Explicitly initialize, allowing the user to make last changes before sim
+        """Explicitly initialize, allowing users to make last changes before simulation
         """
-        # Check if we need to override the base seed for synapse RNGs
-        log_stage("Instantiating Simulation...")
-        base_seed = self._run_conf.get("BaseSeed", 0)
-        self._synapse_manager.finalize(base_seed, self._corenrn_conf)
+        base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
+        replay_mode = (ReplayMode.COMPLETE if self._corenrn_conf and "Save" in self._run_conf
+                       else ReplayMode.AS_REQUIRED)
+        self._synapse_manager.finalize(base_seed, self._corenrn_conf, replay_mode)
 
         if self._gj_manager is not None:
             self._gj_manager.finalize()
@@ -1335,6 +1388,7 @@ class Neurodamus(Node):
         self.enable_modifications()
 
         if ospath.isfile("debug_gids.txt"):
+            Nd.stdinit()
             self.dump_circuit_config()
 
         if self._run_conf["EnableReports"]:
@@ -1368,10 +1422,11 @@ class Neurodamus(Node):
     # -
     def _coreneuron_restore(self):
         self.load_targets()
-        self.enable_stimulus(only_replay=True)
+        self.enable_replay()
         if self._run_conf["EnableReports"]:
             self.enable_reports()
         self._sim_corenrn_write_config(corenrn_restore=True)
+        self._sim_ready = True
 
     # -
     def _instantiate_simulation(self):
@@ -1418,7 +1473,7 @@ class Neurodamus(Node):
             log_stage("============= SIMULATION (SKIP MODEL BUILD) =============")
             self._run_coreneuron()
         else:
-            log_stage("==================== SIMULATION ====================")
+            log_stage("======================= SIMULATION =======================")
             self.run_all()
 
     def __del__(self):

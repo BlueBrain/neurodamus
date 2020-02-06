@@ -11,7 +11,7 @@ from os import path as ospath
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core.configuration import GlobalConfig, ConfigurationError
-from .connection import Connection, SynapseMode
+from .connection import Connection, SynapseMode, ReplayMode
 from .synapse_reader import SynapseReader
 from .utils import compat, bin_search, dict_filter_map
 from .utils.logging import log_verbose
@@ -393,6 +393,8 @@ class _ConnectionManagerBase(object):
                 if sgid != prev_sgid:
                     if not src_target.completeContains(sgid):
                         continue
+                    if sgid == tgid:
+                        logging.warning("Making connection within same Gid: %d", sgid)
                     prev_sgid = sgid
                     if cur_conn:
                         cur_conn.locked = True
@@ -422,7 +424,8 @@ class _ConnectionManagerBase(object):
         Optional gidvec (post) / population_ids restrict the set of
         connections to be returned
         """
-        src_target = self._target_manager.getTarget(src_target_name)
+        src_target = self._target_manager.getTarget(src_target_name) \
+            if src_target_name is not None else None
         dst_target = self._target_manager.getTarget(dst_target_name)
         gidvec = self._local_gids if gidvec is None else gidvec
         if isinstance(population_ids, int):
@@ -434,9 +437,8 @@ class _ConnectionManagerBase(object):
                     continue
                 for conn in population[tgid]:
                     sgid = conn.sgid
-                    if not src_target.completeContains(sgid):
-                        continue
-                    yield conn
+                    if src_target is None or src_target.completeContains(sgid):
+                        yield conn
 
     # -
     def configure_group(self, conn_config, gidvec=None, population_ids=None):
@@ -513,6 +515,12 @@ class _ConnectionManagerBase(object):
                 conn.configure_synapses(syn_configure)
             if syn_params:
                 conn.update_synpase_parameters(**syn_params)
+
+    def restart_events(self):
+        """After restore, restart the artificial events (replay and spont minis)
+        """
+        for conn in self.all_connections():
+            conn.restart_events()
 
     # ------------------------------------------------------------------
     # Delete, Disable / Enable
@@ -703,17 +711,21 @@ class SynapseRuleManager(_ConnectionManagerBase):
         self._synapse_mode = SynapseMode.from_str(synapse_mode) \
             if synapse_mode is not None else SynapseMode.default
 
-        #  self._rng_list = []
-        self._replay_list = []
-
     # -
-    def finalize(self, base_seed=0, use_corenrn=False):
+    def finalize(self, base_seed=0,
+                       sim_corenrn=False,
+                       replay_mode=ReplayMode.AS_REQUIRED):
         """Create the actual synapses and netcons.
 
         Note: All weight scalars should have their final values.
 
         Args:
             base_seed: optional argument to adjust synapse RNGs (default=0)
+            sim_corenrn: Finalize accordingly in case we target CoreNeuron
+            replay_mode: How shall we instantiate replay? Default: AS_REQUIRED
+                Use DISABLED to skip replay and COMPLETE to instantiate VecStims
+                in all synapses, so that on a CoreNeuron Save-Restore the user
+                may apply different replay files.
         """
         logging.info("Instantiating synapses...")
         cell_distributor = self._cell_distibutor
@@ -724,22 +736,9 @@ class SynapseRuleManager(_ConnectionManagerBase):
                 spgid = cell_distributor.getSpGid(tgid)
                 # Note: (Compat) neurodamus hoc keeps connections in reversed order.
                 for conn in reversed(conns):  # type: Connection
-                    conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
-                # logging.debug("Created %d connections on post-gid %d", len(conns), tgid)
-                n_created_conns += len(conns)
-
-        # When the simulator is CoreNeuron there is no 'disable' conn state so we dont
-        # instantiate. This is ok since there is no chance the user to reenable them later
-        if not use_corenrn:
-            for tgid, conns in self._disabled_conns.items():
-                for conn in reversed(conns):
-                    if conn._netcons is not None:
-                        continue
-                    metype = cell_distributor.getMEType(tgid)
-                    spgid = cell_distributor.getSpGid(tgid)
-                    conn.finalize(cell_distributor.pnm, metype, base_seed, spgid)
-                    conn.disable()
-                    n_created_conns += 1
+                    if conn.finalize(cell_distributor.pnm, metype, base_seed, spgid,
+                                     replay_mode, skip_disabled=sim_corenrn):
+                        n_created_conns += 1
 
         MPI.check_no_errors()
         all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
@@ -756,24 +755,25 @@ class SynapseRuleManager(_ConnectionManagerBase):
             start_delay: Dont deliver events before t=start_delay
         """
         log_verbose("Applying replay map with %d src cells...", len(spike_manager))
-        target = self._target_manager.getTarget(target_name)
-        replay_count = 0
+        replayed_count = 0
 
-        for popid, pop in self._populations.items():
-            for tgid, conns in pop.items():
-                if not target.contains(tgid):
-                    continue
-                for conn in conns:
-                    if conn.sgid in spike_manager:
-                        replay_count += conn.replay(spike_manager[conn.sgid], start_delay)
-                        self._replay_list.append(conn)
+        # Dont deliver events in the past
+        if Nd.t > start_delay:
+            start_delay = Nd.t
+            log_verbose("Restore: Delivering events only after t=%.4f", start_delay)
 
-        total_replays = MPI.allreduce(replay_count, MPI.SUM)
+        for conn in self.get_target_connections(None, target_name):
+            if conn.sgid not in spike_manager:
+                continue
+            conn.replay(spike_manager[conn.sgid], start_delay)
+            replayed_count += 1
+
+        total_replays = MPI.allreduce(replayed_count, MPI.SUM)
         if MPI.rank == 0:
             if total_replays == 0:
-                logging.warning("No cells were injected replay stimulus")
+                logging.warning("No connections were injected replay stimulus")
             else:
-                logging.info(" => Replaying total %d stimulus", total_replays)
+                logging.info(" => Replaying on %d connections", total_replays)
         return total_replays
 
 

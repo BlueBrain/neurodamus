@@ -108,7 +108,6 @@ class METype(object):
         netcon = Nd.NetCon(self.CellRef.soma[0](1)._ref_v, target_pp,
                            sec=self.CellRef.soma[0])
         netcon.threshold = -30
-        self._netcons.append(netcon)
         return netcon
 
     def re_init_rng(self, ion_seed, need_invoke):
