@@ -136,18 +136,18 @@ VERBATIM
     printf("Writing sim config file: %s\n", tmpmem);
 
     FILE *fp = open_file(tmpmem, "w");
-    fprintf(fp, "--outpath %s\n", abspath(hoc_gargstr(1), tmpmem));
-    fprintf(fp, "--datpath %s\n", abspath(hoc_gargstr(2), tmpmem));
-    fprintf(fp, "--tstop %lf\n", *getarg(3));
-    fprintf(fp, "--dt %lf\n", *getarg(4));
-    fprintf(fp, "--forwardskip %lf\n", *getarg(5));
-    fprintf(fp, "--prcellgid %d\n", (int)*getarg(6));
-    fprintf(fp, "--report-conf %s/%s\n",  outputdir, REPORT_CONFIG_FILE);
-    fprintf(fp, "--cell-permute %d\n", DEFAULT_CELL_PERMUTE);
+    fprintf(fp, "outpath='%s'\n", abspath(hoc_gargstr(1), tmpmem));
+    fprintf(fp, "datpath='%s'\n", abspath(hoc_gargstr(2), tmpmem));
+    fprintf(fp, "tstop=%lf\n", *getarg(3));
+    fprintf(fp, "dt=%lf\n", *getarg(4));
+    fprintf(fp, "forwardskip=%lf\n", *getarg(5));
+    fprintf(fp, "prcellgid=%d\n", (int)*getarg(6));
+    fprintf(fp, "report-conf='%s/%s'\n",  outputdir, REPORT_CONFIG_FILE);
+    fprintf(fp, "cell-permute=%d\n", DEFAULT_CELL_PERMUTE);
     if (ifarg(7) && strlen(hoc_gargstr(7))) {  // if spike replay specified
-        fprintf(fp, "--pattern %s\n", abspath(hoc_gargstr(7), tmpmem));
+        fprintf(fp, "pattern='%s'\n", abspath(hoc_gargstr(7), tmpmem));
     }
-    fprintf(fp, "-mpi\n");
+    fprintf(fp, "mpi=true\n");
     fclose(fp);
 #endif
 ENDVERBATIM
@@ -177,7 +177,7 @@ VERBATIM
     char* simConf = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(simConf, "%s/%s", outputdir, SIM_CONFIG_FILE);
 
-    char *argv[] = {"", "--read-config", simConf, "--skip-mpi-finalize", "-mpi", NULL, NULL, NULL, NULL};
+    char *argv[] = {"", "--read-config", simConf, "--skip-mpi-finalize", "--mpi", NULL, NULL, NULL, NULL};
     int argc = 5;
     int argIndex=1;
     while( ifarg(argIndex) ) {
