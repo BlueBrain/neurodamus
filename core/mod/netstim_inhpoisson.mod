@@ -1,22 +1,16 @@
 COMMENT
 /**
  * @file netstim_inhpoisson.mod
- * @brief
- * @author ebmuller
+ * @brief Inhibitory poisson generator by the thinning method.
+ * @author Eilif Muller
  * @date 2011-03-16
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ *  Based on vecstim.mod and netstim2.mod shipped with PyNN. See
+ *   Muller, Buesing, Schemmel, Meier (2007). "Spike-Frequency Adapting
+ *   Neural Ensembles: Beyond Mean Adaptation and Renewal Theories",
+ *   Neural Computation 19:11, 2958-3010. doi:10.1162/neco.2007.19.11.2958
  */
 ENDCOMMENT
-
-: Inhibitory poisson generator by the thinning method.
-: See:
-:   Muller, Buesing, Schemmel, Meier (2007). "Spike-Frequency Adapting
-:   Neural Ensembles: Beyond Mean Adaptation and Renewal Theories",
-:   Neural Computation 19:11, 2958-3010.
-:   doi:10.1162/neco.2007.19.11.2958
-:
-: Based on vecstim.mod and netstim2.mod shipped with PyNN
-: Author: Eilif Muller, 2011
 
 NEURON {
 THREADSAFE
@@ -26,6 +20,7 @@ THREADSAFE
   BBCOREPOINTER uniform_rng, exp_rng, vecRate, vecTbins
   :THREADSAFE : only true if every instance has its own distinct Random
 }
+
 VERBATIM
 extern int ifarg(int iarg);
 #ifndef CORENEURON_BUILD
@@ -36,6 +31,12 @@ extern void* vector_arg(int iarg);
 double nrn_random_pick(void* r);
 #endif
 void* nrn_random_arg(int argpos);
+
+#ifdef STIM_DEBUG
+# define debug_printf(...) printf(__VA_ARGS__)
+#else
+# define debug_printf(...)
+#endif
 
 // constant used to indicate an event triggered after a restore to restart the main event loop
 const int POST_RESTORE_RESTART_FLAG = -99;
@@ -129,6 +130,9 @@ INITIAL {
    generate_next_event()
    : stop even producing surrogate events if we are past duration
    if (t+event < start+duration) {
+VERBATIM
+     debug_printf("InhPoisson: Initial event at t = %6.3f\n", t + event);
+ENDVERBATIM
      net_send(event, activeFlag )
    }
 
@@ -143,7 +147,6 @@ PROCEDURE generate_next_event() {
 	if (event < 0) {
 		event = 0
 	}
-
 }
 
 : Supports multiple rng types: mcellran4, random123
@@ -285,7 +288,7 @@ VERBATIM
     for (i=0;i<size;i++) {
     	if (px[i]>max) max = px[i];
     }
-    
+
     curRate = px[0];
     rmax = max;
 
@@ -367,8 +370,9 @@ VERBATIM
         double u = (double)urand(_threadargs_);
         //printf("InhPoisson: spike time at time %g urand=%g curRate=%g, rmax=%g, curRate/rmax=%g \n",t, u, curRate, rmax, curRate/rmax);
         if (u<curRate/rmax) {
+            debug_printf("\nInhPoisson: Spike time t = %g [urand=%g curRate=%g, rmax=%g]\n",
+                         t, u, curRate, rmax);
 ENDVERBATIM
-            :printf("InhPoisson: spike time at time %g\n",t)
             net_event(t)
 VERBATIM
         }
@@ -381,6 +385,7 @@ COMMENT
 /**
  * Supply the POST_RESTORE_RESTART_FLAG.  For example, so a hoc program can call a NetCon.event with the proper event value
  *
+ * @DEPRECATED Consider using restartEvent() for resuming the event loop
  * @return POST_RESTORE_RESTART_FLAG value for entities that wish to use its value
  */
 ENDCOMMENT
@@ -393,31 +398,44 @@ ENDVERBATIM
 
 COMMENT
 /**
- * After a resume, populate variable 'event' with the first event time that can be given to net_send such that the elapsed time is
- * greater than the resume time.  Note that if an event was generated just before saving, but due for delivery afterwards (delay 0.1),
- * then the hoc layer must deliver this event directly.
+ * After a resume, send first event whose time is greater than the resume time.
  *
- * @param delay (typically 0.1) #TODO: accept a parameter rather than using hard coded value below
- * @return Time of the next event.  If this is less than the current time (resume time), the hoc layer should deliver the event immediately
+ * NOTE: Events generated right before the save time but scheduled for delivery afterwards
+ *  will already be restored to the NetCon by the bbsavestate routines
  */
 ENDCOMMENT
 FUNCTION resumeEvent() {
-    LOCAL elapsed_time, delay
-    : Since we want the minis to be consistent with the previous run, it should use t=0 as a starting point until it
-    : reaches an elapsed_time >= resume_t.  Events generated right before the save time but scheduled for delivery afterwards
-    : will already be restored to the NetCon by the bbsavestate routines
-
-    elapsed_time = event : event has some value from the INITIAL block
-    delay = 0.1
+    LOCAL elapsed_time
+    : To be consistent with the previous run, it uses t=event as a starting point until it
+    : reaches an elapsed_time >= resume_t.
+    elapsed_time = event  : One event is always generated in the INITIAL block
 
     while( elapsed_time < t ) {
         update_time()
         generate_next_event()
         elapsed_time = elapsed_time + event
     }
-    resumeEvent = elapsed_time
     event = elapsed_time-t
+    resumeEvent = elapsed_time
 }
+
+COMMENT
+/**
+ * Restart the event loop after a NEURON restore. It will discard events in the past
+ */
+ENDCOMMENT
+PROCEDURE restartEvent() {
+VERBATIM
+#ifndef CORENEURON_BUILD
+    double etime = resumeEvent(_threadargs_);
+    if (etime < start+duration) {
+        debug_printf("InhPoisson: First event after resume at t = %6.3f\n", etime);
+        artcell_net_send(_tqitem, (double*)0, _ppvar[1]._pvoid, etime, activeFlag);
+    }
+#endif
+ENDVERBATIM
+}
+
 
 VERBATIM
 static void bbcore_write(double* dArray, int* iArray, int* doffset, int* ioffset, _threadargsproto_) {

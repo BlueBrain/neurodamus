@@ -860,18 +860,11 @@ $&2=secIndex
 }
 
 /**
- * After a restore, the ALU objects need to be manually triggered so that they periodically update
- *
- * @param $o1 jumpstarters List object to hold NetCons which are used to restart the ALUs
+ * After a restore, the ALU objects need to be manually restarted so that they periodically update
  */
-proc restartALUs() { local aluIndex  localobj nc, nil
-    if( object_id( ALUList, 1 ) != -1 ) {
-
-        for aluIndex=0, ALUList.count()-1 {
-            nc = new NetCon( nil, ALUList.o(aluIndex), 10, 1, 1 )
-            nc.event(t)
-            $o1.append(nc)
-        }
+proc restartALUs() { local aluIndex
+    if( object_id( ALUList, 1 ) != -1 ) for aluIndex=0, ALUList.count()-1 {
+        ALUList.o(aluIndex).restartEvent(t)
     }
 }
 

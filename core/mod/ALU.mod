@@ -33,7 +33,7 @@ extern int ifarg(int iarg);
 
 typedef struct {
     //! list of pointers to hoc variables
-	double** ptrs_;
+    double** ptrs_;
 
     /*! list of scalars to apply to corresponding variables; useful for making units of variables
      * from different sources consistent (e.g. i current sources may be distributed, mA/cm^2, or point processes, nA)
@@ -41,10 +41,10 @@ typedef struct {
     double * scalars_;
 
     //! number of elements stored in the vectors
-	int np_;
+    int np_;
 
     //! number of slots allocated to the vectors
-	int psize_;
+    int psize_;
 
     //! function pointer to execute when net_receive is triggered
     int (*process)(_threadargsproto_);
@@ -58,32 +58,31 @@ extern Point_process* ob2pntproc(Object*);
 extern double* nrn_recalc_ptr(double*);
 
 static void recalcptr(Info* info, int cnt, double** old_vp, double* new_v) {
-        int i;
-        /*printf("recalcptr np_=%d %s\n", info->np_, info->path_);*/
+    int i;
+    /*printf("recalcptr np_=%d %s\n", info->np_, info->path_);*/
 
 }
 static void recalc_ptr_callback() {
-        Symbol* sym;
-        int i;
-        hoc_List* instances;
-        hoc_Item* q;
-        /*printf("ASCIIrecord.mod recalc_ptr_callback\n");*/
-        /* hoc has a list of the ASCIIRecord instances */
-        sym = hoc_lookup("ALU");
-        instances = sym->u.template->olist;
-        ITERATE(q, instances) {
-                Info* InfoPtr;
-                Point_process* pnt;
-                Object* o = OBJ(q);
-                /*printf("callback for %s\n", hoc_object_name(o));*/
-                pnt = ob2pntproc(o);
-                Datum* _ppvar = pnt->_prop->dparam;
-                INFOCAST;
-                InfoPtr = *ip;
-                        for (i=0; i < InfoPtr->np_; ++i)
-                                InfoPtr->ptrs_[i] =  nrn_recalc_ptr(InfoPtr->ptrs_[i]);
-
-        }
+    Symbol* sym;
+    int i;
+    hoc_List* instances;
+    hoc_Item* q;
+    /*printf("ASCIIrecord.mod recalc_ptr_callback\n");*/
+    /* hoc has a list of the ASCIIRecord instances */
+    sym = hoc_lookup("ALU");
+    instances = sym->u.template->olist;
+    ITERATE(q, instances) {
+        Info* InfoPtr;
+        Point_process* pnt;
+        Object* o = OBJ(q);
+        /*printf("callback for %s\n", hoc_object_name(o));*/
+        pnt = ob2pntproc(o);
+        Datum* _ppvar = pnt->_prop->dparam;
+        INFOCAST;
+        InfoPtr = *ip;
+        for (i=0; i < InfoPtr->np_; ++i)
+            InfoPtr->ptrs_[i] =  nrn_recalc_ptr(InfoPtr->ptrs_[i]);
+    }
 }
 #endif
 ENDVERBATIM
@@ -93,32 +92,32 @@ VERBATIM {
 #ifndef CORENEURON_BUILD
     INFOCAST;
     Info* info = *ip;
-	info->process(_threadargs_);
+    info->process(_threadargs_);
 #endif
 }
 ENDVERBATIM
-	net_send(Dt, 1)
+    net_send(Dt, 1)
 }
 
 CONSTRUCTOR {
 VERBATIM {
 #ifndef CORENEURON_BUILD
-        static int first = 1;
-        if (first) {
-                first = 0;
-                nrn_register_recalc_ptr_callback(recalc_ptr_callback);
-        }
+    static int first = 1;
+    if (first) {
+        first = 0;
+        nrn_register_recalc_ptr_callback(recalc_ptr_callback);
+    }
 
-	INFOCAST;
-	Info* info = (Info*)hoc_Emalloc(sizeof(Info)); hoc_malchk();
-	info->psize_ = 10;
-	info->ptrs_ = (double**)hoc_Ecalloc(info->psize_, sizeof(double*)); hoc_malchk();
+    INFOCAST;
+    Info* info = (Info*)hoc_Emalloc(sizeof(Info)); hoc_malchk();
+    info->psize_ = 10;
+    info->ptrs_ = (double**)hoc_Ecalloc(info->psize_, sizeof(double*)); hoc_malchk();
     info->scalars_ = (double*)hoc_Ecalloc(info->psize_, sizeof(double)); hoc_malchk();
-	info->np_ = 0;
-	*ip = info;
+    info->np_ = 0;
+    *ip = info;
 
     if (ifarg(2)) {
-         Dt = *getarg(2);
+        Dt = *getarg(2);
     }
 
     //default operation is average
@@ -139,6 +138,24 @@ VERBATIM {
 }
 ENDVERBATIM
 }
+
+
+COMMENT
+/**
+ * Resume the event delivery loop for NEURON restore. Call from Hoc only (there's param)
+ *
+ * @param t The initial time
+ */
+ENDCOMMENT
+PROCEDURE restartEvent() {
+VERBATIM
+#ifndef CORENEURON_BUILD
+    const double etime = *getarg(1);
+    net_send(_tqitem, (double*)0, _ppvar[1]._pvoid, etime, 1.0);
+#endif
+ENDVERBATIM
+}
+
 
 COMMENT
 /*!

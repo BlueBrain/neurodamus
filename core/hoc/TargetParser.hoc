@@ -64,16 +64,21 @@ proc printCellCounts() { local targetIndex, subtargets localobj activeTarget, st
  * be passed to the TargetManager later in the simulation (after distribution/load balancing have completed)
  *
  * @param $s1 Target file name, to be opened and parsed.
+ * @param $2 Print counts for this source (typically for user.target)
  */
-proc open() { local nErrors localobj tFile, targetInstance
+proc open() { local nErrors, printCounts, i  localobj tFile, targetInstance, newTargets
     strdef tstr, tstr1, typeString
     tFile = new File()
     tFile.ropen($s1)
+    printCounts = 0
+    if(numarg() > 1) printCounts = ($2 && isVerbose)
+
+    newTargets = new List()
+    nErrors = 0
+
     if( isVerbose ) {
         print "Reading target file ", $s1
     }
-
-    nErrors = 0
 
     if (tFile.isopen == 0) {
         if( isVerbose != 0 ) {
@@ -93,6 +98,7 @@ proc open() { local nErrors localobj tFile, targetInstance
             //if this target was seen before (e.g. used as subtarget), a reference already exists in the list and needs to be populated;
             // otherwise the new reference we just made will be inserted into the list and given back directly
             targetInstance = updateTargetList( targetInstance )
+            newTargets.append(targetInstance)
 
             //make sure that contents for this target haven't been seen before
             if( targetInstance.isDefined ) {
@@ -128,6 +134,14 @@ proc open() { local nErrors localobj tFile, targetInstance
     tFile.close()
     if (nErrors > 0) {
         quit()
+    }
+    if (printCounts) for i=0, newTargets.count()-1 {
+        subtargets = newTargets.o(i).subtargets.count()
+        if( subtargets ) {
+            printf("  * Target %-15.15s %6d cells [%d subtargets]\n", newTargets.o(i).name, newTargets.o(i).getCellCount(), subtargets)
+        } else {
+            printf("  * Target %-15.15s %6d cells\n", newTargets.o(i).name, newTargets.o(i).getCellCount())
+        }
     }
 }
 
