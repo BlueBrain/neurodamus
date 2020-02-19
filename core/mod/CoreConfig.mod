@@ -19,7 +19,21 @@ VERBATIM
 
 #if defined(ENABLE_CORENEURON)
 #include <coreneuron/engine.h>
+
+#if defined(CORENEURON_VERSION) && (CORENEURON_VERSION >= 18)
+# define CORENRN_CLI11 1
+# define CORENRN_ARG_FMT "%s="
+#else
+# define CORENRN_CLI11 0
+# define CORENRN_ARG_FMT "--%s "
 #endif
+
+#else   // not ENABLE_CORENEURON
+
+#define CORENRN_CLI11 1
+#define CORENRN_ARG_FMT "%s="
+
+#endif  // defined(ENABLE_CORENEURON)
 
 extern double* vector_vec();
 extern int vector_capacity();
@@ -136,18 +150,23 @@ VERBATIM
     printf("Writing sim config file: %s\n", tmpmem);
 
     FILE *fp = open_file(tmpmem, "w");
-    fprintf(fp, "outpath='%s'\n", abspath(hoc_gargstr(1), tmpmem));
-    fprintf(fp, "datpath='%s'\n", abspath(hoc_gargstr(2), tmpmem));
-    fprintf(fp, "tstop=%lf\n", *getarg(3));
-    fprintf(fp, "dt=%lf\n", *getarg(4));
-    fprintf(fp, "forwardskip=%lf\n", *getarg(5));
-    fprintf(fp, "prcellgid=%d\n", (int)*getarg(6));
-    fprintf(fp, "report-conf='%s/%s'\n",  outputdir, REPORT_CONFIG_FILE);
-    fprintf(fp, "cell-permute=%d\n", DEFAULT_CELL_PERMUTE);
+    fprintf(fp, CORENRN_ARG_FMT"'%s'\n", "outpath", abspath(hoc_gargstr(1), tmpmem));
+    fprintf(fp, CORENRN_ARG_FMT"'%s'\n", "datpath", abspath(hoc_gargstr(2), tmpmem));
+    fprintf(fp, CORENRN_ARG_FMT"%lf\n",  "tstop", *getarg(3));
+    fprintf(fp, CORENRN_ARG_FMT"%lf\n",  "dt", *getarg(4));
+    fprintf(fp, CORENRN_ARG_FMT"%lf\n",  "forwardskip", *getarg(5));
+    fprintf(fp, CORENRN_ARG_FMT"%d\n",   "prcellgid", (int)*getarg(6));
+    fprintf(fp, CORENRN_ARG_FMT"'%s/%s'\n", "report-conf",  outputdir, REPORT_CONFIG_FILE);
+    fprintf(fp, CORENRN_ARG_FMT"%d\n", "cell-permute", DEFAULT_CELL_PERMUTE);
     if (ifarg(7) && strlen(hoc_gargstr(7))) {  // if spike replay specified
-        fprintf(fp, "pattern='%s'\n", abspath(hoc_gargstr(7), tmpmem));
+        fprintf(fp, CORENRN_ARG_FMT"'%s'\n", "pattern", abspath(hoc_gargstr(7), tmpmem));
     }
+# if CORENRN_CLI11
     fprintf(fp, "mpi=true\n");
+# else
+    fprintf(fp, "-mpi\n");
+# endif
+
     fclose(fp);
 #endif
 ENDVERBATIM
@@ -176,8 +195,11 @@ VERBATIM
 #if defined(ENABLE_CORENEURON)
     char* simConf = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(simConf, "%s/%s", outputdir, SIM_CONFIG_FILE);
-
+# if CORENRN_CLI11
     char *argv[] = {"", "--read-config", simConf, "--skip-mpi-finalize", "--mpi", NULL, NULL, NULL, NULL};
+# else
+    char *argv[] = {"", "--read-config", simConf, "--skip-mpi-finalize", "-mpi", NULL, NULL, NULL, NULL};
+# endif
     int argc = 5;
     int argIndex=1;
     while( ifarg(argIndex) ) {
