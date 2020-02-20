@@ -2,9 +2,10 @@
 Change Log
 ==========
 
+
 Version 0.8.1
 =============
-*Not released*
+**Feb 20, 2020**
 
 *Improvements*
   * Refactoring for ConnectionSet class
@@ -13,6 +14,7 @@ Version 0.8.1
 *Bug fixes*
   * Cached Hoc values were not being updated
   * Resume w CoreNeuron: dont init circuit
+
 
 Version 0.8.0
 =============
@@ -36,6 +38,7 @@ Version 0.7.2
 *Improvements*
   * Support loading of several mech lib (: separated)
   * Fixed & cleanup options to detect build model
+
 
 Version 0.7.1
 =============
