@@ -6,7 +6,17 @@
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
 
+{load_file("stdlib.hoc")}
 {load_file("import3d.hoc")}
+
+
+// In case in SimConfig there's a new extension registered, pass that info to Cell to attempt lo load it
+objref ext_simconfig
+
+if (name_declared("simConfig")) {
+    execute1("ext_simconfig = simConfig")  // Hoc way of doing late-binding
+}
+
 
 begintemplate Cell
 public init, printInfo, AddMorph, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
@@ -17,6 +27,8 @@ objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, H
 
 //! Used when computing nseg per section
 external lambda_f
+
+external ext_simconfig
 
 /*!
  * Constructor to create a Cell object usable in the bbp toolchain
@@ -43,14 +55,24 @@ proc init() {
 }
 create soma[1], dend[1], apic[1], axon[1], myelin[1]
 
-proc AddMorph(){ localobj morph, import, strobj, extension
+proc AddMorph(){ localobj morph, import, strobj, morphPath, extension
     forall delete_section()
-
     strobj = new StringFunctions()
+    // V5 wont ever ask .hoc morphologies. So in case we know that neurodamus
+    // found a suitable fasthoc source then replace extension and xopen()
+    if( object_id(ext_simconfig) != 0)  if(strcmp(ext_simconfig.getMorphologyExtension().s, "hoc") == 0 ) {
+        morphPath = new String()
+        sscanf($s1, "%s", morphPath.s)
+        strobj.left(morphPath.s, strobj.len(morphPath.s)-4)
+        sprint(morphPath.s, "%s.hoc", morphPath.s)
+        xopen(morphPath.s)
+        indexSections()
+        geom_nsec()
+        return
+    }
+
     extension = new String()
-
     sscanf($s1, "%s", extension.s)
-
     strobj.right(extension.s, strobj.len(extension.s)-4)
 
     if( strcmp(extension.s, ".asc") == 0 ) {
@@ -308,16 +330,24 @@ proc setCCell(){
  * Assign section indices to the section voltage value.  This will be useful later for serializing
  * the sections into an array.  Note, that once the simulation begins, the voltage values will revert to actual data again.
  *
- * @param $o1 Import3d_GUI object
+ * @param $o1 Import3d_GUI object (optional)
  */
 proc indexSections() { local index  localobj tmpString, s
-    tmpString = new String()
+    if(numarg() > 0) {
+        tmpString = new String()
 
-    s = $o1.swc.sections
-    for i=0, s.count()-1 {
-        $o1.name( s.object(i), tmpString.s )
-        sprint( tmpString.s, "%s.v(0.0001) = %d", tmpString.s, i )
-        execute( tmpString.s, this )
+        s = $o1.swc.sections
+        for i=0, s.count()-1 {
+            $o1.name( s.object(i), tmpString.s )
+            sprint( tmpString.s, "%s.v(0.0001) = %d", tmpString.s, i )
+            execute( tmpString.s, this )
+        }
+    } else { // if not specified, we index with forsec, used for fasthoc loading
+        index = 0
+        forsec all {
+            v(0.0001) = index
+            index += 1
+        }
     }
 }
 
