@@ -32,21 +32,28 @@ def mpi_no_errors(f):
     return mpi_ok_wrapper
 
 
-def run_only_rank0(f):
-    """Decorator that makes a given func to run only in rank 0 and then broadcast result
+class run_only_rank0:
+    """Decorator that makes a given func to run only in rank 0 and then
+     broadcast result. It handles nested level to avoid broadcasting while we
+     are already in rank0_only mode
     """
-    @wraps(f)
-    def rank0_wrapper(*args, **kw):
-        res = None
-        if MPI.rank == 0:
-            res = f(*args, **kw)
-        if MPI.size == 1:
-            return res
-        MPI.check_no_errors()  # Ensure all procs ok before bcast
+    nested_depth = 0
 
-        return MPI.py_broadcast(res, 0)
+    def __new__(cls, f):
+        @wraps(f)
+        def rank0_wrapper(*args, **kw):
+            # Situation we dont need/want the broadcast
+            if MPI.size == 1 or cls.nested_depth > 0:
+                return f(*args, **kw)
 
-    return rank0_wrapper
+            cls.nested_depth += 1
+            res = f(*args, **kw) if MPI.rank == 0 else None
+            cls.nested_depth -= 1
+
+            MPI.check_no_errors()  # Ensure all procs ok before bcast
+            return MPI.py_broadcast(res, 0)
+
+        return rank0_wrapper
 
 
 def return_neuron_timings(f):

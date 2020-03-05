@@ -337,7 +337,8 @@ class Node:
             self.create_gap_junctions()
 
         cx_valid = self._cell_distributor.load_or_recompute_mcomplex_balance(
-            self._run_conf["nrnPath"], self._run_conf.get("CircuitTarget"), build_bare_circuit_f)
+            self._run_conf["nrnPath"], self._run_conf.get("CircuitTarget"), build_bare_circuit_f,
+            self._target_parser)
 
         # Ready to run with LoadBal. But check if we are launching on a good sized partition
         required_cpus = self._cell_distributor.target_cpu_count
@@ -506,9 +507,8 @@ class Node:
         defined as projections with type GapJunction.
         """
         log_stage("Gap Junctions create")
-        if self._target_spec.name is None:
-            raise ConfigurationError("No circuit target. Required when using GapJunctions")
-        target = self._target_manager.getTarget(self._target_spec.name)
+        target = self._target_manager.getTarget(self._target_spec.name) \
+            if self._target_spec.name is not None else None
 
         for name, projection in compat.Map(self._config_parser.parsedProjections).items():
             # check if this Projection block is for gap junctions
@@ -1151,7 +1151,7 @@ class Node:
 
     # -
     @mpi_no_errors
-    def clear_model(self):
+    def clear_model(self, avoid_creating_objs=False):
         """Clears appropriate lists and other stored references.
         For use with intrinsic load balancing. After creating and evaluating the network using
         round robin distribution, we want to clear the cells and synapses in order to have a
@@ -1170,10 +1170,11 @@ class Node:
         if self._cell_distributor:
             self._cell_distributor.clear_cells()
 
-        bbss = Nd.BBSaveState()
-        bbss.ignore()
-        if self._binreport_helper:
-            self._binreport_helper.clear()
+        if not avoid_creating_objs:
+            bbss = Nd.BBSaveState()
+            bbss.ignore()
+            if self._binreport_helper:
+                self._binreport_helper.clear()
 
         Node.__init__(self, None, None)  # Reset vars
 
@@ -1273,7 +1274,7 @@ class Node:
 
         # Coreneuron runs clear the model before starting
         if not self._corenrn_conf or self._options.simulate_model is False:
-            self.clear_model()
+            self.clear_model(avoid_creating_objs=True)
 
         if SimConfig.delete_corenrn_data:
             data_folder = ospath.join(self._output_root, "coreneuron_input")

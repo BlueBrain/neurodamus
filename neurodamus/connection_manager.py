@@ -807,6 +807,10 @@ class GapJunctionManager(_ConnectionManagerBase):
             circuit_target: Used to know if a given gid is being
                 simulated, including off node. Default: full circuit
         """
+        if circuit_target is None:
+            raise ConfigurationError(
+                "No circuit target. Required when initializing GapJunctionManager")
+
         _ConnectionManagerBase.__init__(
             self, circuit_path, target_manager, cell_distributor, n_synapse_files)
         self._circuit_target = circuit_target

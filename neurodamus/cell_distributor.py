@@ -3,7 +3,7 @@ Mechanisms to load and balance cells across the computing resources.
 """
 from __future__ import absolute_import, print_function
 import logging  # active only in rank 0 (init)
-from enum import IntEnum
+from enum import IntEnum, Enum
 from lazy_property import LazyProperty
 from os import path as ospath
 from . import cell_readers
@@ -40,6 +40,12 @@ class NodeFormat(IntEnum):
     NCS = 1
     MVD3 = 2
     SONATA = 3
+
+
+class CxStatus(Enum):
+    CX_INVALID = 0
+    CX_VALID = 1
+    CPU_ASSIGN_VALID = 2
 
 
 class CellDistributor(object):
@@ -99,33 +105,84 @@ class CellDistributor(object):
     pc               = LazyProperty(lambda self: self._pnm.pc)  # avoid re-fetch hoc attr
 
     # -
-    def load_or_recompute_mcomplex_balance(self, nrn_path, target_name, build_circuit_f):
+    def load_or_recompute_mcomplex_balance(self, nrn_path, target_name, build_circuit_f,
+                                           target_parser):
         """Check if valid cx files exist for the cur conf, or create after building circuit.
         """
-        cxinfo_filename = "cxinfo_%d.txt" % (self._target_cpu_count,)
-        if self._cx_valid(cxinfo_filename, nrn_path, target_name):
-            logging.info("Using existing load balancing info")
+        cxinfo_filename = "cxinfo.txt"
+        allgids = []
+        target_spec = TargetSpec(target_name)
+        if target_spec:
+            target = target_parser.getTarget(target_spec.name)
+            allgids = target.completegids()
+        target_name = target_spec.simple_name
+
+        status = self._find_load_distribution(nrn_path, target_name, allgids)
+        if status == CxStatus.CPU_ASSIGN_VALID:
             return True
+        elif status == CxStatus.CX_VALID:
+            # now assign to the various cpus and write cxinfo - use node 0 to do it
+            self.__cpu_assign(self._target_cpu_count, target_name)
+            self._write_cxinfo(cxinfo_filename, nrn_path, target_name)
+            return True
+        else:
+            self._mcomplex = Nd.MComplexLoadBalancer()  # init mcomplex before creating circuit
+            build_circuit_f()
+            self._compute_save_load_balance(target_name)
+            self._write_cxinfo(cxinfo_filename, nrn_path, target_name)
+            return False
 
-        self._mcomplex = Nd.MComplexLoadBalancer()  # init mcomplex before creating circuit
-        build_circuit_f()
-        self._compute_save_load_balance()
+    @run_only_rank0
+    def _find_load_distribution(self, nrn_path, target_name, allgids):
+        cxinfo_filename = "cxinfo.txt"
+        cx_filename = "cx_%s.dat" % target_name
+        cpu_assign_filename = "cx_%s.%s.dat" % (target_name, self._target_cpu_count)
 
-        # Write config in the cxinfo file for future usage
-        if MPI.rank == 0:
-            with open(cxinfo_filename, "w") as cxinfo:
-                print(nrn_path, file=cxinfo)
-                print(target_name or "---", file=cxinfo)
-        return False
+        cxinfo_valid, previous_target = self.__cx_valid(cxinfo_filename, nrn_path, target_name)
+        cx_valid = ospath.isfile(cx_filename)
+        assignment_valid = ospath.isfile(cpu_assign_filename)
+
+        if cxinfo_valid and assignment_valid:
+            logging.info("Using existing load balancing info")
+            return CxStatus.CPU_ASSIGN_VALID
+        elif previous_target is not None:
+            if cx_valid:
+                logging.info("%s exists, will reuse to distribute cells" % cx_filename)
+                return CxStatus.CX_VALID
+            else:
+                ref_filename = "cx_%s.dat" % previous_target
+                if allgids and self.__reuse_cell_complexity(allgids, cx_filename, ref_filename):
+                    logging.info("Target %s is a subset of the previous run, extract from %s"
+                                 % (target_name, ref_filename))
+                    return CxStatus.CX_VALID
+
+        return CxStatus.CX_INVALID
+
+    def __reuse_cell_complexity(self, allgids, filename, ref_filename=None):
+        """check if the complexities of allgids are stored ref_filename and reuse
+        """
+        if ref_filename is None or not ospath.isfile(ref_filename):
+            return False
+
+        with open(ref_filename, "r") as f:
+            cx_saved = self._read_msdat(f)
+        if not set(cx_saved.keys()) >= set(allgids):
+            return False
+
+        with open(filename, "w") as newfile:
+            newfile.write("1\n%d\n" % len(allgids))
+            for gid in allgids:
+                for ln in cx_saved[gid]:
+                    newfile.write(ln)
+        return True
 
     # -
-    @run_only_rank0
-    def _cx_valid(self, cxinfo_filename, nrn_path, target_name):
+    def __cx_valid(self, cxinfo_filename, nrn_path, target_name):
         """Determine if we need to regen load balance info, or if it already exists for this config.
         """
         if not ospath.isfile(cxinfo_filename):
             logging.info("(Re)Generating load-balancing data. Reason: no cxinfo file")
-            return False
+            return False, None
 
         with open(cxinfo_filename, "r") as cxinfo:
             cx_nrnpath = cxinfo.readline().strip()
@@ -135,13 +192,23 @@ class CellDistributor(object):
 
             if cx_nrnpath != nrn_path:
                 logging.info("(Re)Generating load-balancing data. Reason: nrnPath has changed")
+                return False, None
 
             elif cx_target != target_name:
                 logging.info("(Re)Generating load-balancing data. Reason: %s",
                              "CircuitTarget has changed. Previously: %s" % cx_target)
+                return False, cx_target
             else:
-                return True
-        return False
+                return True, cx_target
+        return False, None
+
+    @run_only_rank0
+    def _write_cxinfo(self, filename, nrn_path, target_name):
+        """Write config in the cxinfo file for future usage
+        """
+        with open(filename, "w") as cxinfo:
+            print(nrn_path, file=cxinfo)
+            print(target_name or "---", file=cxinfo)
 
     # -
     @mpi_no_errors
@@ -187,7 +254,7 @@ class CellDistributor(object):
         if self._lb_mode:
             log_verbose("Distributing cells according to existing Load-Balance")
             # read the cx_* files to build the gidvec
-            cx_path = "cx_%d" % MPI.size
+            cx_path = "cx_%s" % target_spec.simple_name
             if "CWD" in run_conf:
                 # Should we allow for another path to facilitate reusing cx* files?
                 cx_path = ospath.join(run_conf["CWD"], cx_path)
@@ -356,12 +423,12 @@ class CellDistributor(object):
     # ------------------------
 
     @mpi_no_errors
-    def _compute_save_load_balance(self):
+    def _compute_save_load_balance(self, target_name):
         if self._target_cpu_count > 0:
-            total_cx, max_cx = self._cell_complexity_total_max()
-            lcx = self._get_optimal_piece_complexity(total_cx, self._target_cpu_count)
+            total_cx, max_cx = self.__cell_complexity_total_max()
+            lcx = self.__get_optimal_piece_complexity(total_cx, self._target_cpu_count)
             # print_load_balance_info(3, lcx, $s1)
-            filename = "cx_%d.dat" % self._target_cpu_count
+            filename = "cx_%s.dat" % target_name
         else:
             total_cx, max_cx = None, None
             lcx = 1e9
@@ -384,18 +451,17 @@ class CellDistributor(object):
                          (total_cx, max_cx, lcx, filename))
 
         # Write out, 1 rank at a time
-        for j in range(MPI.size):
-            if j == MPI.rank:
+        for pos in range(MPI.size):
+            if pos == MPI.rank:
                 with open(filename, "a") as fp:
                     for ms in ms_list:
                         self._write_msdat(fp, ms)
             MPI.barrier()
 
         # now assign to the various cpus - use node 0 to do it
-        if MPI.rank == 0:
-            self._cpu_assign(self._target_cpu_count)
+        self.__cpu_assign(self._target_cpu_count, target_name)
 
-    def _compute_cells_complexity(self):
+    def __compute_cells_complexity(self):
         cx_cell = compat.Vector("f")
         id_cell = compat.Vector("I")
         pc = self.pc
@@ -406,11 +472,11 @@ class CellDistributor(object):
 
         return cx_cell, id_cell
 
-    def _cell_complexity_total_max(self):
+    def __cell_complexity_total_max(self):
         """
         Returns: Tuple of (TotalComplexity, max_complexity)
         """
-        cx_cells, id_cells = self._compute_cells_complexity()
+        cx_cells, id_cells = self.__compute_cells_complexity()
         local_max = max(cx_cells) if len(cx_cells) > 0 else .0
         local_sum = sum(cx_cells) if len(cx_cells) > 0 else .0
 
@@ -418,7 +484,7 @@ class CellDistributor(object):
         global_max = MPI.allreduce(local_max, MPI.MAX)
         return global_total, global_max
 
-    def _get_optimal_piece_complexity(self, total_cx, nhost):
+    def __get_optimal_piece_complexity(self, total_cx, nhost):
         """
         Args:
             total_cx: Total complexity
@@ -428,10 +494,11 @@ class CellDistributor(object):
         return int(lps+1)
 
     @staticmethod
-    def _cpu_assign(prospective_hosts):
+    @run_only_rank0
+    def __cpu_assign(prospective_hosts, target_name):
         """Assigns cells to 'prospective_hosts' cpus using mymetis3.
         """
-        Nd.mymetis3("cx_%d" % prospective_hosts, prospective_hosts)
+        Nd.mymetis3("cx_%s" % target_name, prospective_hosts)
 
     @staticmethod
     def _write_msdat(fp, ms):
@@ -463,6 +530,28 @@ class CellDistributor(object):
                     fp.write(" %d" % elem_id)
                 if children_count > 0:
                     fp.write("\n")
+
+    def _read_msdat(self, fp):
+        """read load balancing info from an input stream
+        """
+        lines = fp.readlines()
+        cx_saved = {}  # dict with key = gid, value = line content
+        i = 2
+        piece_count = 0
+        gid = None
+        while i < len(lines):
+            if piece_count == 0:
+                gid = int(lines[i].split()[0])
+                piece_count = int(lines[i].split()[2])
+                cx_saved[gid] = [lines[i]]
+            else:
+                subtree_count = int(lines[i])
+                for n in range(i, i+2*subtree_count+1):
+                    cx_saved[gid].append(lines[n])
+                i += 2*subtree_count
+                piece_count -= 1
+            i += 1
+        return cx_saved
 
     # -
     def finalize(self, gids):

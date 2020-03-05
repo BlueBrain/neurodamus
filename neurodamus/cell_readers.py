@@ -39,6 +39,12 @@ class TargetSpec:
     def __bool__(self):
         return bool(self.name)
 
+    @property
+    def simple_name(self):
+        if self.name is None:
+            return "_ALL_"
+        return self.__str__().replace(":", "_")
+
 
 def _ncs_get_total(ncs_f):
     # first lines might be comments. Skip '#'
