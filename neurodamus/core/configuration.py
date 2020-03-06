@@ -2,9 +2,10 @@
 Runtime configuration
 """
 from __future__ import absolute_import
-from enum import Enum
+import logging
 import os
-from neurodamus.utils import ConfigT
+from enum import Enum
+from ..utils.pyutils import ConfigT
 
 
 class LogLevel:
@@ -39,11 +40,12 @@ class _SimConfig(object):
     """
     A class initializing several HOC config objects and proxying to simConfig
     """
-    _sim_conf = None
     rng_info = None
     core_config = None
     delete_corenrn_data = False
     buffer_time = 25
+    morphology_path = None
+    morphology_ext = None
     # Dont duplicate data, forward calls
     use_coreneuron = property(lambda self: self._simconf.coreNeuronUsed())
     use_neuron = property(lambda self: self._simconf.runNeuron())
@@ -64,6 +66,16 @@ class _SimConfig(object):
 
         cls.buffer_time = 25 * run_conf.get("FlushBufferScalar", 1)
 
+        try:
+            cls.morphology_path = cls._simconf.getMorphologyPath().s
+            cls.morphology_ext = cls._simconf.getMorphologyExtension().s
+            logging.info("Using morphology path: %s", cls.morphology_path)
+        except AttributeError:
+            logging.warning("Morphology loading: Previous Neurodamus only supports Ascii")
+            cls.morphology_path = os.path.join(run_conf["MorphologyPath"], "ascii")
+            cls.morphology_ext = "asc"
+
+    # For proxying (cant be classmethod, hence the singleton)
     def __getattr__(self, item):
         return getattr(self._simconf, item)
 

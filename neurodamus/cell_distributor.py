@@ -11,6 +11,7 @@ from .cell_readers import TargetSpec
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
+from .core.configuration import SimConfig
 from .metype import METype
 from .utils import compat
 from .utils.logging import log_verbose
@@ -152,7 +153,6 @@ class CellDistributor(object):
             target_parser (hoc): The Target parser object
             load_bal (bool): Whether to respect lb_mode or disable it altogether
         """
-        morpho_path = run_conf["MorphologyPath"]
         if not load_bal:
             self._lb_mode = None
 
@@ -236,7 +236,10 @@ class CellDistributor(object):
         self._pnm.ncell = self._total_cells
         pnm_cells = self._pnm.cells
         mepath = run_conf["METypePath"]
-        logging.info("Instantiating cells...")
+        morpho_path = SimConfig.morphology_path
+        METype.morpho_extension = SimConfig.morphology_ext
+
+        logging.info("Instantiating cells... Morphologies: %s", SimConfig.morphology_ext)
         total_created_cells = 0
 
         for gid in ProgressBar.iter(self._gidvec):

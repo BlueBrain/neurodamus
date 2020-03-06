@@ -72,7 +72,7 @@ class Connection(object):
     a presynaptic and a postsynaptic gid, including Points where those
     synapses are placed (stored in TPointList)
     """
-    __slots__ = ("sgid", "tgid", "_conn_params", "__dict__")
+    __slots__ = ("sgid", "tgid", "locked", "_conn_params", "__dict__")
     _AMPAMDA_Helper = None
     _GABAAB_Helper = None
     ConnUtils = None  # Collection of hoc routines to speedup execution

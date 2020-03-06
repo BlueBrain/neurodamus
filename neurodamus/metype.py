@@ -2,7 +2,7 @@
 Module which defines and handles METypes config (v5/v6 cells)
 """
 from __future__ import absolute_import, print_function
-from os import path as Path
+from os import path as ospath
 import logging
 from collections import defaultdict
 from .core.configuration import ConfigurationError
@@ -14,6 +14,9 @@ class METype(object):
     """
     Class representing an METype. Will instantiate a Hoc-level cell as well
     """
+    morpho_extension = "asc"
+    """The extension to be applied to morphology files"""
+
     __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons', '_ccell', '_cellref',
                  '_synapses', '_syn_helper_list', '_emodel_name')
 
@@ -44,9 +47,10 @@ class METype(object):
     def _instantiate_cell_v6(self, gid, etype_path, emodel, morpho_path, meinfos_v6):
         """Instantiates a SSCx v6 cell
         """
-        Nd.load_hoc(Path.join(etype_path, emodel))
+        Nd.load_hoc(ospath.join(etype_path, emodel))
         EModel = getattr(Nd, emodel)
-        self._cellref = EModel(gid, Path.join(morpho_path, "ascii"), meinfos_v6.morph_name + ".asc")
+        morpho_file = meinfos_v6.morph_name + "." + self.morpho_extension
+        self._cellref = EModel(gid, morpho_path, morpho_file)
         self._ccell = self._cellref
         self._synapses = Nd.List()
         self._syn_helper_list = Nd.List()
@@ -57,7 +61,7 @@ class METype(object):
         """Instantiates a cell v5 or before. Asssumes emodel hoc templates are loaded
         """
         EModel = getattr(Nd, emodel)
-        self._ccell = ccell = EModel(gid, Path.join(morpho_path, "ascii"))
+        self._ccell = ccell = EModel(gid, morpho_path)
         self._cellref = ccell.CellRef
         self._synapses = ccell.CellRef.synlist
         self._syn_helper_list = ccell.CellRef.synHelperList
