@@ -112,11 +112,11 @@ class Connection(object):
         self.sgid = int(sgid)
         self.tgid = int(tgid)
         self._conn_params = np.recarray(1, dtype=dict(
-            names=['weight_factor', 'minis_spont_rate', 'src_pop_id', 'dst_pop_id'],
-            formats=['f8', 'f8', 'i4', 'i4']
+            names=['weight_factor', 'src_pop_id', 'dst_pop_id'],
+            formats=['f8', 'i4', 'i4']
         ))[0]
         self._conn_params.put(
-            0, (weight_factor, minis_spont_rate, src_pop_id, dst_pop_id))
+            0, (weight_factor, src_pop_id, dst_pop_id))
         self._disabled = False
         self._synapse_mode = synapse_mode
         self._mod_override = mod_override
@@ -130,10 +130,8 @@ class Connection(object):
         self._netcons = None
         self._synapses = None
         self._conductances_bk = None  # Store for re-enabling
-        self._minis_netstims = None
-        self._minis_netcons = None
-        self._minis_RNGs = None
-        # Used for replay
+        # Artificial stimulus sources
+        self._spont_minis = SpontMinis(minis_spont_rate)
         self._replay = ReplayStim()
 
     # read-only properties
@@ -144,10 +142,12 @@ class Connection(object):
     # R/W properties
     weight_factor = property(
         lambda self: self._conn_params.weight_factor,
-        lambda self, weight: setattr(self._conn_params, 'weight_factor', weight))
+        lambda self, weight: self._conn_params.__setattr__('weight_factor', weight)
+    )
     minis_spont_rate = property(
-        lambda self: self._conn_params.minis_spont_rate,
-        lambda self, rate: setattr(self._conn_params, 'minis_spont_rate', rate))
+        lambda self: self._spont_minis.rate,
+        lambda self, rate: self._spont_minis.__setattr__('rate', rate)
+    )
 
     # -
     def add_synapse_configuration(self, configuration):
@@ -211,7 +211,7 @@ class Connection(object):
 
     # -
     def finalize(self,
-                 pnm, cell, base_seed=None, spgid=None,
+                 pnm, cell, base_seed=0, spgid=None,
                  replay_mode=ReplayMode.AS_REQUIRED, skip_disabled=False):
         """ When all parameters are set, create synapses and netcons
 
@@ -228,18 +228,10 @@ class Connection(object):
         if skip_disabled and self._disabled:
             return False
         target_spgid = spgid or self.tgid
-        rng_info = Nd.RNGSettings()
-        tbins_vec = Nd.Vector(1)
-        tbins_vec.x[0] = 0.0
-        rate_vec = Nd.Vector(1)
-        bbss = Nd.BBSaveState()
 
         # Initialize member lists
         self._synapses = compat.List()  # Used by ConnUtils
         self._netcons = []
-        self._minis_netstims = []
-        self._minis_netcons = []
-        self._minis_RNGs = []
 
         shall_create_replay = replay_mode == ReplayMode.COMPLETE or \
             replay_mode == ReplayMode.AS_REQUIRED and self._replay.has_data()
@@ -247,6 +239,8 @@ class Connection(object):
         # Release objects if not needed
         if not shall_create_replay:
             self._replay = None
+        if self._spont_minis.rate == 0:
+            self._spont_minis = None
 
         for syn_i, sec in self.sections_with_netcons:
             x = self._synapse_points.x[syn_i]
@@ -270,63 +264,8 @@ class Connection(object):
             nc.threshold = -30
             self._netcons.append(nc)
 
-            if self._conn_params.minis_spont_rate > .0:
-                ips = Nd.InhPoissonStim(x, sec=sec)
-                # netconMini = pnm.pc.gid_connect(ips, finalgid)
-
-                # A simple NetCon will do, as the synapse and cell are local.
-                netcon_m = Nd.NetCon(ips, syn_obj, sec=sec)
-                netcon_m.delay = 0.1
-                # TODO: better solution here to get the desired behaviour during
-                # delayed connection blocks
-                # Right now spontaneous minis should be unaffected by delays
-                netcon_m.weight[0] = syn_params.weight * self._conn_params.weight_factor
-                self._minis_netcons.append(netcon_m)
-
-                if rng_info.getRNGMode() == rng_info.RANDOM123:
-                    seed2 = (self._conn_params.src_pop_id * 65536
-                             + self._conn_params.dst_pop_id + rng_info.getMinisSeed())
-                    ips.setRNGs(syn_obj.synapseID + 200, self.tgid + 250, seed2 + 300,
-                                syn_obj.synapseID + 200, self.tgid + 250, seed2 + 350)
-                else:
-                    seed2 = self._conn_params.src_pop_id * 16777216
-                    exprng = Nd.Random()
-                    if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
-                        exprng.MCellRan4(
-                            syn_obj.synapseID * 100000 + 200,
-                            self.tgid + 250 + base_seed + rng_info.getMinisSeed())
-                    else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
-                        exprng.MCellRan4(
-                            syn_obj.synapseID * 1000 + 200,
-                            seed2 + self.tgid + 250 + base_seed + rng_info.getMinisSeed())
-
-                    exprng.negexp(1)
-                    uniformrng = Nd.Random()
-                    if rng_info.getRNGMode() == rng_info.COMPATIBILITY:
-                        uniformrng.MCellRan4(
-                            syn_obj.synapseID * 100000 + 300,
-                            self.tgid + 250 + base_seed + rng_info.getMinisSeed())
-                    else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
-                        uniformrng.MCellRan4(
-                            syn_obj.synapseID * 1000 + 300,
-                            seed2 + self.tgid + 250 + base_seed + rng_info.getMinisSeed())
-
-                    uniformrng.uniform(0.0, 1.0)
-                    ips.setRNGs(exprng, uniformrng)
-
-                    # keep variables so they don't get deleted
-                    self._minis_RNGs.append(exprng)
-                    self._minis_RNGs.append(uniformrng)
-
-                self._minis_netstims.append(ips)
-                self._minis_RNGs.append(tbins_vec)
-                self._minis_RNGs.append(rate_vec)
-
-                # set the rate of the ips
-                rate_vec.x[0] = self._conn_params.minis_spont_rate
-                ips.setTbins(tbins_vec)
-                ips.setRate(rate_vec)
-                bbss.ignore(ips)
+            if self._spont_minis is not None:
+                self._spont_minis.create_on(self, sec, x, syn_obj, syn_params, base_seed)
 
             if shall_create_replay:
                 self._replay.create_on(self, sec, syn_obj, syn_params)
@@ -393,8 +332,8 @@ class Connection(object):
                           self.tgid, self.sgid, offset, active_params.D,
                           end_offset, active_params.F, active_params.weight)
             with Nd.section_in_stack(sec):
-                pnm.pc.target_var(gap_junction, gap_junction._ref_vgap,
-                                  (offset + active_params.D))
+                pnm.pc.target_var(
+                    gap_junction, gap_junction._ref_vgap, (offset + active_params.D))
                 pnm.pc.source_var(sec(x)._ref_v, (end_offset + active_params.F))
             gap_junction.g = active_params.weight
             self._synapses.append(gap_junction)
@@ -454,8 +393,8 @@ class Connection(object):
 
     def restart_events(self):
         """Restart the artificial events, coming from Replay or Spont Minis"""
-        for netstim in self._minis_netstims:
-            netstim.restartEvent()
+        if self._spont_minis is not None:
+            self._spont_minis.restart_events()
         if self._replay is not None:
             self._replay.restart_events()
 
@@ -516,6 +455,69 @@ class ArtificialStim:
     def restart_events(self):
         for stim in self.netstims:
             stim.restartEvent()
+
+
+class SpontMinis(ArtificialStim):
+    """A class creating/holding spont minis of a connection
+    """
+
+    def __init__(self, minis_spont_rate):
+        super().__init__()
+        self._rng_info = Nd.RNGSettings()
+        self.tbins_vec = Nd.Vector(1)
+        self.tbins_vec.x[0] = 0.0
+        self.rate_vec = Nd.Vector(1)
+        self.rate_vec.x[0] = minis_spont_rate
+        self._keep_alive = []
+
+    rate = property(
+        lambda self: self.rate_vec.x[0],
+        lambda self, rate: self.rate_vec.x.__setitem__(0, rate)
+    )
+
+    def create_on(self, conn, sec, position, syn_obj, syn_params, base_seed):
+        """Inserts a SpontMini stim into the given synapse
+        """
+        ips = Nd.InhPoissonStim(position, sec=sec)
+        ips.setTbins(self.tbins_vec)
+        ips.setRate(self.rate_vec)
+        # A simple NetCon will do, as the synapse and cell are local.
+        netcon = Nd.NetCon(ips, syn_obj, sec=sec)
+        netcon.delay = 0.1
+        netcon.weight[0] = syn_params.weight * conn.weight_factor
+        self._store(ips, netcon)
+
+        src_pop_id, dst_pop_id = conn.population_id
+        rng_mode = self._rng_info.getRNGMode()
+        rng_seed = self._rng_info.getMinisSeed()
+        tgid_seed = conn.tgid + 250
+
+        if rng_mode == self._rng_info.RANDOM123:
+            seed2 = (src_pop_id * 65536 + dst_pop_id + rng_seed)
+            ips.setRNGs(syn_obj.synapseID + 200, tgid_seed, seed2 + 300,
+                        syn_obj.synapseID + 200, tgid_seed, seed2 + 350)
+        else:
+            seed2 = src_pop_id * 16777216
+            exprng = Nd.Random()
+            if rng_mode == self._rng_info.COMPATIBILITY:
+                exprng.MCellRan4(syn_obj.synapseID * 100000 + 200,
+                                 tgid_seed + base_seed + rng_seed)
+            else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
+                exprng.MCellRan4(syn_obj.synapseID * 1000 + 200,
+                                 seed2 + tgid_seed + base_seed + rng_seed)
+
+            exprng.negexp(1)
+            uniformrng = Nd.Random()
+            if rng_mode == self._rng_info.COMPATIBILITY:
+                uniformrng.MCellRan4(syn_obj.synapseID * 100000 + 300,
+                                     tgid_seed + base_seed + rng_seed)
+            else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
+                uniformrng.MCellRan4(syn_obj.synapseID * 1000 + 300,
+                                     seed2 + tgid_seed + base_seed + rng_seed)
+
+            uniformrng.uniform(0.0, 1.0)
+            ips.setRNGs(exprng, uniformrng)
+            self._keep_alive += (exprng, uniformrng)
 
 
 class ReplayStim(ArtificialStim):
