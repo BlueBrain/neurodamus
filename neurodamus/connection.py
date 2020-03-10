@@ -4,6 +4,7 @@ Implementation of the core Connection classes
 from __future__ import absolute_import
 import logging
 import numpy as np
+from enum import Enum
 from six.moves import zip
 from .core import NeurodamusCore as Nd
 from .utils import compat
@@ -47,7 +48,7 @@ class SynapseMode:
                          "Possible values are Ampa* and Dual*")
 
 
-class ReplayMode:
+class ReplayMode(Enum):
     """Replay instantiation mode.
     """
     DISABLED = 0
@@ -119,14 +120,13 @@ class Connection(object):
         self._disabled = False
         self._synapse_mode = synapse_mode
         self._mod_override = mod_override
-        self._done_replay_register = False
         self._synapse_points = h.TPointList(tgid, 1)
         self._synapse_params = []
         self._synapse_ids = compat.Vector("i")
-        self._configurations = [configuration] \
-            if configuration is not None else []
+        self._configurations = [configuration] if configuration is not None else []
         self.locked = False
-        # Lists defined in finalize
+
+        # Main lists (defined in finalize)
         self._netcons = None
         self._synapses = None
         self._conductances_bk = None  # Store for re-enabling
@@ -134,9 +134,7 @@ class Connection(object):
         self._minis_netcons = None
         self._minis_RNGs = None
         # Used for replay
-        self._replay_tvec = None  # replay times vec
-        self._replay_netcons = None
-        self._vecstims = None  # VecStims VCells
+        self._replay = ReplayStim()
 
     # read-only properties
     synapse_params = property(lambda self: self._synapse_params)
@@ -195,9 +193,26 @@ class Connection(object):
         else:
             self._synapse_ids.append(self._synapse_points.count())
 
+    def replay(self, tvec, start_delay=.0):
+        """ The synapses connecting these gids are to be activated using
+        predetermined timings.
+
+        Args:
+            tvec: time for spike events from the sgid
+            start_delay: When the events may start to be delivered
+        """
+        assert self._netcons is None, "Replay must be setup prior to finalize()"
+        hoc_tvec = Nd.Vector(tvec[tvec >= start_delay])
+        logging.debug("Replaying %d spikes on %d", hoc_tvec.size(), self.sgid)
+        logging.debug(" > First replay event for connection at %f", hoc_tvec.x[0])
+
+        self._replay.add_spikes(hoc_tvec)
+        return len(self._replay)
+
     # -
-    def finalize(self, pnm, cell, base_seed=None, spgid=None,
-                       replay_mode=ReplayMode.AS_REQUIRED, skip_disabled=False):
+    def finalize(self,
+                 pnm, cell, base_seed=None, spgid=None,
+                 replay_mode=ReplayMode.AS_REQUIRED, skip_disabled=False):
         """ When all parameters are set, create synapses and netcons
 
         Args:
@@ -225,14 +240,13 @@ class Connection(object):
         self._minis_netstims = []
         self._minis_netcons = []
         self._minis_RNGs = []
-        shall_create_replay = replay_mode == ReplayMode.COMPLETE or \
-            replay_mode == ReplayMode.AS_REQUIRED and self._replay_tvec is not None
 
-        if shall_create_replay:
-            if self._replay_tvec is None:
-                self._replay_tvec = Nd.Vector()
-            self._vecstims = []
-            self._replay_netcons = []
+        shall_create_replay = replay_mode == ReplayMode.COMPLETE or \
+            replay_mode == ReplayMode.AS_REQUIRED and self._replay.has_data()
+
+        # Release objects if not needed
+        if not shall_create_replay:
+            self._replay = None
 
         for syn_i, sec in self.sections_with_netcons:
             x = self._synapse_points.x[syn_i]
@@ -315,13 +329,7 @@ class Connection(object):
                 bbss.ignore(ips)
 
             if shall_create_replay:
-                vecstim = Nd.VecStim()
-                vecstim.play(self._replay_tvec)
-                bbss.ignore(vecstim)
-                self._vecstims.append(vecstim)
-                nc = Nd.NetCon(vecstim, syn_obj, 10, syn_params.delay, syn_params.weight)
-                nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
-                self._replay_netcons.append(nc)
+                self._replay.create_on(self, sec, syn_obj, syn_params)
 
         # Apply configurations to the synapses
         self._configure_synapses()
@@ -385,7 +393,8 @@ class Connection(object):
                           self.tgid, self.sgid, offset, active_params.D,
                           end_offset, active_params.F, active_params.weight)
             with Nd.section_in_stack(sec):
-                pnm.pc.target_var(gap_junction, gap_junction._ref_vgap, (offset + active_params.D))
+                pnm.pc.target_var(gap_junction, gap_junction._ref_vgap,
+                                  (offset + active_params.D))
                 pnm.pc.source_var(sec(x)._ref_v, (end_offset + active_params.F))
             gap_junction.g = active_params.weight
             self._synapses.append(gap_junction)
@@ -419,8 +428,8 @@ class Connection(object):
         for nc in self._netcons:
             nc.weight[0] = weight
 
-        if update_also_replay_netcons and self._replay_netcons:
-            for nc in self._replay_netcons:
+        if update_also_replay_netcons and self._replay is not None:
+            for nc in self._replay.netcons:
                 nc.weight[0] = weight
 
     def _configure_cell(self, cell):
@@ -443,33 +452,12 @@ class Connection(object):
         """
         self.ConnUtils.executeConfigure(self._synapses, configuration)
 
-    def replay(self, tvec, start_delay=.0):
-        """ The synapses connecting these gids are to be activated using
-        predetermined timings.
-
-        Args:
-            tvec: time for spike events from the sgid
-            start_delay: When the events may start to be delivered
-        """
-        hoc_tvec = Nd.Vector(tvec[tvec >= start_delay])
-        logging.debug("Replaying %d spikes on %d", hoc_tvec.size(), self.sgid)
-        logging.debug(" > First replay event for connection at %f", hoc_tvec.x[0])
-
-        # If _replay_tvec is None we may not instantiate netcons
-        if self._replay_tvec is None:
-            self._replay_tvec = hoc_tvec
-        else:
-            self._replay_tvec.append(hoc_tvec)
-        self._replay_tvec.sort()
-        return hoc_tvec.size()
-
     def restart_events(self):
         """Restart the artificial events, coming from Replay or Spont Minis"""
         for netstim in self._minis_netstims:
             netstim.restartEvent()
-        # Replay
-        for vecstim in (self._vecstims or ()):
-            vecstim.restartEvent()
+        if self._replay is not None:
+            self._replay.restart_events()
 
     def disable(self, set_zero_conductance=False):
         """Deactivates a connection.
@@ -504,3 +492,63 @@ class Connection(object):
             for syn, cond in zip(self._synapses, self._conductances_bk):
                 syn.g = cond
             self._conductances_bk = None
+
+
+class ArtificialStim:
+    """Base class for artificial Stims, namely Replay and Minis
+    """
+
+    _bbss = None
+    """SaveState object. Initialized on first use"""
+
+    def __init__(self):
+        self.netstims = []
+        self.netcons = []
+        if ArtificialStim._bbss is None:
+            ArtificialStim._bbss = Nd.BBSaveState()
+
+    def _store(self, netstim, netcon):
+        if netstim is not None:
+            self._bbss.ignore(netstim)
+            self.netstims.append(netstim)
+        self.netcons.append(netcon)
+
+    def restart_events(self):
+        for stim in self.netstims:
+            stim.restartEvent()
+
+
+class ReplayStim(ArtificialStim):
+    """A class creating/holding replays of a connection
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.time_vec = None
+
+    def create_on(self, conn, sec, syn_obj, syn_params):
+        """Inserts a replay stim into the given synapse
+        """
+        vecstim = None
+        if self.has_data():
+            vecstim = Nd.VecStim(sec=sec)
+            vecstim.play(self.time_vec)
+
+        nc = Nd.NetCon(vecstim, syn_obj, 10, syn_params.delay, syn_params.weight, sec=sec)
+        nc.weight[0] = syn_params.weight * conn.weight_factor
+        self._store(vecstim, nc)
+
+    def add_spikes(self, hoc_tvec):
+        """Appends replay spikes from a time vector to the main replay vector
+        """
+        if self.time_vec is None:
+            self.time_vec = hoc_tvec
+        else:
+            self.time_vec.append(hoc_tvec)
+        self.time_vec.sort()
+
+    def has_data(self):
+        return self.time_vec is not None
+
+    def __len__(self):
+        return self.time_vec.size() if self.time_vec else -1

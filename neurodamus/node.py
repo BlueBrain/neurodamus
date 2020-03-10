@@ -187,6 +187,10 @@ class Node:
         sim_config.core_config = Nd.CoreConfig(run_conf["OutputRoot"]) \
             if sim_config.coreNeuronUsed() else None
 
+        sim_config.replay_mode = (ReplayMode.COMPLETE
+                                  if sim_config.core_config and "Save" in run_conf
+                                  else ReplayMode.AS_REQUIRED)
+
         keep_core_data = False
         if sim_config.core_config:
             if user_options.keep_build or run_conf.get("KeepModelData", False) == "True":
@@ -296,11 +300,11 @@ class Node:
 
         if "TargetFile" in run_conf:
             user_target = self._find_config_file(run_conf["TargetFile"])
-            self._target_parser.open(user_target)
+            self._target_parser.open(user_target, True)
 
         if MPI.rank == 0:
             logging.info(" => Loaded %d targets", self._target_parser.targetList.count())
-            if GlobalConfig.verbosity >= 2:
+            if GlobalConfig.verbosity >= 3:
                 self._target_parser.printCellCounts()
 
     # -
@@ -675,6 +679,7 @@ class Node:
         self._elec_manager = Nd.ElectrodeManager(electrodes_path_o, conf.parsedElectrodes)
 
     # -
+    @mpi_no_errors
     def enable_replay(self):
         """Activate replay according to BlueConfig. Call before connManager.finalize
         """
@@ -738,7 +743,7 @@ class Node:
         """
         # mod_mananger gets destroyed when function returns (not required)
         mod_manager = Nd.ModificationManager(self._target_manager)
-        logging.info("Enabling modifications...")
+        log_stage("Enabling modifications...")
         for mod in compat.Map(self._config_parser.parsedModifications).values():
             mod_manager.interpret(mod)
 
@@ -1305,10 +1310,7 @@ class Node:
 class Neurodamus(Node):
     """A high level interface to Neurodamus
     """
-    def __init__(self, config_file,
-                       auto_init=True,
-                       logging_level=None,
-                       **user_opts):
+    def __init__(self, config_file, auto_init=True, logging_level=None, **user_opts):
         """Creates and initializes a neurodamus run node
 
         As part of Initiazation it calls:
@@ -1377,8 +1379,9 @@ class Neurodamus(Node):
         """Explicitly initialize, allowing users to make last changes before simulation
         """
         base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
-        replay_mode = (ReplayMode.COMPLETE if self._corenrn_conf and "Save" in self._run_conf
-                       else ReplayMode.AS_REQUIRED)
+        replay_mode = self._simulator_conf.replay_mode
+
+        log_stage("Creating connections in the simulator")
         self._synapse_manager.finalize(base_seed, self._corenrn_conf, replay_mode)
 
         if self._gj_manager is not None:
@@ -1446,7 +1449,10 @@ class Neurodamus(Node):
         tmp_target_spec = TargetSpec(self._run_conf["CircuitTarget"])
 
         for cycle_i, cur_target in enumerate(sub_targets):
+            logging.info("")
+            logging.info("-" * 60)
             log_stage("==> CYCLE {} (OUT OF {})".format(cycle_i + 1, n_cycles))
+            logging.info("-" * 60)
 
             self.clear_model()
             tmp_target_spec.name = cur_target.name

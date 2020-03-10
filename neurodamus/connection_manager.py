@@ -727,7 +727,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
                 in all synapses, so that on a CoreNeuron Save-Restore the user
                 may apply different replay files.
         """
-        logging.info("Instantiating synapses...")
+        logging.info("Instantiating synapses... [replay_mode: %s]", replay_mode.name)
         cell_distributor = self._cell_distibutor
         n_created_conns = 0
         for popid, pop in self._populations.items():
