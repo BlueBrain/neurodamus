@@ -17,7 +17,7 @@ from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, RunOptions, ConfigurationError
 from .cell_distributor import CellDistributor, LoadBalanceMode
 from .cell_readers import TargetSpec
-from .connection_manager import SynapseRuleManager, GapJunctionManager, ReplayMode
+from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose
@@ -186,10 +186,6 @@ class Node:
 
         sim_config.core_config = Nd.CoreConfig(run_conf["OutputRoot"]) \
             if sim_config.coreNeuronUsed() else None
-
-        sim_config.replay_mode = (ReplayMode.COMPLETE
-                                  if sim_config.core_config and "Save" in run_conf
-                                  else ReplayMode.AS_REQUIRED)
 
         keep_core_data = False
         if sim_config.core_config:
@@ -1379,10 +1375,9 @@ class Neurodamus(Node):
         """Explicitly initialize, allowing users to make last changes before simulation
         """
         base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
-        replay_mode = self._simulator_conf.replay_mode
 
         log_stage("Creating connections in the simulator")
-        self._synapse_manager.finalize(base_seed, self._corenrn_conf, replay_mode)
+        self._synapse_manager.finalize(base_seed, self._corenrn_conf)
 
         if self._gj_manager is not None:
             self._gj_manager.finalize()

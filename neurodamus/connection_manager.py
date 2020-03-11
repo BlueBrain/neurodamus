@@ -712,9 +712,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
             if synapse_mode is not None else SynapseMode.default
 
     # -
-    def finalize(self, base_seed=0,
-                       sim_corenrn=False,
-                       replay_mode=ReplayMode.AS_REQUIRED):
+    def finalize(self, base_seed=0, sim_corenrn=False, replay_mode=None):
         """Create the actual synapses and netcons.
 
         Note: All weight scalars should have their final values.
@@ -722,14 +720,18 @@ class SynapseRuleManager(_ConnectionManagerBase):
         Args:
             base_seed: optional argument to adjust synapse RNGs (default=0)
             sim_corenrn: Finalize accordingly in case we target CoreNeuron
-            replay_mode: How shall we instantiate replay? Default: AS_REQUIRED
+            replay_mode: How shall we instantiate replay? Default: Auto-Detect
                 Use DISABLED to skip replay and COMPLETE to instantiate VecStims
-                in all synapses, so that on a CoreNeuron Save-Restore the user
-                may apply different replay files.
+                in all synapses
         """
+        if replay_mode is None:
+            # CoreNeuron will handle replays automatically with its own PatternStim
+            replay_mode = ReplayMode.NONE if sim_corenrn else ReplayMode.AS_REQUIRED
+
         logging.info("Instantiating synapses... [replay_mode: %s]", replay_mode.name)
         cell_distributor = self._cell_distibutor
         n_created_conns = 0
+
         for popid, pop in self._populations.items():
             for tgid, conns in ProgressBar.iter(pop.items(), name="Pop:" + str(popid)):
                 metype = cell_distributor.getMEType(tgid)

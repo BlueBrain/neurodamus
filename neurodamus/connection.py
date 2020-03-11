@@ -51,7 +51,7 @@ class SynapseMode:
 class ReplayMode(Enum):
     """Replay instantiation mode.
     """
-    DISABLED = 0
+    NONE = 0
     """INstantiate no replay NetCons"""
 
     AS_REQUIRED = 1
