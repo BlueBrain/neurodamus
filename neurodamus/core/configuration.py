@@ -35,6 +35,42 @@ class RunOptions(ConfigT):
     modelbuilding_steps = None
 
 
+class _SimConfig(object):
+    """
+    A class initializing several HOC config objects and proxying to simConfig
+    """
+    _sim_conf = None
+    rng_info = None
+    core_config = None
+    delete_corenrn_data = False
+    buffer_time = 25
+    # Dont duplicate data, forward calls
+    use_coreneuron = property(lambda self: self._simconf.coreNeuronUsed())
+    use_neuron = property(lambda self: self._simconf.runNeuron())
+    coreneuron_datadir = property(lambda self: self._simconf.getCoreneuronDataDir().s)
+    coreneuron_ouputdir = property(lambda self: self._simconf.getCoreneuronOutputDir().s)
+
+    @classmethod
+    def init(cls, h, run_conf):
+        parsed_run = run_conf['_hoc']
+        cls._simconf = h.simConfig
+        cls._simconf.interpret(parsed_run)
+
+        cls.rng_info = h.RNGSettings()
+        cls.rng_info.interpret(parsed_run)
+
+        if cls._simconf.coreNeuronUsed():
+            cls.core_config = h.CoreConfig(run_conf["OutputRoot"])
+
+        cls.buffer_time = 25 * run_conf.get("FlushBufferScalar", 1)
+
+    def __getattr__(self, item):
+        return getattr(self._simconf, item)
+
+
+SimConfig = _SimConfig()
+
+
 class RNGConfig(ConfigT):
     Modes = Enum("Mode", "COMPATIBILITY RANDOM123 UPMCELLRAN4")
     mode = Modes.COMPATIBILITY

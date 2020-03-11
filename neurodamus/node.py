@@ -14,7 +14,7 @@ from collections import namedtuple
 
 from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeurodamusCore as Nd
-from .core.configuration import GlobalConfig, RunOptions, ConfigurationError
+from .core.configuration import GlobalConfig, RunOptions, SimConfig, ConfigurationError
 from .cell_distributor import CellDistributor, LoadBalanceMode
 from .cell_readers import TargetSpec
 from .connection_manager import SynapseRuleManager, GapJunctionManager
@@ -52,10 +52,10 @@ class Node:
             self._output_root = self._run_conf["OutputRoot"]
             self._pr_cell_gid = self._run_conf.get("prCellGid")
 
-            self._simulator_conf = self._configure_simulator(self._run_conf, opts)
-            self._corenrn_conf = self._simulator_conf.core_config
+            _sim_config = self._configure_simulator(self._run_conf, opts)
+            self._corenrn_conf = _sim_config.core_config
             self._binreport_helper = Nd.BinReportHelper(Nd.dt, True) \
-                if self._simulator_conf.runNeuron() else None
+                if _sim_config.runNeuron() else None
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
             MPI.check_no_errors()  # Ensure no rank terminated unexpectedly
 
@@ -176,32 +176,22 @@ class Node:
         Nd.execute("cvode = new CVode()")
         Nd.execute("celsius=34")
 
-        sim_config = Nd.SimConfig(run_conf['_hoc'])
-
-        # Make sure Random Numbers are prepped
-        rng_info = Nd.RNGSettings()
-        rng_info.interpret(run_conf['_hoc'])  # this sets a few global vars in hoc
-
-        sim_config.buffer_time = 25 * run_conf.get("FlushBufferScalar", 1)
-
-        sim_config.core_config = Nd.CoreConfig(run_conf["OutputRoot"]) \
-            if sim_config.coreNeuronUsed() else None
+        SimConfig.init(Nd.h, run_conf)
 
         keep_core_data = False
-        if sim_config.core_config:
+        if SimConfig.core_config:
             if user_options.keep_build or run_conf.get("KeepModelData", False) == "True":
                 keep_core_data = True
             elif not user_options.simulate_model or "Save" in run_conf:
                 logging.warning("Keeping coreneuron data for CoreNeuron Save-Restore")
                 keep_core_data = True
-        sim_config.delete_corenrn_data = sim_config.core_config and not keep_core_data
+        SimConfig.delete_corenrn_data = SimConfig.core_config and not keep_core_data
 
         h = Nd.h
         h.tstop = run_conf["Duration"]
         h.dt = run_conf["Dt"]
         h.steps_per_ms = 1.0 / h.dt
-
-        return sim_config
+        return SimConfig
 
     # -
     def check_resume(self):
@@ -901,15 +891,14 @@ class Node:
         if self._cell_distributor is None or self._cell_distributor._gidvec is None:
             raise RuntimeError("No CellDistributor was initialized. Please create a circuit.")
 
-        if corenrn_gen is None:
-            corenrn_gen = self._simulator_conf.generateData()
-
         self._finalize_model(**sim_opts)
 
+        if corenrn_gen is None:
+            corenrn_gen = SimConfig.use_coreneuron
         if corenrn_gen:
             self._sim_corenrn_write_config()
 
-        if self._simulator_conf.runNeuron():
+        if SimConfig.use_neuron:
             self._sim_init_neuron()
 
         self.dump_cell_config()
@@ -1002,8 +991,8 @@ class Node:
     def _sim_corenrn_write_config(self, corenrn_restore=False):
         log_stage("Dataset generation for CoreNEURON")
 
-        corenrn_output = self._simulator_conf.getCoreneuronOutputDir().s
-        corenrn_data = self._simulator_conf.getCoreneuronDataDir().s
+        corenrn_output = SimConfig.coreneuron_ouputdir
+        corenrn_data = SimConfig.coreneuron_datadir
         fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
         if not corenrn_restore:
@@ -1025,7 +1014,7 @@ class Node:
             self.sim_init()
 
         timings = None
-        if self._simulator_conf.runNeuron():
+        if SimConfig.use_neuron:
             timings = self._run_neuron()
             self.spike2file("out.dat")
         if self._corenrn_conf:
@@ -1152,7 +1141,7 @@ class Node:
     # Default is 25 ms / cycle
     def _psolve_loop(self, tstop):
         cur_t = Nd.t
-        buffer_t = self._simulator_conf.buffer_time
+        buffer_t = SimConfig.buffer_time
         for _ in range(math.ceil((tstop - cur_t) / buffer_t)):
             next_flush = min(tstop, cur_t + buffer_t)
             self._pnm.psolve(next_flush)
@@ -1286,7 +1275,7 @@ class Node:
         if not self._corenrn_conf or self._options.simulate_model is False:
             self.clear_model()
 
-        if self._simulator_conf.delete_corenrn_data:
+        if SimConfig.delete_corenrn_data:
             data_folder = ospath.join(self._output_root, "coreneuron_input")
             logging.info("Deleting intermediate data in %s", data_folder)
             if MPI.rank == 0:
