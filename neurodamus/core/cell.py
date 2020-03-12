@@ -58,7 +58,7 @@ endtemplate {cls_name}"""
             self.load_morphology(morpho)
 
     # ---
-    def load_morphology(self, morpho_path):
+    def load_morphology(self, morpho_path, export_commands=False):
         """ Creates the cell compartments according to the given morphology
         """
         h = Neuron.require("import3d")
@@ -68,7 +68,7 @@ endtemplate {cls_name}"""
         else:
             if morpho_path.endswith(('asc', 'ASC')):
                 imp = h.Import3d_Neurolucida3()
-                if not GlobalConfig.verbosity:
+                if not GlobalConfig.verbosity or export_commands:
                     imp.quiet = 1
             elif morpho_path.endswith(('swc', 'SWC')):
                 imp = h.Import3d_SWC_read()
@@ -84,12 +84,18 @@ endtemplate {cls_name}"""
             except Exception:
                 raise Exception("Error loading morphology. Verify Neuron outputs")
 
-            imprt.instantiate(self.h)
+            if export_commands:
+                imprt.instantiate(self.h, 1)
+            else:
+                imprt.instantiate(self.h)
             # Create shortcuts. Hoc arrays are fine, no need to convert
             self._soma = self.h.soma[0]
             self._dend = self.h.dend
             self._apic = self.h.apic
             self._axon = self.h.axon
+
+            if export_commands:
+                self._commands = imprt.commands
 
     @LazyProperty
     def all(self):

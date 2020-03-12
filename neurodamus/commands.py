@@ -9,6 +9,8 @@ from . import Neurodamus
 from .core import MPI
 from .core.configuration import ConfigurationError, LogLevel
 from .utils.pyutils import docopt_sanitize
+from .hocify import Hocify
+from os.path import abspath
 
 
 def neurodamus(args=None):
@@ -56,4 +58,36 @@ def neurodamus(args=None):
         logging.critical(str(e), exc_info=True)
         MPI._pc and MPI.allreduce(1, 1)  # Share error state
         return 1
+    return 0
+
+
+def hocify(args=None):
+    """hocify
+
+    Usage:
+        hocify <MorphologyPath> [options]
+        hocify --help
+
+    Options:
+        -v --verbose            Increase verbosity level.
+        --nframe=<number>       NEURON_NFRAME value [default: 1000].
+        --output-dir=<PATH>     Output directory for hoc files.
+    """
+    options = docopt_sanitize(docopt(hocify.__doc__, args))
+    morph_dir = abspath(options.pop("MorphologyPath"))
+
+    log_level = LogLevel.DEFAULT
+    if options.pop("verbose", False):
+        log_level = LogLevel.VERBOSE
+        pprint(options)
+    neuron_nframe = options.pop("nframe")
+    output_dir = options.pop('output_dir')
+
+    try:
+        Hocify(morph_dir, neuron_nframe, log_level, output_dir).convert()
+    except Exception as e:
+        logging.critical(str(e), exc_info=True)
+        return 1
+    from neuron import version as nrn_version
+    logging.info("Neuron version used for hocifying: " + nrn_version)
     return 0

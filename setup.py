@@ -83,7 +83,8 @@ def setup_package():
         ),
         entry_points=dict(
             console_scripts=[
-                'neurodamus = neurodamus.commands:neurodamus'
+                'neurodamus = neurodamus.commands:neurodamus',
+                'hocify = neurodamus.commands:hocify',
             ]
         ),
         dependency_links=[
