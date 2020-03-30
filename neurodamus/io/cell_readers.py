@@ -122,6 +122,20 @@ def load_ncs(run_conf, all_gids, stride=1, stride_offset=0):
 
 def load_mvd3(run_conf, all_gids, stride=1, stride_offset=0):
     """Load cells from MVD3, required for v6 circuits
+       reuse load_nodes with mvdtool by default
+       if py-mvdtool not installed, use the old h5py loader
+    """
+    try:
+        import mvdtool  # noqa: F401
+    except ImportError:
+        logging.warning("Cannot import mvdtool to load mvd3, will load with h5py")
+        return _load_mvd3_h5py(run_conf, all_gids, stride, stride_offset)
+
+    return load_nodes(run_conf, all_gids, stride, stride_offset)
+
+
+def _load_mvd3_h5py(run_conf, all_gids, stride=1, stride_offset=0):
+    """Load cells from MVD3 using h5py
     """
     import h5py  # Can be heavy so loaded on demand
     pth = ospath.join(run_conf["CircuitPath"], "circuit.mvd3")
@@ -161,7 +175,7 @@ def load_mvd3(run_conf, all_gids, stride=1, stride_offset=0):
 
 
 def load_nodes(run_conf, all_gids, stride=1, stride_offset=0):
-    """Load cells from SONATA file
+    """Load cells from SONATA or MVD3 file
     """
     import mvdtool
     pth = run_conf["CellLibraryFile"]
@@ -172,6 +186,13 @@ def load_nodes(run_conf, all_gids, stride=1, stride_offset=0):
 
     node_population = TargetSpec(run_conf.get("CircuitTarget")).population
     node_reader = mvdtool.open(pth, node_population or "")
+    if pth.endswith('.mvd3'):
+        combo_file = run_conf.get("MEComboInfoFile")
+        if not combo_file:
+            logging.error("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel.")
+            raise ConfigurationError("MEComboInfoFile not specified for mvd3")
+        node_reader.open_combo_tsv(combo_file)
+
     total_cells = len(node_reader)
     gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
 
@@ -187,12 +208,15 @@ def load_nodes(run_conf, all_gids, stride=1, stride_offset=0):
     morpho_names = node_reader.morphologies(indexes)
     emodels = node_reader.emodels(indexes)
 
-    if not node_reader.hasCurrents():
-        logging.warning("Sonata file doesn't have currents fields. Assuming 0.")
-        meinfo.load_infoNP(gidvec, morpho_names, emodels)
-    else:
-        threshold_currents = node_reader.threshold_currents(indexes)
-        holding_currents = node_reader.holding_currents(indexes)
-        meinfo.load_infoNP(gidvec, morpho_names, emodels, threshold_currents, holding_currents)
+    exc_mini_freqs = node_reader.exc_mini_frequencies(indexes) if node_reader.hasMiniFrequencies() \
+        else None
+    inh_mini_freqs = node_reader.inh_mini_frequencies(indexes) if node_reader.hasMiniFrequencies() \
+        else None
+    threshold_currents = node_reader.threshold_currents(indexes) if node_reader.hasCurrents() \
+        else None
+    holding_currents = node_reader.holding_currents(indexes) if node_reader.hasCurrents() \
+        else None
+    meinfo.load_infoNP(gidvec, morpho_names, emodels, threshold_currents, holding_currents,
+                       exc_mini_freqs, inh_mini_freqs)
 
     return gidvec, meinfo, total_cells

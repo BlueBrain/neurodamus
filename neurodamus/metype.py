@@ -18,7 +18,8 @@ class METype(object):
     """The extension to be applied to morphology files"""
 
     __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons', '_ccell', '_cellref',
-                 '_synapses', '_syn_helper_list', '_emodel_name')
+                 '_synapses', '_syn_helper_list', '_emodel_name',
+                 '_exc_mini_frequency', '_inh_mini_frequency')
 
     def __init__(self, gid, etype_path, emodel, morpho_path, meinfos_v6=None):
         """Instantite a new Cell from METype
@@ -38,6 +39,8 @@ class METype(object):
         self._synapses = None
         self._syn_helper_list = None
         self._emodel_name = emodel
+        self._exc_mini_frequency = None
+        self._inh_mini_frequency = None
 
         if meinfos_v6 is not None:
             self._instantiate_cell_v6(gid, etype_path, emodel, morpho_path, meinfos_v6)
@@ -56,6 +59,8 @@ class METype(object):
         self._syn_helper_list = Nd.List()
         self._threshold_current = meinfos_v6.threshold_current
         self._hypAmp_current = meinfos_v6.holding_current
+        self._exc_mini_frequency = meinfos_v6.exc_mini_frequency
+        self._inh_mini_frequency = meinfos_v6.inh_mini_frequency
 
     def _instantiate_cell_v5(self, gid, emodel, morpho_path):
         """Instantiates a cell v5 or before. Asssumes emodel hoc templates are loaded
@@ -135,10 +140,12 @@ class METype(object):
 
 class METypeItem(object):
     __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
-                 "threshold_current", "holding_current")
+                 "threshold_current", "holding_current",
+                 "exc_mini_frequency", "inh_mini_frequency")
 
     def __init__(self, morph_name, layer=None, fullmtype=None, etype=None, emodel=None,
-                 combo_name=None, threshold_current=0, holding_current=0):
+                 combo_name=None, threshold_current=0, holding_current=0,
+                 exc_mini_frequency=0, inh_mini_frequency=0):
         self.morph_name = morph_name
         self.layer = layer
         self.fullmtype = fullmtype
@@ -147,6 +154,8 @@ class METypeItem(object):
         self.combo_name = combo_name
         self.threshold_current = float(threshold_current)
         self.holding_current = float(holding_current)
+        self.exc_mini_frequency = float(exc_mini_frequency)
+        self.inh_mini_frequency = float(inh_mini_frequency)
 
 
 class METypeManager(dict):
@@ -198,13 +207,18 @@ class METypeManager(dict):
         return -nerr
 
     def load_infoNP(self, gidvec, morph_list, emodels,
-                    threshold_currents=None, holding_currents=None):
+                    threshold_currents=None, holding_currents=None,
+                    exc_mini_freqs=None, inh_mini_freqs=None):
         for idx, gid in enumerate(gidvec):
-            th_current = threshold_currents[idx] if threshold_currents is not None else 0
-            hd_current = holding_currents[idx] if holding_currents is not None else 0
+            th_current = threshold_currents[idx] if threshold_currents is not None else .0
+            hd_current = holding_currents[idx] if holding_currents is not None else .0
+            exc_mini_freq = exc_mini_freqs[idx] if exc_mini_freqs is not None else .0
+            inh_mini_freq = inh_mini_freqs[idx] if inh_mini_freqs is not None else .0
             self[int(gid)] = METypeItem(morph_list[idx], emodel=emodels[idx],
                                         threshold_current=th_current,
-                                        holding_current=hd_current)
+                                        holding_current=hd_current,
+                                        exc_mini_frequency=exc_mini_freq,
+                                        inh_mini_frequency=inh_mini_freq)
 
     def retrieve_info(self, gid):
         return self.get(gid) \

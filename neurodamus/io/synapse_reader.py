@@ -4,9 +4,11 @@ Module implementing interfaces to the several synapse readers (eg.: synapsetool,
 import logging
 from abc import abstractmethod
 from os import path as Path
+from scipy.optimize import fsolve
 import numpy as np
 
 from ..core import NeurodamusCore as Nd, MPI
+from ..core.configuration import SimConfig
 from ..utils.logging import log_verbose
 
 
@@ -15,6 +17,10 @@ class SynapseParameters(object):
     """
     _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F",
                        "DTC", "synType", "nrrp", "maskValue", "location")  # total: 13
+    _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F",
+                       "DTC", "synType", "nrrp",
+                       "u_hill_coefficient", "conductance_ratio",
+                       "maskValue", "location")  # total: 16
     _dtype = np.dtype({"names": _synapse_fields,
                        "formats": ["f8"] * len(_synapse_fields)})
     empty = np.recarray(0, _dtype)
@@ -44,6 +50,7 @@ class SynapseReader(object):
         self._conn_type = conn_type
         self._syn_reader = syn_reader
         self._has_nrrp = has_nrrp
+        self._ca_concentration = SimConfig.extracellular_calcium
         self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
 
     def get_synapse_parameters(self, gid):
@@ -53,6 +60,7 @@ class SynapseReader(object):
         if syn_params is None:
             syn_params = self._syn_params[gid] = self._load_synapse_parameters(gid)
             self._patch_delay_fp_inaccuracies(syn_params)
+            self._scale_U_param(syn_params, self._ca_concentration)
         return syn_params
 
     @abstractmethod
@@ -66,6 +74,30 @@ class SynapseReader(object):
             return
         dt = Nd.dt
         records.delay = (records.delay / dt + 1e-5).astype('i4') * dt
+
+    @staticmethod
+    def _scale_U_param(syn_params, extra_cellular_calcium):
+        if len(syn_params) == 0:
+            return
+        if extra_cellular_calcium is None:
+            return
+        if not np.any(syn_params.u_hill_coefficient):
+            return
+
+        def hill(ca_conc, y_max, K_half):
+            return y_max*ca_conc**4/(K_half**4 + ca_conc**4)
+
+        def constrained_hill(K_half):
+            f = lambda x: hill(2.0, x, K_half)-1.0
+            y_max = fsolve(f, 1.0)
+            return lambda x: hill(x, y_max, K_half)
+
+        f_scale = lambda x, y: constrained_hill(x)(y)
+        scale_factors = np.vectorize(f_scale)(syn_params.u_hill_coefficient,
+                                                 extra_cellular_calcium)
+        log_verbose("Scale synapse U with u_hill and extra_cellular_calcium %s",
+                    extra_cellular_calcium)
+        syn_params.U *= scale_factors
 
     def has_nrrp(self):
         """Checks whether source data has the nrrp field.
@@ -122,12 +154,14 @@ class SynReaderSynTool(SynapseReader):
 
         conn_syn_params = SynapseParameters.create_array(nrow)
         syn_params_mtx = conn_syn_params.view(('f8', len(conn_syn_params.dtype)))
-        tmpParams = Nd.Vector(12)
+        tmpParams = Nd.Vector(14)
+        # initialize conductance_ratio to -1 as 0 is meaningful for this parameter
+        tmpParams[13] = -1
 
         for syn_i in range(nrow):
             reader.getSynapse(syn_i, tmpParams)
             # as_numpy() shares memory to ndarray[double] -> can be copied (assigned) to the view
-            syn_params_mtx[syn_i, :12] = tmpParams.as_numpy()
+            syn_params_mtx[syn_i, :14] = tmpParams.as_numpy()
 
         return conn_syn_params
 
@@ -186,6 +220,10 @@ class SynReaderNRN(SynapseReader):
                 params[11] = reader.getData(cell_name, i, 17)  # nrrp
             else:
                 params[11] = -1
+
+            # place holder for u_hill_coefficient and conductance_ratio, not supported by HDF5Reader
+            params[12] = 0
+            params[13] = -1
 
         return conn_syn_params
 

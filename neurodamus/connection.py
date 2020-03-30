@@ -7,6 +7,7 @@ import numpy as np
 from enum import Enum
 from .core import NeurodamusCore as Nd
 from .utils import compat
+from .utils.logging import log_verbose
 
 
 class SynapseMode:
@@ -275,6 +276,11 @@ class Connection(ConnectionBase):
         if self._spont_minis.rate == 0:
             self._spont_minis = None
 
+        spont_minis_inh = SpontMinis(cell._inh_mini_frequency) \
+            if cell._inh_mini_frequency is not None and cell._inh_mini_frequency > 0 else None
+        spont_minis_exc = SpontMinis(cell._exc_mini_frequency) \
+            if cell._exc_mini_frequency is not None and cell._exc_mini_frequency > 0 else None
+
         for syn_i, sec in self.sections_with_netcons:
             x = self._synapse_points.x[syn_i]
             syn_params = self._synapse_params[syn_i]
@@ -299,6 +305,14 @@ class Connection(ConnectionBase):
 
             if self._spont_minis is not None:
                 self._spont_minis.create_on(self, sec, x, syn_obj, syn_params, base_seed)
+            elif spont_minis_inh is not None and syn_params.synType < 100:
+                log_verbose("Create SpontMinis from cell inh_mini_frequency "
+                            "for inhibitory synapses")
+                spont_minis_inh.create_on(self, sec, x, syn_obj, syn_params, base_seed)
+            elif spont_minis_exc is not None and syn_params.synType >= 100:
+                log_verbose("Create SpontMinis from cell exc_mini_frequency "
+                            "for excitatory synapses")
+                spont_minis_exc.create_on(self, sec, x, syn_obj, syn_params, base_seed)
 
             if shall_create_replay:
                 self._replay.create_on(self, sec, syn_obj, syn_params)
@@ -336,6 +350,10 @@ class Connection(ConnectionBase):
             add_params = (self._conn_params.src_pop_id, self._conn_params.dst_pop_id)
 
         syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, *add_params)
+        # set the default value of synapse NMDA_ratio/GABAB_ratio from circuit
+        if params_obj.conductance_ratio >= 0:
+            self._update_conductance_ratio(syn_helper.synapse, params_obj.synType,
+                                           params_obj.conductance_ratio)
         cell.CellRef.synHelperList.append(syn_helper)
         cell.CellRef.synlist.append(syn_helper.synapse)
         return syn_helper.synapse
@@ -388,6 +406,19 @@ class Connection(ConnectionBase):
         if update_also_replay_netcons and self._replay is not None:
             for nc in self._replay.netcons:
                 nc.weight[0] = weight
+
+    @staticmethod
+    def _update_conductance_ratio(syn_obj, syn_type, value):
+        """ Update the relevant conductance ratio of synapse object
+            inhibitory synapse : GABAB_ratio
+            excitatory synapse : NMDA_ratio
+        """
+        if syn_type < 100:
+            log_verbose("update GABAB ratio to %s for inhibitory synapse" % value)
+            syn_obj.GABAB_ratio = value
+        else:
+            log_verbose("update NMDA ratio to %s for excitatory synapse" % value)
+            syn_obj.NMDA_ratio = value
 
     def _configure_cell(self, cell):
         """ Internal helper to apply all the configuration statements on
