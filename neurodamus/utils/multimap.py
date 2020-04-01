@@ -2,8 +2,8 @@
 A collection of Pure-Python MultiMaps
 """
 import numpy as np
+from functools import reduce
 from operator import add
-from six.moves import zip, reduce
 from .compat import collections_abc
 
 

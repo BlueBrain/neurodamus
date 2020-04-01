@@ -10,7 +10,6 @@ from ._neuron import Neuron
 class MPI(object):
     """A singleton of MPI runtime information
     """
-    __name__ = "MPI"
     _size = 1
     _rank = 0
     _pc = None

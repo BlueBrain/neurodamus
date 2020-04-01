@@ -67,10 +67,7 @@ def setup_package():
         install_requires=[
             'NEURON',
             'h5py',
-            'enum34;python_version<"3.4"',
-            'lazy-property',
             'docopt',
-            'six',
         ],
         setup_requires=maybe_docs_reqs + maybe_test_runner,
         tests_require=["pytest"],

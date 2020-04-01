@@ -75,7 +75,8 @@ def _ncs_get_cells(ncs_f):
 
 def _preprocess_gidvec(gidvec, stride, stride_offset, total_cells):
     if gidvec is not None:
-        log_verbose("Reading %d target cells out of %d from cell file", len(gidvec), total_cells)
+        log_verbose("Reading %d target cells out of %d from cell file",
+                    len(gidvec), total_cells)
         # Gidvec must be ordered we change to numpy
         gidvec = np.frombuffer(gidvec, dtype="uint32")
         if stride > 1:
@@ -123,6 +124,8 @@ def load_ncs(run_conf, gidvec, stride=1, stride_offset=0):
             for cellIndex, gid, metype in _ncs_get_cells(ncs_f):
                 if gid in gid2mefile:
                     gid2mefile[gid] = metype
+            if any(v is None for v in gid2mefile.values()):
+                raise CellReaderError("Target contains invalid circuit cells")
     return gids, gid2mefile, total_ncs_cells
 
 

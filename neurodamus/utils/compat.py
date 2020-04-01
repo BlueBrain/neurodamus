@@ -27,8 +27,8 @@ class List(list):
     """
     __slots__ = ()
 
-    def count(self):
-        return len(self)
+    def count(self, obj=None):
+        return super().count(obj) if obj else len(self)
 
     def o(self, idx):
         return self[int(idx)]

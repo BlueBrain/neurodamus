@@ -15,7 +15,7 @@ from collections import namedtuple
 from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, RunOptions, SimConfig, ConfigurationError
-from .cell_distributor import CellDistributor, LoadBalanceMode
+from .cell_distributor import CellDistributor, LoadBalance, LoadBalanceMode
 from .cell_readers import TargetSpec
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
@@ -218,15 +218,6 @@ class Node:
             ncycles = int(self._options.modelbuilding_steps)
         elif "ModelBuildingSteps" in run_conf:
             ncycles = int(run_conf["ModelBuildingSteps"])
-        elif "ProspectiveHosts" in run_conf:  # compat syntax
-            nphosts = run_conf["ProspectiveHosts"]
-            ncycles  = int(nphosts // MPI.size) + (1 if nphosts % MPI.size > 0 else 0)
-            # Prospective hosts at some point changed the semantics, as there are parts
-            # in the code that show it was used to do load balance for a different CPU count
-            # For now we mimick what neurodamus hoc does, but in the future the option
-            # shall either be removed or reverted back to the original purpose
-            # This hoc behavior requires resetting "ProspectiveHosts"
-            self._run_conf["ProspectiveHosts"] = MPI.size
         else:
             return False
 
@@ -296,8 +287,8 @@ class Node:
     # -
     @mpi_no_errors
     def compute_load_balance(self):
-        """This function has the simulator instantiate the circuit (cells & synapses) to determine
-        the best way to split cells and balance those pieces across the available cpus.
+        """In case the user requested load-balance this function instantiates a
+        CellDistributor to split cells and balance those pieces across the available CPUs.
         """
         log_stage("Computing Load Balance")
         lb_mode = LoadBalanceMode.parse(self._run_conf.get("RunMode"))
@@ -322,50 +313,56 @@ class Node:
             logging.info("Load Balancing ENABLED. Mode: WholeCell")
         else:
             logging.info("Load Balancing DISABLED. Will use Round-Robin distribution")
-            self._cell_distributor = CellDistributor(self._pnm)
-            return
+            return None
 
-        # Build cell distributor according to BlueConfig
+        # Build load balancer as per requested options
         prosp_hosts = self._run_conf.get("ProspectiveHosts")
-        self._cell_distributor = CellDistributor(self._pnm, lb_mode, prosp_hosts)
+        load_balancer = LoadBalance(
+            lb_mode, self._run_conf["nrnPath"], self._target_parser, prosp_hosts)
 
-        # A callback to build a basic circuit for evaluating complexity
-        def build_bare_circuit_f():
-            log_stage("Instantiating circuit Round-Robin for load balancing")
-            self.create_cells(False)
+        if load_balancer.valid_load_distribution(target):
+            logging.info("Load Balancing done.")
+            return load_balancer
+
+        logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
+        cell_dist = CellDistributor(self._pnm, self._target_parser)
+        with load_balancer.generate_load_balance(target.simple_name, cell_dist):
+            # Instantiate a basic circuit to evaluate complexities
+            self.create_cells(cell_distributor=cell_dist)
             self.create_synapses()
             self.create_gap_junctions()
 
-        cx_valid = self._cell_distributor.load_or_recompute_mcomplex_balance(
-            self._run_conf["nrnPath"], self._run_conf.get("CircuitTarget"), build_bare_circuit_f,
-            self._target_parser)
+        # reset since we instantiated with RR distribution
+        Nd.t = .0  # Reset time
+        self.clear_model()
 
-        # Ready to run with LoadBal. But check if we are launching on a good sized partition
-        required_cpus = self._cell_distributor.target_cpu_count
-        if required_cpus != MPI.size:
-            logging.warning("Load Balance computed for %d CPUs (as per ProspectiveHosts). "
-                            "To continue execution launch on a partition of that size",
-                            required_cpus)
-            Nd.quit()
-
-        # If there were no cx_files ready and distribution happened, we need to start over
-        if not cx_valid:
-            Nd.t = .0  # Reset time
-            self.clear_model()
-            self._cell_distributor = CellDistributor(self._pnm, lb_mode)
+        return load_balancer
 
     # -
     @mpi_no_errors
-    def create_cells(self, load_bal=True):
+    def create_cells(self, load_balance=None, cell_distributor=None):
         """Instantiate and distributes the cells of the network.
         Any targets will be updated to know which cells are local to the cpu.
         """
-        log_stage("Loading circuit cells")
-        if self._cell_distributor is None:
-            logging.warning("Load balancer object not present. Continuing with Round-Robin")
-            self._cell_distributor = CellDistributor(self._pnm)
+        # We wont go further if ProspectiveHosts is defined to some other cpu count
+        prosp_hosts = self._run_conf.get("ProspectiveHosts")
+        if load_balance and prosp_hosts not in (None, MPI.size):
+            logging.warning(
+                "Load Balance requested for %d CPUs (as per ProspectiveHosts). "
+                "To continue execution launch on a partition of that size",
+                prosp_hosts)
+            Nd.quit()
 
-        self._cell_distributor.load_cells(self._run_conf, self._target_parser, load_bal)
+        log_stage("Loading circuit cells")
+
+        if not load_balance and not cell_distributor:
+            logging.warning("Load-balance object not present. Continuing Round-Robin...")
+        if cell_distributor is None:
+            self._cell_distributor = CellDistributor(self._pnm, self._target_parser)
+        else:
+            self._cell_distributor = cell_distributor
+
+        self._cell_distributor.load_cells(self._run_conf, load_balance)
 
         # localize targets, give to target manager
         self._target_parser.updateTargets(self.gidvec)
@@ -1339,10 +1336,10 @@ class Neurodamus(Node):
     # -
     def _build_model(self):
         log_stage("================ CALCULATING LOAD BALANCE ================")
-        self.compute_load_balance()
+        load_bal = self.compute_load_balance()
 
         log_stage("==================== BUILDING CIRCUIT ====================")
-        self.create_cells()
+        self.create_cells(load_bal)
         self.execute_neuron_configures()
 
         # Create connections

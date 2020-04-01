@@ -149,8 +149,8 @@ class ProgressBar(Progress):
             stream: the destination stream (default: stdout),
             clear: whether to clear the current line or keep time info (and add '\n')
             fmt: Bar format string
-            tty_mode: Controls whether the bar should be enhanced for text terminals.
-                      Default: None (auto-detect), False, True
+            tty_bar: Controls whether the bar should be enhanced for text terminals.
+                Default: None (auto-detect), False, True
         """
         self._tty_mode = ((hasattr(stream, 'isatty') and stream.isatty())
                           if tty_bar is None else tty_bar)

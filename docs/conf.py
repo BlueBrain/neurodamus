@@ -98,8 +98,8 @@ todo_include_todos = False
 autosummary_generate = []
 
 autodoc_mock_imports = [
-    "neuron", "lazy_property", "numpy", "mapping", "docopt",
-    "h5py", "six"]
+    "neuron", "mapping", "docopt", "h5py", "numpy"
+]
 
 
 # -- Options for HTML output ----------------------------------------------

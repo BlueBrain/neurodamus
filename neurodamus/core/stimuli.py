@@ -176,7 +176,7 @@ class CurrentSource(object):
         """
         rng = self._rng or RNG()  # Creates a default RNG
         if not self._rng:
-            logging.warn("Using a default RNG for noise generation")
+            logging.warning("Using a default RNG for noise generation")
         rng.normal(mean, variance)
         tvec = Neuron.h.Vector()
         tvec.indgen(self._cur_t, self._cur_t + duration, dt)

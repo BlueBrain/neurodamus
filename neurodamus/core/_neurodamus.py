@@ -18,7 +18,6 @@ class NeurodamusCore(_Neuron):
     A wrapper class representing an instance of Neuron with the required
     neurodamus hoc and mod modules loaded
     """
-    __name__ = "NeurodamusCore"
     __slots__ = ()
     _pc = None
 
@@ -30,7 +29,7 @@ class NeurodamusCore(_Neuron):
         return cls._h
 
     @classmethod
-    def _init(cls):
+    def _init(cls, *args):
         if cls._pc is not None:
             return
         # Neurodamus will generally require MPI

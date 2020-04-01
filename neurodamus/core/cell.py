@@ -2,7 +2,6 @@
 A module implementing a high-level interface to Neuron cells.
 """
 from __future__ import absolute_import
-from lazy_property import LazyProperty
 import logging
 from collections import defaultdict
 from .configuration import GlobalConfig
@@ -20,6 +19,7 @@ class Cell(Neuron.HocEntity, _SpikeSource):
     """
     # We must override the basic tpl definition
     # Since the morphology parser expects several arrays
+    __name__ = "Cell"
     _hoc_cldef = """
 begintemplate {cls_name}
     public init, exec_within_context
@@ -97,7 +97,7 @@ endtemplate {cls_name}"""
             if export_commands:
                 self._commands = imprt.commands
 
-    @LazyProperty
+    @property
     def all(self):
         return SectionList(self.h.all)
 
@@ -246,7 +246,7 @@ endtemplate {cls_name}"""
                         c.h.axonal.subtree(sec=node)
                         c._axon = list(c.h.axonal)
                     else:
-                        logging.warn("Branch starting at %s doesnt have a type", node)
+                        logging.warning("Branch starting at %s doesnt have a type", node)
                 c._soma = sec.this
                 c._builder = sec
                 return c

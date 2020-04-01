@@ -5,7 +5,6 @@ from __future__ import absolute_import
 import logging
 import numpy as np
 from enum import Enum
-from six.moves import zip
 from .core import NeurodamusCore as Nd
 from .utils import compat
 

@@ -28,7 +28,7 @@ class METype(object):
             etype_path: path for etypes
             emodel: Emodel name
             morpho_path: path for morphologies
-            morpho_name: morphology name to be loaded from
+            meinfos_v6: dictionary with v6 infos (if v6 circuit)
         """
         self._threshold_current = None
         self._hypAmp_current = None
@@ -119,7 +119,7 @@ class METype(object):
 
         Args:
             ion_seed: ion channel seed
-            need_revoke : True, invoke rng initialization (v6 circuits and beyond)
+            need_invoke : True, invoke rng initialization (v6 circuits and beyond)
                           False, check if cell has re_init function (v5 and earlier)
         """
         if need_invoke:
