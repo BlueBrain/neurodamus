@@ -55,20 +55,37 @@ proc init() {
 }
 create soma[1], dend[1], apic[1], axon[1], myelin[1]
 
-proc AddMorph(){ localobj morph, import, strobj, morphPath, extension
+proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, pyobj, commands
     forall delete_section()
     strobj = new StringFunctions()
     // V5 wont ever ask .hoc morphologies. So in case we know that neurodamus
-    // found a suitable fasthoc source then replace extension and xopen()
-    if( object_id(ext_simconfig) != 0)  if(strcmp(ext_simconfig.getMorphologyExtension().s, "hoc") == 0 ) {
+    // supplies hoc or h5 load those & do the necessary & return right after
+    if( object_id(ext_simconfig) != 0 ) {
+
         morphPath = new String()
         sscanf($s1, "%s", morphPath.s)
         strobj.left(morphPath.s, strobj.len(morphPath.s)-4)
-        sprint(morphPath.s, "%s.hoc", morphPath.s)
-        xopen(morphPath.s)
-        indexSections()
-        geom_nsec()
-        return
+        sprint(morphPath.s, "%s.%s", morphPath.s, ext_simconfig.getMorphologyExtension().s)
+
+        if( strcmp(ext_simconfig.getMorphologyExtension().s, "hoc" ) == 0 ) {
+            xopen(morphPath.s)
+            indexSections()
+            geom_nsec()
+            return
+        } else if ( strcmp(ext_simconfig.getMorphologyExtension().s, "h5" ) == 0 ) {
+            if( nrnpython ("import morphio_wrapper") == 0 ) {
+                printf( ".h5 morphlogy used but cannot load 'morphio_wrapper.py' from neurodamus-core" )
+                quit()
+            }
+            pyobj = new PythonObject()
+            commands = pyobj.morphio_wrapper.MorphIOWrapper(morphPath.s).get_hoc_commands()
+            for i = 0, pyobj.len(commands) - 1 {
+                execute(commands._[i], this)
+            }
+            indexSections()
+            geom_nsec()
+            return
+        } // else continue with legacy loading
     }
 
     extension = new String()
@@ -77,7 +94,7 @@ proc AddMorph(){ localobj morph, import, strobj, morphPath, extension
 
     if( strcmp(extension.s, ".asc") == 0 ) {
         morph = new Import3d_Neurolucida3()
-    } else if( strcmp(extension.s, ".swc" ) == 0) {
+    } else if( strcmp(extension.s, ".swc") == 0 ) {
         morph = new Import3d_SWC_read()
     } else {
         printf("Unsupported file format: Morphology file has to end with .asc or .swc" )
