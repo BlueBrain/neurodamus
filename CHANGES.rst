@@ -2,13 +2,34 @@
 Change Log
 ==========
 
-Version 0.9.0
+Version 1.0.0
 =============
 *Not released*
 
+*New features / Major changes*
+  * Add xopen morphology generation and loading feature
+  * Reusing previously calculated LoadBalance
+  * Dropped Python 2.x support (simplified deps)
+
+*Improvements*
+  * Refactoring of ConnectionManager wrt instantiation of SpontMinis and Replay
+  * Make SimConfig global singleton
+  * Refactoring CellDistributor
+
+
+Version 0.9.0
+=============
+*Feb 27, 2020*
+
 *New features*
-  * Added CLI option --modelbuilding-steps to set the number of steps for the model building
+  * New loader to support Sonata nodes
   * Initial support for Sonata node populations, specified via the target pop:target_name
+  * Added CLI option --modelbuilding-steps to set the number of steps for the model building
+  * BBPBGLIB-567 Filter Instantiated projections
+
+*Improvements*
+  * Refactoring replay for compat with save-restore and CoreNeuron
+  * Refactoring connection_manager for dedicated ConnectionSet structure
 
 
 Version 0.8.1

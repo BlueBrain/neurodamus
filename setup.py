@@ -56,7 +56,7 @@ class Docs(Command):
 
 
 def setup_package():
-    docs_require = ["sphinx-limestone-theme", "docs_internal_upload"]
+    docs_require = ["Sphinx==3.0.1", "sphinx-limestone-theme", "docs_internal_upload"]
     maybe_docs_reqs = docs_require if "docs" in sys.argv else []
     maybe_test_runner = ['pytest-runner'] if "test" in sys.argv else []
 

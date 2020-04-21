@@ -13,6 +13,7 @@ neurodamus.cell\_distributor
 
    .. autosummary::
       CellDistributor
+      LoadBalance
       LoadBalanceMode
 
 
@@ -29,6 +30,7 @@ neurodamus.cell\_readers
 
       load_mvd3
       load_ncs
+      load_nodes
 
    .. rubric:: Exceptions
 
@@ -46,9 +48,13 @@ neurodamus.connection
    .. rubric:: Classes
 
    .. autosummary::
-      Connection
       SynapseMode
+      ReplayMode
       SynapseParameters
+      Connection
+      ArtificialStim
+      SpontMinis
+      ReplayStim
 
 
 neurodamus.connection\_manager
