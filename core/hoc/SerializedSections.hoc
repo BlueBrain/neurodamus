@@ -26,6 +26,8 @@ begintemplate SerializedSections
 
 objref isec2sec[1]
 
+serialized_sections_warned = 0
+
 //-----------------------------------------------------------------------------------------------
 // public members
 //-----------------------------------------------------------------------------------------------
@@ -56,9 +58,13 @@ proc init() { local index
 			execerror("Error: failure in mk2_isec2sec()")
         }
         if( v(0.0001) < 0 ) {
-            print index, v(0.0001)
+            if( serialized_sections_warned == 0 ) {
+                print "[Warning] SerializedSections: v(0.0001) < 0. index=", index, " v()=", v(0.0001)
+                serialized_sections_warned = 1  // Dont report more
+            }
+        } else {
+            isec2sec[v(0.0001)] = new SectionRef()
         }
-        isec2sec[v(0.0001)] = new SectionRef()
         index = index+1
     }
 }
