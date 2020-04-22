@@ -21,6 +21,7 @@ from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose
+from .utils.timeit import TimerManager, timeit, timeit_rank0
 
 
 class Node:
@@ -252,6 +253,7 @@ class Node:
 
     # -
     @mpi_no_errors
+    @timeit(name="Target Load")
     def load_targets(self):
         """Provided that the circuit location is known and whether a user.target file has been
         specified, load any target files via a TargetParser.
@@ -286,6 +288,7 @@ class Node:
 
     # -
     @mpi_no_errors
+    @timeit(name="Compute LB")
     def compute_load_balance(self):
         """In case the user requested load-balance this function instantiates a
         CellDistributor to split cells and balance those pieces across the available CPUs.
@@ -357,6 +360,7 @@ class Node:
 
     # -
     @mpi_no_errors
+    @timeit(name="Cell creation")
     def create_cells(self, load_balance=None, cell_distributor=None):
         """Instantiate and distributes the cells of the network.
         Any targets will be updated to know which cells are local to the cpu.
@@ -393,6 +397,7 @@ class Node:
 
     # -
     @mpi_no_errors
+    @timeit(name="Synapse creation")
     def create_synapses(self):
         """Create synapses among the cells, handling connections that appear in the config file
         """
@@ -415,8 +420,10 @@ class Node:
                 n_synapse_files = self._run_conf.get("NumSynapseFiles", 1)
 
         # Pass on to Managers the given path
-        self._synapse_manager = SynapseRuleManager(
-            nrn_path, self._target_manager, self._cell_distributor, n_synapse_files, synapse_mode)
+        with timeit(name="Synapse init"):
+            self._synapse_manager = SynapseRuleManager(
+                nrn_path, self._target_manager, self._cell_distributor,
+                n_synapse_files, synapse_mode)
 
         connection_blocks = self._config_parser.parsedConnects
 
@@ -461,8 +468,8 @@ class Node:
                 # that source. Otherwise create only specified connections
                 src = projection.get("Source")
                 has_connections = src is not None and \
-                    any(connection_blocks.o(i).get("Source").s == src
-                        for i in range(int(connection_blocks.count())))
+                                  any(connection_blocks.o(i).get("Source").s == src
+                                      for i in range(int(connection_blocks.count())))
 
                 if has_connections:
                     self._create_group_connections()
@@ -516,6 +523,7 @@ class Node:
 
     # -
     @mpi_no_errors
+    @timeit(name="Gap Junction creation")
     def create_gap_junctions(self):
         """Create gap_juntions among the cells, according to blocks in the config file,
         defined as projections with type GapJunction.
@@ -612,6 +620,7 @@ class Node:
 
     # -
     @mpi_no_errors
+    @timeit(name="Enable Stimulus")
     def enable_stimulus(self):
         """Iterate over any stimuli/stim injects defined in the config file given to the simulation
         and instantiate them.
@@ -736,6 +745,7 @@ class Node:
 
     # -
     @mpi_no_errors
+    @timeit(name="Enable Modifications")
     def enable_modifications(self):
         """Iterate over any Modification blocks read from the BlueConfig and apply them to the
         network. The steps needed are more complex than NeuronConfigures, so the user should not be
@@ -749,6 +759,7 @@ class Node:
 
     # -
     # @mpi_no_errors - not required since theres a call inside before _binreport_helper.make_comm
+    @timeit(name="Enable Reports")
     def enable_reports(self):
         """Iterate over reports defined in BlueConfig and instantiate them.
         """
@@ -789,7 +800,7 @@ class Node:
                 if not self._corenrn_conf and "Electrode" in rep_conf else None
 
             rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
-                                    "start, end, output_dir, electrode, scaling, isc")(
+                                              "start, end, output_dir, electrode, scaling, isc")(
                 rep_name,
                 rep_type,  # rep type is case sensitive !!
                 rep_conf["ReportOn"],
@@ -922,6 +933,7 @@ class Node:
 
     # -
     @mpi_no_errors
+    @timeit(name="Model Finalized")
     def _finalize_model(self, spike_compress=3):
         """Set up simulation run parameters and initialization.
 
@@ -945,7 +957,8 @@ class Node:
         # This is incompatible with efficient caching atm.
         Nd.cvode.cache_efficient("ElectrodesPath" not in self._run_conf)
         pc.set_maxstep(4)
-        Nd.stdinit()
+        with timeit(name="stdinit"):
+            Nd.stdinit()
 
     # -
     def _record_spikes(self, gids=None):
@@ -966,16 +979,17 @@ class Node:
         self._pnm.pc.timeout(200)  # increase by 10x
 
         if restore_path:
-            logging.info("Restoring state...")
-            bbss = Nd.BBSaveState()
-            self._stim_manager.saveStatePreparation(bbss)
-            bbss.ignore(self._binreport_helper)
-            self._binreport_helper.restorestate(restore_path)
-            self._stim_manager.reevent()
-            bbss.vector_play_init()
+            with timeit(name="restoretime"):
+                logging.info("Restoring state...")
+                bbss = Nd.BBSaveState()
+                self._stim_manager.saveStatePreparation(bbss)
+                bbss.ignore(self._binreport_helper)
+                self._binreport_helper.restorestate(restore_path)
+                self._stim_manager.reevent()
+                bbss.vector_play_init()
 
-            self._restart_events()  # On restore the event queue is cleared
-            return  # Upon restore sim is ready
+                self._restart_events()  # On restore the event queue is cleared
+                return  # Upon restore sim is ready
 
         if fwd_skip:
             logging.info("Initializing with ForwardSkip %d ms", fwd_skip)
@@ -1002,6 +1016,7 @@ class Node:
         # TODO: reports might have ALU objects which need to reactivate
 
     # -
+    @timeit(name="corewrite")
     def _sim_corenrn_write_config(self, corenrn_restore=False):
         log_stage("Dataset generation for CoreNEURON")
 
@@ -1094,6 +1109,7 @@ class Node:
                     logging.warning("SaveTime specified beyond Simulation Duration. "
                                     "Setting SaveTime to tstop.")
 
+            @timeit(name="savetime")
             def save_f():
                 logging.info("Saving State... (t=%f)", tsave)
                 bbss = Nd.BBSaveState()
@@ -1123,6 +1139,7 @@ class Node:
 
     # -
     @mpi_no_errors
+    @timeit(name="psolve")
     def solve(self, tstop=None):
         """Call solver with a given stop time (default: whole interval).
         Be sure to have sim_init()'d the simulation beforehand
@@ -1291,18 +1308,20 @@ class Node:
             self.clear_model(avoid_creating_objs=True)
 
         if SimConfig.delete_corenrn_data:
-            data_folder = ospath.join(self._output_root, "coreneuron_input")
-            logging.info("Deleting intermediate data in %s", data_folder)
-            if MPI.rank == 0:
-                if os.path.islink(data_folder):
-                    # in restore, coreneuron data is a symbolic link
-                    os.unlink(data_folder)
-                else:
-                    subprocess.call(['/bin/rm', '-rf', data_folder])
-                os.remove(ospath.join(self._output_root, "sim.conf"))
+            with timeit_rank0(name="Delete corenrn data"):
+                data_folder = ospath.join(self._output_root, "coreneuron_input")
+                logging.info("Deleting intermediate data in %s", data_folder)
+                if MPI.rank == 0:
+                    if os.path.islink(data_folder):
+                        # in restore, coreneuron data is a symbolic link
+                        os.unlink(data_folder)
+                    else:
+                        subprocess.call(['/bin/rm', '-rf', data_folder])
+                    os.remove(ospath.join(self._output_root, "sim.conf"))
             MPI.barrier()
 
         logging.info("Finished")
+        TimerManager.timeit_show_stats()
 
 
 # Helper class
@@ -1310,6 +1329,7 @@ class Node:
 class Neurodamus(Node):
     """A high level interface to Neurodamus
     """
+
     def __init__(self, config_file, auto_init=True, logging_level=None, **user_opts):
         """Creates and initializes a neurodamus run node
 
@@ -1446,7 +1466,7 @@ class Neurodamus(Node):
         logging.info("MULTI-CYCLE RUN: {} Cycles".format(n_cycles))
 
         tmp_target_spec = TargetSpec(self._run_conf["CircuitTarget"])
-
+        TimerManager.archive(archive_name="Before Cycle Loop")
         for cycle_i, cur_target in enumerate(sub_targets):
             logging.info("")
             logging.info("-" * 60)
@@ -1462,11 +1482,13 @@ class Neurodamus(Node):
             if MPI.rank == 0:
                 base_filesdat = ospath.join(self._output_root, 'coreneuron_input/files')
                 os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
-
+            # Archive timers for this cycle
+            TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
         if MPI.rank == 0:
             self._merge_filesdat(n_cycles, self._output_root)
 
     # -
+    @timeit(name="finished Run")
     def run(self):
         """Prepares and launches the simulation according to the loaded config.
         If '--only-build-model' option is set, simulation is skipped.

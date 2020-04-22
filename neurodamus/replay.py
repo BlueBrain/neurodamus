@@ -5,8 +5,9 @@ from __future__ import absolute_import
 import os
 import logging
 import numpy
-from .utils.multimap import GroupedMultiMap
 from .utils.logging import log_verbose
+from .utils.multimap import GroupedMultiMap
+from .utils.timeit import timeit
 
 
 class SpikeManager(object):
@@ -20,6 +21,7 @@ class SpikeManager(object):
     """
     _ascii_spike_dtype = [('time', 'double'), ('gid', 'uint32')]
 
+    @timeit(name="Replay init")
     def __init__(self, spike_filename, delay=0):
         """Constructor for SynapseReplay.
 
@@ -98,6 +100,7 @@ class SpikeManager(object):
         return tvec, gidvec
 
     #
+    @timeit(name="BinEvents")
     def _store_events(self, tvec, gidvec):
         """Stores the events in the _gid_fire_events GroupedMultiMap.
 

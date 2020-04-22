@@ -15,6 +15,7 @@ from .connection import Connection, SynapseMode, ReplayMode
 from .synapse_reader import SynapseReader
 from .utils import compat, bin_search, dict_filter_map
 from .utils.logging import log_verbose
+from .utils.timeit import timeit
 
 
 class ConnectionSet(object):
@@ -489,6 +490,7 @@ class _ConnectionManagerBase(object):
 
     # Live connections update
     # -----------------------
+    @timeit(name="connUpdate", verbose=False)
     def update_connections(self, src_target, dst_target, gidvec=None, population_ids=None,
                                  syn_configure=None, weight=None, **syn_params):
         """Update params on connections that are already instantiated.
@@ -747,6 +749,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
         logging.info(" => Created %d connections", all_ranks_total)
 
     # -
+    @timeit(name="Replay inject")
     def replay(self, spike_manager, target_name, start_delay=.0):
         """Create special netcons to trigger timed spikes on those
         synapses.
@@ -767,8 +770,9 @@ class SynapseRuleManager(_ConnectionManagerBase):
         for conn in self.get_target_connections(None, target_name):
             if conn.sgid not in spike_manager:
                 continue
-            conn.replay(spike_manager[conn.sgid], start_delay)
-            replayed_count += 1
+            with timeit(name="register replay events", verbose=False):
+                conn.replay(spike_manager[conn.sgid], start_delay)
+                replayed_count += 1
 
         total_replays = MPI.allreduce(replayed_count, MPI.SUM)
         if MPI.rank == 0:
