@@ -19,10 +19,10 @@ from .utils import compat
 from .utils.logging import log_verbose
 
 
-class LoadBalanceMode:
+class LoadBalanceMode(Enum):
     """An enumeration, inc parser, of the load balance modes.
     """
-    RR = None
+    RoundRobin = 0
     WholeCell = 1
     MultiSplit = 2
 
@@ -31,11 +31,16 @@ class LoadBalanceMode:
         """Parses the load balancing mode from a string.
         Options other than WholeCell or MultiSplit are considered RR
         """
+        if lb_mode is None:
+            return None
         _modes = {
-            "WholeCell": cls.WholeCell,
-            "LoadBalance": cls.MultiSplit
+            "rr": cls.RoundRobin,
+            "roundrobin": cls.RoundRobin,
+            "wholecell": cls.WholeCell,
+            "loadbalance": cls.MultiSplit,
+            "multisplit": cls.MultiSplit
         }
-        return _modes.get(lb_mode)
+        return _modes[lb_mode.lower()]
 
 
 class NodeFormat(Enum):
@@ -534,7 +539,7 @@ class LoadBalance:
     @mpi_no_errors
     def _compute_save_complexities(self, target_str, mcomplex, cell_distributor):
         gidvec = cell_distributor.local_gids
-        msfactor = 1e6 if self.lb_mode is LoadBalanceMode.WholeCell else 0.8
+        msfactor = 1e6 if self.lb_mode == LoadBalanceMode.WholeCell else 0.8
         out_filename = self._cx_filename_tpl % target_str
 
         cx_cells = self._compute_complexities(mcomplex, cell_distributor)

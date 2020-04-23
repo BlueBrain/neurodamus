@@ -291,27 +291,44 @@ class Node:
         CellDistributor to split cells and balance those pieces across the available CPUs.
         """
         log_stage("Computing Load Balance")
-        lb_mode = LoadBalanceMode.parse(self._run_conf.get("RunMode"))
 
         # Info about the cells to be distributed
         target = self._target_spec
         if target.name:
+            target_cells = self._target_parser.getTarget(target.name).getCellCount()
             logging.info("CIRCUIT: Population: %s, Target: %s (%d Cells)",
-                         target.population or "(default)",
-                         target.name,
-                         self._target_parser.getTarget(target.name).getCellCount())
+                         target.population or "(default)", target.name, target_cells)
         else:
-            logging.warning("No Target defined. Loading ALL circuit cells")
+            target_cells = self._target_parser.getTarget("Mosaic").getCellCount()
+            logging.warning("No Target defined. Loading ALL cells: %d", target_cells)
 
-        if lb_mode is LoadBalanceMode.MultiSplit:
+        if target_cells > 100 * MPI.size:
+            logging.warning("Your simulation has a very high count of cells per CPU. "
+                            "Please consider launching it in a larger MPI cluster")
+
+        # Check / set load balance mode
+        lb_mode = LoadBalanceMode.parse(self._run_conf.get("RunMode"))
+        if lb_mode == LoadBalanceMode.MultiSplit:
             if not self._corenrn_conf:
                 logging.info("Load Balancing ENABLED. Mode: MultiSplit")
             else:
                 logging.warning("Load Balancing mode CHANGED to WholeCell for CoreNeuron")
                 lb_mode = LoadBalanceMode.WholeCell
-        elif lb_mode is LoadBalanceMode.WholeCell:
+
+        elif lb_mode == LoadBalanceMode.WholeCell:
             logging.info("Load Balancing ENABLED. Mode: WholeCell")
-        else:
+
+        elif lb_mode is None:
+            # BBPBGLIB-555 - simple heuristics for auto selecting load balance
+            lb_mode = LoadBalanceMode.RoundRobin
+            if MPI.size > 1.5 * target_cells:
+                logging.warning("Load Balance: AUTO SELECTED MultiSplit (CPU-Cell ratio)")
+                lb_mode = LoadBalanceMode.MultiSplit
+            elif target_cells > 1000 and (self._run_conf["Duration"] > 500 or MPI.size > 100):
+                logging.warning("Load Balance: AUTO SELECTED WholeCell (Sim Size)")
+                lb_mode = LoadBalanceMode.WholeCell
+
+        if lb_mode == LoadBalanceMode.RoundRobin:
             logging.info("Load Balancing DISABLED. Will use Round-Robin distribution")
             return None
 
