@@ -64,6 +64,7 @@ VERBATIM
 #define CONN_SYNAPSES_V2 2
 #define CONN_GAPJUNCTIONS_V2 3
 #define CONN_CUSTOM 4
+#define CONN_SYNAPSES_V3 5
 // Due to the inability of accessing the state from non-hoc functions, we pass flags in the fieldset
 #define CONN_REQUIRE_NRRP (1<<16)
 
@@ -169,6 +170,8 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 
 #define NRRP_FIELD "n_rrp_vesicles"
 #define POST_FRACTION_FIELD "morpho_section_fraction_post"
+#define UHILL_FIELD "u_hill_coefficient"
+#define CONDUCTSF_FIELD "conductance_scale_factor"
 
 // The 6 mandatory fields for GapJunctions read by neurodamus
 #define GJ_FIELDS "connected_neurons_pre, \
@@ -202,9 +205,11 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 // Internal functions can't call getStatePtr()
 #define HAS_NRRP() (_syn_has_field(NRRP_FIELD, getStatePtr()))
 #define IS_V2() (_syn_has_field(POST_FRACTION_FIELD, getStatePtr()))
+#define IS_V3() (IS_V2() && _syn_has_field(UHILL_FIELD, getStatePtr()) && _syn_has_field(CONDUCTSF_FIELD, getStatePtr()))
 
 static const char* SYN_FIELDS_NO_RRP = BASE_SYN_FIELDS;
 static const char* SYN_FIELDS = BASE_SYN_FIELDS ", " NRRP_FIELD;
+static const char* SYN_V3_FIELDS = SYN_V2_FIELDS ", " UHILL_FIELD ", " CONDUCTSF_FIELD;
 
 // relative position of the 7 GJ fields into the 12-field neurodamus structure
 // Conductance is fetched last since its optional
@@ -213,6 +218,7 @@ static const int ND_GJ_POSITIONS[] = {ND_PREGID_FIELD_I, 2, 3, 4, 5, 7, 8};
 // V2 relative positions
 static const int ND_SYNv2_POSITIONS[] = {0, 1, 2, 4, 5, 6, 7, 8, 9, 10 ,11};
 static const int ND_GJv2_POSITIONS[]  = {0, 2, 4, 5, 7, 8};
+static const int ND_SYNv3_POSITIONS[] = {0, 1, 2, 4, 5, 6, 7, 8, 9, 10 ,11, 12, 13};
 
 
 /**
@@ -287,6 +293,9 @@ static int _load_data(uint64_t tgid, int conn_type, const char* fields, ReaderSt
             break;
         case CONN_GAPJUNCTIONS_V2:
             fields = GJ_V2_FIELDS;
+            break;
+        case CONN_SYNAPSES_V3:
+            fields = SYN_V3_FIELDS;
             break;
         default:
             if (fields == NULL) {
@@ -442,6 +451,7 @@ VERBATIM
     const char* fields = ifarg(2)? gargstr(2): NULL;
     ReaderState* state_ptr = getStatePtr();
     int fieldset = (fields != NULL)? CONN_CUSTOM
+                   : IS_V3()? CONN_SYNAPSES_V3
                    : IS_V2()? CONN_SYNAPSES_V2
                    : CONN_SYNAPSES_V1 + (HAS_NRRP()? CONN_REQUIRE_NRRP : 0);
     return _load_data(tgid, fieldset, fields, state_ptr);
@@ -525,6 +535,7 @@ VERBATIM
         (loaded_conn_type == CONN_GAPJUNCTIONS_V1)? ND_GJ_POSITIONS
         : (loaded_conn_type == CONN_SYNAPSES_V2)? ND_SYNv2_POSITIONS
         : (loaded_conn_type == CONN_GAPJUNCTIONS_V2)? ND_GJv2_POSITIONS
+        : (loaded_conn_type == CONN_SYNAPSES_V3)? ND_SYNv3_POSITIONS
         : NULL;
 
     for (i=0; i<n_fields; i++) {
