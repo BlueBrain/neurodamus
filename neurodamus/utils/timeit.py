@@ -95,11 +95,13 @@ from __future__ import absolute_import
 import logging
 import time
 
-from contextlib import contextmanager
+from contextlib import contextmanager, ContextDecorator
 from itertools import chain
 
 from .logging import log_verbose
 from ..core import NeurodamusCore as Nd, MPI, run_only_rank0
+
+delim = u'\u255a'
 
 
 class _Timer(object):
@@ -126,7 +128,7 @@ class _Timer(object):
         self._start_time = None  # invalidate start time
 
     def log(self, keyword, seq_no=None):
-        log_verbose("{:s} {} {:>30s} {:g} {:s}".
+        log_verbose("{:s} {} {:<30s} {:g} {:s}".
                     format(keyword,
                            seq_no if seq_no is not None else '',
                            self._name,
@@ -182,27 +184,39 @@ class TimerManager(object):
     def _log_stats(self, timers_name, timers, avg_times, min_times, max_times):
         stats_name = " TIMEIT STATS {}".format('(' + timers_name + ') ' if timers_name
                                                else timers_name)
-        logging.info("+{:=^65s}+".format(stats_name))
-        logging.info("|           Event Label          | Avg.Time | Min.Time | Max.Time |")
-        logging.info("+-----------------------------------------------------------------+")
+        logging.info("+{:=^91s}+".format(stats_name))
+        logging.info("|{:^58s}|{:^10s}|{:^10s}|{:^10s}|".format('Event Label',
+                                                                'Avg.Time',
+                                                                'Min.Time',
+                                                                'Max.Time'))
+        logging.info("+{:-^91s}+".format('-'))
+
         for t, name in enumerate(timers.keys()):
-            logging.info("| {:>30s}   {:8.2f} | {:8.2f} | {:8.2f} |".format(
-                name, avg_times.x[t] / MPI.size, min_times.x[t], max_times.x[t]))
-        logging.info("+-----------------------------------------------------------------+\n")
+            base_name = delim.join('  ') * name.count(delim) + name.split(delim)[-1]
+            logging.info("| {:<56s} | {:8.2f} | {:8.2f} | {:8.2f} |".format(
+                base_name, avg_times.x[t] / MPI.size, min_times.x[t], max_times.x[t]))
+        logging.info("+{:-^91s}+".format('-'))
 
 
 TimerManager = TimerManager()  # singleton
 
 
-# Can also be used as decorator
-@contextmanager
-def timeit(name, verbose=True):
-    # enter
-    TimerManager.init(name)
-    yield
+# Can be used as context manager or decorator
+class timeit(ContextDecorator):
+    curr_path = []
 
-    # exit
-    TimerManager.update(name, verbose)
+    def __init__(self, name, verbose=True):
+        self._original_name = name
+        self._verbose = verbose
+
+    def __enter__(self):
+        timeit.curr_path.append(self._original_name)
+        self._name = delim.join(timeit.curr_path)
+        TimerManager.init(self._name)
+
+    def __exit__(self, exc_type, exc, exc_tb):
+        TimerManager.update(self._name, self._verbose)
+        timeit.curr_path.pop()
 
 
 # Can also be used as decorator.
