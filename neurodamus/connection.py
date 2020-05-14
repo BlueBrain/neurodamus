@@ -9,27 +9,6 @@ from .core import NeurodamusCore as Nd
 from .utils import compat
 
 
-class SynapseParameters(object):
-    """Synapse parameters, internally implemented as numpy record
-    """
-    _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F",
-                       "DTC", "synType", "nrrp", "maskValue", "location")  # total: 13
-    _dtype = np.dtype({"names": _synapse_fields,
-                       "formats": ["f8"] * len(_synapse_fields)})
-
-    empty = np.recarray(0, _dtype)
-
-    def __new__(cls, params):
-        raise NotImplementedError()
-
-    @classmethod
-    def create_array(cls, length):
-        npa = np.recarray(length, cls._dtype)
-        npa.maskValue = -1
-        npa.location = 0.5
-        return npa
-
-
 class SynapseMode:
     """Synapse Modes, as req. by SynapseRuleManager
     """
@@ -62,16 +41,90 @@ class ReplayMode(Enum):
     users may add arbitrary new replays in Restore phases"""
 
 
+class ConnectionBase:
+    """
+    The Base implementation for cell connections identified by src-dst gids
+    """
+    __slots__ = ("sgid", "tgid", "locked", "_disabled", "_conn_params",
+                 "_netcons", "_synapses")
+
+    def __init__(self, sgid, tgid, src_pop_id=0, dst_pop_id=0, weight_factor=1):
+        self.sgid = int(sgid)
+        self.tgid = int(tgid)
+        self.locked = False
+        self._disabled = False
+        self._conn_params = np.recarray(1, dtype=dict(
+            names=['weight_factor', 'src_pop_id', 'dst_pop_id'],
+            formats=['f8', 'i4', 'i4']
+        ))[0]
+        self._conn_params.put(0, (weight_factor, src_pop_id, dst_pop_id))
+        # Initialized in specific routines
+        self._netcons = None
+        self._synapses = ()
+
+    population_id = property(
+        lambda self: (self._conn_params.src_pop_id, self._conn_params.dst_pop_id))
+    weight_factor = property(
+        lambda self: self._conn_params.weight_factor,
+        lambda self, weight: self._conn_params.__setattr__('weight_factor', weight)
+    )
+
+    # Subclasses must implement instantiation of their connections in the simulator
+    def finalize(self, pnm, cell, base_seed=0, spgid=None,
+                       replay_mode=ReplayMode.AS_REQUIRED, skip_disabled=False):
+        raise NotImplementedError("finalize must be implemented in sub-class")
+
+    # Parameters Live update / Configuration
+    # --------------------------------------
+    def update_conductance(self, new_g):
+        """ Updates all synapses conductance
+        """
+        for syn in self._synapses:
+            syn.g = new_g
+
+    def update_synapse_parameters(self, **params):
+        """A generic function to update several parameters of all synapses
+        """
+        for syn in self._synapses:
+            for key, val in params:
+                setattr(syn, key, val)
+
+    def update_weights(self, weight):
+        """ Change the weights of the netcons generated when connecting
+        the source and target gids represented in this connection
+        """
+        for nc in self._netcons:
+            nc.weight[0] = weight
+
+    def disable(self):
+        """Deactivates a connection.
+        The connection synapses are inhibited by disabling the netcons.
+        """
+        self._disabled = True
+        if self._netcons is None:
+            return
+        for nc in self._netcons:
+            nc.active(False)
+
+    def enable(self):
+        """(Re)enables connections, by activating all netcons
+        """
+        self._disabled = False
+        if self._netcons is None:
+            return
+        for nc in self._netcons:
+            nc.active(True)
+
+
 # ----------------------------------------------------------------------
 # Connection class
 # ----------------------------------------------------------------------
-class Connection(object):
+class Connection(ConnectionBase):
     """
     A Connection object serves as a container for synapses formed from
     a presynaptic and a postsynaptic gid, including Points where those
     synapses are placed (stored in TPointList)
     """
-    __slots__ = ("sgid", "tgid", "locked", "_conn_params", "__dict__")
     _AMPAMDA_Helper = None
     _GABAAB_Helper = None
     ConnUtils = None  # Collection of hoc routines to speedup execution
@@ -108,26 +161,13 @@ class Connection(object):
 
         """
         h = self._init_hmod()
-        self.sgid = int(sgid)
-        self.tgid = int(tgid)
-        self._conn_params = np.recarray(1, dtype=dict(
-            names=['weight_factor', 'src_pop_id', 'dst_pop_id'],
-            formats=['f8', 'i4', 'i4']
-        ))[0]
-        self._conn_params.put(
-            0, (weight_factor, src_pop_id, dst_pop_id))
-        self._disabled = False
+        super().__init__(sgid, tgid, src_pop_id, dst_pop_id, weight_factor)
         self._synapse_mode = synapse_mode
         self._mod_override = mod_override
         self._synapse_points = h.TPointList(tgid, 1)
         self._synapse_params = []
         self._synapse_ids = compat.Vector("i")
         self._configurations = [configuration] if configuration is not None else []
-        self.locked = False
-
-        # Main lists (defined in finalize)
-        self._netcons = None
-        self._synapses = None
         self._conductances_bk = None  # Store for re-enabling
         # Artificial stimulus sources
         self._spont_minis = SpontMinis(minis_spont_rate)
@@ -136,13 +176,7 @@ class Connection(object):
     # read-only properties
     synapse_params = property(lambda self: self._synapse_params)
     synapse_mode = property(lambda self: self._synapse_mode)
-    population_id = property(lambda self: (self._conn_params.src_pop_id,
-                                           self._conn_params.dst_pop_id))
     # R/W properties
-    weight_factor = property(
-        lambda self: self._conn_params.weight_factor,
-        lambda self, weight: self._conn_params.__setattr__('weight_factor', weight)
-    )
     minis_spont_rate = property(
         lambda self: self._spont_minis.rate,
         lambda self, rate: self._spont_minis.__setattr__('rate', rate)
@@ -341,31 +375,16 @@ class Connection(object):
     # ------------------------------------------------------------------
     # Parameters Live update / Configuration
     # ------------------------------------------------------------------
-    def update_conductance(self, new_g):
-        """ Updates all synapses conductance
-        """
-        for syn in self._synapses:
-            syn.g = new_g
-
-    def update_synapse_parameters(self, **params):
-        """A generic function to update several parameters of all synapses
-        """
-        for syn in self._synapses:
-            for key, val in params:
-                setattr(syn, key, val)
 
     def update_weights(self, weight, update_also_replay_netcons=False):
-        """ Change the weights of the netcons generated when connecting
-        the source and target gids represented in this connection
+        """ Change the weights of the existing netcons
 
         Args:
             weight: The new weight
             update_also_replay_netcons: Whether weights shall be applied to
                 replay netcons as well
         """
-        for nc in self._netcons:
-            nc.weight[0] = weight
-
+        super().update_weights(weight)
         if update_also_replay_netcons and self._replay is not None:
             for nc in self._replay.netcons:
                 nc.weight[0] = weight
@@ -408,11 +427,7 @@ class Connection(object):
             set_zero_conductance: (bool) Sets synapses' conductance
                 to zero [default: False]
         """
-        self._disabled = True
-        if self._netcons is None:
-            return
-        for nc in self._netcons:
-            nc.active(False)
+        super().disable()
         if set_zero_conductance:
             self._conductances_bk = compat.Vector("d", (syn.g for syn in self._synapses))
             self.update_conductance(.0)
@@ -421,11 +436,7 @@ class Connection(object):
         """(Re)enables connections. It will activate all netcons and restore
         conductance values had they been set to zero
         """
-        self._disabled = False
-        if self._netcons is None:
-            return
-        for nc in self._netcons:
-            nc.active(True)
+        super().enable()
         if self._conductances_bk:
             for syn, cond in zip(self._synapses, self._conductances_bk):
                 syn.g = cond

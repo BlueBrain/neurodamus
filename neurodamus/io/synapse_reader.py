@@ -4,9 +4,30 @@ Module implementing interfaces to the several synapse readers (eg.: synapsetool,
 import logging
 from abc import abstractmethod
 from os import path as Path
-from .connection import SynapseParameters
-from .core import NeurodamusCore as Nd, MPI
-from .utils.logging import log_verbose
+import numpy as np
+
+from ..core import NeurodamusCore as Nd, MPI
+from ..utils.logging import log_verbose
+
+
+class SynapseParameters(object):
+    """Synapse parameters, internally implemented as numpy record
+    """
+    _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F",
+                       "DTC", "synType", "nrrp", "maskValue", "location")  # total: 13
+    _dtype = np.dtype({"names": _synapse_fields,
+                       "formats": ["f8"] * len(_synapse_fields)})
+    empty = np.recarray(0, _dtype)
+
+    def __new__(cls, params):
+        raise NotImplementedError()
+
+    @classmethod
+    def create_array(cls, length):
+        npa = np.recarray(length, cls._dtype)
+        npa.maskValue = -1
+        npa.location = 0.5
+        return npa
 
 
 class SynapseReader(object):

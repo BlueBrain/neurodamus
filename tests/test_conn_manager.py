@@ -3,11 +3,7 @@ import os.path
 from unittest import mock
 
 import pytest
-
-from neurodamus import connection_manager
 from neurodamus.connection_manager import ConnectionSet
-# from neurodamus.connection_manager import SynapseRuleManager
-
 
 SIM_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "simulations"))
 CIRCUIT_PATH = "/gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-2k"
@@ -60,7 +56,7 @@ def test_population_store_order():
 def test_population_get_create_conn(population):
     total = population.count()
     replacement_conn = mock.Mock()  # Replace connection
-    connection_manager.Connection = replacement_conn
+    population._conn_factory = replacement_conn
 
     conn = population.get_or_create_connection(1, 2)
     assert isinstance(conn, _FakeConn)

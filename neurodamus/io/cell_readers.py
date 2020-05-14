@@ -5,9 +5,9 @@ from __future__ import absolute_import
 import logging
 import numpy as np
 from os import path as ospath
-from .core.configuration import ConfigurationError
-from .metype import METypeManager
-from .utils import compat
+from ..core.configuration import ConfigurationError
+from ..metype import METypeManager
+from ..utils import compat
 
 
 class CellReaderError(Exception):

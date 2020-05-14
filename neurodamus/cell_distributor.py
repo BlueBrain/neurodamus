@@ -9,12 +9,12 @@ from io import StringIO
 from os import path as ospath
 import numpy
 
-from . import cell_readers
-from .cell_readers import TargetSpec
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
 from .core.configuration import SimConfig
+from .io import cell_readers
+from .io.cell_readers import TargetSpec
 from .metype import METype
 from .utils import compat
 from .utils.logging import log_verbose
@@ -50,7 +50,91 @@ class NodeFormat(Enum):
     SONATA = 3
 
 
-class CellDistributor(object):
+class CellManagerBase(object):
+
+    def __init__(self, pnm, target_parser):
+        """Initializes CellDistributor
+
+        Args:
+            pnm: The hoc ParallelNetManager object
+            target_parser: the target parser hoc object, to retrieve target cell ids
+
+        """
+        self._pnm = pnm
+        self._target_parser = target_parser
+
+        # These structs are None to mark as un-init'ed
+        self._gidvec = None
+        self._total_cells = None
+        self._cell_list = []
+        self._gid2cell = {}
+
+        self._global_seed = 0
+        self._ionchannel_seed = 0
+
+    # read-only properties
+    pnm = property(lambda self: self._pnm)
+    target_parser = property(lambda self: self._target_parser)
+    local_gids = property(lambda self: self._gidvec)
+    total_cells = property(lambda self: self._total_cells)
+    cell_list = property(lambda self: self._cell_list)
+    cell_refs = property(lambda self: self._pnm.cells)
+    pc = property(lambda self: self._pnm.pc)
+    # Compatibility with neurodamus-core
+    getGidListForProcessor = lambda self: self._gidvec  # for TargetManager, CompMappping
+
+    CellType = None
+    cell_loader = None
+
+    def load_cells(self, conf, load_balancer=None):
+        """A default implementation to load cells"""
+        logging.info("Loading cell parameters...")
+        self._gidvec, cell_infos, _ = self.cell_loader(conf)
+
+        logging.info("Instantiating cells...")
+        for gid in ProgressBar.iter(self._gidvec):
+            cell_info = cell_infos[gid]
+            cell = self.CellType(gid, cell_info)
+            self._store_cell(gid, cell)
+
+    def _init_rng(self):
+        rng_info = Nd.RNGSettings()
+        self._global_seed = rng_info.getGlobalSeed()
+        self._ionchannel_seed = rng_info.getIonChannelSeed()
+        return rng_info
+
+    def finalize(self, gids=None, target=None):
+        """A default implementation for instantiating cells"""
+        self._init_rng()
+        if gids is None:
+            gids = self._gidvec
+        for i, gid in enumerate(gids):
+            gid = int(gid)
+            metype = self._cell_list[i]  # type: METype
+            nc = metype.connect2target(None)
+            self._pnm.set_gid2node(gid, self._pnm.myid)
+            self._pnm.pc.cell(gid, nc)
+
+    def _store_cell(self, gid, cell):
+        self._cell_list.append(cell)
+        self._gid2cell[gid] = cell
+        self._pnm.cells.append(cell.CellRef)
+
+    def __iter__(self):
+        """Iterator over this node GIDs
+        """
+        return iter(self._gidvec)
+
+    def clear_cells(self):
+        """Clear all cells
+        """
+        for cell in self._cell_list:
+            if cell.CellRef:
+                cell.CellRef.clear()
+        self._cell_list.clear()
+
+
+class CellDistributor(CellManagerBase):
     """ Handle assignment of cells to processors.
 
         Instantiated cells are stored locally (.cell_list), while CellRef's
@@ -71,38 +155,16 @@ class CellDistributor(object):
             target_parser: the target parser hoc object, to retrieve target cells' info
 
         """
-        self._pnm = pnm
-        self._target_parser = target_parser
-
-        # These structs are None to mark as un-init'ed
-        self._gidvec = None
-        self._total_cells = None
+        super().__init__(pnm, target_parser)
         # These wont ever be init'ed if not recomputing lb
         self._spgidvec = None   # cell parts gids
         self._binfo = None      # balanceInfo
-
-        self._node_format = None
-
-        self._global_seed = 0
-        self._ionchannel_seed = 0
-
-        self._cell_list = []
-        self._gid2meobj = {}
-        self._gid2metype = {}
+        self._node_format = None  # NCS, Mvd, Sonata...
 
         # create a tmp netcon objref
         if not hasattr(Nd, "nc_"):
             Nd.execute("objref nc_")
 
-    # read-only properties
-    pnm              = property(lambda self: self._pnm)
-    target_parser    = property(lambda self: self._target_parser)
-    local_gids       = property(lambda self: self._gidvec)
-    total_cells      = property(lambda self: self._total_cells)
-    cell_list        = property(lambda self: self._cell_list)
-    pc               = property(lambda self: self._pnm.pc)  # avoid re-fetch hoc attr
-
-    # -
     @mpi_no_errors
     def load_cells(self, run_conf, load_balancer=None):
         """Distribute and load target cells among CPUs.
@@ -179,7 +241,6 @@ class CellDistributor(object):
         logging.info(" => Cells distributed. %d cells in network, %d in rank 0",
                      self._total_cells, len(self._gidvec))
         self._pnm.ncell = self._total_cells
-        cell_refs = self._pnm.cells
         mepath = run_conf["METypePath"]
         morpho_path = SimConfig.morphology_path
         METype.morpho_extension = SimConfig.morphology_ext
@@ -198,10 +259,7 @@ class CellDistributor(object):
                 melabel = self._load_template(me_infos[gid], mepath)
                 cell = METype(gid, mepath, melabel, morpho_path)
 
-            self._gid2metype[gid] = melabel
-            self._cell_list.append(cell)
-            self._gid2meobj[gid] = cell
-            cell_refs.append(cell.CellRef)
+            self._store_cell(gid, cell)
             total_created_cells += 1
 
         global_cells_created = MPI.allreduce(total_created_cells, MPI.SUM)
@@ -237,30 +295,11 @@ class CellDistributor(object):
         Nd.load_hoc(tpl_path)
         return tpl_name
 
-    # -
-    def clear_cells(self):
-        """Clear all cells
-        """
-        for cell in self._cell_list:
-            cell.CellRef.clear()
-        self._cell_list.clear()
-
     # Accessor methods (Keep CamelCase API for compatibility with existing hoc)
     # ----------------
 
     def getMEType(self, gid):
-        return self._gid2meobj[gid]
-
-    def getMETypeFromGid(self, gid):
-        """ Provide the name of the metype which corresponds to a gid \n
-        Returns: String with the metype or None
-        """
-        return self._gid2metype.get(gid)
-
-    def getGidListForProcessor(self):
-        """Get list containing gids / part ids (multisplit) on this cpu.
-        """
-        return self._gidvec
+        return self._gid2cell[gid]
 
     def getCell(self, gid):
         """Retrieve a cell object given its gid.
@@ -287,20 +326,16 @@ class CellDistributor(object):
         else:
             return gid
 
-    def __iter__(self):
-        """Iterator over this node GIDs"""
-        return iter(self._gidvec)
-
     # -
-    def finalize(self, gids):
+    def finalize(self, gids=None, *_):
         """Do final steps to setup the network.\n
         Multisplit will handle gids depending on additional info from self.binfo
         object. Otherwise, normal cells do their finalization
         """
-        rng_info = Nd.RNGSettings()
+        rng_info = self._init_rng()
         pc = self.pc
-        self._global_seed = rng_info.getGlobalSeed()
-        self._ionchannel_seed = rng_info.getIonChannelSeed()
+        if gids is None:
+            gids = self._gidvec
 
         for i, gid in enumerate(gids):
             gid = int(gid)

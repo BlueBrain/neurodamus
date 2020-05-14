@@ -14,9 +14,10 @@ from collections import namedtuple, defaultdict
 
 from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeurodamusCore as Nd
-from .core.configuration import GlobalConfig, RunOptions, SimConfig, ConfigurationError
+from .core.configuration import GlobalConfig, RunOptions, SimConfig
+from .core.configuration import ConfigurationError
 from .cell_distributor import CellDistributor, LoadBalance, LoadBalanceMode
-from .cell_readers import TargetSpec
+from .io.cell_readers import TargetSpec
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
 from .utils import compat
@@ -393,7 +394,7 @@ class Node:
             self._target_parser.targetList, self._cell_distributor)
 
         # Let the CellDistributor object have any final say in the cell objects
-        self._cell_distributor.finalize(self.gidvec)
+        self._cell_distributor.finalize()
 
     # -
     @mpi_no_errors
@@ -425,13 +426,10 @@ class Node:
                 nrn_path, self._target_manager, self._cell_distributor,
                 n_synapse_files, synapse_mode)
 
-        connection_blocks = self._config_parser.parsedConnects
+        connection_blocks = compat.Map(self._config_parser.parsedConnects)
 
         logging.info("Creating circuit connections...")
-        if connection_blocks.count() == 0:
-            self._synapse_manager.connect_all()
-        else:
-            self._create_group_connections()
+        self._create_group_connections()
 
         # Check for additional synapse files.  Now requires a connection block.
         # Continue support for compatibility, but new BlueConfigs should use Projection blocks
@@ -440,11 +438,7 @@ class Node:
             logging.info("Creating connections from Bonus synapse file...")
             bonus_n_synapse_files = int(self._run_conf.get("NumBonusFiles", 1))
             self._synapse_manager.open_synapse_file(bonus_file, bonus_n_synapse_files)
-
-            if connection_blocks.count() == 0:
-                self._synapse_manager.connect_all()
-            else:
-                self._create_group_connections()
+            self._create_group_connections()
 
         # Check for Projection blocks
         if self._config_parser.parsedProjections.count() > 0:
@@ -466,24 +460,24 @@ class Node:
 
                 # Make all the Projection connections if no Connection blocks use
                 # that source. Otherwise create only specified connections
-                src = projection.get("Source")
-                has_connections = src is not None and \
-                                  any(connection_blocks.o(i).get("Source").s == src
-                                      for i in range(int(connection_blocks.count())))
-
-                if has_connections:
-                    self._create_group_connections()
-                else:
-                    self._synapse_manager.connect_all()
+                src = projection.get("Source")  # None will be different
+                has_connections = any(conn.get("Source").s == src
+                                      for conn in connection_blocks.values())
+                self._create_group_connections(force_all=not has_connections)
 
         # Configure all created connections in one go
-        self._configure_connections(self._synapse_manager)
+        self._configure_connections()
 
-    # -
-    def _create_group_connections(self):
+    @mpi_no_errors
+    def _create_group_connections(self, synapse_manager=None, force_all=False):
         """Creates connections according to loaded parameters in 'Connection'
-           blocks of the BlueConfig
+           blocks of the BlueConfig in the currently active ConnectionSet
         """
+        synapse_manager = synapse_manager or self._synapse_manager
+        if force_all or self._config_parser.parsedConnects.count() == 0:
+            synapse_manager.connect_all()
+            return
+
         for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
             conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
             if "Delay" in conn_conf:
@@ -497,16 +491,15 @@ class Node:
             conn_src = conn_conf["Source"]
             conn_dst = conn_conf["Destination"]
             synapse_id = conn_conf.get("SynapseID")
-            created_conns = self._synapse_manager.connect_group(conn_src, conn_dst, synapse_id)
-            if created_conns:
-                logging.info(" * Pathway %s -> %s. [Rank 0]: Created %d connections",
-                             conn_src, conn_dst, created_conns)
+            synapse_manager.connect_group(conn_src, conn_dst, synapse_id)
 
     # -
-    def _configure_connections(self, manager):
+    def _configure_connections(self, conn_manager=None):
         """Configure-only circuit connections according to BlueConfig Connection blocks
         """
         logging.info("Configuring all connections...")
+        conn_manager = conn_manager or self._synapse_manager
+
         for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
             conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
             if "Delay" in conn_conf:
@@ -519,7 +512,7 @@ class Node:
                 log_msg += ":\tconfigure with '{:s}'".format(conn_conf["SynapseConfigure"])
             logging.info(log_msg)
 
-            manager.configure_group(conn_conf)
+            conn_manager.configure_group(conn_conf)
 
     # -
     @mpi_no_errors
@@ -549,7 +542,7 @@ class Node:
         if self._gj_manager is None:
             logging.info("No Gap-junctions found")
             return
-        self._gj_manager.connect_all()
+        self._gj_manager.connect_all(only_sgid_in_target=True)
         # Currently gap junctions are not configured. Future?
         # self._configure_connections(self._gj_manager)
 

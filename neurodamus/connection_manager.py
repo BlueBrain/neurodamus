@@ -12,7 +12,7 @@ from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core.configuration import GlobalConfig, ConfigurationError
 from .connection import Connection, SynapseMode, ReplayMode
-from .synapse_reader import SynapseReader
+from .io.synapse_reader import SynapseReader
 from .utils import compat, bin_search, dict_filter_map
 from .utils.logging import log_verbose
 from .utils.timeit import timeit
@@ -23,10 +23,11 @@ class ConnectionSet(object):
     A dataset of connections.
     Several populations may exist with different seeds
     """
-    def __init__(self, src_id, dst_id):
+    def __init__(self, src_id, dst_id, conn_factory=Connection):
         # Connections indexed by post-gid, then ordered by pre-gid
         self.src_id = src_id
         self.dst_id = dst_id
+        self._conn_factory = conn_factory
         self._connections_map = defaultdict(list)
         self._conn_count = 0
 
@@ -107,7 +108,7 @@ class ConnectionSet(object):
                 if conns[pos].sgid == sgid:
                     return conns[pos]
         # Not found. Create & insert
-        cur_conn = Connection(sgid, tgid, self.src_id, self.dst_id, **kwargs)
+        cur_conn = self._conn_factory(sgid, tgid, self.src_id, self.dst_id, **kwargs)
         conns.insert(pos, cur_conn)
         self._conn_count += 1
         return cur_conn
@@ -207,6 +208,11 @@ class _ConnectionManagerBase(object):
     CONNECTIONS_TYPE = None
     """The type of connections subclasses handle"""
 
+    # Set depending Classes, customizable
+    ConnectionSet = ConnectionSet
+    SynapseReader = SynapseReader
+    conn_factory = Connection
+
     # We declare class variables which might be used in subclass methods
     # Synapses dont require circuit_target but GapJunctions do
     # so the generic insertion validates against target.sgid if defined
@@ -228,7 +234,7 @@ class _ConnectionManagerBase(object):
         self._disabled_conns = defaultdict(list)
 
         self._synapse_reader = None
-        self._local_gids = cell_distributor.getGidListForProcessor()
+        self._local_gids = cell_distributor.local_gids
 
         if ospath.isdir(circuit_path):
             circuit_path = self._find_circuit_file(circuit_path)
@@ -243,7 +249,7 @@ class _ConnectionManagerBase(object):
     def open_synapse_file(self, synapse_file, n_synapse_files=None, src_pop_id=0):
         """Initializes a reader for Synapses"""
         logging.info("Opening Synapse file %s", synapse_file)
-        self._synapse_reader = SynapseReader.create(
+        self._synapse_reader = self.SynapseReader.create(
             synapse_file, self.CONNECTIONS_TYPE, self._local_gids, n_synapse_files)
         self.select_populations(src_pop_id, 0)
         self._unlock_all_connections()  # Allow appending synapses from new sources
@@ -262,7 +268,8 @@ class _ConnectionManagerBase(object):
         """Retrieves a connection set given node src and dst ids"""
         pop = self._populations.get((src_id, dst_id))
         if not pop:
-            pop = self._populations[(src_id, dst_id)] = ConnectionSet(src_id, dst_id)
+            pop = self.ConnectionSet(src_id, dst_id, conn_factory=self.conn_factory)
+            self._populations[(src_id, dst_id)] = pop
         return pop
 
     # NOTE: Several methods use a selector of the connectivity populations
@@ -316,47 +323,27 @@ class _ConnectionManagerBase(object):
                 yield conn
 
     # -
-    def connect_all(self, weight_factor=1, only_gids=None):
+    def connect_all(self, weight_factor=1, only_gids=None, only_sgid_in_target=False):
         """For every gid access its synapse parameters and instantiate
         all synapses.
 
         Args:
             weight_factor: Factor to scale all netcon weights (default: 1)
-            only_gids: Create connections only for the given gids (default: Off)
+            only_gids: Create connections only for these tgids (default: Off)
+            only_sgid_in_target: sgids must belong to the main circuit target
+                This is mostly useful for Gap-Junctions. (default: False)
         """
         conn_options = {'weight_factor': weight_factor,
                         'synapse_mode': self._synapse_mode}
-        _dbg_conn = GlobalConfig.debug_conn
         pop = self._cur_population
-        created_conns_0 = pop.count()
         gids = self._local_gids if only_gids is None else only_gids
-        is_gap_junctions = self._circuit_target is not None
+        src_target_filter = self._circuit_target if only_sgid_in_target else None
 
-        for tgid in ProgressBar.iter(gids):
-            synapses_params = self._synapse_reader.get_synapse_parameters(tgid)
-            cur_conn = None
-            logging.debug("Connecting post neuron a%d: %d synapses",
-                          tgid, len(synapses_params))
-
-            if len(_dbg_conn) == 1 and _dbg_conn[0] == tgid:
-                print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, synapses_params))
-
-            for i, syn_params in enumerate(synapses_params):  # sgids expected sorted
-                sgid = int(syn_params.sgid)
-
-                if is_gap_junctions and not self._circuit_target.completeContains(sgid):
-                    continue
-
-                # When tgid changes cur_conn is also set no None
-                if cur_conn is None or cur_conn.sgid != sgid:
-                    cur_conn = pop.get_or_create_connection(sgid, tgid, **conn_options)
-
-                # NOTE: No need to lock since the whole file is consumed
-                point = self._target_manager.locationToPoint(
-                    tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
-                cur_conn.add_synapse(point, syn_params, i)
-
-        return pop.count() - created_conns_0
+        for sgid, tgid, syns_params, offset in \
+                self._iterate_conn_params(src_target_filter, None, gids, True):
+            cur_conn = pop.get_or_create_connection(sgid, tgid, **conn_options)
+            # Create all synapses. No need to lock since the whole file is consumed
+            self._add_synapses(cur_conn, syns_params, None, offset)
 
     # -
     def connect_group(self, src_target_name, dst_target_name, synapse_type_restrict=None):
@@ -367,53 +354,72 @@ class _ConnectionManagerBase(object):
             dst_target_name (str): The target of the destination cells
             synapse_type_restrict(int): Create only given synType synapses
         """
-        src_target = self._target_manager.getTarget(src_target_name)
-        dst_target = self._target_manager.getTarget(dst_target_name)
         conn_kwargs = {'synapse_mode': self._synapse_mode}
+        pop = self._cur_population
+        src_target = src_target_name and self._target_manager.getTarget(src_target_name)
+        dst_target = dst_target_name and self._target_manager.getTarget(dst_target_name)
 
+        for sgid, tgid, syns_params, offset in self._iterate_conn_params(src_target, dst_target):
+            if sgid == tgid:
+                logging.warning("Making connection within same Gid: %d", sgid)
+            cur_conn = pop.get_or_create_connection(sgid, tgid, **conn_kwargs)
+            if not cur_conn.locked:
+                self._add_synapses(cur_conn, syns_params, synapse_type_restrict, offset)
+                cur_conn.locked = True
+
+    # -
+    def _add_synapses(self, cur_conn, syns_params, syn_type_restrict=None, base_id=0):
+        for i, syn_params in enumerate(syns_params):
+            if syn_type_restrict and syn_params.synType != syn_type_restrict:
+                continue
+            point = self._target_manager.locationToPoint(
+                cur_conn.tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
+            cur_conn.add_synapse(point, syn_params, base_id + i)
+
+    # -
+    def _iterate_conn_params(self, src_target, dst_target, gids=None, show_progress=False):
+        """A generator which loads synapse data and yields tuples(sgid, tgid, synapses)
+
+        Args:
+            src_target: the target to filter the source cells, or None
+            dst_target: the target to filter the destination cells, or None
+            gids: Use given gids, instead of the circuit target cells. Default: None
+            show_progress: Display a progress bar as tgids are processed
+        """
+        if gids is None:
+            gids = self._local_gids
+        if show_progress:
+            gids = ProgressBar.iter(gids)
         _dbg_conn = GlobalConfig.debug_conn
         created_conns_0 = self._cur_population.count()
-        cur_conn = None
 
-        for tgid in self._local_gids:
-            if not dst_target.contains(tgid):
+        for tgid in gids:
+            if dst_target and not dst_target.contains(tgid):
                 continue
 
-            # this cpu owns some or all of the destination gid
+            # Retrieve all synapses for tgid
             syns_params = self._synapse_reader.get_synapse_parameters(tgid)
-            prev_sgid = None
+            cur_i = 0
+            syn_count = len(syns_params)
 
             if len(_dbg_conn) == 1 and _dbg_conn[0] == tgid:
                 print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, syns_params))
 
-            for i, syn_params in enumerate(syns_params):
-                sgid = int(syn_params.sgid)
-                if synapse_type_restrict and syn_params.synType != synapse_type_restrict:
-                    continue
+            while cur_i < syn_count:
+                # Use numpy to get all the synapses of the same gid at once
+                sgid = int(syns_params[cur_i]['sgid'])
+                next_i = numpy.searchsorted(syns_params[cur_i:]['sgid'], sgid+1) + cur_i
+                if src_target is None or src_target.completeContains(sgid):
+                    yield sgid, tgid, syns_params[cur_i:next_i], cur_i
+                cur_i = next_i
 
-                if sgid != prev_sgid:
-                    if not src_target.completeContains(sgid):
-                        continue
-                    if sgid == tgid:
-                        logging.warning("Making connection within same Gid: %d", sgid)
-                    prev_sgid = sgid
-                    if cur_conn:
-                        cur_conn.locked = True
-
-                    cur_conn = self._cur_population.get_or_create_connection(
-                        sgid, tgid, **conn_kwargs)
-
-                if cur_conn.locked:
-                    continue
-
-                point = self._target_manager.locationToPoint(
-                    tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
-                cur_conn.add_synapse(point, syn_params, i)
-
-        if cur_conn:
-            cur_conn.locked = True  # Lock last conn
-
-        return self._cur_population.count() - created_conns_0
+        created_conns = self._cur_population.count() - created_conns_0
+        if created_conns:
+            pathway_repr = "[ALL]"
+            if src_target and dst_target:
+                pathway_repr = "Pathway {} -> {}".format(src_target.name, dst_target.name)
+            logging.info(" * %s. [Rank 0]: Created %d connections",
+                         pathway_repr, created_conns)
 
     # -
     def get_target_connections(self, src_target_name,
@@ -655,16 +661,19 @@ class _ConnectionManagerBase(object):
         compat_file = cls.CIRCUIT_FILENAMES[-1]  # last is the nrn.h5 format
         files_avail = [f for f in cls.CIRCUIT_FILENAMES
                        if ospath.isfile(ospath.join(location, f))]
+        # Custom readers responsible for their formats
+        can_read_newer_formats = SynapseReader.is_syntool_enabled() \
+            if cls.SynapseReader is SynapseReader else True
         if not files_avail:
             raise ConfigurationError(
                 "nrnPath is not a file and could not find any synapse file within.")
-        if not SynapseReader.is_syntool_enabled() and compat_file not in files_avail:
+        if not can_read_newer_formats and compat_file not in files_avail:
             raise ConfigurationError(
                 "Found synapse file requires synapsetool, which is not available")
         if len(files_avail) > 1:
             logging.warning("DEPRECATION: Found several synapse file formats in nrnPath. "
                             "Auto-select is deprecated and will be removed")
-            if not SynapseReader.is_syntool_enabled():
+            if not can_read_newer_formats:
                 files_avail[0] = compat_file
         return ospath.join(location, files_avail[0])
 
