@@ -39,6 +39,7 @@ extern double* vector_vec();
 extern int vector_capacity();
 extern void* vector_arg();
 extern int nrnmpi_myid;
+extern int hoc_is_str_arg(int iarg);
 
 // name of config files
 #define CONFIG_FILENAME_TOTAL_LEN_MAX 32  // Include margin for extra / and \0
@@ -104,6 +105,13 @@ VERBATIM
     // gids to be reported is double vector
     double *gid_vec = vector_vec(vector_arg(11));
     int num_gids = vector_capacity(vector_arg(11));
+    
+    // TODO: Remove once buffer size parameter is passed from neurodamus-py
+    // Default buffer size
+    int buffer_size = 8;
+    if (ifarg(12) && !hoc_is_str_arg(12)) {
+        buffer_size = (int)*getarg(12);
+    }
 
     // copy doible gids to int array
     int *gids = (int*) calloc(num_gids, sizeof(int));
@@ -118,7 +126,7 @@ VERBATIM
 
     // write report information
     FILE *fp = open_file(reportConf, "a");
-    fprintf(fp, "%s %s %s %s %s %s %d %lf %lf %lf %d 8\n",
+    fprintf(fp, "%s %s %s %s %s %s %d %lf %lf %lf %d %d\n",
             hoc_gargstr(1),
             hoc_gargstr(2),
             hoc_gargstr(3),
@@ -129,7 +137,8 @@ VERBATIM
             *getarg(8),
             *getarg(9),
             *getarg(10),
-            num_gids);
+            num_gids,
+            buffer_size);
     fwrite(gids, sizeof(int), num_gids, fp);
     fprintf(fp, "%s", "\n");
     fclose(fp);
