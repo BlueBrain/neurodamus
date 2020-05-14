@@ -2,9 +2,9 @@
 Module which defines and handles METypes config (v5/v6 cells)
 """
 from __future__ import absolute_import, print_function
-from os import path as ospath
 import logging
 from collections import defaultdict
+from os import path as ospath
 from .core.configuration import ConfigurationError
 from .core import NeurodamusCore as Nd
 from .utils.logging import log_verbose
@@ -149,13 +149,9 @@ class METypeItem(object):
         self.holding_current = float(holding_current)
 
 
-class METypeManager(object):
+class METypeManager(dict):
     """ Class to read file with specific METype info and manage the containers for data retrieval
     """
-    __slots__ = ['_me_map']
-
-    def __init__(self):
-        self._me_map = {}  # Map gid->me_type
 
     def load_info(self, run_conf, gidvec, combo_list, morph_list):
         """ Read file with mecombo info, retaining only those that are local to this node
@@ -189,13 +185,14 @@ class METypeManager(object):
 
             for i in combo_ids[meitem.combo_name]:
                 if morph_list[i] == meitem.morph_name:
-                    self._me_map[gidvec[i]] = meitem
+                    self[int(gidvec[i])] = meitem
 
         # confirm that all gids have been matched.
         # Otherwise, print combo + morph info to help find issues
         nerr = 0
         for gid in gidvec:
-            if gid not in self._me_map:
+            gid = int(gid)
+            if gid not in self:
                 logging.error("MEComboInfoFile: No MEInfo for gid %d", gid)
                 nerr += 1
         return -nerr
@@ -205,14 +202,14 @@ class METypeManager(object):
         for idx, gid in enumerate(gidvec):
             th_current = threshold_currents[idx] if threshold_currents is not None else 0
             hd_current = holding_currents[idx] if holding_currents is not None else 0
-            meItem = METypeItem(morph_list[idx], emodel=emodels[idx],
-                                threshold_current=th_current, holding_current=hd_current)
-            self._me_map[gid] = meItem
+            self[int(gid)] = METypeItem(morph_list[idx], emodel=emodels[idx],
+                                        threshold_current=th_current,
+                                        holding_current=hd_current)
 
     def retrieve_info(self, gid):
-        return self._me_map.get(gid) \
+        return self.get(gid) \
             or logging.warning("No info for gid %d found.", gid)
 
     @property
     def gids(self):
-        return self._me_map.keys()
+        return self.keys()

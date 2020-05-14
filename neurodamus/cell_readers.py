@@ -8,7 +8,6 @@ from os import path as ospath
 from .core.configuration import ConfigurationError
 from .metype import METypeManager
 from .utils import compat
-from .utils.logging import log_verbose
 
 
 class CellReaderError(Exception):
@@ -73,30 +72,25 @@ def _ncs_get_cells(ncs_f):
         yield cell_i, _gid, metype
 
 
-def _preprocess_gidvec(gidvec, stride, stride_offset, total_cells):
-    if gidvec is not None:
-        log_verbose("Reading %d target cells out of %d from cell file",
-                    len(gidvec), total_cells)
-        # Gidvec must be ordered we change to numpy
-        gidvec = np.frombuffer(gidvec, dtype="uint32")
-        if stride > 1:
-            gidvec = gidvec[stride_offset::stride]
+def split_round_robin(all_gids, stride, stride_offset, total_cells):
+    """ Splits a numpy ndarray[uint32] round-robin.
+    If the array is None generates new arrays based on the nr of total cells
+    """
+    if all_gids is not None:
+        gidvec = all_gids[stride_offset::stride] if stride > 1 else all_gids
         gidvec.sort()
     else:
-        log_verbose("Reading all %d cells from cell file", total_cells)
-        # circuit.mvd3 uses intrinsic gids starting from 1
-        cell_i = stride_offset + 1
+        cell_i = stride_offset + 1  # gids start from 1
         gidvec = np.arange(cell_i, total_cells + 1, stride, dtype="uint32")
-
     return gidvec
 
 
-def load_ncs(run_conf, gidvec, stride=1, stride_offset=0):
+def load_ncs(run_conf, all_gids, stride=1, stride_offset=0):
     """ Obtain the gids and the metypes for cells in the base circuit.
 
     Args:
         run_conf: the Run secgion from the configuration
-        gidvec: The cells ids to be loaded. If it's None then all the cells shall be loaded
+        all_gids: The cells ids to be loaded. If it's None then all the cells shall be loaded
         stride: If distribution is desired stride can be set to a value > 1
         stride_offset: When using distribution, the offset to be read within the stride
     Returns:
@@ -108,17 +102,14 @@ def load_ncs(run_conf, gidvec, stride=1, stride_offset=0):
 
     with open(ncs_path, "r") as ncs_f:
         total_ncs_cells = _ncs_get_total(ncs_f)
-        if gidvec is None:
-            log_verbose("Using all %d cells from NCS file", total_ncs_cells)
+        if all_gids is None:
             for cellIndex, gid, metype in _ncs_get_cells(ncs_f):
                 if cellIndex % stride == stride_offset:
                     gids.append(gid)
                     gid2mefile[gid] = metype
         else:
-            log_verbose("Reading %d target cells out of %d from NCS file",
-                        len(gidvec), total_ncs_cells)
             # Index desired cells
-            gid2mefile = {int(gid): None for i, gid in enumerate(gidvec)
+            gid2mefile = {int(gid): None for i, gid in enumerate(all_gids)
                           if i % stride == stride_offset}
             gids.extend(gid2mefile.keys())
             for cellIndex, gid, metype in _ncs_get_cells(ncs_f):
@@ -129,7 +120,7 @@ def load_ncs(run_conf, gidvec, stride=1, stride_offset=0):
     return gids, gid2mefile, total_ncs_cells
 
 
-def load_mvd3(run_conf, gidvec, stride=1, stride_offset=0):
+def load_mvd3(run_conf, all_gids, stride=1, stride_offset=0):
     """Load cells from MVD3, required for v6 circuits
     """
     import h5py  # Can be heavy so loaded on demand
@@ -139,7 +130,7 @@ def load_mvd3(run_conf, gidvec, stride=1, stride_offset=0):
     mecombo_ds = mvd["/cells/properties/me_combo"]
     total_mvd_cells = len(mecombo_ds)
 
-    gidvec = _preprocess_gidvec(gidvec, stride, stride_offset, total_mvd_cells)
+    gidvec = split_round_robin(all_gids, stride, stride_offset, total_mvd_cells)
 
     if not len(gidvec):
         # Not enough cells to give this rank a few
@@ -169,7 +160,7 @@ def load_mvd3(run_conf, gidvec, stride=1, stride_offset=0):
     return gidvec, meinfo, total_mvd_cells
 
 
-def load_nodes(run_conf, gidvec, stride=1, stride_offset=0):
+def load_nodes(run_conf, all_gids, stride=1, stride_offset=0):
     """Load cells from SONATA file
     """
     import mvdtool
@@ -182,11 +173,11 @@ def load_nodes(run_conf, gidvec, stride=1, stride_offset=0):
     node_population = TargetSpec(run_conf.get("CircuitTarget")).population
     node_reader = mvdtool.open(pth, node_population or "")
     total_cells = len(node_reader)
-    gidvec = _preprocess_gidvec(gidvec, stride, stride_offset, total_cells)
+    gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
 
     if not len(gidvec):
         # Not enough cells to give this rank a few
-        return compat.Vector('I'), METypeManager(), total_cells
+        return gidvec, METypeManager(), total_cells
 
     meinfo = METypeManager()
     indexes = gidvec - 1  # MVDtool requires 0-indexed ids.
@@ -195,7 +186,6 @@ def load_nodes(run_conf, gidvec, stride=1, stride_offset=0):
 
     morpho_names = node_reader.morphologies(indexes)
     emodels = node_reader.emodels(indexes)
-    gidvec = compat.Vector("I", gidvec)  # gidvec output format
 
     if not node_reader.hasCurrents():
         logging.warning("Sonata file doesn't have currents fields. Assuming 0.")

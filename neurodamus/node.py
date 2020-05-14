@@ -1217,7 +1217,7 @@ class Node:
     def gidvec(self):
         if self._cell_distributor is None or self._cell_distributor._gidvec is None:
             logging.error("No CellDistributor was initialized. Please create a circuit.")
-        return self._cell_distributor.getGidListForProcessor()
+        return self._cell_distributor.local_gids
 
     # -
     def get_target_points(self, target, cell_use_compartment_cast=True):

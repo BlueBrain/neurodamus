@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from enum import Enum
 from io import StringIO
 from os import path as ospath
+import numpy
 
 from . import cell_readers
 from .cell_readers import TargetSpec
@@ -132,9 +133,7 @@ class CellDistributor(object):
         logging.info("Reading Nodes (METype) info from '%s' (format: %s)",
                      celldb_filename, self._node_format.name)
 
-        all_gids = compat.Vector("I")  # Gids handled by this simulation
         total_cells = None   # total cells in this simulation
-        circuit_size = None  # total cells in the circuit
         loader = self.cell_loader_dict[self._node_format]
         target_spec = TargetSpec(run_conf.get("CircuitTarget"))
 
@@ -149,32 +148,29 @@ class CellDistributor(object):
                                          MPI.rank, MPI.size)
 
             # self._binfo has gidlist, but gids can appear multiple times
-            all_gids.extend(sorted(set(int(gid) for gid in self._binfo.gids)))
-
+            all_gids = numpy.unique(self._binfo.gids.as_numpy().astype("uint32"))
             if target_spec:
                 target = self._target_parser.getTarget(target_spec.name)
                 total_cells = int(target.getCellCount())
             else:
                 total_cells = len(all_gids)
             # LOAD
-            self._gidvec, me_infos, _ = loader(run_conf, all_gids)
+            gidvec, me_infos, _ = loader(run_conf, all_gids)
 
         elif target_spec:
             log_verbose("Distributing '%s' target cells Round-Robin", target_spec.name)
             target = self._target_parser.getTarget(target_spec.name)
-            target_gids = target.completegids()
-            all_gids.extend(int(gid) for gid in target_gids)
-            total_cells = int(target_gids.size())
-            self._gidvec, me_infos, _ = loader(run_conf, all_gids, MPI.size, MPI.rank)
+            all_gids = target.completegids().as_numpy().astype("uint32")
+            total_cells = len(all_gids)
+            gidvec, me_infos, _ = loader(run_conf, all_gids, MPI.size, MPI.rank)
 
         else:
             log_verbose("Distributing ALL cells Round-Robin")
-            self._gidvec, me_infos, circuit_size = loader(
-                run_conf, None, MPI.size, MPI.rank)
+            gidvec, me_infos, total_cells = loader(run_conf, None, MPI.size, MPI.rank)
 
-        # First phase done (read node info). Check all good
-        MPI.check_no_errors()
-        self._total_cells = total_cells or circuit_size
+        self._gidvec = compat.Vector("I", gidvec)  # whatever it was, convert to compat V
+        self._total_cells = total_cells
+        MPI.check_no_errors()  # First phase (read mvd) DONE. Check all good
 
         if len(self._gidvec) == 0:
             logging.warning("Rank %d has no cells assigned.", MPI.rank)
