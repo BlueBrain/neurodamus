@@ -56,7 +56,7 @@ class Docs(Command):
 
 
 def setup_package():
-    docs_require = ["Sphinx==3.0.1", "sphinx-limestone-theme", "docs_internal_upload"]
+    docs_require = ["Sphinx==3.0.1", "sphinx-bluebrain-theme", "docs_internal_upload"]
     maybe_docs_reqs = docs_require if "docs" in sys.argv else []
     maybe_test_runner = ['pytest-runner'] if "test" in sys.argv else []
 
@@ -85,7 +85,6 @@ def setup_package():
             ]
         ),
         dependency_links=[
-            "https://bbpteam.epfl.ch/repository/devpi/simple/sphinx-limestone-theme/",
             "https://bbpteam.epfl.ch/repository/devpi/simple/docs_internal_upload"
         ]
     )

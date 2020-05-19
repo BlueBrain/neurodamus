@@ -106,7 +106,7 @@ autodoc_mock_imports = [
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = 'sphinx-limestone-theme'
+html_theme = 'sphinx-bluebrain-theme'
 
 # Static files
 html_static_path = ['_static']
