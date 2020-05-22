@@ -10,7 +10,7 @@ import operator
 import os
 import subprocess
 from os import path as ospath
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 
 from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeurodamusCore as Nd
@@ -1076,8 +1076,7 @@ class Node:
         """Create handlers for "in-simulation" events, like activating delayed
         connections, execute Save-State, etc
         """
-
-        events = []  # Events are function handlers which can be sorted.
+        events = defaultdict(list)  # each key (time) points to a list of handlers
 
         # handle any delayed blocks
         for conn in self._connection_weight_delay_list:
@@ -1095,7 +1094,7 @@ class Node:
                 self._synapse_manager.configure_group_delayed(
                     conn, self.gidvec, conn.get("populationID", 0))
 
-            events.append((conn_start, event_f))
+            events[conn_start].append(event_f)
 
         # Handle Save
         save_time_config = self._run_conf.get("SaveTime")
@@ -1129,13 +1128,13 @@ class Node:
                 self._binreport_helper.savestate()
                 logging.info(" => Save done successfully")
 
-            events.append((tsave, save_f))
+            events[tsave].append(save_f)
 
         elif save_time_config is not None:
             logging.warning("SaveTime IGNORED. Reason: no 'Save' config entry")
 
-        events.sort()
-        return events
+        event_list = [(t, events[t]) for t in sorted(events)]
+        return event_list
 
     # -
     @mpi_no_errors
@@ -1149,7 +1148,7 @@ class Node:
 
         tstart = Nd.t
         tstop = tstop or Nd.tstop
-        events = self._sim_event_handlers(tstart, tstop)
+        event_list = self._sim_event_handlers(tstart, tstop)
 
         # NOTE: _psolve_loop is called among events in order to eventually split long
         # simulation blocks, where one or more report flush(es) can happen. It is a simplified
@@ -1159,9 +1158,10 @@ class Node:
 
         logging.info("Running simulation until t=%d ms", tstop)
         t = tstart  # default if there are no events
-        for t, event in events:
+        for t, events in event_list:
             self._psolve_loop(t)
-            event()
+            for event in events:
+                event()
         # Run until the end
         if t < tstop:
             self._psolve_loop(tstop)

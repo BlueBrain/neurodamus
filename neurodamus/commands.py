@@ -50,12 +50,12 @@ def neurodamus(args=None):
 
     try:
         Neurodamus(config_file, True, log_level, **options).run()
-    except ConfigurationError as e:
-        if MPI._rank == 0:  # Use _raw so that we avoid init
+    except ConfigurationError as e:      # Common, only show error in Rank 0
+        if MPI._rank == 0:               # Use _rank so that we avoid init
             logging.error(str(e))
         return 1
-    except Exception as e:
-        logging.critical(str(e), exc_info=True)
+    except Exception:
+        logging.critical("Unhandled Exception. Terminating...", exc_info=True)
         MPI._pc and MPI.allreduce(1, 1)  # Share error state
         return 1
     return 0
