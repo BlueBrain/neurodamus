@@ -509,14 +509,19 @@ class _ConnectionManagerBase(object):
             logging.warning("No synpases parameters being updated for Targets %s->%s",
                             src_target, dst_target)
             return
+
+        updated_conns = 0
         for conn in self.get_target_connections(src_target, dst_target, gidvec,
                                                 population_ids):
             if weight is not None:
+                updated_conns += 1
                 conn.update_weights(weight)
             if syn_configure is not None:
                 conn.configure_synapses(syn_configure)
             if syn_params:
                 conn.update_synpase_parameters(**syn_params)
+
+        logging.info("Updated %d conns", updated_conns)
 
     def restart_events(self):
         """After restore, restart the artificial events (replay and spont minis)
