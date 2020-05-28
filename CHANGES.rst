@@ -2,9 +2,25 @@
 Change Log
 ==========
 
+Version 1.1.0
+=============
+*May 28, 2020*
+
+*New features*
+  * BBPBGLIB-618 Add Time Measurements featuring support for nested routines
+  * BBPBGLIB-555 Heuristic to auto select the Load Balance mode
+
+*Improvements*
+  * Simplify cell loaders API/implementation using numpy exclusively
+
+*Bug fixes*
+  * Delayed connections: Handle simultaneous events. Avoid last delayed connection from
+    overriding previous ones (late binding issue)
+
+
 Version 1.0.0
 =============
-*Not released*
+*Apr 21, 2020*
 
 *New features / Major changes*
   * Add xopen morphology generation and loading feature
