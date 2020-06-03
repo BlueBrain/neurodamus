@@ -374,7 +374,7 @@ ENDVERBATIM
 }
 
 
-FUNCTION countProperties(){ : string cellname
+FUNCTION countProperties(){
 VERBATIM
 #ifndef DISABLE_SYNTOOL
     const _Strings names_ds = _getFieldNames(getStatePtr());
@@ -384,12 +384,22 @@ ENDVERBATIM
 }
 
 
-FUNCTION countSynapses() { : string cellname
+FUNCTION countSynapses() {
 VERBATIM {
 #ifndef DISABLE_SYNTOOL
     return syn_get_number_synapses(getStatePtr()->file);
 #endif
 }
+ENDVERBATIM
+}
+
+
+FUNCTION selectPopulation() {
+    :param 1: (string) The name of the population to open
+VERBATIM
+#ifndef DISABLE_SYNTOOL
+    return syn_select_population(getStatePtr()->file, gargstr(1));
+#endif
 ENDVERBATIM
 }
 

@@ -7,8 +7,8 @@
  *
  */
 
-// Note: This file is imported from SynapseRuleManager
-// where all dependencies are met
+// Note: This file is imported from SynapseRuleManager where all dependencies are met
+// It is used exclusively in HOC. Neurodamus-py has its own proxy
 
 
 /*****************************************************************************
