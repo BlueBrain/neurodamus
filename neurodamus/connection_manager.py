@@ -221,7 +221,7 @@ class _ConnectionManagerBase(object):
     _local_gids = None
 
     # -
-    def __init__(self, circuit_path, target_manager, cell_distributor,
+    def __init__(self, nrn_path, target_manager, cell_distributor,
                        n_synapse_files=None):
         """Base class c-tor for connections (Synapses & Gap-Junctions)
         """
@@ -236,21 +236,27 @@ class _ConnectionManagerBase(object):
         self._synapse_reader = None
         self._local_gids = cell_distributor.local_gids
 
-        if ospath.isdir(circuit_path):
-            circuit_path = self._find_circuit_file(circuit_path)
-        assert ospath.isfile(circuit_path), "Circuit path doesnt contain valid circuits"
+        file_path, *pop = nrn_path.split(":")  # fspath:population
+        if ospath.isdir(file_path):
+            file_path = self._find_circuit_file(file_path)
+        assert ospath.isfile(file_path), "Circuit path doesnt contain valid circuits"
 
-        self.open_synapse_file(circuit_path, n_synapse_files)
+        synapse_source = ":".join([file_path] + pop)
+        self.open_synapse_file(synapse_source, n_synapse_files)
 
         if GlobalConfig.debug_conn:
             logging.info("Debugging activated for cell/conn %s", GlobalConfig.debug_conn)
 
     # -
-    def open_synapse_file(self, synapse_file, n_synapse_files=None, src_pop_id=0):
+    def open_synapse_file(self, synapse_source, n_synapse_files=None, src_pop_id=0):
         """Initializes a reader for Synapses"""
-        logging.info("Opening Synapse file %s", synapse_file)
+        synapse_file, *pop_name = synapse_source.split(":")  # fspath:population
+        pop_name = pop_name[0] if pop_name else None
+        logging.info("Opening Synapse file %s, population: %s", synapse_file, pop_name)
         self._synapse_reader = self.SynapseReader.create(
             synapse_file, self.CONNECTIONS_TYPE, self._local_gids, n_synapse_files)
+        if pop_name:
+            self._synapse_reader.select_population(pop_name)
         self.select_populations(src_pop_id, 0)
         self._unlock_all_connections()  # Allow appending synapses from new sources
 

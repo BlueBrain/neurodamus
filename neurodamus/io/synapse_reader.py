@@ -132,6 +132,10 @@ class SynapseReader(object):
             cls._syntool_enabled = Nd.SynapseReader().modEnabled()
         return cls._syntool_enabled
 
+    def select_population(self, pop_name):
+        # Should the file format suport multi-population, subclass should override method
+        return NotImplementedError("File format doesnt support multi-populations")
+
 
 class SynReaderSynTool(SynapseReader):
     """ Synapse Reader using synapse tool.
@@ -164,6 +168,9 @@ class SynReaderSynTool(SynapseReader):
             syn_params_mtx[syn_i, :14] = tmpParams.as_numpy()
 
         return conn_syn_params
+
+    def select_population(self, pop_name):
+        self._syn_reader.selectPopulation(pop_name)
 
 
 class SynReaderNRN(SynapseReader):
