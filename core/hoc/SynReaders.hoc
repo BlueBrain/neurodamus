@@ -69,16 +69,16 @@ obfunc loadSynapseParameters() { local gid, nSyn, synIndex  localobj synParamsLi
 
     if(dbg) printf("Loading %d synapses for Post-Neuron %d:\n", nSyn, gid)
     synParamsList = new List()
-    tmpParams = new Vector(13)
+    tmpParams = new Vector(15)
 
     for synIndex=0, nSyn-1 {
-        // getSynapse makes sure capacity is enough (12 elems), only resizing otherwise
+        // getSynapse makes sure capacity is enough (14 elems), only resizing otherwise
         synapseReader.getSynapse(synIndex, tmpParams)
 
         // compensate for minor floating point inaccuracies in the delay
         if (!readGaps) {
             tmpParams.x[1] = int(tmpParams.x[1]/dt + 1e-5)*dt
-            tmpParams.x[12] = synIndex
+            tmpParams.x[14] = synIndex
         }
         if (dbg && synIndex == 0) tmpParams.printf()
 
@@ -157,7 +157,7 @@ obfunc loadSynapseParameters() { local isvalid, gid, ret, nSyn, synIndex  localo
     sprint(cellName, "a%d", gid)
     synParamsList = new List()
     tmpParams = new Vector()
-    tmpParams.resize(14)
+    tmpParams.resize(16)
 
     if (nSynapseFiles > 1) {
         ret = synapseReader.loadData(gid)
@@ -184,12 +184,12 @@ obfunc loadSynapseParameters() { local isvalid, gid, ret, nSyn, synIndex  localo
 
             isvalid = 1
             if( maskFileLoaded ) {
-                tmpParams.x[13] = maskReader.getData( cellName, synIndex, 0 )
-                if( tmpParams.x[13] == 0 ) {
+                tmpParams.x[15] = maskReader.getData( cellName, synIndex, 0 )
+                if( tmpParams.x[15] == 0 ) {
                     isvalid = 0
                 }
             } else {
-                tmpParams.x[13] = -1
+                tmpParams.x[15] = -1
             }
 
             if( isvalid ) {
@@ -212,7 +212,9 @@ obfunc loadSynapseParameters() { local isvalid, gid, ret, nSyn, synIndex  localo
                     tmpParams.x[11] = -1
                 }
 
-                tmpParams.x[12] = synIndex // use row as index for older circuits
+                tmpParams.x[12] = 0  // place holder for u_hill_coefficient
+                tmpParams.x[13] = -1 // place holder for conductance_ratio
+                tmpParams.x[14] = synIndex // use row as index for older circuits
 
                 //compensate for minor floating point inaccuracies in the delay
                 tmpParams.x[1] = int(tmpParams.x[1]/dt + 1e-5)*dt

@@ -154,7 +154,7 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 
 
 // C99 Use #define for constants
-#define ND_FIELD_COUNT 12
+#define ND_FIELD_COUNT 14
 #define ND_PREGID_FIELD_I 0
 
 // The 11 mandatory fields read by neurodamus
@@ -211,7 +211,7 @@ static const char* SYN_FIELDS_NO_RRP = BASE_SYN_FIELDS;
 static const char* SYN_FIELDS = BASE_SYN_FIELDS ", " NRRP_FIELD;
 static const char* SYN_V3_FIELDS = SYN_V2_FIELDS ", " UHILL_FIELD ", " CONDUCTSF_FIELD;
 
-// relative position of the 7 GJ fields into the 12-field neurodamus structure
+// relative position of the 7 GJ fields into the ND_FIELD_COUNT-field neurodamus structure
 // Conductance is fetched last since its optional
 // Why the structure is not packed? Any special meaning for pos 1 and 6?
 static const int ND_GJ_POSITIONS[] = {ND_PREGID_FIELD_I, 2, 3, 4, 5, 7, 8};
@@ -440,7 +440,7 @@ COMMENT
  * Loads synapse data from file into memory, all common fields required by neurodamus
  *
  * @param post_gid. The post gid to filter
- * @param string (optional) fields to load. Default: the 12 fields defined above
+ * @param string (optional) fields to load. Default: the ND_FIELD_COUNT fields defined above
  * @return number of synapses read. -1 if error
  */
 ENDCOMMENT
