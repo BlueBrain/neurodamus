@@ -24,7 +24,6 @@ extern char* gargstr();
 extern char** hoc_pgargstr();
 extern void hoc_assign_str();
 extern double chkarg();
-extern errno;
 
 ENDVERBATIM
 

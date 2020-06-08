@@ -59,14 +59,16 @@ VERBATIM
 #include <signal.h>
 #include <syn2/c_reader.h>
 
+// Internal Enumeration
 #define CONN_SYNAPSES_V1 0
 #define CONN_GAPJUNCTIONS_V1 1
 #define CONN_SYNAPSES_V2 2
 #define CONN_GAPJUNCTIONS_V2 3
-#define CONN_CUSTOM 4
-#define CONN_SYNAPSES_V3 5
+#define CONN_SYNAPSES_V3 4
+#define CONN_CUSTOM 100
 // Due to the inability of accessing the state from non-hoc functions, we pass flags in the fieldset
 #define CONN_REQUIRE_NRRP (1<<16)
+#define CONN_FIELD0_ADD1 (1<<17)
 
 
 /// NEURON utility functions we want to use
@@ -94,7 +96,7 @@ typedef struct {
     s2id_t file;
     _Strings fieldNames;
     // dataset dependent
-    uint64_t tgid;
+    uint64_t gid;  // query gid
     const Syn2Field* fields;
     size_t length;
     int n_fields;
@@ -153,6 +155,18 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 //  n_rrp_vesicles  (required)   [11] | (N/A)
 
 
+// NEUROGLIAL Field Spec  (for reference only)
+// -----------------------------------
+// | Synapse field name     [ND index]
+// -----------------------------------
+//  source_node_id     [query field]
+//  target_node_id               [0]  !! NOTE: target
+//  synapse_id                   [1]
+//  morpho_section_id_pre        [2]
+//  morpho_segment_id_pre        [3]
+//  morpho_offset_segment_pre    [4]
+
+
 // C99 Use #define for constants
 #define ND_FIELD_COUNT 14
 #define ND_PREGID_FIELD_I 0
@@ -202,10 +216,12 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
                       junction_id_pre, \
                       junction_id_post"
 
+
 // Internal functions can't call getStatePtr()
 #define HAS_NRRP() (_syn_has_field(NRRP_FIELD, getStatePtr()))
 #define IS_V2() (_syn_has_field(POST_FRACTION_FIELD, getStatePtr()))
-#define IS_V3() (IS_V2() && _syn_has_field(UHILL_FIELD, getStatePtr()) && _syn_has_field(CONDUCTSF_FIELD, getStatePtr()))
+#define IS_V3() (IS_V2() && _syn_has_field(UHILL_FIELD, getStatePtr()) \
+                         && _syn_has_field(CONDUCTSF_FIELD, getStatePtr()))
 
 static const char* SYN_FIELDS_NO_RRP = BASE_SYN_FIELDS;
 static const char* SYN_FIELDS = BASE_SYN_FIELDS ", " NRRP_FIELD;
@@ -259,7 +275,7 @@ static int _syn_has_field(const char* field_name, ReaderState* state_ptr) {
 
 /// Store table results to internal state object
 static int _store_result(uint64_t tgid, const Syn2Table *tb, ReaderState* state_ptr)  {
-    state_ptr->tgid = tgid;
+    state_ptr->gid = tgid;
     // "tb.fields" might be NULL if there is no data. Ok as long length is zero.
     state_ptr->fields = tb->fields;
     state_ptr->length = tb->length;
@@ -269,19 +285,25 @@ static int _store_result(uint64_t tgid, const Syn2Table *tb, ReaderState* state_
 
 
 /**
- * Loads data from synapse file into internal state
+ * Loads data from synapse file into internal state.
  *
  * @param tgid: The gid of the post cell to load connectivity
+ * @param pre_gid_instead: use given gid to filter by source gid instead
  * @param conn_type: The type of connectivity/fielset to load
  * @param fields: custom string of fields in case FIELDSET_CUSTOM specified
  */
-static int _load_data(uint64_t tgid, int conn_type, const char* fields, ReaderState* state_ptr) {
+static int _load_data(uint64_t tgid,
+                      int pre_gid_instead,
+                      int conn_type,
+                      const char* fields,
+                      ReaderState* state_ptr) {
     if (state_ptr->file == -1)  {
         fprintf(stderr, "[SynReader] Error: File not initialized.\n");
         raise(SIGUSR2);
     }
 
-    switch(conn_type & 0xffff) {
+    const int base_conn_type = conn_type & 0xffff;
+    switch(base_conn_type) {
         case CONN_SYNAPSES_V1:
             fields = (conn_type & CONN_REQUIRE_NRRP)? SYN_FIELDS : SYN_FIELDS_NO_RRP;
             break;
@@ -305,11 +327,14 @@ static int _load_data(uint64_t tgid, int conn_type, const char* fields, ReaderSt
     }
 
     // Already loaded?
-    if (tgid == state_ptr->tgid && conn_type == state_ptr->conn_type) {
+    if (tgid == state_ptr->gid && conn_type == state_ptr->conn_type) {
         return state_ptr->length;
     }
 
-    const Syn2Selection sel = syn_select_post(tgid);
+    // NeuroGlial is probably the only case we query by source gid (of the Glia)
+    const Syn2Selection sel = pre_gid_instead ? syn_select_pre(tgid)
+                                              : syn_select_post(tgid);
+
     const Syn2Table tb = syn_get_property_table(state_ptr->file, fields, sel);
 
     state_ptr->conn_type = conn_type;
@@ -436,8 +461,7 @@ ENDVERBATIM
 
 
 COMMENT
-/**
- * Loads synapse data from file into memory, all common fields required by neurodamus
+/** Loads synapse data from file into memory, all common fields required by neurodamus
  *
  * @param post_gid. The post gid to filter
  * @param string (optional) fields to load. Default: the ND_FIELD_COUNT fields defined above
@@ -449,12 +473,11 @@ VERBATIM
 #ifndef DISABLE_SYNTOOL
     uint64_t tgid = (uint64_t) *getarg(1) - 1;  // 0 based
     const char* fields = ifarg(2)? gargstr(2): NULL;
-    ReaderState* state_ptr = getStatePtr();
     int fieldset = (fields != NULL)? CONN_CUSTOM
                    : IS_V3()? CONN_SYNAPSES_V3
                    : IS_V2()? CONN_SYNAPSES_V2
                    : CONN_SYNAPSES_V1 + (HAS_NRRP()? CONN_REQUIRE_NRRP : 0);
-    return _load_data(tgid, fieldset, fields, state_ptr);
+    return _load_data(tgid, 0, fieldset | CONN_FIELD0_ADD1, fields, getStatePtr());
 #else
     fprintf(stderr, "[SynReader] Error: Neurodamus compiled without SYNTOOL\n");
     raise(SIGUSR1);
@@ -472,10 +495,9 @@ VERBATIM
 #ifndef DISABLE_SYNTOOL
     uint64_t tgid = (uint64_t) *getarg(1) - 1;  // 0 based
     const char* fields = ifarg(2)? gargstr(2): NULL;
-    ReaderState* state_ptr = getStatePtr();
     int fieldset = (fields != NULL)? CONN_CUSTOM
                    : IS_V2()? CONN_GAPJUNCTIONS_V2 : CONN_GAPJUNCTIONS_V1;
-    return _load_data(tgid, fieldset, fields, state_ptr);
+    return _load_data(tgid, 0, fieldset | CONN_FIELD0_ADD1, fields, getStatePtr());
 #else
     fprintf(stderr, "[SynReader] Error: Neurodamus compiled without SYNTOOL\n");
     raise(SIGUSR1);
@@ -486,12 +508,34 @@ ENDVERBATIM
 
 
 COMMENT
-/**
- * Retrieve the value for an attribute of the active dataset.
- * Expected to contain only one value of double type
+/** Load a custom set of fields from the synapse file.
  *
- * @param synapse_i The index of the synapse to retrieve
- * @param vector The vector to hold the result data
+ * @param 1: (double) The gid to query by, normally target gid
+ * @param 2: (string) Fields
+ * @param 3: (optional, bool) Query by source gid instead of target
+ */
+ENDCOMMENT
+FUNCTION loadSynapseCustom() {
+VERBATIM
+#ifndef DISABLE_SYNTOOL
+    const uint64_t gid = (uint64_t) *getarg(1) - 1;  // 0 based
+    const char* const fields = gargstr(2);
+    const int pre_gid_instead = (ifarg(3) && *getarg(3));
+    // If first field is a GID then activate ADD1
+    int fieldset = CONN_CUSTOM
+        + ((strncmp(fields, "connected_neurons_", 18) == 0)? CONN_FIELD0_ADD1 : 0);
+    return _load_data(gid, pre_gid_instead, fieldset, fields, getStatePtr());
+#endif
+ENDVERBATIM
+}
+
+
+
+COMMENT
+/** Retrieve one synape data (row) from the loaded dataset
+ *
+ * @param 1 The index of the synapse to retrieve
+ * @param 2 The vector to hold the result data
  */
 ENDCOMMENT
 FUNCTION getSynapse() {
@@ -503,7 +547,7 @@ VERBATIM
         raise(SIGUSR2);
     }
 
-    ReaderState* state_ptr = getStatePtr();
+    ReaderState* const state_ptr = getStatePtr();
 
     if (_syn_is_empty(state_ptr)) {
         fprintf(stderr, "[SynReader] Error: No synapse data. Please load synapses first.\n");
@@ -514,9 +558,9 @@ VERBATIM
     unsigned int row = *getarg(1);
     void* xd = vector_arg(2);
 
-    const int loaded_conn_type = state_ptr->conn_type;
+    const int loaded_conn_type = state_ptr->conn_type & 0xffff;
     const int n_fields = state_ptr->n_fields;
-    const Syn2Field* fields = state_ptr->fields;
+    const Syn2Field* const fields = state_ptr->fields;
 
     // resize if too small
     if (vector_capacity(xd) < ND_FIELD_COUNT) {
@@ -556,10 +600,11 @@ VERBATIM
         }
     }
 
-    // pre-gid (field 0) must be incremented by 1 for neurodamus compat
-    if(loaded_conn_type != CONN_CUSTOM) {
-        out_buf[ND_PREGID_FIELD_I] += 1;
+    // pre/post-gid (field 0) must be incremented by 1 for neurodamus compat
+    if(state_ptr->conn_type & CONN_FIELD0_ADD1) {
+        out_buf[0] += 1;
     }
+
     return 0;
 #endif
 ENDVERBATIM
@@ -569,10 +614,8 @@ ENDVERBATIM
 
 VERBATIM
 /** not executed in coreneuron and hence empty stubs sufficient */
-
 static void bbcore_write(double* x, int* d, int* xx, int* offset, _threadargsproto_) {
 }
-
 static void bbcore_read(double* x, int* d, int* xx, int* offset, _threadargsproto_) {
 }
 ENDVERBATIM
