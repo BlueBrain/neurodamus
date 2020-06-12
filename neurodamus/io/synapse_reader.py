@@ -4,7 +4,6 @@ Module implementing interfaces to the several synapse readers (eg.: synapsetool,
 import logging
 from abc import abstractmethod
 from os import path as Path
-from scipy.optimize import fsolve
 import numpy as np
 
 from ..core import NeurodamusCore as Nd, MPI
@@ -15,8 +14,6 @@ from ..utils.logging import log_verbose
 class SynapseParameters(object):
     """Synapse parameters, internally implemented as numpy record
     """
-    _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F",
-                       "DTC", "synType", "nrrp", "maskValue", "location")  # total: 13
     _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F",
                        "DTC", "synType", "nrrp",
                        "u_hill_coefficient", "conductance_ratio",
@@ -44,14 +41,11 @@ class SynapseReader(object):
     SYNAPSES = 0
     GAP_JUNCTIONS = 1
 
-    def __init__(self, src, conn_type, syn_reader, has_nrrp, *args, **kw):
-        assert conn_type in (self.SYNAPSES, self.GAP_JUNCTIONS), "conn_type can only be Syn or Gap"
-        assert syn_reader is not None, "syn_reader must not be None"
+    def __init__(self, src, conn_type, population=None, *_, **kw):
         self._conn_type = conn_type
-        self._syn_reader = syn_reader
-        self._has_nrrp = has_nrrp
         self._ca_concentration = SimConfig.extracellular_calcium
         self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
+        self._open_file(src, population, kw.get("verbose", False))
 
     def get_synapse_parameters(self, gid):
         """Obtains the synapse parameters record for a given gid.
@@ -83,6 +77,7 @@ class SynapseReader(object):
             return
         if not np.any(syn_params.u_hill_coefficient):
             return
+        from scipy.optimize import fsolve
 
         def hill(ca_conc, y_max, K_half):
             return y_max*ca_conc**4/(K_half**4 + ca_conc**4)
@@ -99,28 +94,32 @@ class SynapseReader(object):
                     extra_cellular_calcium)
         syn_params.U *= scale_factors
 
+    @abstractmethod
+    def _open_file(self, src, population, verbose=False):
+        """Initializes the reader, opens the synapse file
+        """
+
+    @abstractmethod
     def has_nrrp(self):
         """Checks whether source data has the nrrp field.
         """
-        if self._has_nrrp is None:
-            raise NotImplementedError("Uninitialized _has_nrrp field")
-        return self._has_nrrp
 
     @classmethod
-    def create(cls, syn_src, conn_type=SYNAPSES, *args, **kw):
+    def create(cls, syn_src, conn_type=SYNAPSES, population=None, *args, **kw):
         """Instantiates a synapse reader, giving preference to SynReaderSynTool
         """
         # If create called from this class then FACTORY, try SynReaderSynTool
         if cls is SynapseReader:
+            kw["verbose"] = (MPI.rank == 0)
             if cls.is_syntool_enabled():
                 log_verbose("[SynReader] Using new-gen SynapseReader.")
-                return SynReaderSynTool(syn_src, conn_type, verbose=(MPI.rank == 0))
+                return SynReaderSynTool(syn_src, conn_type, population, **kw)
             else:
                 if not syn_src.endswith(".h5"):
                     raise SynToolNotAvail(
                         "Can't load new synapse formats without syntool. File: {}".format(syn_src))
                 logging.info("[SynReader] Attempting legacy hdf5 reader.")
-                return SynReaderNRN(syn_src, conn_type, *args, **kw)
+                return SynReaderNRN(syn_src, conn_type, None, *args, **kw)
         else:
             return cls(args, conn_type, *args, **kw)
 
@@ -132,21 +131,17 @@ class SynapseReader(object):
             cls._syntool_enabled = Nd.SynapseReader().modEnabled()
         return cls._syntool_enabled
 
-    def select_population(self, pop_name):
-        # Should the file format suport multi-population, subclass should override method
-        return NotImplementedError("File format doesnt support multi-populations")
-
 
 class SynReaderSynTool(SynapseReader):
     """ Synapse Reader using synapse tool.
         Currently it uses the neuron NMODL interface.
     """
-    def __init__(self, syn_source, conn_type, verbose=False):
-        # Instantiate the NMODL reader
-        reader = Nd.SynapseReader(syn_source, verbose)
+    def _open_file(self, syn_src, population, verbose=False):
+        reader = self._syn_reader = Nd.SynapseReader(syn_src, verbose)
         if not reader.modEnabled():
             raise SynToolNotAvail("SynapseReader support not available.")
-        SynapseReader.__init__(self, syn_source, conn_type, reader, reader.hasNrrpField())
+        if population:
+            reader.selectPopulation(population)
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader
@@ -169,31 +164,41 @@ class SynReaderSynTool(SynapseReader):
 
         return conn_syn_params
 
-    def select_population(self, pop_name):
-        self._syn_reader.selectPopulation(pop_name)
+    def has_nrrp(self):
+        return self._syn_reader.hasNrrpField()
 
 
 class SynReaderNRN(SynapseReader):
     """ Synapse Reader for NRN format only, using the hdf5_reader mod.
     """
-    def __init__(self, syn_src, conn_type, local_gids, n_synapse_files, verbose=False):
+    def __init__(self,
+                 syn_src, conn_type, population=None,
+                 n_synapse_files=1, local_gids=(),  # Specific to NRNReader
+                 *_, **kw):
         if Path.isdir(syn_src):
             syn_src = Path.join(syn_src, 'nrn.h5')
         # Hdf5 reader doesnt do checks, failing badly (and crypticly) later
         if not Path.isfile(syn_src) and not Path.isfile(syn_src + ".1"):
             raise RuntimeError("NRN synapses file not found: " + syn_src)
 
-        reader = Nd.HDF5Reader(syn_src, n_synapse_files)
-        self.nrn_version = reader.checkVersion()
-        self._n_synapse_files = n_synapse_files
-        SynapseReader.__init__(self, syn_src, conn_type, reader, self.nrn_version > 4)
+        # Generic init now that we know the file
+        self._n_synapse_files = n_synapse_files  # needed during init
+        SynapseReader.__init__(self, syn_src, conn_type, population, **kw)
 
         if n_synapse_files > 1:
-            # excg-location requires true vector
-            vec = Nd.Vector(len(local_gids))
+            vec = Nd.Vector(len(local_gids))  # excg-location requires true vector
             for num in local_gids:
                 vec.append(num)
-            reader.exchangeSynapseLocations(vec)
+            self._syn_reader.exchangeSynapseLocations(vec)
+
+    def _open_file(self, syn_src, population, verbose=False):
+        self._syn_reader = Nd.HDF5Reader(syn_src, self._n_synapse_files)
+        self.nrn_version = self._syn_reader.checkVersion()
+        if population:
+            raise RuntimeError("HDF5Reader doesn't support Populations.")
+
+    def has_nrrp(self):
+        return self.nrn_version > 4
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader
@@ -209,6 +214,7 @@ class SynReaderNRN(SynapseReader):
             return SynapseParameters.empty
 
         conn_syn_params = SynapseParameters.create_array(nrow)
+        has_nrrp = self.has_nrrp()
 
         for i in range(nrow):
             params = conn_syn_params[i]
@@ -223,12 +229,12 @@ class SynReaderNRN(SynapseReader):
             params[8] = reader.getData(cell_name, i, 11)  # F
             params[9] = reader.getData(cell_name, i, 12)  # DTC
             params[10] = reader.getData(cell_name, i, 13)  # isynType
-            if self._has_nrrp:
+            if has_nrrp:
                 params[11] = reader.getData(cell_name, i, 17)  # nrrp
             else:
                 params[11] = -1
 
-            # place holder for u_hill_coefficient and conductance_ratio, not supported by HDF5Reader
+            # placeholder for u_hill_coefficient and conductance_ratio, not supported by HDF5Reader
             params[12] = 0
             params[13] = -1
 

@@ -252,11 +252,13 @@ class _ConnectionManagerBase(object):
         """Initializes a reader for Synapses"""
         synapse_file, *pop_name = synapse_source.split(":")  # fspath:population
         pop_name = pop_name[0] if pop_name else None
+
         logging.info("Opening Synapse file %s, population: %s", synapse_file, pop_name)
         self._synapse_reader = self.SynapseReader.create(
-            synapse_file, self.CONNECTIONS_TYPE, self._local_gids, n_synapse_files)
-        if pop_name:
-            self._synapse_reader.select_population(pop_name)
+            synapse_file, self.CONNECTIONS_TYPE, pop_name,
+            n_synapse_files, self._local_gids  # Used eventually by NRN reader
+        )
+
         self.select_populations(src_pop_id, 0)
         self._unlock_all_connections()  # Allow appending synapses from new sources
 
