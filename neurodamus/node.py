@@ -58,6 +58,8 @@ class Node:
             self._corenrn_conf = _sim_config.core_config
             self._binreport_helper = Nd.BinReportHelper(Nd.dt, True) \
                 if _sim_config.runNeuron() else None
+            self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True) \
+                if _sim_config.runNeuron() else None
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
             MPI.check_no_errors()  # Ensure no rank terminated unexpectedly
 
@@ -800,7 +802,7 @@ class Node:
                 rep_conf["Unit"],
                 rep_conf["Format"],
                 rep_conf["Dt"],
-                rep_conf["StartTime"],
+                start_time,
                 end_time,
                 self._output_root,
                 electrode,
@@ -859,9 +861,12 @@ class Node:
             reporting_buffer_size = self._run_conf.get("ReportingBufferSize")
             if reporting_buffer_size is not None:
                 self._binreport_helper.set_max_buffer_size_hint(reporting_buffer_size)
+                self._sonatareport_helper.set_max_buffer_size_hint(reporting_buffer_size)
 
             # once all reports are created, we finalize the communicator for any bin reports
             self._binreport_helper.make_comm()
+            self._sonatareport_helper.make_comm()
+            self._sonatareport_helper.prepare_datasets()
 
         # electrode manager is no longer needed. free the memory
         if self._elec_manager is not None:
@@ -1118,6 +1123,7 @@ class Node:
                 if save_time_config is None:
                     log_verbose("Clearing model prior to final save")
                     self._binreport_helper.flush()
+                    self._sonatareport_helper.flush()
                     self.clear_model()
 
                 self.dump_cell_config()
@@ -1203,6 +1209,8 @@ class Node:
             bbss.ignore()
             if self._binreport_helper:
                 self._binreport_helper.clear()
+            if self._sonatareport_helper:
+                self._sonatareport_helper.clear()
 
         Node.__init__(self, None, None)  # Reset vars
 
@@ -1260,6 +1268,9 @@ class Node:
                 with open(outfile, "a") as f:
                     for i, gid in enumerate(pnm.idvec):
                         f.write("%.3f\t%d\n" % (pnm.spikevec.x[i], gid))
+
+        # Write spikes in SONATA format
+        self._sonatareport_helper.write_spikes(pnm.spikevec, pnm.idvec, self._output_root)
 
     def dump_cell_config(self):
         if not self._pr_cell_gid:
