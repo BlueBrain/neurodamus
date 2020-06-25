@@ -28,6 +28,7 @@ class SynapseParameters(object):
     @classmethod
     def create_array(cls, length):
         npa = np.recarray(length, cls._dtype)
+        npa.conductance_ratio = -1  # set to -1 (not-set). 0 is meaningful
         npa.maskValue = -1
         npa.location = 0.5
         return npa
@@ -136,6 +137,9 @@ class SynReaderSynTool(SynapseReader):
     """ Synapse Reader using synapse tool.
         Currently it uses the neuron NMODL interface.
     """
+    SYNREADER_MOD_NFIELDS_DEFAULT = 14
+    _has_warned_field_count_mismatch = False
+
     def _open_file(self, syn_src, population, verbose=False):
         reader = self._syn_reader = Nd.SynapseReader(syn_src, verbose)
         if not reader.modEnabled():
@@ -153,14 +157,23 @@ class SynReaderSynTool(SynapseReader):
 
         conn_syn_params = SynapseParameters.create_array(nrow)
         syn_params_mtx = conn_syn_params.view(('f8', len(conn_syn_params.dtype)))
-        tmpParams = Nd.Vector(14)
-        # initialize conductance_ratio to -1 as 0 is meaningful for this parameter
-        tmpParams[13] = -1
+        tmpParams = Nd.Vector(self.SYNREADER_MOD_NFIELDS_DEFAULT)
+
+        # Do checks for the matching of the record size
+        reader.getSynapse(0, tmpParams)
+        record_size = tmpParams.size()
+        supported_nfields = len(conn_syn_params.dtype) - 2  # non-mod fields: mask and location
+        n_fields = min(record_size, supported_nfields)
+        if supported_nfields < record_size and not self._has_warned_field_count_mismatch:
+            logging.warning("SynapseReader records are %d fields long while neurodamus-py "
+                            "only recognizes %d. Update neurodamus-py to use them.",
+                            record_size, supported_nfields)
+            SynReaderSynTool._has_warned_field_count_mismatch = True
 
         for syn_i in range(nrow):
             reader.getSynapse(syn_i, tmpParams)
             # as_numpy() shares memory to ndarray[double] -> can be copied (assigned) to the view
-            syn_params_mtx[syn_i, :14] = tmpParams.as_numpy()
+            syn_params_mtx[syn_i, :n_fields] = tmpParams.as_numpy()[:n_fields]
 
         return conn_syn_params
 
