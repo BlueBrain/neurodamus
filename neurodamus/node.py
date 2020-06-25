@@ -454,7 +454,9 @@ class Node:
                 if projection.get("Type") == "GapJunction":
                     continue
 
-                nrn_path = self._find_projection_file(projection["Path"])
+                proj_path, *pop_name = projection["Path"].split(":")
+                nrn_path = self._find_projection_file(proj_path)
+                nrn_path = ":".join([nrn_path] + pop_name)
 
                 # Temporarily patch for population IDs in BlueConfig
                 pop_id = int(projection.get("PopulationID", 0))
