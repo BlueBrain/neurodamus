@@ -61,6 +61,8 @@ class Node:
             self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True) \
                 if _sim_config.runNeuron() else None
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
+            self._corenrn_buff_size = self._run_conf["ReportingBufferSize"] \
+                if "ReportingBufferSize" in self._run_conf else 8
             MPI.check_no_errors()  # Ensure no rank terminated unexpectedly
 
         self._target_manager = None
@@ -75,6 +77,7 @@ class Node:
         self._gj_manager = None        # type: GapJunctionManager
         self._connection_weight_delay_list = []
         self._jumpstarters = []
+        self._default_population = 'All'
 
     #
     # public 'read-only' properties - object modification on user responsibility
@@ -796,8 +799,18 @@ class Node:
             electrode = self._elec_manager.getElectrode(rep_conf["Electrode"]) \
                 if not self._corenrn_conf and "Electrode" in rep_conf else None
 
+            name = rep_conf["Target"]
+            if name and ':' in name:
+                population_name, target_name = name.split(':')
+            else:
+                target_name = name
+                population_name = self._default_population
+
+            logging.info(" Population: %s, Target: %s", population_name, target_name)
+
             rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
-                                              "start, end, output_dir, electrode, scaling, isc")(
+                                    "start, end, output_dir, electrode, scaling, isc, \
+                                     population_name")(
                 rep_name,
                 rep_type,  # rep type is case sensitive !!
                 rep_conf["ReportOn"],
@@ -809,18 +822,18 @@ class Node:
                 self._output_root,
                 electrode,
                 rep_conf.get("Scaling"),
-                rep_conf.get("ISC", "")
+                rep_conf.get("ISC", ""),
+                population_name
             )
-
-            target_name = rep_conf["Target"]
 
             if self._corenrn_conf and MPI.rank == 0:
                 # Init report config
                 ptarget = self._target_parser.getTarget(target_name)
                 self._corenrn_conf.write_report_config(
-                    rep_name, target_name, rep_type, rep_params.report_on, rep_params.unit,
+                    rep_name, name, rep_type, rep_params.report_on, rep_params.unit,
                     rep_params.format, ptarget.isCellTarget(), rep_params.dt, rep_params.start,
-                    rep_params.end, ptarget.completegids(), self._output_root)
+                    rep_params.end, ptarget.completegids(), self._corenrn_buff_size,
+                    population_name)
 
             if not self._target_manager:
                 # When restoring with coreneuron we dont even need to initialize reports
@@ -857,6 +870,10 @@ class Node:
             raise ConfigurationError("%d reporting errors detected. Terminating" % (n_errors,))
 
         MPI.check_no_errors()
+
+        if self._corenrn_conf:
+            self._corenrn_conf.write_spike_population(self._target_spec.population or
+                                                      self._default_population)
 
         if not self._corenrn_conf:
             # Report Buffer Size hint in MB.
@@ -1272,7 +1289,11 @@ class Node:
                         f.write("%.3f\t%d\n" % (pnm.spikevec.x[i], gid))
 
         # Write spikes in SONATA format
-        self._sonatareport_helper.write_spikes(pnm.spikevec, pnm.idvec, self._output_root)
+        if self._target_spec.population:
+            self._sonatareport_helper.write_spikes(pnm.spikevec, pnm.idvec, self._output_root,
+                                                   self._target_spec.population)
+        else:
+            self._sonatareport_helper.write_spikes(pnm.spikevec, pnm.idvec, self._output_root)
 
     def dump_cell_config(self):
         if not self._pr_cell_gid:
