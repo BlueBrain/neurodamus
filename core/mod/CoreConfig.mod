@@ -105,13 +105,6 @@ VERBATIM
     // gids to be reported is double vector
     double *gid_vec = vector_vec(vector_arg(11));
     int num_gids = vector_capacity(vector_arg(11));
-    
-    // TODO: Remove once buffer size parameter is passed from neurodamus-py
-    // Default buffer size
-    int buffer_size = 8;
-    if (ifarg(12) && !hoc_is_str_arg(12)) {
-        buffer_size = (int)*getarg(12);
-    }
 
     // copy doible gids to int array
     int *gids = (int*) calloc(num_gids, sizeof(int));
@@ -126,7 +119,7 @@ VERBATIM
 
     // write report information
     FILE *fp = open_file(reportConf, "a");
-    fprintf(fp, "%s %s %s %s %s %s %d %lf %lf %lf %d %d\n",
+    fprintf(fp, "%s %s %s %s %s %s %d %lf %lf %lf %d %d %s\n",
             hoc_gargstr(1),
             hoc_gargstr(2),
             hoc_gargstr(3),
@@ -138,7 +131,8 @@ VERBATIM
             *getarg(9),
             *getarg(10),
             num_gids,
-            buffer_size);
+            (int)*getarg(12),
+            hoc_gargstr(13));
     fwrite(gids, sizeof(int), num_gids, fp);
     fprintf(fp, "%s", "\n");
     fclose(fp);
@@ -198,6 +192,21 @@ VERBATIM
 ENDVERBATIM
 }
 
+: Write report count as first line
+PROCEDURE write_spike_population() {  : str population_name
+VERBATIM
+#ifndef CORENEURON_BUILD
+    if(nrnmpi_myid > 0) {
+        return 0;
+    }
+    char* filename = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
+    sprintf(filename, "%s/%s", outputdir, REPORT_CONFIG_FILE);
+    FILE *fp = open_file(filename, "a");
+    fprintf(fp, "%s\n", hoc_gargstr(1));
+    fclose(fp);
+#endif
+ENDVERBATIM
+}
 
 PROCEDURE psolve_core() {
 VERBATIM

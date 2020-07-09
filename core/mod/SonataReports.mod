@@ -127,6 +127,9 @@ VERBATIM {
     if(ifarg(1))
     {
         char population_name[256] = "All";
+        if (ifarg(2)) {
+            sprintf(population_name,"%s", gargstr(2));
+        }
         unsigned long node_id = (unsigned long) *getarg(1);
         sonata_add_node(data->rptName_, population_name, node_id);
     }
@@ -155,6 +158,9 @@ VERBATIM {
         int node_id = (int) *getarg(3);
         double* voltage = hoc_pgetarg(1);
         char population_name[256] = "All";
+        if (ifarg(4)) {
+            sprintf(population_name,"%s", gargstr(4));
+        }
         sonata_add_element(data->rptName_, population_name, node_id, element_id, voltage);
     }
 #endif

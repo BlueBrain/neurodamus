@@ -193,6 +193,11 @@ VERBATIM
     if (ifarg(3)) {
         sprintf(output_dir,"%s", gargstr(3));
     }
+
+    if (ifarg(4)) {
+        sprintf(population_name,"%s", gargstr(4));
+    }
+
     int* int_gid = malloc(num_gids * sizeof(int));
     int i;
     for(i=0; i<num_spikes; ++i) {

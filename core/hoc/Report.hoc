@@ -13,7 +13,7 @@ begintemplate Report
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-strdef reportName, reportType,  reportOn, unit, format, outputDir, iscParam
+strdef reportName, reportType, reportOn, unit, format, outputDir, iscParam, population_name
 objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, memory_report, activeProcess, electrode
 
 external cvode
@@ -46,6 +46,7 @@ public restartALUs
  * @param $o10 Electrode - the electrode object (lookupTableV2)
  * @param $o11 Scaling option to apply to Summation reports: 'None' disables all scaling, 'Area' (or nil) converts density to area, electrodeName - TBD
  * @param $s12 ISC parameter string
+ * @param $s13 Population name of the SONATA report
  */
 proc init() { localobj nil
     reportName = $s1
@@ -108,6 +109,7 @@ proc init() { localobj nil
 
     // TODO: clean up excessive number of arguments to this constructor.  Also it makes no sense to have a mandatory arg anfter an optional arg.
     iscParam = $s12
+    population_name = $s13
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -219,7 +221,11 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
         rpt = -1
         if (0 == strcmp( format, "SONATA")) {
             rec = new SonataReport( 0.5, reportName, outputDir, startTime, endTime, reportDt, "compartment")
-            rec.AddNode($o1.gid)
+            if( 0 != strcmp(population_name, "")) {
+                rec.AddNode($o1.gid, population_name)
+            } else {
+                rec.AddNode($o1.gid)
+            }
         } else if (0 == strcmp( format, "Bin") && 0 == strcmp(iscParam, "")) {
             rec = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit )
         } else {
@@ -321,7 +327,11 @@ proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
             }
             //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
             if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
-                sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d )", reportOn, x, sectionNo( $o1 ), $o1.gid)
+                if( 0 != strcmp(population_name, "")) {
+                    sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d, population_name)", reportOn, x, sectionNo( $o1 ), $o1.gid)
+                } else {
+                    sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d)", reportOn, x, sectionNo( $o1 ), $o1.gid)
+                }
                 execute(tstr, this)
             } else if( 0 == strcmp(format, "Memory") ) {
                 // in-memory report
