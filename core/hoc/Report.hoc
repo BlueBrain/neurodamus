@@ -109,7 +109,10 @@ proc init() { localobj nil
 
     // TODO: clean up excessive number of arguments to this constructor.  Also it makes no sense to have a mandatory arg anfter an optional arg.
     iscParam = $s12
-    population_name = $s13
+    population_name = ""
+    if( numarg() >= 13 ) {
+        population_name = $s13
+    }
 }
 
 //-----------------------------------------------------------------------------------------------

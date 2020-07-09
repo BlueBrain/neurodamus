@@ -106,6 +106,18 @@ VERBATIM
     double *gid_vec = vector_vec(vector_arg(11));
     int num_gids = vector_capacity(vector_arg(11));
 
+    // Default buffer size
+    int buffer_size = 8;
+    if (ifarg(12) && !hoc_is_str_arg(12)) {
+        buffer_size = (int)*getarg(12); 
+    }
+
+    // Default population name
+    char population_name[256] = "All";
+    if (ifarg(13)) {
+        sprintf(population_name,"%s", hoc_gargstr(13));
+    }
+
     // copy doible gids to int array
     int *gids = (int*) calloc(num_gids, sizeof(int));
     int i;
@@ -131,8 +143,8 @@ VERBATIM
             *getarg(9),
             *getarg(10),
             num_gids,
-            (int)*getarg(12),
-            hoc_gargstr(13));
+            buffer_size,
+            population_name);
     fwrite(gids, sizeof(int), num_gids, fp);
     fprintf(fp, "%s", "\n");
     fclose(fp);
