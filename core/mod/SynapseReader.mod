@@ -555,22 +555,23 @@ VERBATIM
     }
 
     int i, dst_i;
-    unsigned int row = *getarg(1);
-    void* xd = vector_arg(2);
+    const unsigned int row = *getarg(1);
+    void* const xd = vector_arg(2);
 
     const int loaded_conn_type = state_ptr->conn_type & 0xffff;
     const int n_fields = state_ptr->n_fields;
     const Syn2Field* const fields = state_ptr->fields;
-
+    const int target_vec_size = (loaded_conn_type == CONN_CUSTOM)? n_fields
+                                                                 : ND_FIELD_COUNT;
     // resize if too small
-    if (vector_capacity(xd) < ND_FIELD_COUNT) {
-        vector_resize(xd, ND_FIELD_COUNT);
+    if (vector_capacity(xd) < target_vec_size) {
+        vector_resize(xd, target_vec_size);
     }
     // Get pointer, only after eventual resize
-    double * out_buf = vector_vec(xd);
+    double * const out_buf = vector_vec(xd);
 
     // init to -1 (due to holes in gjs)
-    for(i=0; i<ND_FIELD_COUNT; i++) {
+    for(i=0; i < target_vec_size; i++) {
         out_buf[i] = -1;
     }
 
