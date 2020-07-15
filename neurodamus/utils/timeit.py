@@ -90,6 +90,21 @@ In case you want to time operations just on rank0, without impacting the STATS,y
 use @timeit_rank0 in a similar manner to @timeit. For example delete_corenrn_data,
 which is happening only on rank0.
 
+PITFALLS:
+    Make sure you avoid data-driven flows for your timeits, otherwise there will be
+    an MPI_Allreduce number of timers mismatch and you will get MPI errors like:
+        MPT: --------stack traceback-------
+        MPT ERROR: rank:3426, function:MPI_ALLREDUCE, Message truncated on receive:
+                        An application bug caused the sender to send too much data
+    Example:
+          for conn in self.get_target_connections(None, target_name):
+            if conn.sgid not in spike_manager:
+                continue
+            # PITFALL: May not be called on some ranks => one less timer
+            with timeit(name="register replay events", verbose=False):
+                conn.replay(spike_manager[conn.sgid], start_delay)
+                replayed_count += 1
+
 """
 from __future__ import absolute_import
 import logging

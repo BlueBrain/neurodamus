@@ -792,9 +792,8 @@ class SynapseRuleManager(_ConnectionManagerBase):
         for conn in self.get_target_connections(None, target_name):
             if conn.sgid not in spike_manager:
                 continue
-            with timeit(name="register replay events", verbose=False):
-                conn.replay(spike_manager[conn.sgid], start_delay)
-                replayed_count += 1
+            conn.replay(spike_manager[conn.sgid], start_delay)
+            replayed_count += 1
 
         total_replays = MPI.allreduce(replayed_count, MPI.SUM)
         if MPI.rank == 0:
