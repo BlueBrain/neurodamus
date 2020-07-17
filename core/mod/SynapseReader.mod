@@ -50,8 +50,7 @@ VERBATIM
 #pragma message("SynapseReader Disabled")
 #include <signal.h>
 
-#else
-#pragma message("SynapseReader Enabled")
+#else  // SynReader Enabled
 
 #include <stdint.h>
 #include <stdio.h>
@@ -237,6 +236,14 @@ static const int ND_GJv2_POSITIONS[]  = {0, 2, 4, 5, 7, 8};
 static const int ND_SYNv3_POSITIONS[] = {0, 1, 2, 4, 5, 6, 7, 8, 9, 10 ,11, 12, 13};
 
 
+#define CONN_TYPE_POSITIONS(conn_type) \
+    (conn_type == CONN_GAPJUNCTIONS_V1)? ND_GJ_POSITIONS \
+        : (conn_type == CONN_SYNAPSES_V2)? ND_SYNv2_POSITIONS \
+        : (conn_type == CONN_GAPJUNCTIONS_V2)? ND_GJv2_POSITIONS \
+        : (conn_type == CONN_SYNAPSES_V3)? ND_SYNv3_POSITIONS \
+        : NULL
+
+
 /**
  * INTERNAL FUNCTIONS
  * ------------------
@@ -281,6 +288,30 @@ static int _store_result(uint64_t tgid, const Syn2Table *tb, ReaderState* state_
     state_ptr->length = tb->length;
     state_ptr->n_fields = tb->n_fields;
     return tb->length;
+}
+
+
+#define COPY_SYN2_VECTOR(type, src, dst, length) \
+    for (i=0; i < length; ++i) \
+        dst[i] = as_##type##_array(src)[i]; \
+
+static const double* to_double_vec(const Syn2Field *field, size_t n_rows, double* output) {
+    int i;
+    switch(field->datatype) {
+    case SYN2_UINT:
+        COPY_SYN2_VECTOR(uint, field->data, output, n_rows);
+        break;
+    case SYN2_INT:
+        COPY_SYN2_VECTOR(int, field->data, output, n_rows);
+        break;
+    case SYN2_FLOAT:
+        COPY_SYN2_VECTOR(float, field->data, output, n_rows);
+        break;
+    case SYN2_DOUBLE:
+        memcpy(output, field->data, n_rows * sizeof(double));
+        break;
+    }
+    return output;
 }
 
 
@@ -413,6 +444,16 @@ VERBATIM
 #ifndef DISABLE_SYNTOOL
     const _Strings names_ds = _getFieldNames(getStatePtr());
     return names_ds.length;
+#endif
+ENDVERBATIM
+}
+
+
+FUNCTION hasProperty(){
+    :param 1: (string) The name of the property to check existence
+VERBATIM
+#ifndef DISABLE_SYNTOOL
+    return _syn_has_field(gargstr(1), getStatePtr());
 #endif
 ENDVERBATIM
 }
@@ -576,12 +617,7 @@ VERBATIM
     }
 
     // Except for Synapses v1 and Custom, we have to translate fields position
-    const int * const field_pos =
-        (loaded_conn_type == CONN_GAPJUNCTIONS_V1)? ND_GJ_POSITIONS
-        : (loaded_conn_type == CONN_SYNAPSES_V2)? ND_SYNv2_POSITIONS
-        : (loaded_conn_type == CONN_GAPJUNCTIONS_V2)? ND_GJv2_POSITIONS
-        : (loaded_conn_type == CONN_SYNAPSES_V3)? ND_SYNv3_POSITIONS
-        : NULL;
+    const int * const field_pos = CONN_TYPE_POSITIONS(loaded_conn_type);
 
     for (i=0; i<n_fields; i++) {
         dst_i = (field_pos != NULL)? field_pos[i] : i;
@@ -611,6 +647,41 @@ VERBATIM
 ENDVERBATIM
 }
 
+
+COMMENT
+/** Retrieve the data of a property/field (column) from the loaded dataset
+ *
+ * @param 1 The field index to retrieve. In case of Synapses it's the field number (up to
+ *  14). In case of loadSynapseCustom, the index of one requested field.
+ * @param 2 The vector to hold the result data
+ */
+ENDCOMMENT
+FUNCTION getPropertyData() {
+VERBATIM
+#ifndef DISABLE_SYNTOOL
+    if (!ifarg(1) || !ifarg(2)) {
+        fprintf(stderr, "[SynReader] Error: Function requires two arguments: "
+                        "1. property index (column) to retrieve; 2. Destination Vector\n");
+        raise(SIGUSR2);
+    }
+
+    ReaderState* const state_ptr = getStatePtr();
+    const int loaded_conn_type = state_ptr->conn_type & 0xffff;
+    const unsigned int column = *getarg(1);
+    void* const xd = vector_arg(2);
+
+    const int * const field_pos = CONN_TYPE_POSITIONS(loaded_conn_type);
+    const int field_i = (field_pos != NULL)? field_pos[column] : column;
+    const Syn2Field field = state_ptr->fields[field_i];
+
+    // resize if too small
+    if (vector_capacity(xd) < state_ptr->length) {
+        vector_resize(xd, state_ptr->length);
+    }
+    to_double_vec(&field, state_ptr->length, vector_vec(xd));
+#endif
+ENDVERBATIM
+}
 
 
 VERBATIM
