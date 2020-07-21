@@ -804,7 +804,7 @@ class Node:
                 population_name, target_name = name.split(':')
             else:
                 target_name = name
-                population_name = self._default_population
+                population_name = self._target_spec.population or self._default_population
 
             logging.info(" Population: %s, Target: %s", population_name, target_name)
 
