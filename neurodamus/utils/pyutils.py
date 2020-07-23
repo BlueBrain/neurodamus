@@ -57,11 +57,19 @@ class ConfigT(object):
         mode = Enum("Mode", "BUILD_SIMULATE BUILD_ONLY")
         model_path = None
     """
-    def __init__(self, **opts):
-        self._init(self, opts)
+    class _ConfigFlag:
+        """A lightweith internal class to create flags"""
+        __slots__ = ()
+
+    REQUIRED = _ConfigFlag()
+
+    def __init__(self, opt_dict=None, **opts):
+        opt_dict = opt_dict or {}
+        opt_dict.update(opts)
+        self._init(self, opt_dict)
 
     @classmethod
-    def global_init(cls, **opts):
+    def set_defaults(cls, **opts):
         cls._init(cls, opts)
 
     @classmethod
@@ -70,12 +78,30 @@ class ConfigT(object):
             if value is not None and not name.startswith("_") and hasattr(obj, name):
                 default = getattr(obj, name)
                 if type(default) is EnumMeta:
-                    value = default[value]
+                    value = default[value]  # enum as validator
                 setattr(obj, name, value)
-        # Non initialized enums set default as the first item
+
         for name, value in cls.__dict__.items():
-            if name not in obj.__dict__ and type(value) is EnumMeta:
-                setattr(obj, name, getattr(cls, name)(1))
+            if name not in obj.__dict__ and (value is cls.REQUIRED
+                                             or type(value) is EnumMeta):
+                raise ValueError("Config field {} is mandatory".format(name))
+
+        setattr(obj, '_all', opts)
+
+    # dict interface for compat
+    def __setitem__(self, name, value):
+        self._all[name] = value
+
+    def __getitem__(self, name):
+        return self._all[name]
+
+    def get(self, *args):
+        return self._all.get(*args)
+
+    def __contains__(self, name):
+        return name in self._all
+
+    all = property(lambda self: self._all)
 
     @staticmethod
     def _apply_f(obj, opts_dict):

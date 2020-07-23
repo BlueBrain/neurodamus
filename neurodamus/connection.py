@@ -32,7 +32,7 @@ class ReplayMode(Enum):
     """Replay instantiation mode.
     """
     NONE = 0
-    """INstantiate no replay NetCons"""
+    """Instantiate no replay NetCons"""
 
     AS_REQUIRED = 1
     """Instantiate Replay netcons as required for this run.
@@ -274,12 +274,12 @@ class Connection(ConnectionBase):
         # Release objects if not needed
         if not shall_create_replay:
             self._replay = None
-        if self._spont_minis.rate == 0:
+        if not self._spont_minis.rate:
             self._spont_minis = None
             # Eventually replace with default rates, if set
-            if cell._inh_mini_frequency or cell._exc_mini_frequency:
-                self._spont_minis = InhExcSpontMinis(cell._inh_mini_frequency,
-                                                     cell._exc_mini_frequency)
+            if cell.inh_mini_frequency or cell.exc_mini_frequency:
+                self._spont_minis = InhExcSpontMinis(cell.inh_mini_frequency,
+                                                     cell.exc_mini_frequency)
 
         for syn_i, sec in self.sections_with_synapses:
             x = self._synapse_points.x[syn_i]
@@ -291,7 +291,7 @@ class Connection(ConnectionBase):
                 cell_syn_list = cell.CellRef.synlist
                 self._synapses.append(syn_obj)
 
-                # See neurodamus-core.Connection for explanation. see also pc.gid_connect
+                # See `neurodamus-core.Connection` for explanation. Also pc.gid_connect
                 nc_index = pnm.nc_append(self.sgid, target_spgid, cell_syn_list.count()-1,
                                          syn_params.delay, syn_params.weight)
 
@@ -304,7 +304,7 @@ class Connection(ConnectionBase):
             if self._spont_minis is not None:
                 self._spont_minis.create_on(self, sec, x, syn_obj, syn_params, base_seed)
 
-            if shall_create_replay:
+            if self._replay is not None:
                 self._replay.create_on(self, sec, syn_obj, syn_params)
 
         # Apply configurations to the synapses
@@ -435,7 +435,7 @@ class Connection(ConnectionBase):
         self.ConnUtils.executeConfigure(self._synapses, configuration)
 
     def restart_events(self):
-        """Restart the artificial events, coming from Replay or Spont Minis"""
+        """Restart the artificial events, coming from Replay or Spont-Minis"""
         if self._spont_minis is not None:
             self._spont_minis.restart_events()
         if self._replay is not None:

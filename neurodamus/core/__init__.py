@@ -9,6 +9,7 @@
 """
 
 from __future__ import absolute_import
+from ._engine import EngineBase
 from ._neuron import Neuron
 from ._mpi import MPI
 from ._neurodamus import NeurodamusCore

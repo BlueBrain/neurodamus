@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 from time import strftime
+from ._engine import EngineBase
 from ..utils import classproperty
 from ..utils.logging import setup_logging, log_stage, log_verbose
 from .configuration import GlobalConfig
@@ -60,6 +61,9 @@ class NeurodamusCore(_Neuron):
         cls._h.BBSaveState()
         cls._pc = MPI.pc
         logging.info(" => Neurodamus Mod & Hoc lib loaded.")
+
+        logging.info("Checking for plugins...")
+        EngineBase.find_plugins()
 
     @classmethod
     def _load_nrnmechlibs(cls):

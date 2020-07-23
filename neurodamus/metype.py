@@ -19,7 +19,7 @@ class METype(object):
 
     __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons', '_ccell', '_cellref',
                  '_synapses', '_syn_helper_list', '_emodel_name',
-                 '_exc_mini_frequency', '_inh_mini_frequency')
+                 'exc_mini_frequency', 'inh_mini_frequency')
 
     def __init__(self, gid, etype_path, emodel, morpho_path, meinfos_v6=None):
         """Instantite a new Cell from METype
@@ -39,8 +39,8 @@ class METype(object):
         self._synapses = None
         self._syn_helper_list = None
         self._emodel_name = emodel
-        self._exc_mini_frequency = None
-        self._inh_mini_frequency = None
+        self.exc_mini_frequency = None
+        self.inh_mini_frequency = None
 
         if meinfos_v6 is not None:
             self._instantiate_cell_v6(gid, etype_path, emodel, morpho_path, meinfos_v6)
@@ -59,8 +59,8 @@ class METype(object):
         self._syn_helper_list = Nd.List()
         self._threshold_current = meinfos_v6.threshold_current
         self._hypAmp_current = meinfos_v6.holding_current
-        self._exc_mini_frequency = meinfos_v6.exc_mini_frequency
-        self._inh_mini_frequency = meinfos_v6.inh_mini_frequency
+        self.exc_mini_frequency = meinfos_v6.exc_mini_frequency
+        self.inh_mini_frequency = meinfos_v6.inh_mini_frequency
 
     def _instantiate_cell_v5(self, gid, emodel, morpho_path):
         """Instantiates a cell v5 or before. Asssumes emodel hoc templates are loaded

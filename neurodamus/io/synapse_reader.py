@@ -111,6 +111,11 @@ class SynapseReader(object):
         """Checks whether source data has the nrrp field.
         """
 
+    @abstractmethod
+    def has_property(self, field_name):
+        """Checks whether source data has the given additional field.
+        """
+
     @classmethod
     def create(cls, syn_src, conn_type=SYNAPSES, population=None, *args, **kw):
         """Instantiates a synapse reader, giving preference to SynReaderSynTool
@@ -186,6 +191,18 @@ class SynReaderSynTool(SynapseReader):
     def has_nrrp(self):
         return self._syn_reader.hasNrrpField()
 
+    def has_property(self, field_name):
+        return hasattr(self._syn_reader, 'hasProperty') \
+            and bool(self._syn_reader.hasProperty(field_name))
+
+    def get_property(self, gid, field_name, *is_pre):
+        """Retrieves a full property (vector) given a gid and the property name.
+        """
+        self._syn_reader.loadSynapseCustom(gid, field_name, *is_pre)
+        field_data = Nd.Vector()
+        self._syn_reader.getPropertyData(0, field_data)
+        return field_data  # Returns the vector to avoid copies to numpy
+
 
 class SynReaderNRN(SynapseReader):
     """ Synapse Reader for NRN format only, using the hdf5_reader mod.
@@ -218,6 +235,9 @@ class SynReaderNRN(SynapseReader):
 
     def has_nrrp(self):
         return self.nrn_version > 4
+
+    def has_property(self, field_name):
+        return NotImplemented  # nrn has a predefined set of fields. worthless checking
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader

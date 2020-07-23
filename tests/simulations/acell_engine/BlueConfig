@@ -1,0 +1,26 @@
+Run Default
+{
+    CircuitPath <NONE>
+
+    Simulator NEURON
+    RNGMode Random123
+    BaseSeed 719775
+
+    CurrentDir .
+    OutputRoot output
+    TargetFile user.target
+
+    RunMode RR
+    Duration 100
+    Dt 0.025
+}
+
+
+
+Circuit ACellsTesting
+{
+    Engine ACell
+    CircuitPath .
+    nrnPath <NONE>
+    CircuitTarget small
+}

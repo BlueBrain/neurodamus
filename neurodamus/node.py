@@ -12,12 +12,14 @@ import subprocess
 from os import path as ospath
 from collections import namedtuple, defaultdict
 
+from .core import EngineBase
 from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeurodamusCore as Nd
-from .core.configuration import GlobalConfig, RunOptions, SimConfig
+from .core.configuration import GlobalConfig, RunOptions, SimConfig, CircuitConfig
 from .core.configuration import ConfigurationError
 from .cell_distributor import CellDistributor, LoadBalance, LoadBalanceMode
 from .io.cell_readers import TargetSpec
+from .io.config_parser import BlueConfig
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
 from .utils import compat
@@ -56,6 +58,7 @@ class Node:
             self._run_conf = compat.Map(self._config_parser.parsedRun).as_dict(True)
             self._output_root = self._run_conf["OutputRoot"]
             self._pr_cell_gid = self._run_conf.get("prCellGid")
+            self._base_circuit, self._extra_circuits = self._config_circuits(config_file)
 
             _sim_config = self._configure_simulator(self._run_conf, opts)
             self._corenrn_conf = _sim_config.core_config
@@ -145,6 +148,41 @@ class Node:
                 raise ConfigurationError("Targets with population require Sonata Node file")
 
         return config_parser
+
+    def _config_circuits(self, config_file):
+        """Load directly from config file info about circuits and Validate
+        CircuitPath and nrnPath. Values may be set to <NONE> in case the user
+        wants to disable the whole circuit or the base synapses respectively.
+        """
+        def _make_circuit_config(config_dict, circuit_name):
+            if config_dict["CircuitPath"] == "<NONE>":
+                logging.info("%s Circuit DISABLED", circuit_name)
+                config_dict["CircuitPath"] = False
+                config_dict["nrnPath"] = False
+            elif config_dict["nrnPath"] == "<NONE>":
+                config_dict["nrnPath"] = False
+            return CircuitConfig(config_dict)
+
+        blueconfig = BlueConfig(config_file)
+        base_circuit = _make_circuit_config(blueconfig.Run, "Default")
+        extra_circuits = {}
+
+        for name, circuit_info in blueconfig.Circuit.items():
+            logging.info("Configuring circuit %s", name)
+            if "Engine" in circuit_info:
+                # Replace name by actual engine
+                circuit_info["Engine"] = EngineBase.get(circuit_info["Engine"])
+            else:
+                # Without custom engine, inherit base circuit infos
+                for field in ("CircuitPath", "MorphologyPath", "MorphologyType",
+                              "METypePath", "CellLibraryFile"):
+                    if field in base_circuit and field not in circuit_info:
+                        log_verbose("Inheriting '%s' from base circuit", field)
+                        circuit_info[field] = base_circuit[field]
+
+            extra_circuits[name] = _make_circuit_config(circuit_info, name)
+
+        return base_circuit, extra_circuits
 
     @staticmethod
     def _check_model_build_mode(user_config, parsed_run, output_path):
@@ -274,16 +312,17 @@ class Node:
         if MPI.rank == 0:
             self._target_parser.isVerbose = 1
 
-        start_target_file = ospath.join(run_conf["CircuitPath"], "start.target")
-        if not ospath.isfile(start_target_file):
-            logging.warning("DEPRECATION: start.target shall be within CircuitPath. "
-                            "Within nrnPath is deprecated and will be removed")
-            start_target_file = ospath.join(run_conf["nrnPath"], "start.target")  # fallback
+        if self._base_circuit.CircuitPath:
+            start_target_file = ospath.join(run_conf["CircuitPath"], "start.target")
+            if not ospath.isfile(start_target_file):
+                logging.warning("DEPRECATION: start.target shall be within CircuitPath. "
+                                "Within nrnPath is deprecated and will be removed")
+                start_target_file = ospath.join(run_conf["nrnPath"], "start.target")  # fallback
 
-        if not ospath.isfile(start_target_file):
-            raise ConfigurationError("start.target not found! Check circuit.")
+            if not ospath.isfile(start_target_file):
+                raise ConfigurationError("start.target not found! Check circuit.")
 
-        self._target_parser.open(start_target_file)
+            self._target_parser.open(start_target_file)
 
         if "TargetFile" in run_conf:
             user_target = self._find_config_file(run_conf["TargetFile"])
@@ -302,6 +341,9 @@ class Node:
         CellDistributor to split cells and balance those pieces across the available CPUs.
         """
         log_stage("Computing Load Balance")
+        if not self._base_circuit.CircuitPath:
+            logging.info("  => No base circuit. Skipping... ")
+            return None
 
         # Info about the cells to be distributed
         target = self._target_spec
@@ -353,7 +395,7 @@ class Node:
             return load_balancer
 
         logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
-        cell_dist = CellDistributor(self._pnm, self._target_parser)
+        cell_dist = CellDistributor(self._pnm, self._target_parser, self._run_conf)
         with load_balancer.generate_load_balance(target.simple_name, cell_dist):
             # Instantiate a basic circuit to evaluate complexities
             self.create_cells(cell_distributor=cell_dist)
@@ -385,13 +427,32 @@ class Node:
         log_stage("Loading circuit cells")
 
         if not load_balance and not cell_distributor:
-            logging.warning("Load-balance object not present. Continuing Round-Robin...")
+            logging.info("Load-balance object not present. Continuing Round-Robin...")
+
+        # Always create a cell_distributor even if engine is disabled.
+        # Extra circuits may use it and not None is a sign of initialization done
         if cell_distributor is None:
-            self._cell_distributor = CellDistributor(self._pnm, self._target_parser)
+            self._cell_distributor = CellDistributor(
+                self._pnm, self._target_parser, self._run_conf)
         else:
             self._cell_distributor = cell_distributor
 
-        self._cell_distributor.load_cells(self._run_conf, load_balance)
+        # Dont use default cell_distributor if engine is disabled
+        if self._base_circuit.CircuitPath:
+            self._cell_distributor.load_cells(self._run_conf, load_balance)
+        else:
+            logging.info(" => Base Circuit has been DISABLED")
+
+        # SUPPORT for extra/custom Circuits
+        for name, circuit in self._extra_circuits.items():
+            log_stage("Loading Cells for Circuit: %s", name)
+            engine = circuit.Engine
+            output = NotImplemented  # NotImplemented stands for 'use the default one'
+            if engine:
+                output = engine.create_cells(circuit.all, self._cell_distributor,
+                                             self._target_parser, self._run_conf)
+            if output is NotImplemented:
+                self._cell_distributor.load_cells(circuit)
 
         # give a TargetManager the TargetParser's completed targetList
         self._target_manager = Nd.TargetManager(
@@ -399,6 +460,10 @@ class Node:
 
         # Let the CellDistributor object have any final say in the cell objects
         self._cell_distributor.finalize()
+        # Extra circuits
+        for engine in set(circuit.Engine for circuit in self._extra_circuits.values()
+                          if circuit.Engine is not None):
+            engine.finalize_cells()
 
     # -
     @mpi_no_errors
@@ -406,30 +471,65 @@ class Node:
     def create_synapses(self):
         """Create synapses among the cells, handling connections that appear in the config file
         """
+        if self._base_circuit.nrnPath:
+            log_stage("Creating base circuit connections")
+            self._create_connections()
+        else:
+            # Instantiate a bare synapse manager
+            self._synapse_manager = SynapseRuleManager(
+                self._base_circuit, self._target_manager, self._cell_distributor)
+
+        # Loop over additional circuits to instantiate synapses
+        # Synapse creation is slightly more complex since there are three possible
+        # outcomes: NotImplemented (use default), None (no connections) or custom obj
+        extra_managers = []
+
+        for name, circuit in self._extra_circuits.items():
+            log_stage("Creating connections for Extra Circuit %s", name)
+            engine = circuit.Engine
+
+            if engine:
+                syn_manager = engine.create_synapses(
+                    circuit, self._target_manager, self._synapse_manager)
+                # If syn_manager is None then, either everything was done by create_synapses
+                # or SynaManagerCls was not set
+                if syn_manager is None:
+                    continue
+                if syn_manager is NotImplemented:
+                    syn_manager = self._synapse_manager
+                else:
+                    extra_managers.append(syn_manager)
+            else:
+                syn_manager = self._synapse_manager
+
+            if circuit.nrnPath:
+                syn_manager.open_synapse_file(circuit.nrnPath, 1, int(circuit.PopulationID))
+                self._create_group_connections(syn_manager)
+            else:
+                logging.info(" * %s connections have been disabled", name)
+
+        # Configure all created connections in one go
+        logging.info("Configuring all Base Circuit connections...")
+        self._configure_connections()
+
+        for extra_syn_manager in extra_managers:
+            logging.info("Configuring all %s connections...", extra_syn_manager.__class__.__name__)
+            self._configure_connections(extra_syn_manager)
+
+    # -
+    def _create_connections(self):
         # if we have a single connect block with weight=0, skip synapse creation  entirely
-        log_stage("Synapses Create")
         if self._config_parser.parsedConnects.count() == 1:
             if self._config_parser.parsedConnects.o(0).valueOf("Weight") == 0:
                 return
 
-        nrn_path = self._run_conf["nrnPath"]
-        synapse_mode = self._run_conf.get("SynapseMode")
-        n_synapse_files = 1
-
-        if ospath.isdir(nrn_path):
-            # legacy nrnreader may require manual NumSynapseFiles
-            # But with a wrapper nrn.h5 dont change from 1
-            if not ospath.isfile(ospath.join(nrn_path, "nrn.h5")):
-                n_synapse_files = self._run_conf.get("NumSynapseFiles", 1)
-
-        # Pass on to Managers the given path
         with timeit(name="Synapse init"):
             self._synapse_manager = SynapseRuleManager(
-                nrn_path, self._target_manager, self._cell_distributor,
-                n_synapse_files, synapse_mode)
+                self._base_circuit, self._target_manager, self._cell_distributor)
 
         connection_blocks = compat.Map(self._config_parser.parsedConnects)
 
+        # Dont attempt to create default connections if engine is disabled
         logging.info("Creating circuit connections...")
         self._create_group_connections()
 
@@ -446,31 +546,28 @@ class Node:
         if self._config_parser.parsedProjections.count() > 0:
             logging.info("Creating Projections connections...")
 
-            for pname, projection in compat.Map(self._config_parser.parsedProjections).items():
-                logging.info(" * %s", pname)
-                projection = compat.Map(projection).as_dict(True)
+        for pname, projection in compat.Map(self._config_parser.parsedProjections).items():
+            logging.info(" * %s", pname)
+            projection = compat.Map(projection).as_dict(True)
 
-                # Skip projection blocks for gap junctions
-                if projection.get("Type") == "GapJunction":
-                    continue
+            # Skip projection blocks for gap junctions
+            if projection.get("Type") == "GapJunction":
+                continue
 
-                proj_path, *pop_name = projection["Path"].split(":")
-                nrn_path = self._find_projection_file(proj_path)
-                nrn_path = ":".join([nrn_path] + pop_name)
+            proj_path, *pop_name = projection["Path"].split(":")
+            nrn_path = self._find_projection_file(proj_path)
+            nrn_path = ":".join([nrn_path] + pop_name)
 
-                # Temporarily patch for population IDs in BlueConfig
-                pop_id = int(projection.get("PopulationID", 0))
-                self._synapse_manager.open_synapse_file(nrn_path, n_synapse_files, pop_id)
+            # Temporarily patch for population IDs in BlueConfig
+            pop_id = int(projection.get("PopulationID", 0))
+            self._synapse_manager.open_synapse_file(nrn_path, 1, pop_id)
 
-                # Make all the Projection connections if no Connection blocks use
-                # that source. Otherwise create only specified connections
-                src = projection.get("Source")  # None will be different
-                has_connections = any(conn.get("Source").s == src
-                                      for conn in connection_blocks.values())
-                self._create_group_connections(force_all=not has_connections)
-
-        # Configure all created connections in one go
-        self._configure_connections()
+            # Make all the Projection connections if no Connection blocks use
+            # that source. Otherwise create only specified connections
+            src = projection.get("Source")  # None will be different
+            has_connections = any(conn.get("Source").s == src
+                                  for conn in connection_blocks.values())
+            self._create_group_connections(force_all=not has_connections)
 
     @mpi_no_errors
     def _create_group_connections(self, synapse_manager=None, force_all=False):
@@ -501,7 +598,6 @@ class Node:
     def _configure_connections(self, conn_manager=None):
         """Configure-only circuit connections according to BlueConfig Connection blocks
         """
-        logging.info("Configuring all connections...")
         conn_manager = conn_manager or self._synapse_manager
 
         for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
@@ -526,26 +622,25 @@ class Node:
         defined as projections with type GapJunction.
         """
         log_stage("Gap Junctions create")
-        target = self._target_manager.getTarget(self._target_spec.name) \
-            if self._target_spec.name is not None else None
 
         for name, projection in compat.Map(self._config_parser.parsedProjections).items():
-            # check if this Projection block is for gap junctions
-            if projection.exists("Type") and projection.get("Type").s == "GapJunction":
-                nrn_path = projection.get("Path").s
-                logging.info(" * %s", name)
+            projection = compat.Map(projection).as_dict()
+            if projection.get("Type") != "GapJunction":
+                continue
+            logging.info(" * %s", name)
 
-                if self._gj_manager is not None:
-                    logging.warning("Neurodamus can only support loading one gap junction file. "
-                                    "Skipping loading additional files...")
-                    break
+            if self._gj_manager is not None:
+                logging.warning("Neurodamus can only support loading one gap junction file. "
+                                "Skipping loading additional files...")
+                break
 
-                self._gj_manager = GapJunctionManager(
-                    nrn_path, self._target_manager, self._cell_distributor, 1, target)
+            self._gj_manager = GapJunctionManager(
+                projection, self._target_manager, self._cell_distributor, self._target_spec.name)
 
         if self._gj_manager is None:
             logging.info("No Gap-junctions found")
             return
+
         self._gj_manager.connect_all(only_sgid_in_target=True)
         # Currently gap junctions are not configured. Future?
         # self._configure_connections(self._gj_manager)
@@ -598,7 +693,7 @@ class Node:
                         break
 
         if not file_found:
-            raise ConfigurationError("Could not find file %s", filename)
+            raise ConfigurationError("Could not find file %s" % filename)
 
         logging.debug("data file %s path: %s", filename, file_found)
         return file_found
@@ -1429,6 +1524,12 @@ class Neurodamus(Node):
 
         if self._gj_manager is not None:
             self._gj_manager.finalize()
+
+        for name, circuit in self._extra_circuits.items():
+            log_stage("Init connections for Extra Circuit %s", name)
+            engine = circuit.Engine
+            if engine not in (None, NotImplemented):
+                engine.finalize_synapses()
 
         self.enable_stimulus()
         self.enable_modifications()

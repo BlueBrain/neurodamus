@@ -38,6 +38,9 @@ class ConnectionSet(object):
     def __getitem__(self, item):
         return self._connections_map[item]
 
+    def get(self, item):
+        return self._connections_map.get(item)
+
     def items(self):
         """Iterate over the population as tuples (dst_gid, [connections])"""
         return self._connections_map.items()
@@ -200,7 +203,7 @@ class ConnectionSet(object):
                 (expr_dst is None or expr_dst == self.dst_id))
 
 
-class _ConnectionManagerBase(object):
+class ConnectionManagerBase(object):
     """
     An abstract base class common to Synapse and GapJunction connections
     """
@@ -216,44 +219,61 @@ class _ConnectionManagerBase(object):
     conn_factory = Connection
 
     # We declare class variables which might be used in subclass methods
-    # Synapses dont require circuit_target but GapJunctions do
-    # so the generic insertion validates against target.sgid if defined
-    _circuit_target = None
+    _circuit_target = None  # gaj junctions require the target obj to validate src cells
     _synapse_mode = SynapseMode.default
-    _local_gids = None
 
     # -
-    def __init__(self, nrn_path, target_manager, cell_distributor,
-                       n_synapse_files=None):
+    def __init__(self, circuit_conf, target_manager, cell_distributor, base_manager=None):
         """Base class c-tor for connections (Synapses & Gap-Junctions)
+
+        Args:
+            circuit_conf: A circuit config object where to get the synapse source from
+                or None if the ConnecionManager is to be constructed empty
+            target_manager: A target manager, where to query target cells
+            cell_distributor: Query the local gids
+            base_manager: In other engines, this is the base engine cell manager
         """
         self._target_manager = target_manager
         self._cell_distibutor = cell_distributor
 
         # Multiple connection populations support. key is a tuple (src, dst)
         self._populations = {}
-        self._cur_population = None
+        self._cur_population = self.get_population(0, 0)  # Instantiate a default pop
         self._disabled_conns = defaultdict(list)
 
         self._synapse_reader = None
         self._local_gids = cell_distributor.local_gids
         self._total_connections = 0
-
-        if nrn_path is not None:
-            file_path, *pop = nrn_path.split(":")  # fspath:population
-            if ospath.isdir(file_path):
-                file_path = self._find_circuit_file(file_path)
-            assert ospath.isfile(file_path), "Circuit path doesnt contain valid circuits"
-            synapse_source = ":".join([file_path] + pop)
-            self.open_synapse_file(synapse_source, n_synapse_files)
-        else:
-            self._cur_population = self.get_population(0, 0)  # Instantiate a default pop
+        self.circuit_conf = circuit_conf
+        self.base_manager = base_manager
+        self.has_syn_indexes = False
 
         if GlobalConfig.debug_conn:
             logging.info("Debugging activated for cell/conn %s", GlobalConfig.debug_conn)
 
     # -
-    def open_synapse_file(self, synapse_source, n_files=None, src_pop_id=0):
+    def init_synapse_location(self, nrn_path, circuit_conf, load_offsets=False):
+        logging.info("Initialize cell manager from nrnPath=%s", nrn_path)
+        n_synapse_files = 1
+        nrn_path, *pop = nrn_path.split(":")  # fspath:population
+
+        if ospath.isdir(nrn_path):
+            # legacy nrnreader may require manual NumSynapseFiles
+            # But with a wrapper nrn.h5 dont change from 1
+            if not ospath.isfile(ospath.join(nrn_path, "nrn.h5")):
+                n_synapse_files = circuit_conf.get("NumSynapseFiles", 1)
+
+            nrn_path = self._find_circuit_file(nrn_path)
+        assert ospath.isfile(nrn_path), "nrnPath doesnt contain valid Edge files"
+
+        synapse_source = ":".join([nrn_path] + pop)
+        self.open_synapse_file(synapse_source, n_synapse_files)
+
+        self.has_syn_indexes = load_offsets and self._synapse_reader.has_property("synapse_index")
+        logging.info("Enabled reading Synapse offsets: %s", self.has_syn_indexes)
+
+    # -
+    def open_synapse_file(self, synapse_source, n_files=1, src_pop_id=0):
         """Initializes a reader for Synapses"""
         synapse_file, *pop_name = synapse_source.split(":")  # fspath:population
         pop_name = pop_name[0] if pop_name else None
@@ -390,7 +410,8 @@ class _ConnectionManagerBase(object):
             if cur_conn.locked:
                 continue
 
-            if GlobalConfig.debug_conn in ([tgid], [sgid, tgid]):
+            _dbg_conn = GlobalConfig.debug_conn
+            if _dbg_conn and _dbg_conn in ([tgid], [sgid, tgid]):
                 log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s", sgid, tgid, syns_params)
 
             self._add_synapses(cur_conn, syns_params, synapse_type_restrict, offset)
@@ -422,7 +443,7 @@ class _ConnectionManagerBase(object):
         created_conns_0 = self._cur_population.count()
 
         for tgid in gids:
-            if dst_target and not dst_target.contains(tgid):
+            if dst_target is not None and not dst_target.contains(tgid):
                 continue
 
             # Retrieve all synapses for tgid
@@ -712,7 +733,8 @@ class _ConnectionManagerBase(object):
         for conn in self.all_connections():
             conn.locked = False
 
-    def finalize(self, base_Seed=0, sim_corenrn=False, *finalize_params, conn_type="synapses"):
+    def finalize(self, base_seed=0, sim_corenrn=False, *finalize_params,
+                       conn_type="synapses"):
         """Instantiates the netcons and Synapses for all GapJunctions.
         """
         # Connections must have been placed and all weight scalars should have their
@@ -725,7 +747,7 @@ class _ConnectionManagerBase(object):
         for popid, pop in self._populations.items():
             for tgid, conns in ProgressBar.iter(pop.items(), name="Pop:" + str(popid)):
                 n_created_conns += self._finalize_conns(
-                    tgid, conns, base_Seed, sim_corenrn, *finalize_params)
+                    tgid, conns, base_seed, sim_corenrn, *finalize_params)
 
         all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
         logging.info(" => Created %d %s", all_ranks_total, conn_type)
@@ -740,7 +762,7 @@ class _ConnectionManagerBase(object):
 # ######################################################################
 # SynapseRuleManager
 # ######################################################################
-class SynapseRuleManager(_ConnectionManagerBase):
+class SynapseRuleManager(ConnectionManagerBase):
     """
     The SynapseRuleManager is designed to encapsulate the creation of
     synapses for BlueBrain simulations, handling the data coming from
@@ -762,22 +784,25 @@ class SynapseRuleManager(_ConnectionManagerBase):
                          'nrn.h5')
     CONNECTIONS_TYPE = SynapseReader.SYNAPSES
 
-    def __init__(self,
-                 circuit_path, target_manager, cell_dist, n_synapse_files=1,
-                 synapse_mode=None):
+    def __init__(self, circuit_conf, target_manager, cell_dist, load_offsets=False, **kw):
         """Initializes SynapseRuleManager, reading the circuit file.
 
         Args:
-            circuit_path: Circuit path, with a connectivity (edges) file
+            circuit_conf: A circuit configuration, to get nrnPath, SynapseMode..
             target_manager: The TargetManager which will be used to
                 query targets and translate locations to points
-            n_synapse_files: How many files to expect (Nrn, typically 1)
-            synapse_mode: str dictating modifiers to what synapses are
                 placed (AmpaOnly vs DualSyns). Default: DualSyns
+            cell_dist: The cell distributor to query the local gids
+            load_offsets: Whether to load synapse offsets.
+                Note: Under nrn format, this can be significantly slow
         """
-        _ConnectionManagerBase.__init__(
-            self, circuit_path, target_manager, cell_dist, n_synapse_files)
+        super().__init__(circuit_conf, target_manager, cell_dist, **kw)
+        if circuit_conf.nrnPath:
+            self.init_synapse_location(circuit_conf.nrnPath, circuit_conf, load_offsets)
+        else:
+            logging.info(" * Circuit connections have been DISABLED")
 
+        synapse_mode = circuit_conf.get("SynapseMode")
         self._synapse_mode = SynapseMode.from_str(synapse_mode) \
             if synapse_mode is not None else SynapseMode.default
 
@@ -793,6 +818,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
             replay_mode: How shall we instantiate replay? Default: Auto-Detect
                 Use DISABLED to skip replay and COMPLETE to instantiate VecStims
                 in all synapses
+            args: Additional finalize parameters for the specific _finalize_conns
         """
         if replay_mode is None:
             # CoreNeuron will handle replays automatically with its own PatternStim
@@ -800,7 +826,10 @@ class SynapseRuleManager(_ConnectionManagerBase):
         super().finalize(base_seed, sim_corenrn, replay_mode, *args)
 
     def _finalize_conns(self, tgid, conns, base_seed, sim_corenrn, *args):
-        # *args normally contains the REPLAY mode but may differ for other types
+        """ Low-level handling of finalizing connections belonging to a target gid.
+        By default it calls finalize on each cell.
+        Note: *args normally contains the REPLAY mode but may differ for other types
+        """
         cell_distributor = self._cell_distibutor
         metype = cell_distributor.getMEType(tgid)
         spgid = cell_distributor.getSpGid(tgid)
@@ -817,8 +846,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
     # -
     @timeit(name="Replay inject")
     def replay(self, spike_manager, target_name, start_delay=.0):
-        """Create special netcons to trigger timed spikes on those
-        synapses.
+        """Create special netcons to trigger timed spikes on those synapses.
 
         Args:
             target_name: Target name whose gids should be replayed
@@ -851,7 +879,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
 # ######################################################################
 # Gap Junctions
 # ######################################################################
-class GapJunctionManager(_ConnectionManagerBase):
+class GapJunctionManager(ConnectionManagerBase):
     """
     The GapJunctionManager is similar to the SynapseRuleManager. It will
     open dedicated connectivity files which will have the locations and
@@ -862,31 +890,31 @@ class GapJunctionManager(_ConnectionManagerBase):
     CIRCUIT_FILENAMES = ("gj.sonata", "gj.syn2", "nrn_gj.h5")
     CONNECTIONS_TYPE = SynapseReader.GAP_JUNCTIONS
 
-    def __init__(self,
-                 circuit_path, target_manager, cell_distributor,
-                 n_synapse_files=None, circuit_target=None):
+    def __init__(self, gj_conf, target_manager, cell_dist, circuit_target, **kw):
         """Initialize GapJunctionManager, opening the specified GJ
         connectivity file.
 
         Args:
-            circuit_path: The path to the circuit containing connectivity
+            gj_conf: The gaps junctions configuration block / dict
             target_manager: The TargetManager which will be used to query
                 targets and translate locations to points
-            n_synapse_files: How many files to expect (NRN, typically 1)
-            circuit_target: Used to know if a given gid is being
-                simulated, including off node. Default: full circuit
+            cell_dist: The cell distributor to query the local gids
+            circuit_target: The name of the circuit target. GapJunctions src and
+                target cells must all belong to the target
         """
         if circuit_target is None:
             raise ConfigurationError(
                 "No circuit target. Required when initializing GapJunctionManager")
+        if "Path" not in gj_conf:
+            raise ConfigurationError("Missing GapJunction 'Path' configuration")
 
-        _ConnectionManagerBase.__init__(
-            self, circuit_path, target_manager, cell_distributor, n_synapse_files)
-        self._circuit_target = circuit_target
+        super().__init__(gj_conf, target_manager, cell_dist, **kw)
+        self.init_synapse_location(gj_conf["Path"], gj_conf, False)
+        self._circuit_target = target_manager.getTarget(circuit_target)
 
         log_verbose("Computing gap-junction offsets from gjinfo.txt")
         self._gj_offsets = compat.Vector("I")
-        gjfname = ospath.join(circuit_path, "gjinfo.txt")
+        gjfname = ospath.join(gj_conf["Path"], "gjinfo.txt")
         gj_sum = 0
 
         for line in open(gjfname):

@@ -13,6 +13,7 @@ import numpy
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
+from .core.configuration import ConfigurationError
 from .io import cell_readers
 from .io.cell_readers import TargetSpec
 from .metype import METype
@@ -52,7 +53,7 @@ class NodeFormat(Enum):
 
 class CellManagerBase(object):
 
-    def __init__(self, pnm, target_parser, *_):
+    def __init__(self, pnm, target_parser, run_conf, base_manager=None):
         """Initializes CellDistributor
 
         Args:
@@ -70,6 +71,8 @@ class CellManagerBase(object):
 
         self._global_seed = 0
         self._ionchannel_seed = 0
+        self.base_manager = base_manager
+        self._run_conf = run_conf
 
     # read-only properties
     pnm = property(lambda self: self._pnm)
@@ -100,18 +103,18 @@ class CellManagerBase(object):
         """A default implementation to load cells"""
         logging.info("Loading custom cells info")
         gidvec, cell_infos, fullsize = self.load_cell_info(conf, None, MPI.size, MPI.rank)
-        self._gidvec = compat.Vector("I", gidvec)  # whatever it was, convert to compat V
         total_cells = MPI.allreduce(gidvec.size, MPI.SUM)
 
         logging.info("Instantiating %d target cells out of %d (Rank0: %d)...",
                      total_cells, fullsize, gidvec.size)
-        for gid in ProgressBar.iter(self._gidvec):
+        for gid in ProgressBar.iter(gidvec):
             cell_info = cell_infos[gid]
             cell = self.CellType(gid, cell_info, conf)
             self._store_cell(gid, cell)
 
         # Update targets info with locally loaded gids
-        self._target_parser.updateTargets(self._gidvec)
+        self._target_parser.updateTargets(compat.Vector("I", gidvec))
+        self._gidvec.extend(gidvec)
 
     def _init_rng(self):
         rng_info = Nd.RNGSettings()
@@ -162,7 +165,7 @@ class CellDistributor(CellManagerBase):
         NodeFormat.SONATA: cell_readers.load_nodes
     }
 
-    def __init__(self, pnm, target_parser):
+    def __init__(self, pnm, target_parser, run_conf, *args):
         """Initializes CellDistributor
 
         Args:
@@ -170,7 +173,7 @@ class CellDistributor(CellManagerBase):
             target_parser: the target parser hoc object, to retrieve target cells' info
 
         """
-        super().__init__(pnm, target_parser)
+        super().__init__(pnm, target_parser, run_conf, *args)
         # These wont ever be init'ed if not recomputing lb
         self._spgidvec = None   # cell parts gids
         self._binfo = None      # balanceInfo
@@ -181,7 +184,7 @@ class CellDistributor(CellManagerBase):
             Nd.execute("objref nc_")
 
     @mpi_no_errors
-    def load_cells(self, run_conf, load_balancer=None):
+    def load_cells(self, circuit_conf, load_balancer=None):
         """Distribute and load target cells among CPUs.
 
         Args:
@@ -194,25 +197,29 @@ class CellDistributor(CellManagerBase):
         Nd.execute("xopen_broadcast_ = 0")
 
         # determine the connectivity format: start.ncs (default), circuit.mvd3 or sonata
-        if "CellLibraryFile" in run_conf:
-            celldb_filename = run_conf["CellLibraryFile"]
+        if "CellLibraryFile" in circuit_conf:
+            celldb_filename = circuit_conf["CellLibraryFile"]
             if celldb_filename == "circuit.mvd3":
-                self._node_format = NodeFormat.MVD3
+                node_format = NodeFormat.MVD3
             elif celldb_filename == "start.ncs":
-                self._node_format = NodeFormat.NCS
+                node_format = NodeFormat.NCS
             else:
                 # Pass other types to mvdtool to detect
-                self._node_format = NodeFormat.SONATA
+                node_format = NodeFormat.SONATA
         else:  # Default
-            self._node_format = NodeFormat.NCS
+            node_format = NodeFormat.NCS
             celldb_filename = "start.ncs"
+
+        if self._node_format not in (None, node_format):
+            raise ConfigurationError("Multiple Circuit instantiation is limited to a single format")
+        self._node_format = node_format
 
         logging.info("Reading Nodes (METype) info from '%s' (format: %s)",
                      celldb_filename, self._node_format.name)
 
         total_cells = None   # total cells in this simulation
         loader = self.cell_loader_dict[self._node_format]
-        target_spec = TargetSpec(run_conf.get("CircuitTarget"))
+        target_spec = TargetSpec(circuit_conf.get("CircuitTarget"))
 
         #  are we using load balancing? If yes, init structs accordingly
         if load_balancer:
@@ -232,45 +239,49 @@ class CellDistributor(CellManagerBase):
             else:
                 total_cells = len(all_gids)
             # LOAD
-            gidvec, me_infos, _ = loader(run_conf, all_gids)
+            gidvec, me_infos, _ = loader(circuit_conf, all_gids)
 
         elif target_spec:
             log_verbose("Distributing '%s' target cells Round-Robin", target_spec.name)
             target = self._target_parser.getTarget(target_spec.name)
             all_gids = target.completegids().as_numpy().astype("uint32")
             total_cells = len(all_gids)
-            gidvec, me_infos, _ = loader(run_conf, all_gids, MPI.size, MPI.rank)
+            gidvec, me_infos, _ = loader(circuit_conf, all_gids, MPI.size, MPI.rank)
 
         else:
             log_verbose("Distributing ALL cells Round-Robin")
-            gidvec, me_infos, total_cells = loader(run_conf, None, MPI.size, MPI.rank)
+            gidvec, me_infos, total_cells = loader(circuit_conf, None, MPI.size, MPI.rank)
 
-        self._gidvec = compat.Vector("I", gidvec)  # whatever it was, convert to compat V
-        self._total_cells = total_cells
+        if self._total_cells:
+            logging.info("Appending %d cells to existing %d", total_cells, self._total_cells)
+        gidvec = compat.Vector("I", gidvec)  # convert to compat array
+        self._gidvec.extend(gidvec)
+        self._total_cells += total_cells
+
         MPI.check_no_errors()  # First phase (read mvd) DONE. Check all good
 
-        if len(self._gidvec) == 0:
+        if len(gidvec) == 0:
             logging.warning("Rank %d has no cells assigned.", MPI.rank)
             # We must not return, we have an allreduce later
 
         logging.info(" => Cells distributed. %d cells in network, %d in rank 0",
                      self._total_cells, len(self._gidvec))
         self._pnm.ncell = self._total_cells
-        mepath = run_conf["METypePath"]
+        mepath = circuit_conf["METypePath"]
 
         # Logic for morphologies
         # If MorphologyType is set -> fullpath (new behavior), otherwise append /ascii
-        if "MorphologyType" in run_conf:
-            morpho_path = run_conf["MorphologyPath"]
-            self.CellType.morpho_extension = run_conf["MorphologyType"]
+        if "MorphologyType" in circuit_conf:
+            morpho_path = circuit_conf["MorphologyPath"]
+            self.CellType.morpho_extension = circuit_conf["MorphologyType"]
         else:
-            morpho_path = run_conf["MorphologyPath"] + "/ascii"
+            morpho_path = circuit_conf["MorphologyPath"] + "/ascii"
             self.CellType.morpho_extension = "asc"
 
         logging.info("Instantiating cells... Morphologies: %s", self.CellType.morpho_extension)
         total_created_cells = 0
 
-        for gid in ProgressBar.iter(self._gidvec):
+        for gid in ProgressBar.iter(gidvec):
             if self._node_format != NodeFormat.NCS:
                 # mvd3, Sonata
                 meinfo_v6 = me_infos.retrieve_info(gid)

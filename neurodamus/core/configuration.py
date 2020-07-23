@@ -57,6 +57,9 @@ class _SimConfig(object):
     def init(cls, h, run_conf):
         parsed_run = run_conf['_hoc']
         cls._simconf = h.simConfig
+
+        if parsed_run.get("CircuitPath").s and not parsed_run.exists("MorphologyPath"):
+            parsed_run.put("MorphologyPath", h.String(""))
         cls._simconf.interpret(parsed_run)
 
         cls.rng_info = h.RNGSettings()
@@ -83,6 +86,14 @@ class _SimConfig(object):
 
 
 SimConfig = _SimConfig()
+
+
+class CircuitConfig(ConfigT):
+    Engine = None
+    CircuitPath = ConfigT.REQUIRED
+    nrnPath = ConfigT.REQUIRED
+    CircuitTarget = None
+    PopulationID = 0
 
 
 class RNGConfig(ConfigT):

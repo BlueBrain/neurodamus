@@ -201,9 +201,8 @@ class TimerManager(object):
     def timeit_show_stats(self):
         current_timers_name = "Final Stats" if len(self._archived_timers) else ""
         for timers_name, timers in chain(self._archived_timers.items(),
-                                         {current_timers_name: self._timers}.items()):
+                                         ((current_timers_name, self._timers),)):
             mpi_times = Nd.Vector(tinfo.total_time for tinfo in timers.values())
-
             avg_times = mpi_times.c()
             MPI.pc.allreduce(avg_times, MPI.SUM)
             min_times = mpi_times.c()
@@ -265,13 +264,10 @@ class timeit(ContextDecorator):
 # Does not use the TimerManager.
 @contextmanager
 def timeit_rank0(name):
-    # enter
-    t = None
     if MPI.rank == 0:
         t = _Timer(name).start()
-    yield
-
-    # exit
-    if t is not None:
+        yield
         t.stop()
         t.log(keyword="rank0")
+    else:
+        yield  # No-op
