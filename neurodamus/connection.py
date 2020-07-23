@@ -275,11 +275,9 @@ class Connection(ConnectionBase):
             self._replay = None
         if self._spont_minis.rate == 0:
             self._spont_minis = None
-
-        spont_minis_inh = SpontMinis(cell._inh_mini_frequency) \
-            if cell._inh_mini_frequency is not None and cell._inh_mini_frequency > 0 else None
-        spont_minis_exc = SpontMinis(cell._exc_mini_frequency) \
-            if cell._exc_mini_frequency is not None and cell._exc_mini_frequency > 0 else None
+            if cell._inh_mini_frequency or cell._exc_mini_frequency:
+                self._spont_minis = InhExcSpontMinis(cell._inh_mini_frequency,
+                                                     cell._exc_mini_frequency)
 
         for syn_i, sec in self.sections_with_netcons:
             x = self._synapse_points.x[syn_i]
@@ -305,14 +303,6 @@ class Connection(ConnectionBase):
 
             if self._spont_minis is not None:
                 self._spont_minis.create_on(self, sec, x, syn_obj, syn_params, base_seed)
-            elif spont_minis_inh is not None and syn_params.synType < 100:
-                log_verbose("Create SpontMinis from cell inh_mini_frequency "
-                            "for inhibitory synapses")
-                spont_minis_inh.create_on(self, sec, x, syn_obj, syn_params, base_seed)
-            elif spont_minis_exc is not None and syn_params.synType >= 100:
-                log_verbose("Create SpontMinis from cell exc_mini_frequency "
-                            "for excitatory synapses")
-                spont_minis_exc.create_on(self, sec, x, syn_obj, syn_params, base_seed)
 
             if shall_create_replay:
                 self._replay.create_on(self, sec, syn_obj, syn_params)
@@ -502,26 +492,37 @@ class SpontMinis(ArtificialStim):
     """A class creating/holding spont minis of a connection
     """
 
+    tbins_vec = None
+    """Neurodamus uses a constant rate, so tbin is always containing only 0
+    """  # Nd.Vector must be called later to avoid init Neuron on import
+
+    @classmethod
+    def _cls_init(cls):
+        cls.tbins_vec = Nd.Vector(1)
+        cls.tbins_vec.x[0] = 0.0
+
     def __init__(self, minis_spont_rate):
         super().__init__()
+        self.tbins_vec or self._cls_init()
         self._rng_info = Nd.RNGSettings()
-        self.tbins_vec = Nd.Vector(1)
-        self.tbins_vec.x[0] = 0.0
-        self.rate_vec = Nd.Vector(1)
-        self.rate_vec.x[0] = minis_spont_rate
         self._keep_alive = []
+        self.rate_vec = None
+
+        if minis_spont_rate is not None:  # Allow None (used by subclass)
+            self.rate_vec = Nd.Vector(1)
+            self.rate_vec.x[0] = minis_spont_rate
 
     rate = property(
-        lambda self: self.rate_vec.x[0],
+        lambda self: self.rate_vec and self.rate_vec.x[0],
         lambda self, rate: self.rate_vec.x.__setitem__(0, rate)
     )
 
-    def create_on(self, conn, sec, position, syn_obj, syn_params, base_seed):
+    def create_on(self, conn, sec, position, syn_obj, syn_params, base_seed, _rate_vec=None):
         """Inserts a SpontMini stim into the given synapse
         """
         ips = Nd.InhPoissonStim(position, sec=sec)
         ips.setTbins(self.tbins_vec)
-        ips.setRate(self.rate_vec)
+        ips.setRate(_rate_vec or self.rate_vec)  # allow override (private API)
         # A simple NetCon will do, as the synapse and cell are local.
         netcon = Nd.NetCon(ips, syn_obj, sec=sec)
         netcon.delay = 0.1
@@ -559,6 +560,26 @@ class SpontMinis(ArtificialStim):
             uniformrng.uniform(0.0, 1.0)
             ips.setRNGs(exprng, uniformrng)
             self._keep_alive += (exprng, uniformrng)
+
+
+class InhExcSpontMinis(SpontMinis):
+    """Extends SpontMinis to handle two spont rates: Inhibitory & Excitatory
+    """
+    def __init__(self, spont_rate_inh, spont_rate_exc):
+        super().__init__(spont_rate_inh or None)  # positive rate, otherwise None
+        self.rate_vec_exc = None
+        if spont_rate_exc:
+            self.rate_vec_exc = Nd.Vector(1)
+            self.rate_vec_exc.x[0] = spont_rate_exc
+
+    def create_on(self, conn, sec, position, syn_obj, syn_params, *args):
+        if syn_params.synType < 100:    # Inhibitory
+            if self.rate_vec:
+                super().create_on(conn, sec, position, syn_obj, syn_params, *args)
+        else:                           # Excitatory
+            if self.rate_vec_exc:
+                super().create_on(conn, sec, position, syn_obj, syn_params, *args,
+                                  _rate_vec=self.rate_vec_exc)
 
 
 class ReplayStim(ArtificialStim):
