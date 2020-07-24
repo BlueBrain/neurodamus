@@ -4,11 +4,11 @@ Loggeers init & Formatters
 from __future__ import absolute_import
 import logging as _logging
 import sys
-from copy import copy
 from .pyutils import ConsoleColors
 
 STAGE_LOGLEVEL = 25
 VERBOSE_LOGLEVEL = 15
+ALWAYS_LEVEL = 40
 
 # New log levels, for stage (minimal output, verbose)
 _logging.addLevelName(STAGE_LOGLEVEL, "STEP")
@@ -27,7 +27,12 @@ def log_verbose(msg, *args):
     _logging.log(VERBOSE_LOGLEVEL, msg, *args)
 
 
-class _ColoredFormatter(_logging.Formatter):
+def log_all(level, msg, *args):
+    """Like logging.log, but always displays. Level is used for style only"""
+    _logging.log(ALWAYS_LEVEL, msg, *args, extra={'ulevel': level})
+
+
+class _LevelColorFormatter(_logging.Formatter):
     COLORS = {
         _logging.CRITICAL: ConsoleColors.RED,
         _logging.ERROR: ConsoleColors.RED,
@@ -38,38 +43,43 @@ class _ColoredFormatter(_logging.Formatter):
         _logging.DEBUG: ConsoleColors.DEFAULT + ConsoleColors.DIM,
     }
 
-    def format(self, record):
-        levelno = record.levelno
-        style = self.COLORS.get(levelno)
-        if style is not None:
-            record.levelname = ConsoleColors.format_text(record.levelname, style)
-            record.msg = ConsoleColors.format_text(record.msg, style) \
-                if levelno >= _logging.WARNING or levelno == VERBOSE_LOGLEVEL \
-                else ConsoleColors.format_text(record.msg, ConsoleColors.DEFAULT, style)
-        return super(_ColoredFormatter, self).format(record)
-
-
-class _LevelFormatter(_ColoredFormatter):
     _logfmt = "[%(levelname)s] %(message)s"
     _datefmt = "%b.%d %H:%M:%S"
-    _level_tabs = {VERBOSE_LOGLEVEL: ' -> ', _logging.DEBUG: '    + '}
+    _level_tabs = {VERBOSE_LOGLEVEL: ' -> ',
+                   _logging.DEBUG: ' + '}
 
     def __init__(self, with_time=True, rank=None, **kw):
-        _ColoredFormatter.__init__(self, self._logfmt, self._datefmt, **kw)
+        super().__init__(self._logfmt, self._datefmt, **kw)
         self._rank = rank
         self._with_time = with_time
 
     def format(self, record):
-        record = copy(record)  # All changes done here dont persist
-        record.levelname = record.levelname.center(6)
-        addins = self._level_tabs.get(record.levelno, "")
-        if self._rank is not None and record.levelno >= _logging.ERROR:
-            addins = ("(rank %d) " % (self._rank,)) + addins
-        record.msg = addins + record.msg
-        msg = _ColoredFormatter.format(self, record)
+        if hasattr(record, "ulevel"):
+            record.levelno = record.ulevel
+            record.levelname = _logging.getLevelName(record.levelno)
+        style = self.COLORS.get(record.levelno)
+        if style is not None:
+            record.levelname = self._format_level(record, style)
+            record.msg = self._format_msg(record, style)
+        return super().format(record)
+
+    def _format_level(self, record, style):
+        return ConsoleColors.format_text(record.levelname, style)
+
+    def _format_msg(self, record, style):
+        msg = ""
         if self._with_time:
-            msg = "(%s) " % self.formatTime(record, self._datefmt) + msg
-        return msg
+            msg += "(%s) " % self.formatTime(record, self._datefmt) + msg
+        # Show rank only for ERRORs
+        if self._rank is not None and record.levelno >= _logging.ERROR:
+            msg += "(rank {:d}) ".format(self._rank)
+
+        levelno = record.levelno
+        msg += self._level_tabs.get(levelno, "") + record.msg
+
+        return ConsoleColors.format_text(msg, style) \
+            if levelno >= _logging.WARNING or levelno == VERBOSE_LOGLEVEL \
+            else ConsoleColors.format_text(msg, ConsoleColors.DEFAULT, style)
 
 
 def setup_logging(loglevel, logfile=None, rank=None):
@@ -95,7 +105,7 @@ def setup_logging(loglevel, logfile=None, rank=None):
 
     # Stdout
     hdlr = _logging.StreamHandler(sys.stdout)
-    hdlr.setFormatter(_LevelFormatter(False, rank))
+    hdlr.setFormatter(_LevelColorFormatter(False, rank))
     if rank == 0:
         _logging.root.setLevel(verbosity_levels[loglevel])
     else:
@@ -106,7 +116,7 @@ def setup_logging(loglevel, logfile=None, rank=None):
 
     if logfile:
         fileh = _logging.FileHandler(logfile)
-        fileh.setFormatter(_LevelFormatter(rank=rank))
+        fileh.setFormatter(_LevelColorFormatter(rank=rank))
         _logging.root.addHandler(fileh)
 
     setup_logging.logging_initted = True

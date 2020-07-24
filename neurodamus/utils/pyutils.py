@@ -1,7 +1,7 @@
 """
 Collection of generic Python utilities.
 """
-from __future__ import absolute_import, print_function
+from __future__ import absolute_import
 from bisect import bisect_left
 from enum import EnumMeta
 
@@ -129,8 +129,8 @@ def bin_search(container, key, keyf=None):
 class ConsoleColors:
     """Helper class for formatting console text.
     """
-    BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, _, DEFAULT = range(10)
-    NORMAL, BOLD, DIM, UNDERLINED, BLINK, INVERTED, HIDDEN = [a << 4 for a in range(7)]
+    BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, _, DEFAULT = range(30, 40)
+    NORMAL, BOLD, DIM, UNDERLINED, BLINK, INVERTED, HIDDEN = [a << 8 for a in range(7)]
 
     # These are the sequences needed to control output
     _CHANGE_SEQ = "\033[{}m"
@@ -142,13 +142,10 @@ class ConsoleColors:
 
     @classmethod
     def set_text_color(cls, color):
-        return cls._CHANGE_SEQ.format(color + 30)
+        return cls._CHANGE_SEQ.format(color)
 
     @classmethod
     def format_text(cls, text, color, style=None):
-        if not style:
-            style = (color & 0xf0)
-        color &= 0x0f
-        style = style >> 4
-        format_seq = "" if style is None else cls._CHANGE_SEQ.format(style)
-        return format_seq + cls.set_text_color(color) + text + cls._RESET_SEQ
+        style = (style or color) >> 8
+        format_seq = str(color & 0x00ff) + ((";" + str(style)) if style else "")
+        return cls._CHANGE_SEQ.format(format_seq) + text + cls._RESET_SEQ

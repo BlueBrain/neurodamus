@@ -1,7 +1,7 @@
 """
 Main module for handling and instantiating synaptical connections and gap-junctions
 """
-from __future__ import absolute_import, print_function
+from __future__ import absolute_import
 import logging
 import numpy
 from collections import defaultdict
@@ -14,7 +14,7 @@ from .core.configuration import GlobalConfig, ConfigurationError
 from .connection import Connection, SynapseMode, ReplayMode
 from .io.synapse_reader import SynapseReader
 from .utils import compat, bin_search, dict_filter_map
-from .utils.logging import log_verbose
+from .utils.logging import log_verbose, log_all
 from .utils.timeit import timeit
 
 
@@ -349,8 +349,12 @@ class _ConnectionManagerBase(object):
 
         for sgid, tgid, syns_params, offset in \
                 self._iterate_conn_params(src_target_filter, None, gids, True):
-            cur_conn = pop.get_or_create_connection(sgid, tgid, **conn_options)
+
+            if GlobalConfig.debug_conn in ([tgid], [sgid, tgid]):
+                log_all(logging.DEBUG, "Connection Params:(%d-%d)\n%s", sgid, tgid, syns_params)
+
             # Create all synapses. No need to lock since the whole file is consumed
+            cur_conn = pop.get_or_create_connection(sgid, tgid, **conn_options)
             self._add_synapses(cur_conn, syns_params, None, offset)
 
     # -
@@ -370,10 +374,16 @@ class _ConnectionManagerBase(object):
         for sgid, tgid, syns_params, offset in self._iterate_conn_params(src_target, dst_target):
             if sgid == tgid:
                 logging.warning("Making connection within same Gid: %d", sgid)
+
             cur_conn = pop.get_or_create_connection(sgid, tgid, **conn_kwargs)
-            if not cur_conn.locked:
-                self._add_synapses(cur_conn, syns_params, synapse_type_restrict, offset)
-                cur_conn.locked = True
+            if cur_conn.locked:
+                continue
+
+            if GlobalConfig.debug_conn in ([tgid], [sgid, tgid]):
+                log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s", sgid, tgid, syns_params)
+
+            self._add_synapses(cur_conn, syns_params, synapse_type_restrict, offset)
+            cur_conn.locked = True
 
     # -
     def _add_synapses(self, cur_conn, syns_params, syn_type_restrict=None, base_id=0):
@@ -398,7 +408,6 @@ class _ConnectionManagerBase(object):
             gids = self._local_gids
         if show_progress:
             gids = ProgressBar.iter(gids)
-        _dbg_conn = GlobalConfig.debug_conn
         created_conns_0 = self._cur_population.count()
 
         for tgid in gids:
@@ -409,9 +418,6 @@ class _ConnectionManagerBase(object):
             syns_params = self._synapse_reader.get_synapse_parameters(tgid)
             cur_i = 0
             syn_count = len(syns_params)
-
-            if len(_dbg_conn) == 1 and _dbg_conn[0] == tgid:
-                print("[ DEBUG ] -> Tgid={} Params: {}".format(tgid, syns_params))
 
             while cur_i < syn_count:
                 # Use numpy to get all the synapses of the same gid at once

@@ -6,8 +6,9 @@ import logging
 import numpy as np
 from enum import Enum
 from .core import NeurodamusCore as Nd
+from .core.configuration import GlobalConfig
 from .utils import compat
-from .utils.logging import log_verbose
+from .utils.logging import log_all
 
 
 class SynapseMode:
@@ -222,11 +223,11 @@ class Connection(ConnectionBase):
 
         params_obj.location = syn_tpoints.x[0]  # helper
 
-        if syn_id is not None:
-            self._synapse_ids.append(syn_id)
-        else:
-            self._synapse_ids.append(self._synapse_points.count())
+        if syn_id is None:
+            syn_id = self._synapse_points.count()
+        self._synapse_ids.append(syn_id)
 
+    # -
     def replay(self, tvec, start_delay=.0):
         """ The synapses connecting these gids are to be activated using
         predetermined timings.
@@ -275,6 +276,7 @@ class Connection(ConnectionBase):
             self._replay = None
         if self._spont_minis.rate == 0:
             self._spont_minis = None
+            # Eventually replace with default rates, if set
             if cell._inh_mini_frequency or cell._exc_mini_frequency:
                 self._spont_minis = InhExcSpontMinis(cell._inh_mini_frequency,
                                                      cell._exc_mini_frequency)
@@ -282,19 +284,17 @@ class Connection(ConnectionBase):
         for syn_i, sec in self.sections_with_netcons:
             x = self._synapse_points.x[syn_i]
             syn_params = self._synapse_params[syn_i]
-            with Nd.section_in_stack(sec):
-                syn_obj = self._create_synapse(
-                    cell, syn_params, x, self._synapse_ids[syn_i], base_seed)
-            cell_syn_list = cell.CellRef.synlist
-            self._synapses.append(syn_obj)
 
-            # see also pc.gid_connect
-            # if sgid exists (i.e. both gids are local), makes netcon connection (c/c++) immediately
-            # if sgid not exist, creates an input PreSyn to receive spikes transited over the net.
-            # PreSyn is the source to the NetCon, cannot ask netcon about the preloc, but srcgid ok
             with Nd.section_in_stack(sec):
+                syn_obj = self._create_synapse(cell, syn_params, x,
+                                               self._synapse_ids[syn_i], base_seed)
+                cell_syn_list = cell.CellRef.synlist
+                self._synapses.append(syn_obj)
+
+                # See neurodamus-core.Connection for explanation. see also pc.gid_connect
                 nc_index = pnm.nc_append(self.sgid, target_spgid, cell_syn_list.count()-1,
                                          syn_params.delay, syn_params.weight)
+
             nc = pnm.nclist.object(nc_index)  # Netcon object
             nc.delay = syn_params.delay
             nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
@@ -330,20 +330,21 @@ class Connection(ConnectionBase):
                 MCellRan4's low index parameter
 
         """
+        is_inh = params_obj.synType < 100
         if self._mod_override is not None:
             override_helper = self._mod_override.get("ModOverride").s + "Helper"
             helper_cls = getattr(Nd.h, override_helper)
             add_params = (self._mod_override,)
         else:
-            helper_cls = Nd.GABAABHelper if params_obj.synType < 100 \
-                else Nd.AMPANMDAHelper  # excitatory
+            helper_cls = Nd.GABAABHelper if is_inh else Nd.AMPANMDAHelper
             add_params = (self._conn_params.src_pop_id, self._conn_params.dst_pop_id)
 
         syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, *add_params)
+
         # set the default value of synapse NMDA_ratio/GABAB_ratio from circuit
         if params_obj.conductance_ratio >= 0:
-            self._update_conductance_ratio(syn_helper.synapse, params_obj.synType,
-                                           params_obj.conductance_ratio)
+            self._update_conductance_ratio(syn_helper.synapse, is_inh, params_obj.conductance_ratio)
+
         cell.CellRef.synHelperList.append(syn_helper)
         cell.CellRef.synlist.append(syn_helper.synapse)
         return syn_helper.synapse
@@ -368,10 +369,12 @@ class Connection(ConnectionBase):
             active_params = self._synapse_params[syn_i]
             gap_junction = Nd.Gap(x, sec=sec)
 
-            # Using computed offset
-            logging.debug("connect %f to %f [D: %f + %f], [F: %f + %f] (weight: %f)",
-                          self.tgid, self.sgid, offset, active_params.D,
-                          end_offset, active_params.F, active_params.weight)
+            dbg_conn = GlobalConfig.debug_conn
+            if dbg_conn and dbg_conn in ([self.tgid], [self.sgid, self.tgid]):
+                log_all(logging.DEBUG, "connect %f to %f [D: %f + %f], [F: %f + %f] (weight: %f)",
+                        self.tgid, self.sgid, offset, active_params.D,
+                        end_offset, active_params.F, active_params.weight)
+
             with Nd.section_in_stack(sec):
                 pnm.pc.target_var(
                     gap_junction, gap_junction._ref_vgap, (offset + active_params.D))
@@ -397,17 +400,18 @@ class Connection(ConnectionBase):
             for nc in self._replay.netcons:
                 nc.weight[0] = weight
 
-    @staticmethod
-    def _update_conductance_ratio(syn_obj, syn_type, value):
+    def _update_conductance_ratio(self, syn_obj, is_inhibitory, value):
         """ Update the relevant conductance ratio of synapse object
             inhibitory synapse : GABAB_ratio
             excitatory synapse : NMDA_ratio
         """
-        if syn_type < 100:
-            log_verbose("update GABAB ratio to %s for inhibitory synapse" % value)
+        dbg_conn = GlobalConfig.debug_conn
+        if dbg_conn and dbg_conn in ([self.tgid], [self.sgid, self.tgid]):
+            log_all(logging.DEBUG, "[%d->%d] Update synapse %s ratio to %.6f",
+                    self.sgid, self.tgid, "GABAB" if is_inhibitory else "NMDA", value)
+        if is_inhibitory:
             syn_obj.GABAB_ratio = value
         else:
-            log_verbose("update NMDA ratio to %s for excitatory synapse" % value)
             syn_obj.NMDA_ratio = value
 
     def _configure_cell(self, cell):
@@ -520,9 +524,14 @@ class SpontMinis(ArtificialStim):
     def create_on(self, conn, sec, position, syn_obj, syn_params, base_seed, _rate_vec=None):
         """Inserts a SpontMini stim into the given synapse
         """
+        rate_vec = _rate_vec or self.rate_vec  # allow override (private API)
+        if GlobalConfig.debug_conn in ([conn.tgid], [conn.sgid, conn.tgid]):
+            log_all(logging.DEBUG, "Creating Spont Minis on %d-%d, Rate: %f",
+                    conn.sgid, conn.tgid, rate_vec[0])
+
         ips = Nd.InhPoissonStim(position, sec=sec)
         ips.setTbins(self.tbins_vec)
-        ips.setRate(_rate_vec or self.rate_vec)  # allow override (private API)
+        ips.setRate(rate_vec)
         # A simple NetCon will do, as the synapse and cell are local.
         netcon = Nd.NetCon(ips, syn_obj, sec=sec)
         netcon.delay = 0.1
@@ -573,13 +582,10 @@ class InhExcSpontMinis(SpontMinis):
             self.rate_vec_exc.x[0] = spont_rate_exc
 
     def create_on(self, conn, sec, position, syn_obj, syn_params, *args):
-        if syn_params.synType < 100:    # Inhibitory
-            if self.rate_vec:
-                super().create_on(conn, sec, position, syn_obj, syn_params, *args)
-        else:                           # Excitatory
-            if self.rate_vec_exc:
-                super().create_on(conn, sec, position, syn_obj, syn_params, *args,
-                                  _rate_vec=self.rate_vec_exc)
+        rate_vec = self.rate_vec if syn_params.synType < 100 else self.rate_vec_exc
+        if rate_vec:
+            # there's a spont rate for this kind of synapse
+            super().create_on(conn, sec, position, syn_obj, syn_params, *args, _rate_vec=rate_vec)
 
 
 class ReplayStim(ArtificialStim):
@@ -597,6 +603,10 @@ class ReplayStim(ArtificialStim):
         if self.has_data():
             vecstim = Nd.VecStim(sec=sec)
             vecstim.play(self.time_vec)
+
+        if GlobalConfig.debug_conn in ([conn.tgid], [conn.sgid, conn.tgid]):
+            log_all(logging.DEBUG, "Creating Replay on %d-%d, times: %s",
+                    conn.sgid, conn.tgid, self.time_vec.as_numpy() if self.has_data() else "N/A")
 
         nc = Nd.NetCon(vecstim, syn_obj, 10, syn_params.delay, syn_params.weight, sec=sec)
         nc.weight[0] = syn_params.weight * conn.weight_factor

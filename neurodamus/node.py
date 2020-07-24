@@ -21,7 +21,7 @@ from .io.cell_readers import TargetSpec
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
 from .utils import compat
-from .utils.logging import log_stage, log_verbose
+from .utils.logging import log_stage, log_verbose, log_all
 from .utils.timeit import TimerManager, timeit, timeit_rank0
 
 
@@ -1319,8 +1319,8 @@ class Node:
                 if gid in self.gidvec:
                     gids.append(gid)
             if len(gids):
-                print("[INFO] Rank %d: Debugging %d gids in debug_gids.txt"
-                      % (MPI.rank, len(gids)))
+                log_all(logging.INFO, "Rank %d: Debugging %d gids from debug_gids.txt",
+                        MPI.rank, len(gids))
 
         for gid in gids:
             self._pnm.pc.prcellstate(gid, suffix)

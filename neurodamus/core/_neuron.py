@@ -208,13 +208,13 @@ class Simulation(object):
         try:
             from matplotlib import pyplot
         except Exception:
-            print("Matplotlib is not installed. Please install pyneurodamus[full]")
+            logging.error("Matplotlib is not installed. Please install pyneurodamus[full]")
             return None
         if len(self.recordings) == 0:
-            print("No recording sections defined")
+            logging.error("No recording sections defined")
             return None
         if not self.t_vec:
-            print("No Simulation data. Please run it first.")
+            logging.error("No Simulation data. Please run it first.")
             return None
 
         fig = pyplot.figure()
