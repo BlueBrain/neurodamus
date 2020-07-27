@@ -32,6 +32,9 @@ class Node:
     It is relatively low-level, for a standard run consider using the Neurodamus class instead.
     """
 
+    _default_population = 'All'
+    """The default population name for e.g. Reports."""
+
     def __init__(self, config_file, options=None):
         """ Creates a neurodamus executor
         Args:
@@ -77,7 +80,6 @@ class Node:
         self._gj_manager = None        # type: GapJunctionManager
         self._connection_weight_delay_list = []
         self._jumpstarters = []
-        self._default_population = 'All'
 
     #
     # public 'read-only' properties - object modification on user responsibility
@@ -799,14 +801,10 @@ class Node:
             electrode = self._elec_manager.getElectrode(rep_conf["Electrode"]) \
                 if not self._corenrn_conf and "Electrode" in rep_conf else None
 
-            name = rep_conf["Target"]
-            if name and ':' in name:
-                population_name, target_name = name.split(':')
-            else:
-                target_name = name
-                population_name = self._target_spec.population or self._default_population
-
-            logging.info(" Population: %s, Target: %s", population_name, target_name)
+            rep_target = TargetSpec(rep_conf["Target"])
+            population_name = (rep_target.population or self._target_spec.population
+                               or self._default_population)
+            logging.info("REPORT Population: %s, Target: %s", population_name, rep_target.name)
 
             rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
                                     "start, end, output_dir, electrode, scaling, isc, \
@@ -821,16 +819,16 @@ class Node:
                 end_time,
                 self._output_root,
                 electrode,
-                rep_conf.get("Scaling"),
+                Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
                 rep_conf.get("ISC", ""),
                 population_name
             )
 
             if self._corenrn_conf and MPI.rank == 0:
                 # Init report config
-                ptarget = self._target_parser.getTarget(target_name)
+                ptarget = self._target_parser.getTarget(rep_target.name)
                 self._corenrn_conf.write_report_config(
-                    rep_name, name, rep_type, rep_params.report_on, rep_params.unit,
+                    rep_name, rep_target.name, rep_type, rep_params.report_on, rep_params.unit,
                     rep_params.format, ptarget.isCellTarget(), rep_params.dt, rep_params.start,
                     rep_params.end, ptarget.completegids(), self._corenrn_buff_size,
                     population_name)
@@ -845,7 +843,7 @@ class Node:
             # For summation targets - check if we were given a Cell target because we really want
             # all points of the cell which will ultimately be collapsed to a single value
             # on the soma. Otherwise, get target points as normal.
-            target = self._target_manager.getTarget(target_name)
+            target = self._target_manager.getTarget(rep_target.name)
             points = self.get_target_points(target, rep_type.lower() == "summation")
 
             for point in points:
