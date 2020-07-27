@@ -4,6 +4,7 @@ Main module for handling and instantiating synaptical connections and gap-juncti
 from __future__ import absolute_import
 import logging
 import numpy
+from abc import abstractmethod
 from collections import defaultdict
 from itertools import chain
 from os import path as ospath
@@ -98,8 +99,9 @@ class ConnectionSet(object):
         conns = self._connections_map[tgid]
         pos = 0
         if conns:
+            # optimize for ordered insertion, and handle when sgid is not used
             last_conn = conns[-1]
-            if last_conn.sgid == sgid:
+            if last_conn.sgid in (sgid, None):
                 return last_conn
             if last_conn.sgid < sgid:
                 pos = len(conns)
@@ -235,32 +237,38 @@ class _ConnectionManagerBase(object):
 
         self._synapse_reader = None
         self._local_gids = cell_distributor.local_gids
+        self._total_connections = 0
 
-        file_path, *pop = nrn_path.split(":")  # fspath:population
-        if ospath.isdir(file_path):
-            file_path = self._find_circuit_file(file_path)
-        assert ospath.isfile(file_path), "Circuit path doesnt contain valid circuits"
-
-        synapse_source = ":".join([file_path] + pop)
-        self.open_synapse_file(synapse_source, n_synapse_files)
+        if nrn_path is not None:
+            file_path, *pop = nrn_path.split(":")  # fspath:population
+            if ospath.isdir(file_path):
+                file_path = self._find_circuit_file(file_path)
+            assert ospath.isfile(file_path), "Circuit path doesnt contain valid circuits"
+            synapse_source = ":".join([file_path] + pop)
+            self.open_synapse_file(synapse_source, n_synapse_files)
+        else:
+            self._cur_population = self.get_population(0, 0)  # Instantiate a default pop
 
         if GlobalConfig.debug_conn:
             logging.info("Debugging activated for cell/conn %s", GlobalConfig.debug_conn)
 
     # -
-    def open_synapse_file(self, synapse_source, n_synapse_files=None, src_pop_id=0):
+    def open_synapse_file(self, synapse_source, n_files=None, src_pop_id=0):
         """Initializes a reader for Synapses"""
         synapse_file, *pop_name = synapse_source.split(":")  # fspath:population
         pop_name = pop_name[0] if pop_name else None
 
-        logging.info("Opening Synapse file %s, population: %s", synapse_file, pop_name)
-        self._synapse_reader = self.SynapseReader.create(
-            synapse_file, self.CONNECTIONS_TYPE, pop_name,
-            n_synapse_files, self._local_gids  # Used eventually by NRN reader
-        )
-
+        self._synapse_reader = self._open_synapse_file(synapse_file, pop_name, n_files)
         self.select_populations(src_pop_id, 0)
         self._unlock_all_connections()  # Allow appending synapses from new sources
+
+    # -
+    def _open_synapse_file(self, synapse_file, pop_name, n_nrn_files=None):
+        logging.info("Opening Synapse file %s, population: %s", synapse_file, pop_name)
+        return self.SynapseReader.create(
+            synapse_file, self.CONNECTIONS_TYPE, pop_name,
+            n_nrn_files, self._local_gids  # Used eventually by NRN reader
+        )
 
     # -
     def select_populations(self, src_id, dst_id):
@@ -311,6 +319,10 @@ class _ConnectionManagerBase(object):
         return chain.from_iterable(
             pop.all_connections() for pop in self._populations.values())
 
+    @property
+    def connection_count(self):
+        return self._total_connections
+
     # -
     def get_connections(self, post_gids, pre_gids=None, population_ids=None):
         """Retrieves all connections that match post and pre gids eventually
@@ -347,9 +359,8 @@ class _ConnectionManagerBase(object):
         gids = self._local_gids if only_gids is None else only_gids
         src_target_filter = self._circuit_target if only_sgid_in_target else None
 
-        for sgid, tgid, syns_params, offset in \
-                self._iterate_conn_params(src_target_filter, None, gids, True):
-
+        for sgid, tgid, syns_params, offset in self._iterate_conn_params(
+                src_target_filter, None, gids, True):
             if GlobalConfig.debug_conn in ([tgid], [sgid, tgid]):
                 log_all(logging.DEBUG, "Connection Params:(%d-%d)\n%s", sgid, tgid, syns_params)
 
@@ -419,15 +430,20 @@ class _ConnectionManagerBase(object):
             cur_i = 0
             syn_count = len(syns_params)
 
+            # The first field is typically sgid, but to generalize we use field 0
+            sgids = syns_params[syns_params.dtype.names[0]]
+
             while cur_i < syn_count:
                 # Use numpy to get all the synapses of the same gid at once
-                sgid = int(syns_params[cur_i]['sgid'])
-                next_i = numpy.searchsorted(syns_params[cur_i:]['sgid'], sgid+1) + cur_i
+                sgid = int(sgids[cur_i])
+                next_i = numpy.searchsorted(sgids[cur_i:], sgid+1) + cur_i
                 if src_target is None or src_target.completeContains(sgid):
                     yield sgid, tgid, syns_params[cur_i:next_i], cur_i
                 cur_i = next_i
 
         created_conns = self._cur_population.count() - created_conns_0
+        self._total_connections += created_conns
+
         if created_conns:
             pathway_repr = "[ALL]"
             if src_target and dst_target:
@@ -696,6 +712,30 @@ class _ConnectionManagerBase(object):
         for conn in self.all_connections():
             conn.locked = False
 
+    def finalize(self, base_Seed=0, sim_corenrn=False, *finalize_params, conn_type="synapses"):
+        """Instantiates the netcons and Synapses for all GapJunctions.
+        """
+        # Connections must have been placed and all weight scalars should have their
+        # final values. We can destroy _reader to release memory (all cached params)
+        self._synapse_reader = None
+
+        logging.info("Instantiating %s... Params: %s", conn_type, str(finalize_params))
+        n_created_conns = 0
+
+        for popid, pop in self._populations.items():
+            for tgid, conns in ProgressBar.iter(pop.items(), name="Pop:" + str(popid)):
+                n_created_conns += self._finalize_conns(
+                    tgid, conns, base_Seed, sim_corenrn, *finalize_params)
+
+        all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
+        logging.info(" => Created %d %s", all_ranks_total, conn_type)
+        return all_ranks_total
+
+    @abstractmethod
+    def _finalize_conns(self, tgid, conns, base_seed, sim_corenrn, *_):
+        """Method finalizing a gid connections, invoked for each target gid.
+        """
+
 
 # ######################################################################
 # SynapseRuleManager
@@ -723,7 +763,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
     CONNECTIONS_TYPE = SynapseReader.SYNAPSES
 
     def __init__(self,
-                 circuit_path, target_manager, cell_dist, n_synapse_files,
+                 circuit_path, target_manager, cell_dist, n_synapse_files=1,
                  synapse_mode=None):
         """Initializes SynapseRuleManager, reading the circuit file.
 
@@ -742,7 +782,7 @@ class SynapseRuleManager(_ConnectionManagerBase):
             if synapse_mode is not None else SynapseMode.default
 
     # -
-    def finalize(self, base_seed=0, sim_corenrn=False, replay_mode=None):
+    def finalize(self, base_seed=0, sim_corenrn=False, replay_mode=None, *args, **_kw):
         """Create the actual synapses and netcons.
 
         Note: All weight scalars should have their final values.
@@ -757,24 +797,22 @@ class SynapseRuleManager(_ConnectionManagerBase):
         if replay_mode is None:
             # CoreNeuron will handle replays automatically with its own PatternStim
             replay_mode = ReplayMode.NONE if sim_corenrn else ReplayMode.AS_REQUIRED
+        super().finalize(base_seed, sim_corenrn, replay_mode, *args)
 
-        logging.info("Instantiating synapses... [replay_mode: %s]", replay_mode.name)
+    def _finalize_conns(self, tgid, conns, base_seed, sim_corenrn, *args):
+        # *args normally contains the REPLAY mode but may differ for other types
         cell_distributor = self._cell_distibutor
+        metype = cell_distributor.getMEType(tgid)
+        spgid = cell_distributor.getSpGid(tgid)
         n_created_conns = 0
 
-        for popid, pop in self._populations.items():
-            for tgid, conns in ProgressBar.iter(pop.items(), name="Pop:" + str(popid)):
-                metype = cell_distributor.getMEType(tgid)
-                spgid = cell_distributor.getSpGid(tgid)
-                # Note: (Compat) neurodamus hoc keeps connections in reversed order.
-                for conn in reversed(conns):  # type: Connection
-                    if conn.finalize(cell_distributor.pnm, metype, base_seed, spgid,
-                                     replay_mode, skip_disabled=sim_corenrn):
-                        n_created_conns += 1
-
-        MPI.check_no_errors()
-        all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
-        logging.info(" => Created %d connections", all_ranks_total)
+        # Note: (Compat) neurodamus hoc keeps connections in reversed order.
+        for conn in reversed(conns):  # type: Connection
+            # Skip disabled if we are running with core-neuron
+            if conn.finalize(cell_distributor.pnm, metype, base_seed, spgid,
+                             sim_corenrn, *args):
+                n_created_conns += 1
+        return n_created_conns
 
     # -
     @timeit(name="Replay inject")
@@ -857,26 +895,15 @@ class GapJunctionManager(_ConnectionManagerBase):
             self._gj_offsets.append(gj_sum)
             gj_sum += 2 * offset
 
-    # -
-    def finalize(self):
-        """Instantiates the netcons and Synapses for all GapJunctions.
+    def finalize(self, *_, **_kw):
+        super().finalize(conn_type="Gap-Junctions")
 
-        Connections must have been placed and all weight scalars should
-        have their final values.
-        """
-        logging.info("Instantiating GapJuntions...")
+    def _finalize_conns(self, tgid, conns, *_):
         cell_distributor = self._cell_distibutor
-        n_created_conns = 0
-
-        for popid, pop in self._populations.items():
-            for tgid, conns in ProgressBar.iter(pop.items(), name="Pop:" + str(popid)):
-                metype = cell_distributor.getMEType(tgid)
-                t_gj_offset = self._gj_offsets[tgid-1]
-                for conn in reversed(conns):
-                    conn.finalize_gap_junctions(cell_distributor.pnm, metype, t_gj_offset,
-                                                self._gj_offsets[conn.sgid-1])
-                logging.debug("Created %d gap-junctions on post-gid %d", len(conns), tgid)
-                n_created_conns += len(conns)
-
-        all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
-        logging.info(" => Created %d Gap-Junctions", all_ranks_total)
+        metype = cell_distributor.getMEType(tgid)
+        t_gj_offset = self._gj_offsets[tgid - 1]
+        for conn in reversed(conns):
+            conn.finalize_gap_junctions(cell_distributor.pnm, metype, t_gj_offset,
+                                        self._gj_offsets[conn.sgid - 1])
+        logging.debug("Created %d gap-junctions on post-gid %d", len(conns), tgid)
+        return len(conns)

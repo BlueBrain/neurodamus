@@ -85,14 +85,6 @@ class NeurodamusCore(_Neuron):
             if mechlib is None:
                 return False
 
-            if env_lib_path == "NRNMECH_LIB_PATH":
-                modlib = os.path.join(os.path.dirname(mechlib),
-                                      "libnrnmech_nd" + os.path.splitext(mechlib)[1])
-                if os.path.isfile(modlib):
-                    logging.warning("Deprecation: NRNMECH_LIB_PATH points to model mechs. "
-                                    "Consider using a more recent build of neurodamus")
-                    mechlib = modlib
-
             for libpath in mechlib.split(":"):
                 libpath = libpath.strip()
                 if os.path.isfile(libpath):

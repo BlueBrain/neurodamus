@@ -33,8 +33,11 @@ class MPI(object):
 
         # When using MPI (and more than 1 rank) we need to MPIAbort on exception to avoid deadlocks
         def excepthook(etype, value, tb):
-            time.sleep(0.1 * cls._rank)  # Order errors
+            time.sleep(0.01 * cls._rank)  # Order errors
             logging.critical(str(value), exc_info=True)
+            if cls._rank == 0:
+                import traceback
+                traceback.print_tb(tb)
             pc.allreduce(1, 1)  # Share error state
             sys.exit(1)
         sys.excepthook = excepthook

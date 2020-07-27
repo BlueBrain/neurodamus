@@ -25,7 +25,7 @@ def mpi_no_errors(f):
     @wraps(f)
     def mpi_ok_wrapper(*args, **kw):
         res = f(*args, **kw)
-        if MPI.size > 0:
+        if MPI.size > 1:
             MPI.check_no_errors()
         return res
 

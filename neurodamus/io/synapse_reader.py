@@ -11,23 +11,29 @@ from ..core.configuration import SimConfig
 from ..utils.logging import log_verbose
 
 
-class SynapseParameters(object):
+class _SynParametersMeta(type):
+    def __init__(cls, name, bases, attrs):
+        type.__init__(cls, name, bases, attrs)
+        # Init public properties of the class
+        assert hasattr(cls, "_synapse_fields"), "Please define _synapse_fields class attr"
+        cls.dtype = np.dtype({"names": cls._synapse_fields,
+                              "formats": ["f8"] * len(cls._synapse_fields)})
+        cls.empty = np.recarray(0, cls.dtype)
+
+
+class SynapseParameters(metaclass=_SynParametersMeta):
     """Synapse parameters, internally implemented as numpy record
     """
     _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F",
-                       "DTC", "synType", "nrrp",
-                       "u_hill_coefficient", "conductance_ratio",
+                       "DTC", "synType", "nrrp", "u_hill_coefficient", "conductance_ratio",
                        "maskValue", "location")  # total: 16
-    _dtype = np.dtype({"names": _synapse_fields,
-                       "formats": ["f8"] * len(_synapse_fields)})
-    empty = np.recarray(0, _dtype)
 
-    def __new__(cls, params):
+    def __new__(cls, *_):
         raise NotImplementedError()
 
     @classmethod
     def create_array(cls, length):
-        npa = np.recarray(length, cls._dtype)
+        npa = np.recarray(length, cls.dtype)
         npa.conductance_ratio = -1  # set to -1 (not-set). 0 is meaningful
         npa.maskValue = -1
         npa.location = 0.5

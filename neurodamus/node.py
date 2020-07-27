@@ -393,9 +393,6 @@ class Node:
 
         self._cell_distributor.load_cells(self._run_conf, load_balance)
 
-        # localize targets, give to target manager
-        self._target_parser.updateTargets(self.gidvec)
-
         # give a TargetManager the TargetParser's completed targetList
         self._target_manager = Nd.TargetManager(
             self._target_parser.targetList, self._cell_distributor)
@@ -409,9 +406,7 @@ class Node:
     def create_synapses(self):
         """Create synapses among the cells, handling connections that appear in the config file
         """
-        # quick check - if we have a single connect block and it sets a weight of zero, can skip
-        # synapse creation in its entirety.  This is useful for when no nrn.h5 exists, so we don't
-        # error trying to init hdf5 reader. This may not be the cleanest solution.
+        # if we have a single connect block with weight=0, skip synapse creation  entirely
         log_stage("Synapses Create")
         if self._config_parser.parsedConnects.count() == 1:
             if self._config_parser.parsedConnects.o(0).valueOf("Weight") == 0:
@@ -980,7 +975,7 @@ class Node:
         """Setup recording of spike events (crossing of threshold) for cells on this node
         """
         for gid in (self.gidvec if gids is None else gids):
-            # only want to collect spikes off cell pieces with the soma (i.e. the real gid)
+            # only want to collect spikes of cell pieces with the soma (i.e. the real gid)
             if self._cell_distributor.getSpGid(gid) == gid:
                 logging.debug("Collecting spikes for gid %d", gid)
                 self._pnm.spike_record(gid)

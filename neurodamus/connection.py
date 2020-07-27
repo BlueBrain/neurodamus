@@ -47,11 +47,11 @@ class ConnectionBase:
     """
     The Base implementation for cell connections identified by src-dst gids
     """
-    __slots__ = ("sgid", "tgid", "locked", "_disabled", "_conn_params",
+    __slots__ = ("sgid", "tgid", "locked", "_disabled", "_conn_params", "_synapse_params",
                  "_netcons", "_synapses")
 
     def __init__(self, sgid, tgid, src_pop_id=0, dst_pop_id=0, weight_factor=1):
-        self.sgid = int(sgid)
+        self.sgid = int(sgid or -1)
         self.tgid = int(tgid)
         self.locked = False
         self._disabled = False
@@ -60,20 +60,22 @@ class ConnectionBase:
             formats=['f8', 'i4', 'i4']
         ))[0]
         self._conn_params.put(0, (weight_factor, src_pop_id, dst_pop_id))
+        self._synapse_params = []
         # Initialized in specific routines
         self._netcons = None
         self._synapses = ()
 
-    population_id = property(
-        lambda self: (self._conn_params.src_pop_id, self._conn_params.dst_pop_id))
+    synapse_params = property(lambda self: self._synapse_params)
+    synapses = property(lambda self: self._synapses)
+    population_id = property(lambda self: (self._conn_params.src_pop_id,
+                                           self._conn_params.dst_pop_id))
     weight_factor = property(
         lambda self: self._conn_params.weight_factor,
         lambda self, weight: self._conn_params.__setattr__('weight_factor', weight)
     )
 
     # Subclasses must implement instantiation of their connections in the simulator
-    def finalize(self, pnm, cell, base_seed=0, spgid=None,
-                       replay_mode=ReplayMode.AS_REQUIRED, skip_disabled=False):
+    def finalize(self, pnm, cell, base_seed=0, *args, **kw):
         raise NotImplementedError("finalize must be implemented in sub-class")
 
     # Parameters Live update / Configuration
@@ -167,7 +169,6 @@ class Connection(ConnectionBase):
         self._synapse_mode = synapse_mode
         self._mod_override = mod_override
         self._synapse_points = h.TPointList(tgid, 1)
-        self._synapse_params = []
         self._synapse_ids = compat.Vector("i")
         self._configurations = [configuration] if configuration is not None else []
         self._conductances_bk = None  # Store for re-enabling
@@ -176,7 +177,6 @@ class Connection(ConnectionBase):
         self._replay = ReplayStim()
 
     # read-only properties
-    synapse_params = property(lambda self: self._synapse_params)
     synapse_mode = property(lambda self: self._synapse_mode)
     # R/W properties
     minis_spont_rate = property(
@@ -197,8 +197,8 @@ class Connection(ConnectionBase):
         self._mod_override = mod_override
 
     @property
-    def sections_with_netcons(self):
-        """Generator over all sections containing netcons, yielding pairs
+    def sections_with_synapses(self):
+        """Generator over all sections containing synapses, yielding pairs
         (section_index, section)
         """
         for syn_i, sc in enumerate(self._synapse_points.sclst):
@@ -246,8 +246,8 @@ class Connection(ConnectionBase):
 
     # -
     def finalize(self,
-                 pnm, cell, base_seed=0, spgid=None,
-                 replay_mode=ReplayMode.AS_REQUIRED, skip_disabled=False):
+                 pnm, cell, base_seed=0, spgid=None, skip_disabled=False,
+                 replay_mode=ReplayMode.AS_REQUIRED):
         """ When all parameters are set, create synapses and netcons
 
         Args:
@@ -281,7 +281,7 @@ class Connection(ConnectionBase):
                 self._spont_minis = InhExcSpontMinis(cell._inh_mini_frequency,
                                                      cell._exc_mini_frequency)
 
-        for syn_i, sec in self.sections_with_netcons:
+        for syn_i, sec in self.sections_with_synapses:
             x = self._synapse_points.x[syn_i]
             syn_params = self._synapse_params[syn_i]
 
@@ -313,8 +313,8 @@ class Connection(ConnectionBase):
 
     # -
     def _create_synapse(self, cell, params_obj, x, syn_id, base_seed):
-        """Create synapse (GABBAB inhibitory, AMPANMDA excitatory, etc)
-        passing the creation helper the params.
+        """Instantiate synapses (GABBAB inhibitory, AMPANMDA excitatory, etc)
+        passing the creation helper the synapse params.
 
         Created synapses are appended to the corresponding cell lists.
         Third-party Synapse types are supported via the synapse-override
@@ -364,7 +364,7 @@ class Connection(ConnectionBase):
         self._synapses = compat.List()
         self._netcons = []
 
-        for syn_i, sec in self.sections_with_netcons:
+        for syn_i, sec in self.sections_with_synapses:
             x = self._synapse_points.x[syn_i]
             active_params = self._synapse_params[syn_i]
             gap_junction = Nd.Gap(x, sec=sec)
@@ -574,6 +574,10 @@ class SpontMinis(ArtificialStim):
 class InhExcSpontMinis(SpontMinis):
     """Extends SpontMinis to handle two spont rates: Inhibitory & Excitatory
     """
+
+    rate_vec_inh = property(lambda self: self.rate_vec)
+    """The inhibitory spont rate vector (alias to base class .rate_vec)"""
+
     def __init__(self, spont_rate_inh, spont_rate_exc):
         super().__init__(spont_rate_inh or None)  # positive rate, otherwise None
         self.rate_vec_exc = None

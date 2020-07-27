@@ -74,7 +74,7 @@ class _SimConfig(object):
             logging.info("Using morphology path: %s", cls.morphology_path)
         except AttributeError:
             logging.warning("Morphology loading: Previous Neurodamus only supports Ascii")
-            cls.morphology_path = os.path.join(run_conf["MorphologyPath"], "ascii")
+            cls.morphology_path = os.path.join(run_conf.get("MorphologyPath", ""), "ascii")
             cls.morphology_ext = "asc"
 
     # For proxying (cant be classmethod, hence the singleton)

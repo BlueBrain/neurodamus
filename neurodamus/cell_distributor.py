@@ -3,6 +3,7 @@ Mechanisms to load and balance cells across the computing resources.
 """
 from __future__ import absolute_import, print_function
 import logging  # active only in rank 0 (init)
+from abc import abstractmethod
 from contextlib import contextmanager
 from enum import Enum
 from io import StringIO
@@ -12,7 +13,6 @@ import numpy
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
-from .core.configuration import SimConfig
 from .io import cell_readers
 from .io.cell_readers import TargetSpec
 from .metype import METype
@@ -52,7 +52,7 @@ class NodeFormat(Enum):
 
 class CellManagerBase(object):
 
-    def __init__(self, pnm, target_parser):
+    def __init__(self, pnm, target_parser, *_):
         """Initializes CellDistributor
 
         Args:
@@ -63,9 +63,8 @@ class CellManagerBase(object):
         self._pnm = pnm
         self._target_parser = target_parser
 
-        # These structs are None to mark as un-init'ed
-        self._gidvec = None
-        self._total_cells = None
+        self._gidvec = compat.Vector("I", ())
+        self._total_cells = 0
         self._cell_list = []
         self._gid2cell = {}
 
@@ -83,19 +82,36 @@ class CellManagerBase(object):
     # Compatibility with neurodamus-core
     getGidListForProcessor = lambda self: self._gidvec  # for TargetManager, CompMappping
 
-    CellType = None
-    cell_loader = None
+    CellType = METype
+    """The underlying Cell type class
+    ctor signature: __init__(self, gid, cell_info, circuit_conf)
+    """
+
+    @staticmethod
+    @abstractmethod
+    def load_cell_info(run_conf, gidvec, stride=1, stride_offset=0):
+        """Implement the loading of nodes data, a.k.a. MVD.
+
+        Returns:
+            a tuple (gidvec, cell_infos, circuit_fullsize)
+        """
 
     def load_cells(self, conf, load_balancer=None):
         """A default implementation to load cells"""
-        logging.info("Loading cell parameters...")
-        self._gidvec, cell_infos, _ = self.cell_loader(conf)
+        logging.info("Loading custom cells info")
+        gidvec, cell_infos, fullsize = self.load_cell_info(conf, None, MPI.size, MPI.rank)
+        self._gidvec = compat.Vector("I", gidvec)  # whatever it was, convert to compat V
+        total_cells = MPI.allreduce(gidvec.size, MPI.SUM)
 
-        logging.info("Instantiating cells...")
+        logging.info("Instantiating %d target cells out of %d (Rank0: %d)...",
+                     total_cells, fullsize, gidvec.size)
         for gid in ProgressBar.iter(self._gidvec):
             cell_info = cell_infos[gid]
-            cell = self.CellType(gid, cell_info)
+            cell = self.CellType(gid, cell_info, conf)
             self._store_cell(gid, cell)
+
+        # Update targets info with locally loaded gids
+        self._target_parser.updateTargets(self._gidvec)
 
     def _init_rng(self):
         rng_info = Nd.RNGSettings()
@@ -103,22 +119,21 @@ class CellManagerBase(object):
         self._ionchannel_seed = rng_info.getIonChannelSeed()
         return rng_info
 
-    def finalize(self, gids=None, target=None):
+    def finalize(self, *_):
         """A default implementation for instantiating cells"""
         self._init_rng()
-        if gids is None:
-            gids = self._gidvec
-        for i, gid in enumerate(gids):
-            gid = int(gid)
-            metype = self._cell_list[i]  # type: METype
-            nc = metype.connect2target(None)
-            self._pnm.set_gid2node(gid, self._pnm.myid)
-            self._pnm.pc.cell(gid, nc)
+        for cell in self._cell_list:
+            nc = cell.connect2target(None)
+            self._pnm.set_gid2node(cell.gid, self._pnm.myid)
+            self._pnm.pc.cell(cell.gid, nc)
 
     def _store_cell(self, gid, cell):
         self._cell_list.append(cell)
         self._gid2cell[gid] = cell
         self._pnm.cells.append(cell.CellRef)
+
+    def __getitem__(self, gid):
+        return self._gid2cell[gid]
 
     def __iter__(self):
         """Iterator over this node GIDs
@@ -242,10 +257,17 @@ class CellDistributor(CellManagerBase):
                      self._total_cells, len(self._gidvec))
         self._pnm.ncell = self._total_cells
         mepath = run_conf["METypePath"]
-        morpho_path = SimConfig.morphology_path
-        METype.morpho_extension = SimConfig.morphology_ext
 
-        logging.info("Instantiating cells... Morphologies: %s", SimConfig.morphology_ext)
+        # Logic for morphologies
+        # If MorphologyType is set -> fullpath (new behavior), otherwise append /ascii
+        if "MorphologyType" in run_conf:
+            morpho_path = run_conf["MorphologyPath"]
+            self.CellType.morpho_extension = run_conf["MorphologyType"]
+        else:
+            morpho_path = run_conf["MorphologyPath"] + "/ascii"
+            self.CellType.morpho_extension = "asc"
+
+        logging.info("Instantiating cells... Morphologies: %s", self.CellType.morpho_extension)
         total_created_cells = 0
 
         for gid in ProgressBar.iter(self._gidvec):
@@ -253,11 +275,11 @@ class CellDistributor(CellManagerBase):
                 # mvd3, Sonata
                 meinfo_v6 = me_infos.retrieve_info(gid)
                 melabel = meinfo_v6.emodel
-                cell = METype(gid, mepath, melabel, morpho_path, meinfo_v6)
+                cell = self.CellType(gid, mepath, melabel, morpho_path, meinfo_v6)
             else:
                 # In NCS, me_infos is a plain map from gid to me_file
                 melabel = self._load_template(me_infos[gid], mepath)
-                cell = METype(gid, mepath, melabel, morpho_path)
+                cell = self.CellType(gid, mepath, melabel, morpho_path)
 
             self._store_cell(gid, cell)
             total_created_cells += 1
@@ -265,6 +287,9 @@ class CellDistributor(CellManagerBase):
         global_cells_created = MPI.allreduce(total_created_cells, MPI.SUM)
         logging.info(" => Created %d cells (%d in rank 0)",
                      global_cells_created, total_created_cells)
+
+        # Update targets info with locally loaded gids
+        self._target_parser.updateTargets(self._gidvec)
 
     # -
     @staticmethod

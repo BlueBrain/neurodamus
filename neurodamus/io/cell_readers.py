@@ -112,10 +112,14 @@ def load_ncs(run_conf, all_gids, stride=1, stride_offset=0):
             gid2mefile = {int(gid): None for i, gid in enumerate(all_gids)
                           if i % stride == stride_offset}
             gids.extend(gid2mefile.keys())
+            assigned_metypes = 0
             for cellIndex, gid, metype in _ncs_get_cells(ncs_f):
                 if gid in gid2mefile:
                     gid2mefile[gid] = metype
-            if any(v is None for v in gid2mefile.values()):
+                    assigned_metypes += 1
+            if assigned_metypes < len(gid2mefile):
+                logging.error("start.ncs: found info only for %d cells (out of %d)",
+                              assigned_metypes, len(all_gids))
                 raise CellReaderError("Target contains invalid circuit cells")
     return gids, gid2mefile, total_ncs_cells
 
@@ -179,6 +183,8 @@ def load_nodes(run_conf, all_gids, stride=1, stride_offset=0):
     """
     import mvdtool
     pth = run_conf["CellLibraryFile"]
+    is_mvd = pth.endswith('.mvd3')
+
     if not ospath.isfile(pth):
         pth = ospath.join(run_conf["CircuitPath"], run_conf["CellLibraryFile"])
     if not ospath.isfile(pth):
@@ -186,12 +192,13 @@ def load_nodes(run_conf, all_gids, stride=1, stride_offset=0):
 
     node_population = TargetSpec(run_conf.get("CircuitTarget")).population
     node_reader = mvdtool.open(pth, node_population or "")
-    if pth.endswith('.mvd3'):
-        combo_file = run_conf.get("MEComboInfoFile")
+    combo_file = run_conf.get("MEComboInfoFile")
+
+    if is_mvd:
         if not combo_file:
-            logging.error("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel.")
-            raise ConfigurationError("MEComboInfoFile not specified for mvd3")
-        node_reader.open_combo_tsv(combo_file)
+            logging.warning("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel")
+        else:
+            node_reader.open_combo_tsv(combo_file)
 
     total_cells = len(node_reader)
     gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
@@ -206,16 +213,17 @@ def load_nodes(run_conf, all_gids, stride=1, stride_offset=0):
         indexes = indexes.tolist()
 
     morpho_names = node_reader.morphologies(indexes)
-    emodels = node_reader.emodels(indexes)
+    emodels = node_reader.emodels(indexes) \
+        if not is_mvd or combo_file else None  # Rare but we may not need emodels (ngv)
+    exc_mini_freqs = node_reader.exc_mini_frequencies(indexes) \
+        if node_reader.hasMiniFrequencies() else None
+    inh_mini_freqs = node_reader.inh_mini_frequencies(indexes) \
+        if node_reader.hasMiniFrequencies() else None
+    threshold_currents = node_reader.threshold_currents(indexes) \
+        if node_reader.hasCurrents() else None
+    holding_currents = node_reader.holding_currents(indexes) \
+        if node_reader.hasCurrents() else None
 
-    exc_mini_freqs = node_reader.exc_mini_frequencies(indexes) if node_reader.hasMiniFrequencies() \
-        else None
-    inh_mini_freqs = node_reader.inh_mini_frequencies(indexes) if node_reader.hasMiniFrequencies() \
-        else None
-    threshold_currents = node_reader.threshold_currents(indexes) if node_reader.hasCurrents() \
-        else None
-    holding_currents = node_reader.holding_currents(indexes) if node_reader.hasCurrents() \
-        else None
     meinfo.load_infoNP(gidvec, morpho_names, emodels, threshold_currents, holding_currents,
                        exc_mini_freqs, inh_mini_freqs)
 
