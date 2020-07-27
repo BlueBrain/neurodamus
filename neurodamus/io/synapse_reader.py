@@ -84,21 +84,17 @@ class SynapseReader(object):
             return
         if not np.any(syn_params.u_hill_coefficient):
             return
-        from scipy.optimize import fsolve
 
-        def hill(ca_conc, y_max, K_half):
-            return y_max*ca_conc**4/(K_half**4 + ca_conc**4)
+        def hill(ca_conc, y, K_half):
+            return y*ca_conc**4/(K_half**4 + ca_conc**4)
 
         def constrained_hill(K_half):
-            f = lambda x: hill(2.0, x, K_half)-1.0
-            y_max = fsolve(f, 1.0)
+            y_max = (K_half**4 + 16) / 16
             return lambda x: hill(x, y_max, K_half)
 
         f_scale = lambda x, y: constrained_hill(x)(y)
         scale_factors = np.vectorize(f_scale)(syn_params.u_hill_coefficient,
                                                  extra_cellular_calcium)
-        log_verbose("Scale synapse U with u_hill and extra_cellular_calcium %s",
-                    extra_cellular_calcium)
         syn_params.U *= scale_factors
 
     @abstractmethod
