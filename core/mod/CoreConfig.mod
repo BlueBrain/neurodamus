@@ -176,6 +176,9 @@ VERBATIM
     if (ifarg(7) && strlen(hoc_gargstr(7))) {  // if spike replay specified
         fprintf(fp, CORENRN_ARG_FMT"'%s'\n", "pattern", abspath(hoc_gargstr(7), tmpmem));
     }
+    if (ifarg(8)) {  // if seed specified
+        fprintf(fp, CORENRN_ARG_FMT"%d\n", "seed", (int)*getarg(8));
+    }
 # if CORENRN_CLI11
     fprintf(fp, "mpi=true\n");
 # else
