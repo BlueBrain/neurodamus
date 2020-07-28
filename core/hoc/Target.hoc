@@ -281,14 +281,21 @@ proc evalType() {
  *                    is kept (to maintain coordination with extra data)
  *
  * @param $o1 gidvec Vector containing the gids of cells on this cpu
+ * @param $2 Append mode. 0 (default) will reset the vector first.
  */
-proc update() { local gid, cellIndex, binsrch_low, binsrch_high, binsrch_mid  localobj allCellIndices
+proc update() { local gid, cellIndex, binsrch_low, binsrch_high, binsrch_mid, do_reset  localobj allCellIndices
 
     //Get a vector with indexes that tell the sorted order of the gidMembers vector (don't actually sort gidMembers or risk mixing up 'extra' data)
     allCellIndices = gidMembers.sortindex()
-    localCellsMap = new Vector()
     isFlattened = 0
     isSorted = 0
+    do_reset = 1
+    if (numarg() > 1) {
+        do_reset = 1 - $2  // inverse of append_mode
+    }
+    if (do_reset) {
+        localCellsMap = new Vector()
+    }
 
     //for each cell on node, determine if it exists in this target
     for cellIndex=0, $o1.size()-1 {

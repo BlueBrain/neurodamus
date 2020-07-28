@@ -184,11 +184,16 @@ obfunc updateTargetList() { local targetIndex  localobj targetUtil
  * related to cells local to the cpu.
  *
  * @param $o1 Vector containing gids that are on the local cpu
+ * @param $2 Append mode. 0 (default) will reset the vector first.
  */
-proc updateTargets() { local targetIndex localobj activeTarget
+proc updateTargets() { local targetIndex, append_mode localobj activeTarget
+    append_mode = 0
+    if (numarg() > 1) {
+        append_mode = $2
+    }
     for targetIndex=0, targetList.count()-1 {
         activeTarget = targetList.o(targetIndex)
-        activeTarget.update( $o1 )
+        activeTarget.update( $o1, append_mode )
     }
 }
 

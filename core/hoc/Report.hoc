@@ -669,6 +669,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
     intrinsicLibrary.append( new String( "ihcn_Ih" ) )     // \\
     intrinsicLibrary.append( new String( "ihcn_hcn3" ) )   //  ||- nonspecific currents are handled on an individual mod basis
     intrinsicLibrary.append( new String( "icsa_csa" ) )   // //
+    intrinsicLibrary.append( new String( "reportcai_mcd" ) )
 
     ptProcessLibrary = new List()
     ptProcessLibrary.append( new String( "tmgExSyn" ) )
