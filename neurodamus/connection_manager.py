@@ -271,6 +271,7 @@ class ConnectionManagerBase(object):
 
         self.has_syn_indexes = load_offsets and self._synapse_reader.has_property("synapse_index")
         logging.info("Enabled reading Synapse offsets: %s", self.has_syn_indexes)
+        return nrn_path
 
     # -
     def open_synapse_file(self, synapse_source, n_files=1, src_pop_id=0):
@@ -909,19 +910,27 @@ class GapJunctionManager(ConnectionManagerBase):
             raise ConfigurationError("Missing GapJunction 'Path' configuration")
 
         super().__init__(gj_conf, target_manager, cell_dist, **kw)
-        self.init_synapse_location(gj_conf["Path"], gj_conf, False)
-        self._circuit_target = target_manager.getTarget(circuit_target)
+        gj_file = self.init_synapse_location(gj_conf["Path"], gj_conf, False)
 
+        self._circuit_target = target_manager.getTarget(circuit_target)
+        self._gj_offsets = None
+
+        # nrn_gj were relative to gid. From syn2 onwards we use absolute offsets
+        if gj_file.endswith("nrn_gj.h5"):
+            self._gj_offsets = self._compute_gj_offsets(gj_conf)
+
+    def _compute_gj_offsets(self, gj_conf):
         log_verbose("Computing gap-junction offsets from gjinfo.txt")
-        self._gj_offsets = compat.Vector("I")
+        gj_offsets = compat.Vector("I")
         gjfname = ospath.join(gj_conf["Path"], "gjinfo.txt")
         gj_sum = 0
 
         for line in open(gjfname):
+            gj_offsets.append(gj_sum)  # fist gid has no offset. the final total is not used
             gid, offset = map(int, line.strip().split())
-            # fist gid has no offset. the final total is not used
-            self._gj_offsets.append(gj_sum)
             gj_sum += 2 * offset
+
+        return gj_offsets
 
     def finalize(self, *_, **_kw):
         super().finalize(conn_type="Gap-Junctions")
@@ -929,9 +938,13 @@ class GapJunctionManager(ConnectionManagerBase):
     def _finalize_conns(self, tgid, conns, *_):
         cell_distributor = self._cell_distibutor
         metype = cell_distributor.getMEType(tgid)
-        t_gj_offset = self._gj_offsets[tgid - 1]
-        for conn in reversed(conns):
-            conn.finalize_gap_junctions(cell_distributor.pnm, metype, t_gj_offset,
-                                        self._gj_offsets[conn.sgid - 1])
-        logging.debug("Created %d gap-junctions on post-gid %d", len(conns), tgid)
+
+        if self._gj_offsets is None:
+            for conn in reversed(conns):
+                conn.finalize_gap_junctions(cell_distributor.pnm, metype, 0, 0)
+        else:
+            t_gj_offset = self._gj_offsets[tgid - 1]   # Old nrn_gj uses offsets
+            for conn in reversed(conns):
+                conn.finalize_gap_junctions(cell_distributor.pnm, metype, t_gj_offset,
+                                            self._gj_offsets[conn.sgid - 1])
         return len(conns)

@@ -376,8 +376,7 @@ class Connection(ConnectionBase):
                         end_offset, active_params.F, active_params.weight)
 
             with Nd.section_in_stack(sec):
-                pnm.pc.target_var(
-                    gap_junction, gap_junction._ref_vgap, (offset + active_params.D))
+                pnm.pc.target_var(gap_junction, gap_junction._ref_vgap, (offset + active_params.D))
                 pnm.pc.source_var(sec(x)._ref_v, (end_offset + active_params.F))
             gap_junction.g = active_params.weight
             self._synapses.append(gap_junction)
