@@ -895,6 +895,12 @@ class Node:
             population_name = (rep_target.population or self._target_spec.population
                                or self._default_population)
             logging.info("REPORT Population: %s, Target: %s", population_name, rep_target.name)
+            rep_dt = rep_conf["Dt"]
+            if rep_dt < Nd.dt:
+                if MPI.rank == 0:
+                    logging.error("Invalid report dt %f < %f simulation dt", rep_dt, Nd.dt)
+                n_errors += 1
+                continue
 
             rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
                                     "start, end, output_dir, electrode, scaling, isc, \
@@ -904,7 +910,7 @@ class Node:
                 rep_conf["ReportOn"],
                 rep_conf["Unit"],
                 rep_conf["Format"],
-                rep_conf["Dt"],
+                rep_dt,
                 start_time,
                 end_time,
                 self._output_root,
