@@ -94,7 +94,7 @@ VERBATIM
     if (index > 0) {
         // Invoke low-level artcell_net_send, since generic NMODL net_send is only
         // available in INITIAL and NET_RECEIVE blocks. It takes an ABSOLUTE time instead
-        debug_printf("[VecStim] restartEvent(delay=%g): index=%d, etime=%g, t=%g\n", delay, (int)index - 1, etime, t);
+        debug_printf("[VecStim] restartEvent(): index=%d, etime=%g, t=%g\n", (int)index - 1, etime, t);
         artcell_net_send(_tqitem, (double*)0, _ppvar[1]._pvoid, etime, 1.0);
     }
 #endif

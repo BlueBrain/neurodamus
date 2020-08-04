@@ -14,19 +14,21 @@
 //
 //------------------------------------------------------------------------------------------
 
+_serialized_sections_warned = 0
+
 /**
  * When getting a location to a compartment by section index, the compartments must be serialized
  * and stored for future access.
  */
 begintemplate SerializedSections
 
+external _serialized_sections_warned
+
 //-----------------------------------------------------------------------------------------------
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
 objref isec2sec[1]
-
-serialized_sections_warned = 0
 
 //-----------------------------------------------------------------------------------------------
 // public members
@@ -58,9 +60,9 @@ proc init() { local index
 			execerror("Error: failure in mk2_isec2sec()")
         }
         if( v(0.0001) < 0 ) {
-            if( serialized_sections_warned == 0 ) {
+            if( _serialized_sections_warned == 0 ) {
                 print "[Warning] SerializedSections: v(0.0001) < 0. index=", index, " v()=", v(0.0001)
-                serialized_sections_warned = 1  // Dont report more
+                _serialized_sections_warned = 1  // Dont report more
             }
         } else {
             isec2sec[v(0.0001)] = new SectionRef()
