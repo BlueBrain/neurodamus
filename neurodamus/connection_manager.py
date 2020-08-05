@@ -453,14 +453,18 @@ class ConnectionManagerBase(object):
             syn_count = len(syns_params)
 
             # The first field is typically sgid, but to generalize we use field 0
-            sgids = syns_params[syns_params.dtype.names[0]]
+            sgids = syns_params[syns_params.dtype.names[0]].copy()
 
             while cur_i < syn_count:
                 # Use numpy to get all the synapses of the same gid at once
                 sgid = int(sgids[cur_i])
-                next_i = numpy.searchsorted(sgids[cur_i:], sgid+1) + cur_i
+                next_i = numpy.argmax(sgids[cur_i:] != sgid) + cur_i
+                if cur_i == next_i:  # last group
+                    next_i = syn_count
+
                 if src_target is None or src_target.completeContains(sgid):
                     yield sgid, tgid, syns_params[cur_i:next_i], cur_i
+
                 cur_i = next_i
 
         created_conns = self._cur_population.count() - created_conns_0

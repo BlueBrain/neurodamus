@@ -6,7 +6,7 @@ import logging
 import numpy as np
 from enum import Enum
 from .core import NeurodamusCore as Nd
-from .core.configuration import GlobalConfig
+from .core.configuration import GlobalConfig, SimConfig
 from .utils import compat
 from .utils.logging import log_all
 
@@ -531,6 +531,11 @@ class SpontMinis(ArtificialStim):
         ips = Nd.InhPoissonStim(position, sec=sec)
         ips.setTbins(self.tbins_vec)
         ips.setRate(rate_vec)
+        # In Neuron we can limit the duration of the Minis since InhPoissonStim's are
+        # recreated on restore. CoreNeuron reuses them and we dont know final duration
+        if SimConfig.core_config is None:
+            ips.duration = Nd.tstop
+
         # A simple NetCon will do, as the synapse and cell are local.
         netcon = Nd.NetCon(ips, syn_obj, sec=sec)
         netcon.delay = 0.1
