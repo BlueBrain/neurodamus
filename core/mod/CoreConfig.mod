@@ -10,6 +10,13 @@ NEURON {
     ARTIFICIAL_CELL CoreConfig
 }
 
+NET_RECEIVE (w) {
+    : net_event is required for neuron code generation and hence false if block
+    if (0) {
+        net_event(t)
+    }
+}
+
 VERBATIM
 #include <stdio.h>
 #include <stdlib.h>
