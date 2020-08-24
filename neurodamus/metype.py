@@ -227,3 +227,25 @@ class METypeManager(dict):
     @property
     def gids(self):
         return self.keys()
+
+
+class EmptyCell(METype):
+    """
+    Class representing an empty cell, e.g. an artificial cell
+    Workaround for the neuron issue https://github.com/neuronsimulator/nrn/issues/635
+    """
+    def __init__(self, gid, cell):
+        self._cellref = cell
+        self._ccell = None
+        self.gid = gid
+
+    def connect2target(self, target_pp):
+        """ Connects empty cell to target
+
+        Args:
+            target_pp: target point process
+
+        Returns: NetCon obj
+        """
+        netcon = Nd.NetCon(self.CellRef, target_pp)
+        return netcon

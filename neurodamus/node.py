@@ -37,6 +37,9 @@ class Node:
     _default_population = 'All'
     """The default population name for e.g. Reports."""
 
+    _bbcore_fakegid_offset = None
+    """The offset for creating fake gids for ARTIFICIAL CELLS in coreneuron."""
+
     def __init__(self, config_file, options=None):
         """ Creates a neurodamus executor
         Args:
@@ -347,14 +350,7 @@ class Node:
 
         # Info about the cells to be distributed
         target = self._target_spec
-        if target.name:
-            target_cells = self._target_parser.getTarget(target.name).getCellCount()
-            logging.info("CIRCUIT: Population: %s, Target: %s (%d Cells)",
-                         target.population or "(default)", target.name, target_cells)
-        else:
-            target_cells = self._target_parser.getTarget("Mosaic").getCellCount()
-            logging.warning("No Target defined. Loading ALL cells: %d", target_cells)
-
+        target_cells, _ = self.get_targetcell_count()
         if target_cells > 100 * MPI.size:
             logging.warning("Your simulation has a very high count of cells per CPU. "
                             "Please consider launching it in a larger MPI cluster")
@@ -1137,7 +1133,21 @@ class Node:
 
         if not corenrn_restore:
             Nd.registerMapping(self._cell_distributor)
+            local_gids = self._cell_distributor.local_gids
+            if len(local_gids) == 0 and self._bbcore_fakegid_offset is not None:
+                # load the ARTIFICIAL_CELL CoreConfig with a fake_gid in this empty rank
+                # to avoid errors during coreneuron model building
+                fake_gid = self._bbcore_fakegid_offset + self._pnm.pc.id()
+                self._cell_distributor.load_artificial_cell(int(fake_gid), SimConfig.core_config)
+                # Nd.registerMapping doesn't work for this artificial cell as somatic attr is
+                # missing, so create a dummy mapping file manually, required for reporting
+                mapping_file = ospath.join(corenrn_data, "%d" % fake_gid + "_3.dat")
+                if not ospath.isfile(mapping_file):
+                    with open(mapping_file, "w") as dummyfile:
+                        dummyfile.write("1.2\n0\n")
             self._pnm.pc.nrnbbcore_write(corenrn_data)
+            if self._bbcore_fakegid_offset is not None:
+                self._bbcore_fakegid_offset += MPI.size
 
         if "BaseSeed" in self._run_conf:
             self._corenrn_conf.write_sim_config(
@@ -1363,6 +1373,22 @@ class Node:
                 .getPointList(self._cell_distributor)
         return target.getPointList(self._cell_distributor)
 
+    def get_targetcell_count(self):
+        """Count the total number of the target cells, and get the max gid
+           if CircuitTarget is not specified in the configuration, use Mosaic target
+        """
+        target = self._target_spec
+        if target.name:
+            target_cells = self._target_parser.getTarget(target.name).getCellCount()
+            all_gids = self._target_parser.getTarget(target.name).completegids()
+            logging.info("CIRCUIT: Population: %s, Target: %s (%d Cells)",
+                         target.population or "(default)", target.name, target_cells)
+        else:
+            target_cells = self._target_parser.getTarget("Mosaic").getCellCount()
+            all_gids = self._target_parser.getTarget("Mosaic").completegids()
+            logging.warning("No Target defined. Loading ALL cells: %d", target_cells)
+        return target_cells, max(all_gids) if all_gids else 0
+
     # -
     @mpi_no_errors
     def spike2file(self, outfile):
@@ -1449,6 +1475,7 @@ class Node:
                     else:
                         subprocess.call(['/bin/rm', '-rf', data_folder])
                     os.remove(ospath.join(self._output_root, "sim.conf"))
+                    os.remove(ospath.join(self._output_root, "report.conf"))
             MPI.barrier()
 
         logging.info("Finished")
@@ -1590,16 +1617,24 @@ class Neurodamus(Node):
     # -
     def _instantiate_simulation(self):
         self.load_targets()
+        target_cells, max_gid = self.get_targetcell_count()
 
         # Check if user wants to build the model in several steps (only for CoreNeuron)
         sub_targets = self.multicycle_data_generation()
+        n_cycles = len(sub_targets) if sub_targets else 1
+
+        if SimConfig.use_coreneuron and target_cells/n_cycles < MPI.size and target_cells > 0:
+            # coreneuron with no. ranks >> no. cells
+            # need to assign fake gids to artificial cells in empty threads during module building
+            # fake gids start from max_gid + 1
+            # currently not support engine plugin where target is loaded later
+            self._bbcore_fakegid_offset = max_gid + 1
 
         # Without multi-cycle, it's a trivial model build
-        if not sub_targets or len(sub_targets) == 1:
+        if n_cycles == 1:
             self._build_model()
             return
 
-        n_cycles = len(sub_targets)
         logging.info("MULTI-CYCLE RUN: {} Cycles".format(n_cycles))
 
         tmp_target_spec = TargetSpec(self._run_conf["CircuitTarget"])

@@ -16,7 +16,7 @@ from .core import ProgressBarRank0 as ProgressBar
 from .core.configuration import ConfigurationError
 from .io import cell_readers
 from .io.cell_readers import TargetSpec
-from .metype import METype
+from .metype import METype, EmptyCell
 from .utils import compat
 from .utils.logging import log_verbose
 
@@ -116,6 +116,14 @@ class CellManagerBase(object):
         self._target_parser.updateTargets(compat.Vector("I", gidvec))
         self._gidvec.extend(gidvec)
 
+    def load_artificial_cell(self, gid, artificial_cell):
+        cell = EmptyCell(gid, artificial_cell)
+        self._store_cell(gid, cell)
+        self._gidvec.append(gid)
+        nc = cell.connect2target(None)
+        self._pnm.set_gid2node(cell.gid, self._pnm.myid)
+        self._pnm.pc.cell(cell.gid, nc)
+
     def _init_rng(self):
         rng_info = Nd.RNGSettings()
         self._global_seed = rng_info.getGlobalSeed()
@@ -147,7 +155,7 @@ class CellManagerBase(object):
         """Clear all cells
         """
         for cell in self._cell_list:
-            if cell.CellRef:
+            if cell.CellRef and hasattr(cell.CellRef, 'clear'):
                 cell.CellRef.clear()
         self._cell_list.clear()
 
