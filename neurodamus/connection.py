@@ -147,7 +147,7 @@ class Connection(ConnectionBase):
     def __init__(self,
                  sgid, tgid, src_pop_id=0, dst_pop_id=0,
                  weight_factor=1.0,
-                 minis_spont_rate=.0,
+                 minis_spont_rate=None,
                  configuration=None,
                  mod_override=None,
                  synapse_mode=SynapseMode.DUAL_SYNS):
@@ -159,7 +159,7 @@ class Connection(ConnectionBase):
             weight_factor: the weight factor to be applied to the connection. Default: 1
             configuration: Any synapse configurations that should be applied
                 when the synapses are instantiated (or None)
-            minis_spont_rate: rate for spontaneous minis. Default: 0
+            minis_spont_rate: rate for spontaneous minis. Default: None
             mod_override: Alternative Synapse type. Default: None (use standard Inh/Exc)
             synapse_mode: synapse mode. Default: DUAL_SYNS
 
@@ -274,12 +274,14 @@ class Connection(ConnectionBase):
         # Release objects if not needed
         if not shall_create_replay:
             self._replay = None
-        if not self._spont_minis.rate:
-            self._spont_minis = None
-            # Eventually replace with default rates, if set
+        # if spont_minis not set by user, set with default rates from circuit if available
+        if not self._spont_minis.has_data():
             if cell.inh_mini_frequency or cell.exc_mini_frequency:
                 self._spont_minis = InhExcSpontMinis(cell.inh_mini_frequency,
                                                      cell.exc_mini_frequency)
+        # Release spont_minis object if it evaluates to false (rates are 0)
+        if not self._spont_minis:
+            self._spont_minis = None
 
         for syn_i, sec in self.sections_with_synapses:
             x = self._synapse_points.x[syn_i]
@@ -512,13 +514,24 @@ class SpontMinis(ArtificialStim):
         self.rate_vec = None
 
         if minis_spont_rate is not None:  # Allow None (used by subclass)
-            self.rate_vec = Nd.Vector(1)
-            self.rate_vec.x[0] = minis_spont_rate
+            self.set_rate(minis_spont_rate)
 
-    rate = property(
-        lambda self: self.rate_vec and self.rate_vec.x[0],
-        lambda self, rate: self.rate_vec.x.__setitem__(0, rate)
-    )
+    def get_rate(self):
+        return self.rate_vec[0] if self.rate_vec is not None else None
+
+    def set_rate(self, rate):
+        if rate < 0:
+            raise ValueError("Spont minis rate cannot be negative %g" % rate)
+
+        # Check if initialized. Dont recreate in order to enable in-simulation udates
+        if self.rate_vec is None:
+            self.rate_vec = Nd.Vector(1)
+        self.rate_vec.x[0] = rate
+
+    rate = property(get_rate, set_rate)
+
+    def has_data(self):
+        return self.rate_vec is not None
 
     def create_on(self, conn, sec, position, syn_obj, syn_params, base_seed, _rate_vec=None):
         """Inserts a SpontMini stim into the given synapse
@@ -574,6 +587,10 @@ class SpontMinis(ArtificialStim):
             ips.setRNGs(exprng, uniformrng)
             self._keep_alive += (exprng, uniformrng)
 
+    def __bool__(self):
+        """object is considered False in case rate is not positive"""
+        return bool(self.get_rate())
+
 
 class InhExcSpontMinis(SpontMinis):
     """Extends SpontMinis to handle two spont rates: Inhibitory & Excitatory
@@ -594,6 +611,17 @@ class InhExcSpontMinis(SpontMinis):
         if rate_vec:
             # there's a spont rate for this kind of synapse
             super().create_on(conn, sec, position, syn_obj, syn_params, *args, _rate_vec=rate_vec)
+
+    def has_data(self):
+        return self.rate_vec is not None or self.rate_vec_exc is not None
+
+    def get_rate(self):
+        return (super().get_rate(),
+                self.rate_vec_exc[0] if self.rate_vec_exc is not None else None)
+
+    def __bool__(self):
+        """object is considered False in case no rate is positive"""
+        return any(self.get_rate())
 
 
 class ReplayStim(ArtificialStim):
