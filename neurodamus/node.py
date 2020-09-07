@@ -596,7 +596,20 @@ class Node:
             nrn_path = ":".join([nrn_path] + pop_name)
 
             # Temporarily patch for population IDs in BlueConfig
-            pop_id = int(projection.get("PopulationID", 0))
+            pop_id = None
+            if "PopulationID" in projection:
+                pop_id = int(projection["PopulationID"])
+            if pop_id == 0:
+                raise ConfigurationError("PopulationID 0 is not allowed")
+
+            # If the projections are to be merged with base connectivity and the base
+            # population is unknown, with Sonata pop we need a way to explicitly request it.
+            # Note: gid offsetting must have been previously done
+            if projection.get("AppendBasePopulation"):
+                assert pop_id is None, "AppendBasePopulation is incompatible with PopulationID"
+                log_verbose("Appending projection to base connectivity (AppendBasePopulation)")
+                pop_id = 0
+
             self._synapse_manager.open_synapse_file(nrn_path, 1, pop_id)
 
             # Make all the Projection connections if no Connection blocks use

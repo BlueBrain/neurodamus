@@ -2,6 +2,7 @@
 Main module for handling and instantiating synaptical connections and gap-junctions
 """
 from __future__ import absolute_import
+import hashlib
 import logging
 import numpy
 from abc import abstractmethod
@@ -236,8 +237,8 @@ class ConnectionManagerBase(object):
         self._target_manager = target_manager
         self._cell_distibutor = cell_distributor
 
-        # Multiple connection populations support. key is a tuple (src, dst)
-        self._populations = {}
+        self._base_population = None  # the node population name that base connectivity targets
+        self._populations = {}  # Multiple edge populations support. key is a tuple (src, dst)
         self._cur_population = self.get_population(0, 0)  # Instantiate a default pop
         self._disabled_conns = defaultdict(list)
 
@@ -266,22 +267,70 @@ class ConnectionManagerBase(object):
             nrn_path = self._find_circuit_file(nrn_path)
         assert ospath.isfile(nrn_path), "nrnPath doesnt contain valid Edge files"
 
+        if pop:
+            src_pop, dst_pop = self._edge_to_node_population_names(pop[0])
+            assert src_pop == dst_pop, "Base connectivity must be within the same node population"
+            self._base_population = dst_pop
+
         synapse_source = ":".join([nrn_path] + pop)
-        self.open_synapse_file(synapse_source, n_synapse_files)
+        self.open_synapse_file(synapse_source, n_synapse_files, 0)
 
         self.has_syn_indexes = load_offsets and self._synapse_reader.has_property("synapse_index")
         logging.info("Enabled reading Synapse offsets: %s", self.has_syn_indexes)
         return nrn_path
 
+    @staticmethod
+    def _edge_to_node_population_names(edge_pop_name):
+        pop_infos = edge_pop_name.split("__")
+        if len(pop_infos) == 1:
+            # Dont raise exception yet since this is a new feature and we can keep on
+            logging.error("Bad format of edge populaton name. "
+                          "Requires two or three groups separated by '__'")
+        src_pop = pop_infos[0]
+        dst_pop = pop_infos[1] if len(pop_infos) > 2 else src_pop
+        return src_pop, dst_pop
+
     # -
-    def open_synapse_file(self, synapse_source, n_files=1, src_pop_id=0):
+    def open_synapse_file(self, synapse_source, n_files=1, src_pop_id=None):
         """Initializes a reader for Synapses"""
         synapse_file, *pop_name = synapse_source.split(":")  # fspath:population
         pop_name = pop_name[0] if pop_name else None
 
+        # For base connectivity src_pop_id=0 and so we immediately have pop (0,0)
+        dst_pop_id = 0
+        if src_pop_id is None:
+            src_pop_id, dst_pop_id = self._compute_pop_ids(pop_name)
+        logging.info("Population ids (src, dst): %d, %d", src_pop_id, dst_pop_id)
+
         self._synapse_reader = self._open_synapse_file(synapse_file, pop_name, n_files)
-        self.select_populations(src_pop_id, 0)
+        self.select_populations(src_pop_id, dst_pop_id)
         self._unlock_all_connections()  # Allow appending synapses from new sources
+
+    def _compute_pop_ids(self, edge_pop_name):
+        """Compute pop id automatically. pop src 0 is base population"""
+        if not edge_pop_name:
+            logging.warning("Neither Sonata population nor populationID set. "
+                            "Edges will be merged with base circuit")
+            return 0, 0
+
+        def make_id(node_pop):
+            pop_hash = hashlib.md5(node_pop.encode()).digest()
+            return ((pop_hash[1] & 0x0f) << 8) + pop_hash[0]  # id: 12bit hash
+
+        # From this point we are dealing with edge population names (in BlueConfig)
+        # We can extract the node populations, make checks and create ids
+        src_pop, dst_pop = self._edge_to_node_population_names(edge_pop_name)
+
+        if self._base_population is None:
+            logging.warning("No base connectivity population name. Assuming Edge target population")
+            self._base_population = dst_pop
+
+        # For now enforce all projections to target base connectivity.
+        if dst_pop != self._base_population:
+            ConfigurationError("Edges must target same nodes as base connectivity")
+        dst_pop_id = 0  # always 0. Future nodesets will require similar expression as below
+        src_pop_id = 0 if src_pop == self._base_population else make_id(src_pop)
+        return src_pop_id, dst_pop_id
 
     # -
     def _open_synapse_file(self, synapse_file, pop_name, n_nrn_files=None):
