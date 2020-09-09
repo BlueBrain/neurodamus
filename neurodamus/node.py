@@ -106,6 +106,7 @@ class Node:
             config_file: Name of Config file to load
             user_options: The object of user options
         """
+        log_stage("Loading settings from BlueConfig and CLI")
         config_parser = Nd.ConfigParser()
         config_parser.open(config_file)
         if MPI.rank == 0:
@@ -115,10 +116,41 @@ class Node:
             raise ConfigurationError("No 'Run' block found in BlueConfig %s", config_file)
         parsed_run = config_parser.parsedRun
 
+        # Setup source dirs
+        blueconfig_dir = ospath.abspath(ospath.dirname(config_file))
+        parsed_run.put("BlueConfigDir", Nd.String(blueconfig_dir))
+
+        if parsed_run.exists("CurrentDir"):
+            curdir = parsed_run.get("CurrentDir").s
+
+            if not ospath.isabs(curdir):
+                if curdir == ".":
+                    logging.warning("Setting CurrentDir to '.' is discouraged and "
+                                    "shall never be used in production jobs.")
+                else:
+                    raise ConfigurationError("CurrentDir: Relative paths not allowed")
+                curdir = ospath.abspath(curdir)
+                parsed_run.put("CurrentDir", Nd.String(curdir))
+
+            if not ospath.isdir(curdir):
+                raise ConfigurationError("CurrentDir doesnt exist: " + curdir)
+        else:
+            log_verbose("Setting CurrentDir to BlueConfig path [default]")
+            curdir = blueconfig_dir
+
         # confirm output_path exists and is usable -> use utility.mod
+        output_path_obj = parsed_run.get("OutputRoot")
         if user_options.output_path:
-            parsed_run.get("OutputRoot").s = user_options.output_path
-        output_path = parsed_run.get("OutputRoot").s
+            output_path_obj.s = user_options.output_path
+        output_path = output_path_obj.s
+
+        # Warn about new behavior of relative path. Remove warning in next version
+        if not ospath.isabs(output_path):
+            logging.warning("Relative OutputRoot directories are now constructed from "
+                            "CurrentDir, which defaults to BlueConfig location.\nPlease "
+                            "ensure your toolchains dont expect results in CWD.")
+            output_path = ospath.join(curdir, output_path)
+            output_path_obj.s = output_path
 
         if MPI.rank == 0:
             if Nd.checkDirectory(output_path) < 0:
@@ -146,6 +178,13 @@ class Node:
         else:
             if TargetSpec(run_conf.get("CircuitTarget")).population is not None:
                 raise ConfigurationError("Targets with population require Sonata Node file")
+
+        # Display final settings
+        logging.info("Config:")
+        logging.info(" - CurrentDir: %s", curdir)
+        logging.info(" - OutputRoot: %s", output_path)
+        logging.info(" - PHASES Build: %s, Simulate: %s",
+                     user_options.build_model, user_options.simulate_model)
 
         return config_parser
 
@@ -263,12 +302,15 @@ class Node:
         run_conf = self._run_conf
         if self._options.modelbuilding_steps is not None:
             ncycles = int(self._options.modelbuilding_steps)
+            src_is_cli = True
         elif "ModelBuildingSteps" in run_conf:
             ncycles = int(run_conf["ModelBuildingSteps"])
+            src_is_cli = False
         else:
             return False
 
         logging.info("Splitting Target for multi-iteration CoreNeuron data generation")
+        logging.info(" -> Cycles: %d. [src: %s]", ncycles, "CLI" if src_is_cli else "BlueConfig")
         assert ncycles > 0, "splitdata_generation yielded 0 cycles. Please check ModelBuildingSteps"
 
         if not self._corenrn_conf:
@@ -325,7 +367,7 @@ class Node:
             self._target_parser.open(start_target_file)
 
         if "TargetFile" in run_conf:
-            user_target = self._find_config_file(run_conf["TargetFile"])
+            user_target = self._find_input_file(run_conf["TargetFile"])
             self._target_parser.open(user_target, True)
 
         if MPI.rank == 0:
@@ -650,35 +692,35 @@ class Node:
         """Determine the full path to a projection.
         The "Path" might specify the filename. If not, it will attempt the old 'proj_nrn.h5'
         """
-        return self._find_input_file("proj_nrn.h5", proj_path, ("ProjectionPath",))
+        return self._find_input_file(proj_path,
+                                     ("ProjectionPath", "CircuitPath"),
+                                     alt_filename="proj_nrn.h5")
 
-    def _find_input_file(self, filename, filepath, path_conf_entries=()):
-        """Determine where to find the synapse files.
-        Try relative path first, then check for config fields in Run, last use CircuitPath.
-        In case filepath already points to a file, filename is disregarded
-        Otherwise filename(s) are attempted (can be a tuple)
+    def _find_input_file(self, filepath, path_conf_entries=(), alt_filename=None):
+        """Determine the full path of input files.
+
+        Relative paths are built from Run configuration entries, and never pwd.
+        In case filepath points to a file, alt_filename is disregarded
 
         Args:
-            filename: (str,tuple) The name(s) of the file to find
-            filepath: The relative or absolute path we obtained in the direct config
-            path_conf_entries: (tuple) Global path configuration entries to build the absolute path
+            filepath: The relative or absolute path of the file to find
+            path_conf_entries: (tuple) Run configuration entries to build the absolute path
+            alt_filename: When the filepath is a directory, attempt finding a given filename
         Returns:
             The absolute path to the data file
         Raises:
             (ConfigurationError) If the file could not be found
         """
-        if not isinstance(filename, tuple):
-            filename = (filename,)
-        path_conf_entries += ("CircuitPath",)
-        run_config = self._config_parser.parsedRun
+        path_conf_entries += ("CurrentDir", "BlueConfigDir")
+        run_config = self._run_conf
 
         def try_find_in(fullpath):
             if ospath.isfile(fullpath):
                 return fullpath
-            for fname in filename:
-                nrn_path = ospath.join(fullpath, fname)
-                if ospath.isfile(nrn_path):
-                    return nrn_path
+            if alt_filename is not None:
+                alt_file_path = ospath.join(fullpath, alt_filename)
+                if ospath.isfile(alt_file_path):
+                    return alt_file_path
             return None
 
         if ospath.isabs(filepath):
@@ -687,28 +729,23 @@ class Node:
         else:
             file_found = None
             for path_key in path_conf_entries:
-                if run_config.exists(path_key):
-                    file_found = try_find_in(ospath.join(run_config.get(path_key).s, filepath))
+                if path_key in run_config:
+                    file_found = try_find_in(ospath.join(run_config.get(path_key), filepath))
                     if file_found:
                         break
 
+            # NOTE: Using PWD is DEPRECATED so this search should be removed in next version
+            if not file_found:
+                file_found = try_find_in(filepath)
+                if file_found:
+                    logging.warning("DEPRECATION: Input files shall NOT be relative to PWD."
+                                    "Please use full paths or set CurrentDir manually.")
+
         if not file_found:
-            raise ConfigurationError("Could not find file %s" % filename)
+            raise ConfigurationError("Could not find file %s" % filepath)
 
-        logging.debug("data file %s path: %s", filename, file_found)
+        logging.debug("data file %s path: %s", filepath, file_found)
         return file_found
-
-    def _find_config_file(self, filepath):
-        """Attempts to find simulation config files (e.g. user.target or replays)
-           If not an absolute path, searches in blueconfig folder
-        """
-        if not ospath.isabs(filepath):
-            _path = ospath.join(self._blueconfig_path, filepath)
-            if ospath.isfile(_path):
-                filepath = _path
-        if not ospath.isfile(filepath):
-            raise ConfigurationError("Config file not found: " + filepath)
-        return filepath
 
     # -
     @mpi_no_errors
@@ -815,7 +852,7 @@ class Node:
 
     # -
     def _enable_replay(self, target_name, stim_conf, tshift=.0, delay=.0):
-        spike_filepath = self._find_config_file(stim_conf["SpikeFile"])
+        spike_filepath = self._find_input_file(stim_conf["SpikeFile"])
         spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
 
         # For CoreNeuron, we should put the replays into a single file to be used as PatternStim
@@ -1443,7 +1480,7 @@ class Node:
                 data_folder = ospath.join(self._output_root, "coreneuron_input")
                 logging.info("Deleting intermediate data in %s", data_folder)
                 if MPI.rank == 0:
-                    if os.path.islink(data_folder):
+                    if ospath.islink(data_folder):
                         # in restore, coreneuron data is a symbolic link
                         os.unlink(data_folder)
                     else:
