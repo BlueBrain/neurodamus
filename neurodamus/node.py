@@ -1232,27 +1232,6 @@ class Node:
         """
         events = defaultdict(list)  # each key (time) points to a list of handlers
 
-        def make_delayed_conn_handler(conn):
-            # We must use a factory so that conn is copied, otherwise last config is always taken
-            def event_f():
-                logging.info("\rDelay: Configuring %s->%s after %d ms",
-                             conn["Source"], conn["Destination"], conn["Delay"])
-                self._synapse_manager.configure_group_delayed(
-                    conn, self.gidvec, conn.get("populationID", 0))
-            return event_f
-
-        # handle any delayed blocks
-        for conn in self._connection_weight_delay_list:
-            conn_start = conn["Delay"]
-            # If the first connection starts after our tstop -> dont activate anything
-            if conn_start > tstop:
-                break
-            # Past connections (should be already activated) -> skip!
-            if conn_start < tstart:
-                continue
-            # Generate our handler. Want cant inline the func as `conn` gets updated
-            events[conn_start].append(make_delayed_conn_handler(conn))
-
         # Handle Save
         save_time_config = self._run_conf.get("SaveTime")
 
@@ -1570,6 +1549,8 @@ class Neurodamus(Node):
 
         log_stage("Creating connections in the simulator")
         self._synapse_manager.finalize(base_seed, self._corenrn_conf)
+        self._synapse_manager.setup_delayed_connections(self._connection_weight_delay_list,
+                                                        self._cell_distributor.local_gids)
 
         if self._gj_manager is not None:
             self._gj_manager.finalize()

@@ -4,6 +4,7 @@ Implementation of the core Connection classes
 from __future__ import absolute_import
 import logging
 import numpy as np
+import re
 from enum import Enum
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, SimConfig
@@ -43,17 +44,29 @@ class ReplayMode(Enum):
     users may add arbitrary new replays in Restore phases"""
 
 
+class NetConType(Enum):
+    """NetCon Type
+    """
+    NC_PRESYN = 0
+    NC_SPONTMINI = 1
+    NC_REPLAY = 2
+
+    def __int__(self):
+        return self.value
+
+
 class ConnectionBase:
     """
     The Base implementation for cell connections identified by src-dst gids
     """
     __slots__ = ("sgid", "tgid", "locked", "_disabled", "_conn_params", "_synapse_params",
-                 "_netcons", "_synapses")
+                 "_netcons", "_synapses", "_delay_veclist", "_delayweight_vec_list", "nc_type")
 
     def __init__(self, sgid, tgid, src_pop_id=0, dst_pop_id=0, weight_factor=1):
         self.sgid = int(sgid or -1)
         self.tgid = int(tgid)
         self.locked = False
+        self.nc_type = -1
         self._disabled = False
         self._conn_params = np.recarray(1, dtype=dict(
             names=['weight_factor', 'src_pop_id', 'dst_pop_id'],
@@ -64,6 +77,8 @@ class ConnectionBase:
         # Initialized in specific routines
         self._netcons = None
         self._synapses = ()
+        self._delay_vec_list = []
+        self._delayweight_vec_list = []
 
     synapse_params = property(lambda self: self._synapse_params)
     synapses = property(lambda self: self._synapses)
@@ -99,6 +114,17 @@ class ConnectionBase:
         """
         for nc in self._netcons:
             nc.weight[0] = weight
+
+    def update_delay_vecs(self, delay, weight):
+        """Update the delayed connection vectors in the synapse.
+
+        Args:
+           delay: the delay time for the new weight
+           weight: the weight to adjust to at this time
+        """
+        for syn_idx, _ in enumerate(self._synapses):
+            self._delay_vec_list[syn_idx].append(delay)
+            self._delayweight_vec_list[syn_idx].append(weight)
 
     def disable(self):
         """Deactivates a connection.
@@ -297,10 +323,18 @@ class Connection(ConnectionBase):
                 nc_index = pnm.nc_append(self.sgid, target_spgid, cell_syn_list.count()-1,
                                          syn_params.delay, syn_params.weight)
 
+                # load nc_type from the global variable nc_type_param_***
+                syn_name = "nc_type_param_%s" % syn_obj
+                syn_name = re.sub(r'\[[0-9]+\]', r'', syn_name)
+                if hasattr(Nd, syn_name):
+                    self.nc_type = int(getattr(Nd, syn_name))
+
             nc = pnm.nclist.object(nc_index)  # Netcon object
             nc.delay = syn_params.delay
             nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
             nc.threshold = -30
+            if self.nc_type > 0:
+                nc.weight[self.nc_type] = int(NetConType.NC_PRESYN)
             self._netcons.append(nc)
 
             if self._spont_minis is not None:
@@ -308,6 +342,14 @@ class Connection(ConnectionBase):
 
             if self._replay is not None:
                 self._replay.create_on(self, sec, syn_obj, syn_params)
+
+            # add a new empty delay vector that will be filled once we know how
+            if hasattr(syn_obj, "setup_delay_vecs"):
+                delay_vec = Nd.Vector()
+                delayweight_vec = Nd.Vector()
+                self._delay_vec_list.append(delay_vec)
+                self._delayweight_vec_list.append(delayweight_vec)
+                syn_obj.setup_delay_vecs(delay_vec, delayweight_vec)
 
         # Apply configurations to the synapses
         self._configure_synapses()
@@ -342,6 +384,14 @@ class Connection(ConnectionBase):
             add_params = (self._conn_params.src_pop_id, self._conn_params.dst_pop_id)
 
         syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, *add_params)
+
+        # set the synapse conductance obtained from the synapse file
+        # Note: due to different versions of neurodamus-core, we don't raise error at the moment
+        #       will be changed later on
+        if hasattr(syn_helper.synapse, "conductance"):
+            syn_helper.synapse.conductance = params_obj.weight
+        # else:
+        #     raise ValueError("%s does not define a conductance variable" % syn_helper.synapse)
 
         # set the default value of synapse NMDA_ratio/GABAB_ratio from circuit
         if params_obj.conductance_ratio >= 0:
@@ -553,6 +603,8 @@ class SpontMinis(ArtificialStim):
         netcon = Nd.NetCon(ips, syn_obj, sec=sec)
         netcon.delay = 0.1
         netcon.weight[0] = syn_params.weight * conn.weight_factor
+        if conn.nc_type > 0:
+            netcon.weight[conn.nc_type] = int(NetConType.NC_SPONTMINI)
         self._store(ips, netcon)
 
         src_pop_id, dst_pop_id = conn.population_id
@@ -646,6 +698,8 @@ class ReplayStim(ArtificialStim):
 
         nc = Nd.NetCon(vecstim, syn_obj, 10, syn_params.delay, syn_params.weight, sec=sec)
         nc.weight[0] = syn_params.weight * conn.weight_factor
+        if conn.nc_type > 0:
+            nc.weight[conn.nc_type] = int(NetConType.NC_REPLAY)
         self._store(vecstim, nc)
 
     def add_spikes(self, hoc_tvec):

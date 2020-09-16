@@ -848,6 +848,24 @@ class SynapseRuleManager(ConnectionManagerBase):
                 n_created_conns += 1
         return n_created_conns
 
+    def setup_delayed_connections(self, delay_connconfigs, gids):
+        """Setup delayed connection weights for synapse initialization.
+        For all delayed connection groups, find source and target gids and the associated connection
+        and add the delay and weight to their delay vectors.
+
+        Args:
+            delay_conconfigs: Connection configuration parsed from BlueConfig
+            gids: Vector of gids on the local cpu
+        """
+        for conn_config in delay_connconfigs:
+            src_target_name = conn_config["Source"]
+            dst_target_name = conn_config["Destination"]
+            for conn in self.get_target_connections(src_target_name, dst_target_name, gids):
+                if "Weight" in conn_config:
+                    conn.update_delay_vecs(conn_config["Delay"], conn_config["Weight"])
+                else:
+                    conn.update_delay_vecs(conn_config["Delay"], 0)
+
     # -
     @timeit(name="Replay inject")
     def replay(self, spike_manager, target_name, start_delay=.0):
