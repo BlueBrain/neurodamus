@@ -40,7 +40,9 @@ VERBATIM
 
 #undef ptr
 #define H5_USE_16_API 1
+#undef dt
 #include "hdf5.h"
+#define dt nrn_threads->_dt
 
 #ifndef DISABLE_MPI
 #include "mpi.h"
