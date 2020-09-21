@@ -55,46 +55,54 @@ proc init() {
 }
 create soma[1], dend[1], apic[1], axon[1], myelin[1]
 
-proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, pyobj, commands
+proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, global_extension, pyobj, commands
     forall delete_section()
+
     strobj = new StringFunctions()
-    // V5 wont ever ask .hoc morphologies. So in case we know that neurodamus
-    // supplies hoc or h5 load those & do the necessary & return right after
+    morphPath = new String()
+    extension = new String()
+    sscanf($s1, "%s", morphPath.s)
+    sscanf($s1, "%s", extension.s)
+    strobj.right(extension.s, strobj.len(extension.s) - 4)
+    strobj.tail(extension.s, "\\.", extension.s) // remove until dot (inclusive)
+
+    // V5 will always asc ASCII morphologies. So in case we know that neurodamus
+    // requested another morphology type, we replace the extension
     if( object_id(ext_simconfig) != 0 ) {
-
-        morphPath = new String()
-        sscanf($s1, "%s", morphPath.s)
-        strobj.left(morphPath.s, strobj.len(morphPath.s)-4)
-        sprint(morphPath.s, "%s.%s", morphPath.s, ext_simconfig.getMorphologyExtension().s)
-
-        if( strcmp(ext_simconfig.getMorphologyExtension().s, "hoc" ) == 0 ) {
-            xopen(morphPath.s)
-            indexSections()
-            geom_nsec()
-            return
-        } else if ( strcmp(ext_simconfig.getMorphologyExtension().s, "h5" ) == 0 ) {
-            if( nrnpython ("import morphio_wrapper") == 0 ) {
-                printf( ".h5 morphlogy used but cannot load 'morphio_wrapper.py' from neurodamus-core" )
-                quit()
-            }
-            pyobj = new PythonObject()
-            commands = pyobj.morphio_wrapper.MorphIOWrapper(morphPath.s).get_hoc_commands()
-            for i = 0, pyobj.len(commands) - 1 {
-                execute(commands._[i], this)
-            }
-            indexSections()
-            geom_nsec()
-            return
-        } // else continue with legacy loading
+        global_extension = ext_simconfig.getMorphologyExtension()
+        if ( strcmp(global_extension.s, extension.s) != 0 ) {
+            strobj.left(morphPath.s, strobj.len(morphPath.s) - strobj.len(extension.s) - 1)
+            sprint(morphPath.s, "%s.%s", morphPath.s, global_extension.s)
+            extension.s = global_extension.s
+        }
     }
 
-    extension = new String()
-    sscanf($s1, "%s", extension.s)
-    strobj.right(extension.s, strobj.len(extension.s)-4)
+    if( strcmp(extension.s, "hoc" ) == 0 ) {
+        xopen(morphPath.s)
+        indexSections()
+        geom_nsec()
+        return
+    }
 
-    if( strcmp(extension.s, ".asc") == 0 ) {
+    if ( strcmp(ext_simconfig.getMorphologyExtension().s, "h5" ) == 0 ) {
+        if( nrnpython ("import morphio_wrapper") == 0 ) {
+            printf( ".h5 morphlogy used but cannot load 'morphio_wrapper.py' from neurodamus-core" )
+            quit()
+        }
+        pyobj = new PythonObject()
+        commands = pyobj.morphio_wrapper.MorphIOWrapper(morphPath.s).get_hoc_commands()
+        for i = 0, pyobj.len(commands) - 1 {
+            execute(commands._[i], this)
+        }
+        indexSections()
+        geom_nsec()
+        return
+    }
+
+    // Classic formats
+    if( strcmp(extension.s, "asc") == 0 ) {
         morph = new Import3d_Neurolucida3()
-    } else if( strcmp(extension.s, ".swc") == 0 ) {
+    } else if( strcmp(extension.s, "swc") == 0 ) {
         morph = new Import3d_SWC_read()
     } else {
         printf("Unsupported file format: Morphology file has to end with .asc or .swc" )
