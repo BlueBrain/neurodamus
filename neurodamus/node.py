@@ -84,7 +84,6 @@ class Node:
         self._cell_distributor = None  # type: CellDistributor
         self._synapse_manager = None   # type: SynapseRuleManager
         self._gj_manager = None        # type: GapJunctionManager
-        self._connection_weight_delay_list = []
         self._jumpstarters = []
 
     #
@@ -617,10 +616,13 @@ class Node:
             synapse_manager.connect_all()
             return
 
+        delayed_connections = []
+
         for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
             conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
+
             if "Delay" in conn_conf:
-                self._connection_weight_delay_list.append(conn_conf)
+                delayed_connections.append(conn_conf)
                 continue
 
             # check if we are not supposed to create (only configure later)
@@ -631,6 +633,9 @@ class Node:
             conn_dst = conn_conf["Destination"]
             synapse_id = conn_conf.get("SynapseID")
             synapse_manager.connect_group(conn_src, conn_dst, synapse_id)
+
+        for delayed_connection in delayed_connections:
+            synapse_manager.setup_delayed_connection(delayed_connection)
 
     # -
     def _configure_connections(self, conn_manager=None):
@@ -1576,8 +1581,6 @@ class Neurodamus(Node):
 
         log_stage("Creating connections in the simulator")
         self._synapse_manager.finalize(base_seed, self._corenrn_conf)
-        self._synapse_manager.setup_delayed_connections(self._connection_weight_delay_list,
-                                                        self._cell_distributor.local_gids)
 
         if self._gj_manager is not None:
             self._gj_manager.finalize()
