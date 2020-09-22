@@ -36,16 +36,14 @@ proc init() {
 proc interpret() { localobj runInfo, pc, rng
     strdef rngModeField
     runInfo = $o1
+    rngMode = RANDOM123
 
-    rngMode = COMPATIBILITY
     pc = new ParallelContext()
+    if( pc.id() == 0 ) {
+        print "As of Oct 2020 Neurodamus uses Random123 as default"
+    }
 
-    if( simConfig.coreNeuronUsed() ) {
-        if( pc.id() == 0 ) {
-            print "CoreNEURON requires Random123 generator, setting RNGMode = Random123"
-        }
-        rngMode = RANDOM123
-    } else if( runInfo.exists( "RNGMode" ) ) {
+    if( runInfo.exists( "RNGMode" ) ) {
         rngModeField = runInfo.get( "RNGMode" ).s
         if( strcmp( rngModeField, "Compatibility" ) == 0 ) {
             rngMode = COMPATIBILITY
@@ -63,6 +61,14 @@ proc interpret() { localobj runInfo, pc, rng
         if( pc.id() == 0 ) {
             print "RNGMode set to ", rngMode, " [COMPATIBILITY=0, RANDOM123=1, UPMCELLRAN4=2]"
         }
+    }
+
+    if( simConfig.coreNeuronUsed() && rngMode != RANDOM123) {
+        // Given R123 is now the default there's no sense to allow an explicit invalid option
+        if( pc.id() == 0 ) {
+            print "Config Error: CoreNEURON requires Random123 RNG"
+        }
+        quit()
     }
 
     if( runInfo.exists("BaseSeed") ) {
