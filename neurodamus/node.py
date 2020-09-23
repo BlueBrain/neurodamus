@@ -1124,6 +1124,18 @@ class Node:
         # === Neuron specific init ===
         restore_path = self._run_conf.get("Restore")
         fwd_skip = self._run_conf.get("ForwardSkip", 0)
+
+        if fwd_skip and not restore_path:
+            logging.info("Initializing with ForwardSkip %d ms", fwd_skip)
+            Nd.t = -1e9
+            prev_dt = Nd.dt
+            Nd.dt = fwd_skip * 0.1
+            for flushIndex in range(10):
+                Nd.fadvance()
+            Nd.dt = prev_dt
+            Nd.t = 0
+            Nd.frecord_init()
+
         self._record_spikes()
         self._pnm.pc.timeout(200)  # increase by 10x
 
@@ -1139,17 +1151,6 @@ class Node:
 
                 self._restart_events()  # On restore the event queue is cleared
                 return  # Upon restore sim is ready
-
-        if fwd_skip:
-            logging.info("Initializing with ForwardSkip %d ms", fwd_skip)
-            Nd.t = -1e9
-            prev_dt = Nd.dt
-            Nd.dt = fwd_skip * 0.1
-            for flushIndex in range(10):
-                Nd.fadvance()
-            Nd.dt = prev_dt
-            Nd.t = 0
-            Nd.frecord_init()
 
     # -
     def _restart_events(self):
