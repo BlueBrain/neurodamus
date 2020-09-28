@@ -66,8 +66,8 @@ proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, global_ex
     strobj.right(extension.s, strobj.len(extension.s) - 4)
     strobj.tail(extension.s, "\\.", extension.s) // remove until dot (inclusive)
 
-    // V5 will always asc ASCII morphologies. So in case we know that neurodamus
-    // requested another morphology type, we replace the extension
+    // V5 will always ask ASCII morphologies. We need to replace the extension
+    // in case neurodamus is requesting another morphology type
     if( object_id(ext_simconfig) != 0 ) {
         global_extension = ext_simconfig.getMorphologyExtension()
         if ( strcmp(global_extension.s, extension.s) != 0 ) {
@@ -77,15 +77,15 @@ proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, global_ex
         }
     }
 
-    if( strcmp(extension.s, "hoc" ) == 0 ) {
+    if( strcmp(extension.s, "hoc") == 0 ) {
         xopen(morphPath.s)
         indexSections()
         geom_nsec()
         return
     }
 
-    if ( strcmp(ext_simconfig.getMorphologyExtension().s, "h5" ) == 0 ) {
-        if( nrnpython ("import morphio_wrapper") == 0 ) {
+    if( strcmp(extension.s, "h5") == 0 ) {
+        if( nrnpython("import morphio_wrapper") == 0 ) {
             printf( ".h5 morphlogy used but cannot load 'morphio_wrapper.py' from neurodamus-core" )
             quit()
         }
