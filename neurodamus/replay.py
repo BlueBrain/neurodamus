@@ -60,7 +60,7 @@ class SpikeManager(object):
     def _read_spikes_ascii(cls, filename):
         log_verbose("Reading ascii spike file %s", filename)
         # first line is '/scatter'
-        spikes = numpy.loadtxt(filename, dtype=cls._ascii_spike_dtype, skiprows=1)
+        spikes = numpy.loadtxt(filename, dtype=cls._ascii_spike_dtype, skiprows=1, ndmin=1)
 
         if len(spikes) > 0:
             log_verbose("Loaded %d spikes", len(spikes))
