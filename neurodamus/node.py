@@ -541,7 +541,7 @@ class Node:
 
             if circuit.nrnPath:
                 syn_manager.open_synapse_file(circuit.nrnPath, 1, int(circuit.PopulationID))
-                self._create_group_connections(syn_manager)
+                self._create_group_connections(syn_manager=syn_manager)
             else:
                 logging.info(" * %s connections have been disabled", name)
 
@@ -563,8 +563,6 @@ class Node:
         with timeit(name="Synapse init"):
             self._synapse_manager = SynapseRuleManager(
                 self._base_circuit, self._target_manager, self._cell_distributor)
-
-        connection_blocks = compat.Map(self._config_parser.parsedConnects)
 
         # Dont attempt to create default connections if engine is disabled
         logging.info("Creating circuit connections...")
@@ -595,7 +593,8 @@ class Node:
             nrn_path = self._find_projection_file(proj_path)
             nrn_path = ":".join([nrn_path] + pop_name)
 
-            # Temporarily patch for population IDs in BlueConfig
+            # Allow overriding src PopulationID
+            # Required for older nrn and syn2, otherwise connections are always merged
             pop_id = None
             if "PopulationID" in projection:
                 pop_id = int(projection["PopulationID"])
@@ -611,31 +610,33 @@ class Node:
                 pop_id = 0
 
             self._synapse_manager.open_synapse_file(nrn_path, 1, pop_id)
-
-            # Make all the Projection connections if no Connection blocks use
-            # that source. Otherwise create only specified connections
-            src = projection.get("Source")  # None will be different
-            has_connections = any(conn.get("Source").s == src
-                                  for conn in connection_blocks.values())
-            self._create_group_connections(force_all=not has_connections)
+            self._create_group_connections(src_target=projection.get("Source"))
 
     @mpi_no_errors
-    def _create_group_connections(self, synapse_manager=None, force_all=False):
+    def _create_group_connections(self, *, src_target=None, synapse_manager=None):
         """Creates connections according to loaded parameters in 'Connection'
            blocks of the BlueConfig in the currently active ConnectionSet
         """
+        # Create all Projection connections if no Connection block uses
+        # that source. Otherwise create only specified connections
+        connection_blocks = compat.Map(self._config_parser.parsedConnects)
+        conn_src_pop = self._synapse_manager.current_population.src_name
+        is_base_pop = self._synapse_manager.current_population.src_id == 0
+        matching_conns = [
+            conn for conn in connection_blocks.values()
+            if TargetSpec(conn.get("Source").s).match_filter(conn_src_pop, src_target, is_base_pop)
+        ]
+
         synapse_manager = synapse_manager or self._synapse_manager
-        if force_all or self._config_parser.parsedConnects.count() == 0:
+        if not matching_conns:
+            logging.info("No matching Connection blocks. Loading all synapses...")
             synapse_manager.connect_all()
             return
 
-        delayed_connections = []
-
-        for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
+        for conn_conf in matching_conns:
             conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
-
             if "Delay" in conn_conf:
-                delayed_connections.append(conn_conf)
+                # Delayed connections are for configuration only, not creation
                 continue
 
             # check if we are not supposed to create (only configure later)
@@ -647,9 +648,6 @@ class Node:
             synapse_id = conn_conf.get("SynapseID")
             synapse_manager.connect_group(conn_src, conn_dst, synapse_id)
 
-        for delayed_connection in delayed_connections:
-            synapse_manager.setup_delayed_connection(delayed_connection)
-
     # -
     def _configure_connections(self, conn_manager=None):
         """Configure-only circuit connections according to BlueConfig Connection blocks
@@ -658,17 +656,22 @@ class Node:
 
         for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
             conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
-            if "Delay" in conn_conf:
-                continue
+
             conn_src = conn_conf["Source"]
             conn_dst = conn_conf["Destination"]
+            is_delayed_connection = "Delay" in conn_conf
 
             log_msg = " * Pathway {:s} -> {:s}".format(conn_src, conn_dst)
+            if is_delayed_connection:
+                log_msg += ":\t[DELAYED] t={0[Delay]:g}, weight={0[Weight]:g}".format(conn_conf)
             if "SynapseConfigure" in conn_conf:
                 log_msg += ":\tconfigure with '{:s}'".format(conn_conf["SynapseConfigure"])
             logging.info(log_msg)
 
-            conn_manager.configure_group(conn_conf)
+            if is_delayed_connection:
+                conn_manager.setup_delayed_connection(conn_conf)
+            else:
+                conn_manager.configure_group(conn_conf)
 
     # -
     @mpi_no_errors
@@ -918,10 +921,10 @@ class Node:
 
         for rep_name, rep_conf in reports_conf.items():
             rep_conf = compat.Map(rep_conf).as_dict(parse_strings=True)
-            logging.info(" * " + rep_name)
             rep_type = rep_conf["Type"]
             start_time = rep_conf["StartTime"]
             end_time = rep_conf.get("EndTime", sim_end)
+            logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
 
             if rep_type.lower() not in ("compartment", "summation", "synapse"):
                 if MPI.rank == 0:
@@ -945,7 +948,8 @@ class Node:
             rep_target = TargetSpec(rep_conf["Target"])
             population_name = (rep_target.population or self._target_spec.population
                                or self._default_population)
-            logging.info("REPORT Population: %s, Target: %s", population_name, rep_target.name)
+            log_verbose("Report on Population: %s, Target: %s", population_name, rep_target.name)
+
             rep_dt = rep_conf["Dt"]
             if rep_dt < Nd.dt:
                 if MPI.rank == 0:

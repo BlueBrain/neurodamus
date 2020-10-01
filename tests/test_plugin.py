@@ -111,7 +111,7 @@ class ACellSynapseManager(ConnectionManagerBase):
     def _add_synapses(self, cur_conn, syns_params, syn_type_restrict=None, base_id=0):
         cur_conn.append_src_cells(syns_params.sgid, syns_params)
 
-    def _finalize_conns(self, tgid, conns, *_):
+    def _finalize_conns(self, tgid, conns, *_, **_kw):
         target_cell = self._cell_distibutor[tgid]
         conns[0].finalize(self._cell_distibutor.pnm, target_cell)
         return conns[0].conn_count

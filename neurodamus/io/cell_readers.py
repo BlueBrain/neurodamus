@@ -30,6 +30,8 @@ class TargetSpec:
         else:
             self.name = target_name
             self.population = None
+        if self.name == "":
+            self.name = None
 
     def __str__(self):
         return self.name if self.population is None \
@@ -43,6 +45,16 @@ class TargetSpec:
         if self.name is None:
             return "_ALL_"
         return self.__str__().replace(":", "_")
+
+    def matches(self, pop, target_name):
+        return pop == self.population and target_name == self.name
+
+    def match_filter(self, pop, target_name, is_base_population=False):
+        return ((self.population == pop or (is_base_population and self.population is None))
+                and target_name in (None, self.name))
+
+    def __eq__(self, other):
+        return self.matches(other.population, other.name)
 
 
 def _ncs_get_total(ncs_f):

@@ -280,9 +280,8 @@ class Connection(ConnectionBase):
         return len(self._replay)
 
     # -
-    def finalize(self,
-                 pnm, cell, base_seed=0, spgid=None, skip_disabled=False,
-                 replay_mode=ReplayMode.AS_REQUIRED):
+    def finalize(self, pnm, cell, base_seed=0, spgid=None, skip_disabled=False, *,
+                       replay_mode=ReplayMode.AS_REQUIRED, is_projection=False):
         """ When all parameters are set, create synapses and netcons
 
         Args:
@@ -291,9 +290,10 @@ class Connection(ConnectionBase):
                 directly rather than via pnm to avoid loadbalance issues
             base_seed: base seed value (Default: None - no adjustment)
             spgid: Part id, required With multisplit
-            replay_mode: Policy to initialize replay in this conection
             skip_disabled: Dont instantiate at all if conn was disabled. Mostly
                 useful for CoreNeuron
+            replay_mode: Policy to initialize replay in this conection
+
         """
         if skip_disabled and self._disabled:
             return False
@@ -335,19 +335,11 @@ class Connection(ConnectionBase):
             with Nd.section_in_stack(sec):
                 syn_obj = self._create_synapse(cell, syn_params, x,
                                                self._synapse_ids[syn_i], base_seed)
-                cell_syn_list = cell.CellRef.synlist
                 self._synapses.append(syn_obj)
 
-                # See `neurodamus-core.Connection` for explanation. Also pc.gid_connect
-                nc_index = pnm.nc_append(self.sgid, target_spgid, cell_syn_list.count()-1,
-                                         syn_params.delay, syn_params.weight)
-
-            nc = pnm.nclist.object(nc_index)  # Netcon object
-            self.netcon_set_type(nc, syn_obj, NetConType.NC_PRESYN)
-            nc.delay = syn_params.delay
-            nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
-            nc.threshold = -30
-            self._netcons.append(nc)
+            if not is_projection:
+                syn_index = cell.CellRef.synlist.count() - 1
+                self._attach_source_cell(target_spgid, syn_obj, syn_index, syn_params, pnm)
 
             if self._spont_minis is not None:
                 self._spont_minis.create_on(self, sec, x, syn_obj, syn_params, base_seed)
@@ -370,6 +362,18 @@ class Connection(ConnectionBase):
         # Apply configurations to the synapses
         self._configure_synapses()
         return True
+
+    def _attach_source_cell(self, target_spgid, syn_obj, syn_index, syn_params, pnm):
+        # See `neurodamus-core.Connection` for explanation. Also pc.gid_connect
+        nc_index = pnm.nc_append(self.sgid, target_spgid, syn_index,
+                                 syn_params.delay, syn_params.weight)
+        nc = pnm.nclist.object(nc_index)  # Netcon object
+        self.netcon_set_type(nc, syn_obj, NetConType.NC_PRESYN)
+        nc.delay = syn_params.delay
+        nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
+        nc.threshold = -30
+        self._netcons.append(nc)
+        return nc
 
     # -
     def _create_synapse(self, cell, params_obj, x, syn_id, base_seed):
