@@ -359,7 +359,15 @@ static int _load_data(uint64_t tgid,
 
     // Already loaded?
     if (tgid == state_ptr->gid && conn_type == state_ptr->conn_type) {
-        return state_ptr->length;
+        // Not knowing prev names, check at least the number of fields is same
+        char* fields_str = (char*) fields;
+        int n_fields_requested = 1;
+        while ((fields_str=strchr(fields_str+1, ',')) != NULL) {
+            n_fields_requested++;
+        }
+        if (state_ptr->n_fields == n_fields_requested) {
+            return state_ptr->length;
+        }
     }
 
     // NeuroGlial is probably the only case we query by source gid (of the Glia)
@@ -577,6 +585,7 @@ COMMENT
  *
  * @param 1 The index of the synapse to retrieve
  * @param 2 The vector to hold the result data
+ * @param 3 Fill mode, dont resize the vector (Default: false)
  */
 ENDCOMMENT
 FUNCTION getSynapse() {
@@ -598,18 +607,18 @@ VERBATIM
     int i, dst_i;
     const unsigned int row = *getarg(1);
     void* const xd = vector_arg(2);
+    const int fill_mode = ifarg(3)? (int)*getarg(3): 0;
+
 
     const int loaded_conn_type = state_ptr->conn_type & 0xffff;
     const int n_fields = state_ptr->n_fields;
     const Syn2Field* const fields = state_ptr->fields;
     const int target_vec_size = (loaded_conn_type == CONN_CUSTOM)? n_fields
                                                                  : ND_FIELD_COUNT;
-    // resize if too small
-    if (vector_capacity(xd) < target_vec_size) {
-        vector_resize(xd, target_vec_size);
+    if (! fill_mode || vector_capacity(xd) < target_vec_size) {
+        vector_resize(xd, target_vec_size);   // shrink keeps buffer
     }
-    // Get pointer, only after eventual resize
-    double * const out_buf = vector_vec(xd);
+    double * const out_buf = vector_vec(xd);  // Get pointer after eventual resize
 
     // init to -1 (due to holes in gjs)
     for(i=0; i < target_vec_size; i++) {
@@ -674,11 +683,18 @@ VERBATIM
     const int field_i = (field_pos != NULL)? field_pos[column] : column;
     const Syn2Field field = state_ptr->fields[field_i];
 
-    // resize if too small
-    if (vector_capacity(xd) < state_ptr->length) {
-        vector_resize(xd, state_ptr->length);
+    vector_resize(xd, state_ptr->length);  // shinking is almost no-op
+    double * const vec_buffer = vector_vec(xd);
+    to_double_vec(&field, state_ptr->length, vec_buffer);
+
+    // In case field 0 asked "add1" (for gids) then apply it
+    if (column == 0 && (state_ptr->conn_type & CONN_FIELD0_ADD1)) {
+        int i;
+        for (i=0; i < state_ptr->length; i++) {
+            vec_buffer[i]++;
+        }
     }
-    to_double_vec(&field, state_ptr->length, vector_vec(xd));
+
 #endif
 ENDVERBATIM
 }

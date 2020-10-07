@@ -72,8 +72,7 @@ obfunc loadSynapseParameters() { local gid, nSyn, synIndex  localobj synParamsLi
     tmpParams = new Vector(15)
 
     for synIndex=0, nSyn-1 {
-        // getSynapse makes sure capacity is enough (14 elems), only resizing otherwise
-        synapseReader.getSynapse(synIndex, tmpParams)
+        synapseReader.getSynapse(synIndex, tmpParams, 1)  // 1: no resize
 
         // compensate for minor floating point inaccuracies in the delay
         if (!readGaps) {
