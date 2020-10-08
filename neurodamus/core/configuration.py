@@ -45,6 +45,7 @@ class _SimConfig(object):
     delete_corenrn_data = False
     buffer_time = 25
     extracellular_calcium = None
+    secondorder = None
     morphology_path = None
     morphology_ext = None
     # Dont duplicate data, forward calls
@@ -70,6 +71,8 @@ class _SimConfig(object):
 
         cls.buffer_time = 25 * run_conf.get("FlushBufferScalar", 1)
         cls.extracellular_calcium = run_conf.get("ExtracellularCalcium", None)
+
+        cls.secondorder = run_conf.get("SecondOrder", None)
 
         try:
             cls.morphology_path = cls._simconf.getMorphologyPath().s

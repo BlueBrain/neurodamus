@@ -279,6 +279,18 @@ class Node:
         h.tstop = run_conf["Duration"]
         h.dt = run_conf["Dt"]
         h.steps_per_ms = 1.0 / h.dt
+        second_order = SimConfig.secondorder
+        if second_order is not None:
+            if second_order in (0, 1, 2):
+                h.secondorder = int(second_order)
+                logging.info("Setting SecondOrder to: {}".format(int(second_order)))
+            else:
+                raise ConfigurationError("Time integration method (SecondOrder value) {} is "
+                                         "invalid. Valid options are:"
+                                         " '0' (implicity backward euler),"
+                                         " '1' (crank-nicholson) and"
+                                         " '2' (crank-nicholson with fixed ion currents)"
+                                         .format(second_order))
         return SimConfig
 
     # -
