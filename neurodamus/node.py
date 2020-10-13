@@ -804,7 +804,9 @@ class Node:
         has_extra_cellular = False
         stim_dict = {}
         for stim_name, stim in compat.Map(conf.parsedStimuli).items():
-            stim_dict.setdefault(stim_name, stim)
+            if stim_name in stim_dict:
+                raise ConfigurationError("Stimulus declared more than once: %s", stim_name)
+            stim_dict[stim_name] = stim  # keep as hoc obj for stim_manager
             if stim.get("Mode").s == "Extracellular":
                 has_extra_cellular = True
 
@@ -822,12 +824,13 @@ class Node:
                 logging.error("Stimulus Inject %s uses non-existing Stim %s",
                               name, stim_name)
 
-            stim_map = compat.Map(stim).as_dict(True)
-            if stim_map["Pattern"] != "SynapseReplay":
-                # stim manager will interpret non-replay stimulus
-                logging.info(" * [STIM] %s: %s (%s) -> %s",
-                             name, stim_name, stim_map["Pattern"], target_name)
-                self._stim_manager.interpret(target_name, stim)
+            stim_pattern = stim.get("Pattern").s
+            if stim_pattern == "SynapseReplay":
+                continue  # Handled by enable_replay
+
+            logging.info(" * [STIM] %s: %s (%s) -> %s",
+                         name, stim_name, stim_pattern, target_name)
+            self._stim_manager.interpret(target_name, stim)
 
     # -
     def _enable_electrodes(self):
@@ -857,30 +860,31 @@ class Node:
             logging.info(" -> [REPLAY] Reusing stim file from previous cycle")
             return
 
-        stim_dict = {}
+        replay_dict = {}
         for stim_name, stim in compat.Map(conf.parsedStimuli).items():
             if stim.get("Pattern").s == "SynapseReplay":
-                stim_dict.setdefault(stim_name, stim)
+                replay_dict[stim_name] = compat.Map(stim).as_dict(parse_strings=True)
 
         for name, inject in compat.Map(conf.parsedInjects).items():
-            target_name = inject.get("Target").s
-            stim_name = inject.get("Stimulus").s
-            stim = stim_dict.get(stim_name)
-            if stim is None:
+            inject = compat.Map(inject).as_dict(parse_strings=True)
+            target = inject["Target"]
+            source = inject.get("Source")
+            stim_name = inject["Stimulus"]
+            stim = replay_dict.get(stim_name)
+            if stim is None:  # It's a non-replay inject. Injects are checked in enable_stimulus
                 continue
 
             # Since saveUpdate merge there are two delay concepts:
             #  - shift: times are shifted (previous delay)
             #  - delay: Spike replays are suppressed until a certain time
-            stim = compat.Map(stim).as_dict(True)
             tshift = Nd.t if stim.get("Timing") == "Relative" else .0
             delay = stim.get("Delay", .0)
             logging.info(" * [SYN REPLAY] %s (%s -> %s, time shift: %d, delay: %d)",
-                         name, stim_name, target_name, tshift, delay)
-            self._enable_replay(target_name, stim, tshift, delay)
+                         name, stim_name, target, tshift, delay)
+            self._enable_replay(source, target, stim, tshift, delay)
 
     # -
-    def _enable_replay(self, target_name, stim_conf, tshift=.0, delay=.0):
+    def _enable_replay(self, source, target, stim_conf, tshift=.0, delay=.0):
         spike_filepath = self._find_input_file(stim_conf["SpikeFile"])
         spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
 
@@ -899,7 +903,7 @@ class Node:
                         spike_manager.dump_ascii(f)
         else:
             # Otherwise just apply it to the current connections
-            self._synapse_manager.replay(spike_manager, target_name, delay)
+            self._synapse_manager.replay(spike_manager, source, target, delay)
 
     # -
     @mpi_no_errors

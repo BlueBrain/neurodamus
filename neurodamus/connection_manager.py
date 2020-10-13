@@ -966,12 +966,13 @@ class SynapseRuleManager(ConnectionManagerBase):
 
     # -
     @timeit(name="Replay inject")
-    def replay(self, spike_manager, target_name, start_delay=.0):
+    def replay(self, spike_manager, src_target_name, dst_target_name, start_delay=.0):
         """Create special netcons to trigger timed spikes on those synapses.
 
         Args:
-            target_name: Target name whose gids should be replayed
             spike_manager: map of gids (pre-synaptic) with spike times
+            src_target_name: Source population:target of the replay connections
+            dst_target_name: Target whose gids should be replayed
             start_delay: Dont deliver events before t=start_delay
         """
         log_verbose("Applying replay map with %d src cells...", len(spike_manager))
@@ -982,7 +983,7 @@ class SynapseRuleManager(ConnectionManagerBase):
             start_delay = Nd.t
             log_verbose("Restore: Delivering events only after t=%.4f", start_delay)
 
-        for conn in self.get_target_connections(None, target_name):
+        for conn in self.get_target_connections(src_target_name, dst_target_name):
             if conn.sgid not in spike_manager:
                 continue
             conn.replay(spike_manager[conn.sgid], start_delay)
