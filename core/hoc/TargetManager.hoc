@@ -23,7 +23,7 @@ begintemplate TargetManager
 // Declare member variables
 //-----------------------------------------------------------------------------------------------
 
-objref targetList, cellList, sectionAccess, isec2sec[1], cellDistributor, nilSecRef, deletedSecRef
+objref targetList, cellList, sectionAccess, isec2sec[1], cellDistributor, deletedSecRef
 
 ///a dummy section which will serve as a nil for populating TPointLists
 create dummy
@@ -337,39 +337,37 @@ obfunc selectRandomPoints() { local synIndex, cmpIndex, x  localobj ptList, allP
  */
 obfunc getApicalPoints() { local cellIndex  localobj tempTarget, ptList, activeCell
 
-	//TODO: handle bglib cases
-	if( argtype(1) == 0 ) {  //non-bluegene
-		if( object_id(cellList, 1) == -1 ) {
-			execerror( "No cells registered with my null cellList" )
-		}
+    if( argtype(1) != 0 ) {
+        execerror("getApicalPoints() now only accepts one int arg")
+    }
 
-		ptList = new TPointList($1)
+    if( object_id(cellList, 1) == -1 ) {
+        execerror( "No cells registered with my null cellList" )
+    }
 
-        //find cell
-        for cellIndex=0, cellList.count()-1 {
-            activeCell = cellList.o(cellIndex)
+    ptList = new TPointList($1)
 
-            if( activeCell.gid == $1 ) {
+    //find cell
+    for cellIndex=0, cellList.count()-1 {
+        activeCell = cellList.o(cellIndex)
 
-                //just mimic all compartment report
-				//TODO: can we make this code more general and put in a single, utility function.  avoid copy/paste in other get(*subset*)Points funcs?
-                forsec activeCell.CellRef.apical {
-                    for cmpIndex=1, nseg {
-                        ptList.append( new SectionRef(), cmpIndex/(nseg+1) )
-                    }
+        if( activeCell.gid == $1 ) {
+
+            //just mimic all compartment report
+            //TODO: can we make this code more general and put in a single, utility function.  avoid copy/paste in other get(*subset*)Points funcs?
+            forsec activeCell.CellRef.apical {
+                for cmpIndex=1, nseg {
+                    ptList.append( new SectionRef(), cmpIndex/(nseg+1) )
                 }
-
-                return ptList
             }
+
+            return ptList
         }
+    }
 
-		//if reached this point of the code, the cell was not in the list
-		print "No such gid registered with TargetManager: ", $1
-		return ptList
-	}
-
-    //tempTarget = sectionCast( $s1, "apic" )
-    //return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
+    //if reached this point of the code, the cell was not in the list
+    print "No such gid registered with TargetManager: ", $1
+    return ptList
 }
 
 //------------------------------------------------------------------------------------------
@@ -382,39 +380,36 @@ obfunc getApicalPoints() { local cellIndex  localobj tempTarget, ptList, activeC
  */
 obfunc getBasalPoints() { local cellIndex  localobj tempTarget, ptList, activeCell
 
-	//TODO: handle bglib cases
-	if( argtype(1) == 0 ) {  //non-bluegene
-		if( object_id(cellList, 1) == -1 ) {
-			execerror( "No cells registered with my null cellList" )
-		}
+    if( argtype(1) != 0 ) {
+        execerror("getApicalPoints() now only accepts one int arg")
+    }
+    if( object_id(cellList, 1) == -1 ) {
+        execerror( "No cells registered with my null cellList" )
+    }
 
-		ptList = new TPointList($1)
+    ptList = new TPointList($1)
 
-        //find cell
-        for cellIndex=0, cellList.count()-1 {
-            activeCell = cellList.o(cellIndex)
+    //find cell
+    for cellIndex=0, cellList.count()-1 {
+        activeCell = cellList.o(cellIndex)
 
-            if( activeCell.gid == $1 ) {
+        if( activeCell.gid == $1 ) {
 
-                //just mimic all compartment report
-				//TODO: can we make this code more general and put in a single, utility function.  avoid copy/paste in other get(*subset*)Points funcs?
-                forsec activeCell.CellRef.basal {
-                    for cmpIndex=1, nseg {
-                        ptList.append( new SectionRef(), cmpIndex/(nseg+1) )
-                    }
+            //just mimic all compartment report
+            //TODO: can we make this code more general and put in a single, utility function.  avoid copy/paste in other get(*subset*)Points funcs?
+            forsec activeCell.CellRef.basal {
+                for cmpIndex=1, nseg {
+                    ptList.append( new SectionRef(), cmpIndex/(nseg+1) )
                 }
-
-                return ptList
             }
+
+            return ptList
         }
+    }
 
-		//if reached this point of the code, the cell was not in the list
-		print "No such gid registered with TargetManager: ", $1
-		return ptList
-	}
-
-    //tempTarget = sectionCast( $s1, "apic" )
-    //return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
+    //if reached this point of the code, the cell was not in the list
+    print "No such gid registered with TargetManager: ", $1
+    return ptList
 }
 
 //------------------------------------------------------------------------------------------
@@ -431,7 +426,7 @@ obfunc getBasalPoints() { local cellIndex  localobj tempTarget, ptList, activeCe
  */
 obfunc getSomaticSections() { localobj tempTarget
     tempTarget = sectionCast( $s1, "soma" )
-    return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
+    return tempTarget.getCompletePointList( cellDistributor )
 }
 
 //------------------------------------------------------------------------------------------
@@ -445,7 +440,7 @@ obfunc getSomaticSections() { localobj tempTarget
 obfunc getApicalSections() {  localobj tempTarget
 
     tempTarget = sectionCast( $s1, "apic" )
-    return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
+    return tempTarget.getCompletePointList( cellDistributor )
 }
 
 //------------------------------------------------------------------------------------------
@@ -458,7 +453,7 @@ obfunc getApicalSections() {  localobj tempTarget
  */
 obfunc getBasalSections() { localobj tempTarget
     tempTarget = sectionCast( $s1, "dend" )
-    return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
+    return tempTarget.getCompletePointList( cellDistributor )
 }
 
 //------------------------------------------------------------------------------------------
@@ -471,7 +466,7 @@ obfunc getBasalSections() { localobj tempTarget
  */
 obfunc getAxonalSections() { localobj tempTarget
     tempTarget = sectionCast( $s1, "axon" )
-    return tempTarget.getCompletePointList( cellDistributor, nilSecRef )
+    return tempTarget.getCompletePointList( cellDistributor )
 }
 
 //------------------------------------------------------------------------------------------

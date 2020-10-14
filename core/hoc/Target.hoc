@@ -121,7 +121,7 @@ objref localCellsMap
 
 //!
 objref gidMembers, subtargets, flattenedGids, completeFlattenedGids, sortedGids, completeSortedGids
-objref cellExtraValues, targetExtraValues, cellSubsets, targetSubsets
+objref cellExtraValues, targetExtraValues, cellSubsets, targetSubsets, nilSecRef
 
 strdef name, type
 
@@ -798,10 +798,6 @@ proc addressSection(){local segcnt, SegNo, locIndex  localobj VecObj, tObj
 
     if(!section_exists($s3, $4, tObj)) {
         if( completeMode == 1 ) {
-            //TODO: for situations where we need all points, we need to be able to insert a nil section ref
-            // which the CellDistibutor has, but maybe I should just let every target have one?
-            // also, how many segs were in the original section?
-
             VecObj = $o5
             if( VecObj.size == 0 ) {
                 VecObj = new Vector() //the vector was empty, so need to address all points
@@ -811,7 +807,7 @@ proc addressSection(){local segcnt, SegNo, locIndex  localobj VecObj, tObj
             }
 
             for locIndex=0, VecObj.size()-1 {
-                $o6.append( $o1.nilSecRef, -1 )
+                $o6.append( nilSecRef, -1 )
             }
         }
     } else {
