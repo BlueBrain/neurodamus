@@ -227,7 +227,11 @@ class Node:
 
     @staticmethod
     def _check_model_build_mode(user_config, parsed_run, output_path):
-        core_config_exists = ospath.isfile(ospath.join(output_path, "sim.conf"))
+        coreneuron_datadir = "coreneuron_input"  # SimConfig isn't initd yet
+        core_data_exists = (
+            ospath.isfile(ospath.join(output_path, "sim.conf"))
+            and ospath.isfile(ospath.join(output_path, coreneuron_datadir, 'files.dat'))
+        )
         simulator = parsed_run.get("Simulator").s if parsed_run.exists("Simulator") \
             else None
         if simulator == "NEURON" and (user_config.build_model is False
@@ -235,12 +239,12 @@ class Node:
             raise ConfigurationError("Disabling model building or simulation is only"
                                      " compatible with CoreNEURON")
 
-        if user_config.build_model is False and not core_config_exists:
+        if user_config.build_model is False and not core_data_exists:
             raise ConfigurationError("Model build was disabled, but sim.conf not found")
 
         if user_config.build_model not in (True, False):
             # No sim.conf -> can leave as is
-            if not core_config_exists:
+            if not core_data_exists:
                 logging.info("CoreNeuron data do not exist in '%s'. "
                              "Neurodamus will proceed to model building.", output_path)
                 user_config.build_model = True
@@ -1520,9 +1524,10 @@ class Node:
             self.clear_model(avoid_creating_objs=True)
 
         if SimConfig.delete_corenrn_data:
+            data_folder = SimConfig.coreneuron_datadir
+            logging.info("Deleting intermediate data in %s", data_folder)
+
             with timeit_rank0(name="Delete corenrn data"):
-                data_folder = ospath.join(self._output_root, "coreneuron_input")
-                logging.info("Deleting intermediate data in %s", data_folder)
                 if MPI.rank == 0:
                     if ospath.islink(data_folder):
                         # in restore, coreneuron data is a symbolic link
@@ -1640,11 +1645,11 @@ class Neurodamus(Node):
     # -
     def _merge_filesdat(self, ncycles, output_root):
         log_stage("Generating merged CoreNeuron files.dat")
-
+        coreneuron_datadir = SimConfig.coreneuron_datadir
         cn_entries = []
         for i in range(ncycles):
             log_verbose("files_{}.dat".format(i))
-            filename = ospath.join(output_root, "coreneuron_input/files_{}.dat".format(i))
+            filename = ospath.join(coreneuron_datadir, "files_{}.dat".format(i))
             with open(filename) as fd:
                 first_line = fd.readline()
                 nlines = int(fd.readline())
@@ -1652,7 +1657,7 @@ class Neurodamus(Node):
                     line = fd.readline()
                     cn_entries.append(line)
 
-        cnfilename = ospath.join(output_root, "coreneuron_input/files.dat")
+        cnfilename = ospath.join(coreneuron_datadir, "files.dat")
         with open(cnfilename, 'w') as cnfile:
             cnfile.write(first_line)
             cnfile.write(str(len(cn_entries)) + '\n')
@@ -1707,7 +1712,7 @@ class Neurodamus(Node):
 
             # Move generated files aside (to be merged later)
             if MPI.rank == 0:
-                base_filesdat = ospath.join(self._output_root, 'coreneuron_input/files')
+                base_filesdat = ospath.join(SimConfig.coreneuron_datadir, 'files')
                 os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
             # Archive timers for this cycle
             TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
