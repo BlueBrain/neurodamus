@@ -571,16 +571,10 @@ class Node:
 
     # -
     def _create_connections(self):
-        # if we have a single connect block with weight=0, skip synapse creation  entirely
-        if self._config_parser.parsedConnects.count() == 1:
-            if self._config_parser.parsedConnects.o(0).valueOf("Weight") == 0:
-                return
-
         with timeit(name="Synapse init"):
             self._synapse_manager = SynapseRuleManager(
                 self._base_circuit, self._target_manager, self._cell_distributor)
 
-        # Dont attempt to create default connections if engine is disabled
         logging.info("Creating circuit connections...")
         self._create_group_connections()
 
@@ -642,6 +636,12 @@ class Node:
             conn for conn in connection_blocks.values()
             if TargetSpec(conn.get("Source").s).match_filter(conn_src_pop, src_target, is_base_pop)
         ]
+
+        # if we have a single connect block with weight=0, skip synapse creation entirely
+        if len(matching_conns) == 1:
+            if matching_conns[0].valueOf("Weight") == .0:
+                logging.warning("SKIPPING Connection create since they have invariably weight=0")
+                return
 
         synapse_manager = synapse_manager or self._synapse_manager
         if not matching_conns:

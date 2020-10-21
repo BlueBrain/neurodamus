@@ -486,7 +486,7 @@ class ConnectionManagerBase(object):
         dst_tname = TargetSpec(dst_target_name).name
         src_target = src_tname and self._target_manager.getTarget(src_tname)
         dst_target = dst_tname and self._target_manager.getTarget(dst_tname)
-        log_verbose("Connecting group %s -> %s", src_tname, dst_tname)
+        logging.debug("Connecting group %s -> %s", src_tname, dst_tname)
 
         for sgid, tgid, syns_params, offset in self._iterate_conn_params(src_target, dst_target):
             if sgid == tgid:
@@ -597,7 +597,7 @@ class ConnectionManagerBase(object):
                 return
 
         for population in populations:
-            log_verbose("Connections from population %s", population)
+            logging.debug("Connections from population %s", population)
             for tgid in gidvec:
                 if not dst_target.contains(tgid) or tgid not in population:
                     continue
