@@ -4,9 +4,10 @@ Examples
 Basic Usage
 -----------
 
-Neurodamus, as an application, is very similar to the hoc version in the sense that it can
-be fully unmanned guided by the BlueConfig. However a python launcher script is
-provided which accepts options.
+Neurodamus-py, as an application, is very similar to the HOC version, both
+run a simulaton fully unmanned guided by the BlueConfig. However, neurodamus-py does
+accept CLI options to define some parameters of the simulations.
+
 Once installed, you should be able to find `neurodamus` in your path:
 
 .. code-block::
@@ -17,6 +18,25 @@ Once installed, you should be able to find `neurodamus` in your path:
         neurodamus --help
 
 Among the options you will find flags to tune run behavior, which was not possible in HOC.
+
+Launching
+~~~~~~~~~
+
+Neurodamus-py explicitly depends on MPI libraries for parallel execution.
+Therefore please use "srun" or "mpiexec" to launch it, according to your platform. If you
+don't, complicated error messages may show up. Please remember it.
+
+Even though a `neurodamus` launcher is provided, for production runs we suggest using
+`special` instead. This way has proven to take advantage of optimized math libraries.
+We hope to bring the same advantages to the launcher script soon.
+
+.. code-block:: sh
+
+ srun <srun params> special -mpi -python $NEURODAMUS_PYTHON/init.py <neurodamus params>
+
+For detailed launching instructions on BB5, please visit the confluence page "Neurodamus"
+section "Neurodamus-py".
+
 
 Only build model, run later
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
