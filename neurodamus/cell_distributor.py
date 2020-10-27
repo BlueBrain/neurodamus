@@ -448,7 +448,7 @@ class LoadBalance:
         self._load_cxinfo()
 
     @run_only_rank0
-    def valid_load_distribution(self, target_spec):
+    def valid_load_distribution(self, target_spec) -> bool:
         """Checks whether we have valid load-balance files, attempting to
         derive from larger target distributions if possible.
         """

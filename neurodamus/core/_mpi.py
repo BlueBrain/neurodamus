@@ -7,6 +7,10 @@ import time
 from ._neuron import Neuron
 
 
+class OtherRankError(RuntimeError):
+    pass
+
+
 class MPI(object):
     """A singleton of MPI runtime information
     """
@@ -31,26 +35,32 @@ class MPI(object):
         if cls._size <= 1:
             return  # done
 
-        # When using MPI (and more than 1 rank) we need to MPIAbort on exception to avoid deadlocks
+        # In case neurodmus is not being used as a program, but rather imported by another
+        # program (API mode) we must handle exceptions instead of just killing the process
         def excepthook(etype, value, tb):
+            if etype == OtherRankError:
+                # Do nothing because the exception only exists because of other ranks, not locally
+                return
+
+            # Print exceptions local to this rank
             time.sleep(0.01 * cls._rank)  # Order errors
             logging.critical(str(value), exc_info=True)
             if cls._rank == 0:
                 import traceback
                 traceback.print_tb(tb)
+
+            # Participate in check_no_errors allreduce, letting it know there was exception
             pc.allreduce(1, 1)  # Share error state
-            sys.exit(1)
+
         sys.excepthook = excepthook
 
     @classmethod
     def check_no_errors(cls):
-        # All processes send their status. If one is problematic then quit
+        # All processes send their status. If one is problematic it will either call MPI_Abort
+        # or, in API mode, participate in the allreduce
         res = cls._pc.allreduce(0, 1)
         if res > 0:
-            if MPI.rank == 0:
-                logging.critical("Another rank raised an irrecoverable error. "
-                                 "Check log file. Terminating.")
-            sys.exit(1)
+            raise OtherRankError("Another rank raised an irrecoverable error")
 
     @property
     def size(self):

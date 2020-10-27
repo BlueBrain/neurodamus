@@ -2,15 +2,15 @@
 Module implementing entry functions
 """
 from __future__ import absolute_import
-from docopt import docopt
 import logging
+from docopt import docopt
+from os.path import abspath
 from pprint import pprint
 from . import Neurodamus
 from .core import MPI
 from .core.configuration import ConfigurationError, LogLevel
-from .utils.pyutils import docopt_sanitize
 from .hocify import Hocify
-from os.path import abspath
+from .utils.pyutils import docopt_sanitize
 
 
 def neurodamus(args=None):
@@ -56,7 +56,10 @@ def neurodamus(args=None):
         return 1
     except Exception:
         logging.critical("Unhandled Exception. Terminating...", exc_info=True)
-        MPI._pc and MPI.allreduce(1, 1)  # Share error state
+        import ctypes
+        import ctypes.util
+        mpilib = ctypes.CDLL(ctypes.util.find_library('mpi'))
+        mpilib.MPI_Abort(0)
         return 1
     return 0
 

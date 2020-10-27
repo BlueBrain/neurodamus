@@ -3,8 +3,9 @@ Collection of core helpers / utilities
 """
 from __future__ import absolute_import
 import time
-from functools import wraps
 from array import array
+from functools import wraps
+from inspect import Signature, signature
 from ._mpi import MPI
 from ..utils import progressbar
 
@@ -24,6 +25,13 @@ def mpi_no_errors(f):
     """
     @wraps(f)
     def mpi_ok_wrapper(*args, **kw):
+        # Three scenarios:
+        #   0 - all ranks return normally: they all wait in the barrier
+        #   1 - all ranks throw exception: exception propagated up, no barrier hit
+        #   2 - some ranks throw exception. Good ranks will wait in barrier. Two options:
+        #       In program mode bad ranks must call MPI_abort (in commands.py)
+        #       In API mode we must catch unhandled exception participate in collective count
+        #       and raise exception in all ranks
         res = f(*args, **kw)
         if MPI.size > 1:
             MPI.check_no_errors()
@@ -33,13 +41,16 @@ def mpi_no_errors(f):
 
 
 class run_only_rank0:
-    """Decorator that makes a given func to run only in rank 0 and then
-     broadcast result. It handles nested level to avoid broadcasting while we
-     are already in rank0_only mode
+    """Decorator that makes a given func to run only in rank 0.
+
+    It will broadcast results IFF the user specifies return type notation.
+    It handles nested level to avoid broadcasting while we are already in rank0_only mode
     """
     nested_depth = 0
 
     def __new__(cls, f):
+        has_return = signature(f).return_annotation != Signature.empty
+
         @wraps(f)
         def rank0_wrapper(*args, **kw):
             # Situation we dont need/want the broadcast
@@ -50,8 +61,8 @@ class run_only_rank0:
             res = f(*args, **kw) if MPI.rank == 0 else None
             cls.nested_depth -= 1
 
-            MPI.check_no_errors()  # Ensure all procs ok before bcast
-            return MPI.py_broadcast(res, 0)
+            if has_return:
+                return MPI.py_broadcast(res, 0)
 
         return rank0_wrapper
 
