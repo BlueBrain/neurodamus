@@ -958,8 +958,10 @@ class Node:
             if end_time > sim_end:
                 end_time = sim_end
             if start_time > end_time:
-                logging.warning("Report/Sim End-time (%s) before Start (%g). Skipping!",
-                                end_time, start_time)
+                if MPI.rank == 0:
+                    logging.error("Report/Sim End-time (%s) before Start (%g).",
+                                  end_time, start_time)
+                n_errors += 1
                 continue
 
             electrode = self._elec_manager.getElectrode(rep_conf["Electrode"]) \
