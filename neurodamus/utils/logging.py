@@ -48,10 +48,11 @@ class _LevelColorFormatter(_logging.Formatter):
     _level_tabs = {VERBOSE_LOGLEVEL: ' -> ',
                    _logging.DEBUG: ' + '}
 
-    def __init__(self, with_time=True, rank=None, **kw):
+    def __init__(self, with_time=True, rank=None, use_color=True, **kw):
         super().__init__(self._logfmt, self._datefmt, **kw)
         self._rank = rank
         self._with_time = with_time
+        self._use_color = use_color
 
     def format(self, record):
         if hasattr(record, "ulevel"):
@@ -64,6 +65,8 @@ class _LevelColorFormatter(_logging.Formatter):
         return super().format(record)
 
     def _format_level(self, record, style):
+        if not self._use_color:
+            return record.levelname
         return ConsoleColors.format_text(record.levelname, style)
 
     def _format_msg(self, record, style):
@@ -77,6 +80,8 @@ class _LevelColorFormatter(_logging.Formatter):
         levelno = record.levelno
         msg += self._level_tabs.get(levelno, "") + record.msg
 
+        if not self._use_color:
+            return msg
         return ConsoleColors.format_text(msg, style) \
             if levelno >= _logging.WARNING or levelno == VERBOSE_LOGLEVEL \
             else ConsoleColors.format_text(msg, ConsoleColors.DEFAULT, style)
@@ -105,7 +110,8 @@ def setup_logging(loglevel, logfile=None, rank=None):
 
     # Stdout
     hdlr = _logging.StreamHandler(sys.stdout)
-    hdlr.setFormatter(_LevelColorFormatter(False, rank))
+    use_color = not hasattr(sys.stdout, 'isatty') or sys.stdout.isatty()
+    hdlr.setFormatter(_LevelColorFormatter(False, rank, use_color))
     if rank == 0:
         _logging.root.setLevel(verbosity_levels[loglevel])
     else:
@@ -116,7 +122,7 @@ def setup_logging(loglevel, logfile=None, rank=None):
 
     if logfile:
         fileh = _logging.FileHandler(logfile)
-        fileh.setFormatter(_LevelColorFormatter(rank=rank))
+        fileh.setFormatter(_LevelColorFormatter(rank=rank, use_color=False))
         _logging.root.addHandler(fileh)
 
     setup_logging.logging_initted = True
