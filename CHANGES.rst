@@ -2,9 +2,64 @@
 Change Log
 ==========
 
+Version 2.0.2
+=============
+**Oct. 28, 2020**
+
+*Fixes*
+  * Fix skipping synapse creation when weight is 0 (BBPBGLIB-673)
+  * Fix deadlock when an exception is thrown from NEURON (BBPBGLIB-678)
+  * Ensure data dir when skipping model build
+  * SONATA: Replay to work with multiple populations
+  * Logging colors only for terminal devices
+
+
+Vesion 2.0.0
+============
+
+*New Features*
+  * Full delayed connection implementation mechanisms.
+  * SONATA: Computig PopulationIDs from Edge population names
+  * SONATA: Connection blocks to handle target populations
+  * Support for setting SecondOrder in BlueConfig
+
+*Improvements*
+  * Improved delayed connections, setup before finalize
+  * New behavior of relative paths. Set CurrentDir
+
+*Fixes*
+  * Fix spike with negative time (BBPBGLIB-367)
+  * CoreNeuron processes with 0-cells
+  * Single spike in SynapseReplay (BBPBGLIB-661)
+  * Fixing replay to work with multiple populations
+
+
+Version 1.3.1
+=============
+**Aug. 26, 2020**
+
+*Improvements*
+  * Calcium scaling via new BlueConfig key "ExtracellularCalcium"
+  * Pass Baseseed to Coreneuron
+
+*Fixes*
+  * GJ Offset calculation only for nrn
+  * Fix for nrn when sgids are not ascending
+
+
+Version 1.2.1
+=============
+**July 27, 2020**
+
+*New features*
+  * Support for multipopulation edge files, for circuit and projections
+  * Support for SONATA reports
+  * Support for nodes "exc_mini_frequency" and "inh_mini_frequency"
+
+
 Version 1.1.0
 =============
-*May 28, 2020*
+**May 28, 2020**
 
 *New features*
   * BBPBGLIB-618 Add Time Measurements featuring support for nested routines
@@ -20,7 +75,7 @@ Version 1.1.0
 
 Version 1.0.0
 =============
-*Apr 21, 2020*
+**Apr 21, 2020**
 
 *New features / Major changes*
   * Add xopen morphology generation and loading feature
@@ -35,7 +90,7 @@ Version 1.0.0
 
 Version 0.9.0
 =============
-*Feb 27, 2020*
+**Feb 27, 2020**
 
 *New features*
   * New loader to support Sonata nodes
