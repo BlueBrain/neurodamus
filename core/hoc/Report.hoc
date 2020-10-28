@@ -85,7 +85,7 @@ proc init() { localobj nil
     retVal = 0
 
     //For some reports, we will need to store the ALU objects that are performing operations on the various properties (e.g. current sources)
-    if( strcmp( reportType, "Summation" ) == 0 ||  strcmp( reportType, "Synapse" ) == 0 || strcmp(reportOn, "area") == 0 ) {
+    if( strcmp( reportType, "Summation" ) == 0 ||  strcmp( reportType, "Synapse" ) == 0 ||  strcmp( reportType, "PointType" ) == 0 || strcmp(reportOn, "area") == 0 ) {
         ALUList = new List()
     }
 
@@ -217,6 +217,7 @@ proc sumSectionCounts() { local offset, x  localobj prevSection, nil
  * @param $o1 cellObj
  * @param $o2 TPointList with the points for a single cell
  * @param $3 vgid of cell (may be same as cells nomal gid)
+ * @param $4 gid of cell if $o1 is empty (called by addPointReport)
  * @return Reference to the appropriate report object
  */
 func prepareReportForCell() { local node, rpt, vgid  localobj bbss
@@ -224,20 +225,27 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
     node = 0  //do we really need to know which node produced these reports?  We're trying to make this agnostic to multiple cpu
     vgid = $3
 
-    sprint( strCellName, "a%d", $o1.gid )
+    // If the function is called from addPointReport set gid to last param
+    if( numarg() >= 4 ) {
+        gid = $4
+    } else {
+        gid = $o1.gid
+    }
+
+    sprint( strCellName, "a%d", gid )
     if( 0 == strcmp( format, "Bin") || 0 == strcmp( format, "SONATA")) {
         rpt = -1
         if (0 == strcmp( format, "SONATA")) {
             rec = new SonataReport( 0.5, reportName, outputDir, startTime, endTime, reportDt, "compartment")
             if( 0 != strcmp(population_name, "")) {
-                rec.AddNode($o1.gid, population_name, population_offset)
+                rec.AddNode(gid, population_name, population_offset)
             } else {
-                rec.AddNode($o1.gid)
+                rec.AddNode(gid)
             }
         } else if (0 == strcmp( format, "Bin") && 0 == strcmp(iscParam, "")) {
-            rec = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit )
+            rec = new BinReport( 0.5, reportName, strCellName, outputDir, gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit )
         } else {
-            rec = new BinReport( 0.5, reportName, strCellName, outputDir, $o1.gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit, iscParam )
+            rec = new BinReport( 0.5, reportName, strCellName, outputDir, gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit, iscParam )
         }
         binList.append( rec )
     } else {
@@ -529,6 +537,67 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
 /*!
  * Generate a report for all synapses on a cell
  *
+ * @param $o1 Cell The cell getting reported (used only for getting the gid in prepareReportForCell. Without it no proper report for some reason
+ * @param $2 vgid Cell gid
+ * @param $3 corenrnDataMode: When simulating with coreNeuron we dont want addSummationVarAndCommitALU
+ */
+proc addPointReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, corenrnDataMode \
+    localobj intrinsicList, ptProcessList, locALUList, locTPointList, mechtype, internalVar, synList, bbss, nil
+    strdef tstr
+    corenrnDataMode = 0
+    if( numarg() >= 3 ) { corenrnDataMode=$3 }
+    locALUList = new List()
+    locTPointList = new TPointList()
+
+    evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
+
+    // point cell gid
+    vgid = $2
+
+    $o1.sec() {
+        mechtype = new MechanismType(1)
+
+        for ptProcessIndex=0, ptProcessList.count()-1 {
+            mechtype.select( ptProcessList.o(ptProcessIndex).s )
+
+            // Iterate along the requested point processes
+            for( activeProcess=mechtype.pp_begin(); object_id(activeProcess) != 0; activeProcess = mechtype.pp_next() ) {
+                dist = activeProcess.get_loc()
+                cmpID = int(dist*nseg)
+                if( cmpID == int(x*nseg) ) {
+                    // Here is the "hack" to report with the Summation ALU
+                    ALUhelper = new ALU( 0, reportDt )
+                    ALUhelper.setop( "summation" )
+                    sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
+                    result = execute(tstr, this)
+                    if( result == 0 ) {
+                        //is this an error?
+                    }
+                    bbss = new BBSaveState()
+                    bbss.ignore(ALUhelper)
+
+                    locALUList.append(ALUhelper)
+                }
+
+                pop_section()
+            }
+        }
+    }
+    // In Neuron mode, If a cell has no pt processes, don't commit the ALU
+    if( ! corenrnDataMode && locALUList.count() > 0 ) {
+        rpt = prepareReportForCell( $o1, locTPointList, vgid, vgid )
+
+        for ALUIndex=0, locALUList.count()-1 {
+            ALUhelper = locALUList.o(ALUIndex)
+                addSummationVarAndCommitALU( vgid, rpt, vgid )
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+/*!
+ * Generate a report for all synapses on a cell
+ *
  * @param $o1 Cell The cell getting reported
  * @param $o2 TPointList with the points for a single cell
  * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
@@ -694,6 +763,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
     ptProcessLibrary.append( new String( "StdpWATriplet" ) )
     ptProcessLibrary.append( new String( "GluSynapse" ) )
     ptProcessLibrary.append( new String( "Gap" ) )
+    ptProcessLibrary.append( new String( "AdEx" ) )
 
     //Note - only synapse types are put in ptProcessLibrary, with IClamp & SEClamp getting checked separately.  Should we change that behavior?
 
