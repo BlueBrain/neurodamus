@@ -178,13 +178,15 @@ VERBATIM
     fprintf(fp, CORENRN_ARG_FMT"%lf\n",  "dt", *getarg(4));
     fprintf(fp, CORENRN_ARG_FMT"%lf\n",  "forwardskip", *getarg(5));
     fprintf(fp, CORENRN_ARG_FMT"%d\n",   "prcellgid", (int)*getarg(6));
+    fprintf(fp, CORENRN_ARG_FMT"%lf\n",  "celsius", *getarg(7));
+    fprintf(fp, CORENRN_ARG_FMT"%lf\n",  "voltage", *getarg(8));
     fprintf(fp, CORENRN_ARG_FMT"'%s/%s'\n", "report-conf",  outputdir, REPORT_CONFIG_FILE);
     fprintf(fp, CORENRN_ARG_FMT"%d\n", "cell-permute", DEFAULT_CELL_PERMUTE);
-    if (ifarg(7) && strlen(hoc_gargstr(7))) {  // if spike replay specified
-        fprintf(fp, CORENRN_ARG_FMT"'%s'\n", "pattern", abspath(hoc_gargstr(7), tmpmem));
+    if (ifarg(9) && strlen(hoc_gargstr(9))) {  // if spike replay specified
+        fprintf(fp, CORENRN_ARG_FMT"'%s'\n", "pattern", abspath(hoc_gargstr(9), tmpmem));
     }
-    if (ifarg(8)) {  // if seed specified
-        fprintf(fp, CORENRN_ARG_FMT"%d\n", "seed", (int)*getarg(8));
+    if (ifarg(10)) {  // if seed specified
+        fprintf(fp, CORENRN_ARG_FMT"%d\n", "seed", (int)*getarg(10));
     }
 # if CORENRN_CLI11
     fprintf(fp, "mpi=true\n");
