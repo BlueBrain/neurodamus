@@ -3,11 +3,10 @@ Module which defines and handles METypes config (v5/v6 cells)
 """
 from __future__ import absolute_import, print_function
 import logging
-from collections import defaultdict
+from abc import abstractmethod
 from os import path as ospath
-from .core.configuration import ConfigurationError, SimConfig
+from .core.configuration import SimConfig
 from .core import NeurodamusCore as Nd
-from .utils.logging import log_verbose
 
 
 class METype(object):
@@ -21,7 +20,7 @@ class METype(object):
                  '_synapses', '_syn_helper_list', '_emodel_name',
                  'exc_mini_frequency', 'inh_mini_frequency')
 
-    def __init__(self, gid, etype_path, emodel, morpho_path, meinfos_v6=None):
+    def __init__(self, gid, etype_path, emodel, morpho_path, meinfos=None):
         """Instantite a new Cell from METype
 
         Args:
@@ -29,7 +28,7 @@ class METype(object):
             etype_path: path for etypes
             emodel: Emodel name
             morpho_path: path for morphologies
-            meinfos_v6: dictionary with v6 infos (if v6 circuit)
+            meinfos: dictionary with v6 infos (if v6 circuit)
         """
         self._threshold_current = None
         self._hypAmp_current = None
@@ -42,37 +41,13 @@ class METype(object):
         self.exc_mini_frequency = None
         self.inh_mini_frequency = None
 
-        if meinfos_v6 is not None:
-            self._instantiate_cell_v6(gid, etype_path, emodel, morpho_path, meinfos_v6)
-        else:
-            self._instantiate_cell_v5(gid, emodel, morpho_path)
+        self._instantiate_cell(gid, etype_path, emodel, morpho_path, meinfos)
 
-    def _instantiate_cell_v6(self, gid, etype_path, emodel, morpho_path, meinfos_v6):
-        """Instantiates a SSCx v6 cell
-        """
-        Nd.load_hoc(ospath.join(etype_path, emodel))
-        EModel = getattr(Nd, emodel)
-        morpho_file = meinfos_v6.morph_name + "." + self.morpho_extension
-        self._cellref = EModel(gid, morpho_path, morpho_file)
-        self._ccell = self._cellref
-        self._synapses = Nd.List()
-        self._syn_helper_list = Nd.List()
-        self._threshold_current = meinfos_v6.threshold_current
-        self._hypAmp_current = meinfos_v6.holding_current
-        self.exc_mini_frequency = meinfos_v6.exc_mini_frequency
-        self.inh_mini_frequency = meinfos_v6.inh_mini_frequency
-
-    def _instantiate_cell_v5(self, gid, emodel, morpho_path):
-        """Instantiates a cell v5 or before. Asssumes emodel hoc templates are loaded
-        """
-        EModel = getattr(Nd, emodel)
-        self._ccell = ccell = EModel(gid, morpho_path)
-        self._cellref = ccell.CellRef
-        self._synapses = ccell.CellRef.synlist
-        self._syn_helper_list = ccell.CellRef.synHelperList
-        self._threshold_current = ccell.getThreshold()
-        try: self._hypAmp_current = ccell.getHypAmp()
-        except Exception: pass
+    # Ensure no METype instances created. Only Subclasses
+    @abstractmethod
+    def _instantiate_cell(self, *args):
+        """Method which instantiates the cell in the simulator"""
+        pass
 
     @property
     def synlist(self):
@@ -142,7 +117,106 @@ class METype(object):
                     Nd.rngForStochKvInit(self.CCell)
 
 
+class Cell_V6(METype):
+    __slots__ = ()
+
+    def __init__(self, gid, meinfo, circuit_conf):
+        mepath = circuit_conf["METypePath"]
+        morpho_path = circuit_conf["MorphologyPath"]
+        super().__init__(gid, mepath, meinfo.emodel, morpho_path, meinfo)
+
+    def _instantiate_cell(self, gid, etype_path, emodel, morpho_path, meinfos_v6):
+        """Instantiates a SSCx v6 cell
+        """
+        Nd.load_hoc(ospath.join(etype_path, emodel))
+        EModel = getattr(Nd, emodel)
+        morpho_file = meinfos_v6.morph_name + "." + self.morpho_extension
+        self._cellref = EModel(gid, morpho_path, morpho_file)
+        self._ccell = self._cellref
+        self._synapses = Nd.List()
+        self._syn_helper_list = Nd.List()
+        self._threshold_current = meinfos_v6.threshold_current
+        self._hypAmp_current = meinfos_v6.holding_current
+        self.exc_mini_frequency = meinfos_v6.exc_mini_frequency
+        self.inh_mini_frequency = meinfos_v6.inh_mini_frequency
+
+
+class Cell_V5(METype):
+    __slots__ = ()
+
+    def __init__(self, gid, meinfo, circuit_conf):
+        # In NCS, meinfo is simply the metype filename (string)
+        mepath = circuit_conf["METypePath"]
+        morpho_path = circuit_conf["MorphologyPath"]
+        melabel = self._load_template(meinfo, mepath)
+        super().__init__(gid, mepath, melabel, morpho_path)
+
+    def _instantiate_cell(self, gid, etype_path, emodel, morpho_path, meinfos):
+        """Instantiates a cell v5 or older. Assumes emodel hoc templates are loaded
+        """
+        EModel = getattr(Nd, emodel)
+        self._ccell = ccell = EModel(gid, morpho_path)
+        self._cellref = ccell.CellRef
+        self._synapses = ccell.CellRef.synlist
+        self._syn_helper_list = ccell.CellRef.synHelperList
+        self._threshold_current = ccell.getThreshold()
+        try:
+            self._hypAmp_current = ccell.getHypAmp()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _load_template(tpl_filename, tpl_location=None):
+        """Helper function which loads the template into NEURON and returns its name.
+        The actual template name will have any hyphens (e.g.: R-C261296A-P1_repaired)
+        replaced with underscores as hyphens must not appear in template names.
+
+        Args:
+            tpl_filename: the template file to load
+            tpl_location: (Optional) path for the templates
+        Returns:
+            The name of the template as it appears inside the file (sans hyphens)
+        """
+        #  start.ncs gives metype names with hyphens, but the templates themselves
+        #  have those hyphens replaced with underscores.
+        tpl_path = ospath.join(tpl_location, tpl_filename) \
+            if tpl_location else tpl_filename
+
+        # first open the file manually to get the hoc template name
+        tpl_name = None
+        with open(tpl_path + ".hoc", "r") as templateReader:
+            for line in templateReader:
+                line = line.strip()
+                if line.startswith("begintemplate"):
+                    tpl_name = line.split()[1]
+                    break
+        Nd.load_hoc(tpl_path)
+        return tpl_name
+
+
+class EmptyCell(METype):
+    """
+    Class representing an empty cell, e.g. an artificial cell
+    Workaround for the neuron issue https://github.com/neuronsimulator/nrn/issues/635
+    """
+    def __init__(self, gid, cell):
+        self._cellref = cell
+        self._ccell = None
+        self.gid = gid
+
+    def connect2target(self, target_pp):
+        """ Connects empty cell to target
+        """
+        netcon = Nd.NetCon(self.CellRef, target_pp)
+        return netcon
+
+
+# Metadata
+# --------
+
 class METypeItem(object):
+    """ Metadata about an METype, each possibly used by several cells.
+    """
     __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
                  "threshold_current", "holding_current",
                  "exc_mini_frequency", "inh_mini_frequency")
@@ -163,56 +237,19 @@ class METypeItem(object):
 
 
 class METypeManager(dict):
-    """ Class to read file with specific METype info and manage the containers for data retrieval
+    """ Map to hold specific METype info and provide retrieval by gid
     """
 
-    def load_info(self, run_conf, gidvec, combo_list, morph_list):
-        """ Read file with mecombo info, retaining only those that are local to this node
-        Args:
-            run_conf: Run info from config parse
-            gidvec: gidvec local gids
-            combo_list: comboList Combos corresponding to local gids
-            morph_list: morphList Morpholgies corresponding to local gids
+    def insert(self, gid, morph_name, *me_data, **kwargs):
+        """Function to add an METypeItem to internal data structure
         """
-        combo_file = run_conf.get("MEComboInfoFile")
-        if not combo_file:
-            logging.error("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel.")
-            raise ConfigurationError("MEComboInfoFile not specified")
-
-        # Optimization: index combos
-        combo_ids = defaultdict(list)
-        for i, c in enumerate(combo_list):
-            combo_ids[c].append(i)
-
-        log_verbose("Loading emodel+additional info from Combo f %s", combo_file)
-        f = open(combo_file)
-        next(f)  # Skip Header
-
-        for tstr in f:
-            vals = tstr.strip().split()
-            if len(vals) not in (6, 8):
-                wmsg = ("Could not parse line %s from MEComboInfoFile %s."
-                        "Expecting 6 (hippocampus) or 8 (somatosensory) fields")
-                logging.warning(wmsg, tstr, combo_file)
-            meitem = METypeItem(*vals)
-
-            for i in combo_ids[meitem.combo_name]:
-                if morph_list[i] == meitem.morph_name:
-                    self[int(gidvec[i])] = meitem
-
-        # confirm that all gids have been matched.
-        # Otherwise, print combo + morph info to help find issues
-        nerr = 0
-        for gid in gidvec:
-            gid = int(gid)
-            if gid not in self:
-                logging.error("MEComboInfoFile: No MEInfo for gid %d", gid)
-                nerr += 1
-        return -nerr
+        self[int(gid)] = METypeItem(morph_name, *me_data, **kwargs)
 
     def load_infoNP(self, gidvec, morph_list, emodels,
                     threshold_currents=None, holding_currents=None,
                     exc_mini_freqs=None, inh_mini_freqs=None):
+        """Loads METype information in bulk from Numpy arrays
+        """
         for idx, gid in enumerate(gidvec):
             th_current = threshold_currents[idx] if threshold_currents is not None else .0
             hd_current = holding_currents[idx] if holding_currents is not None else .0
@@ -231,25 +268,3 @@ class METypeManager(dict):
     @property
     def gids(self):
         return self.keys()
-
-
-class EmptyCell(METype):
-    """
-    Class representing an empty cell, e.g. an artificial cell
-    Workaround for the neuron issue https://github.com/neuronsimulator/nrn/issues/635
-    """
-    def __init__(self, gid, cell):
-        self._cellref = cell
-        self._ccell = None
-        self.gid = gid
-
-    def connect2target(self, target_pp):
-        """ Connects empty cell to target
-
-        Args:
-            target_pp: target point process
-
-        Returns: NetCon obj
-        """
-        netcon = Nd.NetCon(self.CellRef, target_pp)
-        return netcon

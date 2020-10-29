@@ -13,10 +13,9 @@ import numpy
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
-from .core.configuration import ConfigurationError
 from .io import cell_readers
 from .io.cell_readers import TargetSpec
-from .metype import METype, EmptyCell
+from .metype import Cell_V5, Cell_V6, EmptyCell
 from .utils import compat
 from .utils.logging import log_verbose
 
@@ -85,9 +84,16 @@ class CellManagerBase(object):
     # Compatibility with neurodamus-core
     getGidListForProcessor = lambda self: self._gidvec  # for TargetManager, CompMappping
 
-    CellType = METype
+    CellType = NotImplemented  # please override
     """The underlying Cell type class
-    ctor signature: __init__(self, gid, cell_info, circuit_conf)
+    signature:
+        __init__(self, gid, cell_info, circuit_conf)
+    """
+
+    _node_loader = None
+    """Default function implementing the loading of nodes data, a.k.a. MVD
+    signature:
+        load(run_conf, gidvec, stride=1, stride_offset=0)
     """
 
     @staticmethod
@@ -103,18 +109,29 @@ class CellManagerBase(object):
         """A default implementation to load cells"""
         logging.info("Loading custom cells info")
         gidvec, cell_infos, fullsize = self.load_cell_info(conf, None, MPI.size, MPI.rank)
-        total_cells = MPI.allreduce(gidvec.size, MPI.SUM)
+        self._total_cells = MPI.allreduce(gidvec.size, MPI.SUM)
 
         logging.info("Instantiating %d target cells out of %d (Rank0: %d)...",
-                     total_cells, fullsize, gidvec.size)
-        for gid in ProgressBar.iter(gidvec):
-            cell_info = cell_infos[gid]
-            cell = self.CellType(gid, cell_info, conf)
-            self._store_cell(gid, cell)
+                     self._total_cells, fullsize, gidvec.size)
 
+        self._instantiate_cells(conf, gidvec, cell_infos)
+
+    def _instantiate_cells(self, conf, gidvec, cell_infos, CellType=None):
+        if CellType is None:
+            CellType = self.CellType
+            assert CellType is not None, "Undefined CellType in Manager"
+
+        self._pnm.ncell = self._total_cells
+
+        logging.info("Instantiating cells...")
+        for gid in ProgressBar.iter(gidvec):
+            cell = CellType(gid, cell_infos[gid], conf)
+            self._store_cell(gid, cell)
         # Update targets info with locally loaded gids
-        self._target_parser.updateTargets(compat.Vector("I", gidvec))
-        self._gidvec.extend(gidvec)
+        self._target_parser.updateTargets(self._gidvec)
+        # Final stats
+        global_cells_created = MPI.allreduce(len(gidvec), MPI.SUM)
+        logging.info(" => Created %d cells", global_cells_created)
 
     def load_artificial_cell(self, gid, artificial_cell):
         cell = EmptyCell(gid, artificial_cell)
@@ -139,6 +156,7 @@ class CellManagerBase(object):
             self._pnm.pc.cell(cell.gid, nc)
 
     def _store_cell(self, gid, cell):
+        self._gidvec.append(gid)
         self._cell_list.append(cell)
         self._gid2cell[gid] = cell
         self._pnm.cells.append(cell.CellRef)
@@ -191,17 +209,7 @@ class CellDistributor(CellManagerBase):
         if not hasattr(Nd, "nc_"):
             Nd.execute("objref nc_")
 
-    @mpi_no_errors
-    def load_cells(self, circuit_conf, load_balancer=None):
-        """Distribute and load target cells among CPUs.
-
-        Args:
-            run_conf (dict): Blueconfig 'Run' configuration
-            load_balancer: A LoadBalance object for helping distributing cells
-                or None -> Round-Robin
-        """
-        # for testing if xopen bcast is in use (NEURON 7.3). We will be loading
-        # different templates on different cpus, so it must be disabled for now
+    def _init_config(self, circuit_conf):
         Nd.execute("xopen_broadcast_ = 0")
 
         # determine the connectivity format: start.ncs (default), circuit.mvd3 or sonata
@@ -215,15 +223,29 @@ class CellDistributor(CellManagerBase):
                 # Pass other types to mvdtool to detect
                 node_format = NodeFormat.SONATA
         else:  # Default
+            logging.warning("CellLibraryFile not defined. Assuming legacy NCS")
             node_format = NodeFormat.NCS
-            celldb_filename = "start.ncs"
-
-        if self._node_format not in (None, node_format):
-            raise ConfigurationError("Multiple Circuit instantiation is limited to a single format")
+            circuit_conf["CellLibraryFile"] = "start.ncs"
         self._node_format = node_format
 
+        if "MorphologyType" not in circuit_conf:  # Legacy behavior
+            circuit_conf["MorphologyPath"] += "/ascii"
+            circuit_conf["MorphologyType"] = "asc"
+
+    @mpi_no_errors
+    def load_cells(self, circuit_conf, load_balancer=None):
+        """Distribute and load target cells among CPUs.
+
+        Args:
+            run_conf (dict): Blueconfig 'Run' configuration
+            load_balancer: A LoadBalance object for helping distributing cells
+                or None -> Round-Robin
+        """
+        # for testing if xopen bcast is in use (NEURON 7.3). We will be loading
+        # different templates on different cpus, so it must be disabled for now
+        self._init_config(circuit_conf)
         logging.info("Reading Nodes (METype) info from '%s' (format: %s)",
-                     celldb_filename, self._node_format.name)
+                     circuit_conf["CellLibraryFile"], self._node_format.name)
 
         total_cells = None   # total cells in this simulation
         loader = self.cell_loader_dict[self._node_format]
@@ -263,7 +285,6 @@ class CellDistributor(CellManagerBase):
         if self._total_cells:
             logging.info("Appending %d cells to existing %d", total_cells, self._total_cells)
         gidvec = compat.Vector("I", gidvec)  # convert to compat array
-        self._gidvec.extend(gidvec)
         self._total_cells += total_cells
 
         MPI.check_no_errors()  # First phase (read mvd) DONE. Check all good
@@ -273,71 +294,18 @@ class CellDistributor(CellManagerBase):
             # We must not return, we have an allreduce later
 
         logging.info(" => Cells distributed. %d cells in network, %d in rank 0",
-                     self._total_cells, len(self._gidvec))
-        self._pnm.ncell = self._total_cells
-        mepath = circuit_conf["METypePath"]
+                     self._total_cells, len(gidvec))
 
-        # Logic for morphologies
-        # If MorphologyType is set -> fullpath (new behavior), otherwise append /ascii
-        if "MorphologyType" in circuit_conf:
-            morpho_path = circuit_conf["MorphologyPath"]
-            self.CellType.morpho_extension = circuit_conf["MorphologyType"]
-        else:
-            morpho_path = circuit_conf["MorphologyPath"] + "/ascii"
-            self.CellType.morpho_extension = "asc"
+        self._instantiate_cells(circuit_conf, gidvec, me_infos)
 
-        logging.info("Instantiating cells... Morphologies: %s", self.CellType.morpho_extension)
-        total_created_cells = 0
+    def _instantiate_cells(self, circuit_conf, gidvec, me_infos, *_):
+        CellType = Cell_V5 if self._node_format == NodeFormat.NCS else Cell_V6
+        CellType.morpho_extension = circuit_conf["MorphologyType"]
+        log_verbose("Loading metypes from: %s", circuit_conf["METypePath"])
+        log_verbose("Loading '%s' morphologies from: %s",
+                    circuit_conf["MorphologyType"], circuit_conf["MorphologyPath"])
 
-        for gid in ProgressBar.iter(gidvec):
-            if self._node_format != NodeFormat.NCS:
-                # mvd3, Sonata
-                meinfo_v6 = me_infos.retrieve_info(gid)
-                melabel = meinfo_v6.emodel
-                cell = self.CellType(gid, mepath, melabel, morpho_path, meinfo_v6)
-            else:
-                # In NCS, me_infos is a plain map from gid to me_file
-                melabel = self._load_template(me_infos[gid], mepath)
-                cell = self.CellType(gid, mepath, melabel, morpho_path)
-
-            self._store_cell(gid, cell)
-            total_created_cells += 1
-
-        global_cells_created = MPI.allreduce(total_created_cells, MPI.SUM)
-        logging.info(" => Created %d cells (%d in rank 0)",
-                     global_cells_created, total_created_cells)
-
-        # Update targets info with locally loaded gids
-        self._target_parser.updateTargets(self._gidvec)
-
-    # -
-    @staticmethod
-    def _load_template(tpl_filename, tpl_location=None):
-        """Helper function which loads the template into NEURON and returns its name.
-        The actual template name will have any hyphens (e.g.: R-C261296A-P1_repaired)
-        replaced with underscores as hyphens must not appear in template names.
-
-        Args:
-            tpl_filename: the template file to load
-            tpl_location: (Optional) path for the templates
-        Returns:
-            The name of the template as it appears inside the file (sans hyphens)
-        """
-        #  start.ncs gives metype names with hyphens, but the templates themselves
-        #  have those hyphens replaced with underscores.
-        tpl_path = ospath.join(tpl_location, tpl_filename) \
-            if tpl_location else tpl_filename
-
-        # first open the file manually to get the hoc template name
-        tpl_name = None
-        with open(tpl_path + ".hoc", "r") as templateReader:
-            for line in templateReader:
-                line = line.strip()
-                if line.startswith("begintemplate"):
-                    tpl_name = line.split()[1]
-                    break
-        Nd.load_hoc(tpl_path)
-        return tpl_name
+        super()._instantiate_cells(circuit_conf, gidvec, me_infos, CellType)
 
     # Accessor methods (Keep CamelCase API for compatibility with existing hoc)
     # ----------------
@@ -383,7 +351,7 @@ class CellDistributor(CellManagerBase):
 
         for i, gid in enumerate(gids):
             gid = int(gid)
-            metype = self._cell_list[i]  # type: METype
+            metype = self._cell_list[i]
 
             # for v6 and beyond - we can just try to invoke rng initialization
             # for v5 circuits and earlier check if cell has re_init function.

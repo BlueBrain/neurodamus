@@ -1228,13 +1228,14 @@ class Node:
             Nd.registerMapping(self._cell_distributor)
             local_gids = self._cell_distributor.local_gids
             if len(local_gids) == 0 and self._bbcore_fakegid_offset is not None:
+
                 # load the ARTIFICIAL_CELL CoreConfig with a fake_gid in this empty rank
                 # to avoid errors during coreneuron model building
-                fake_gid = self._bbcore_fakegid_offset + self._pnm.pc.id()
-                self._cell_distributor.load_artificial_cell(int(fake_gid), SimConfig.core_config)
+                fake_gid = int(self._bbcore_fakegid_offset + self._pnm.pc.id())
+                self._cell_distributor.load_artificial_cell(fake_gid, SimConfig.core_config)
                 # Nd.registerMapping doesn't work for this artificial cell as somatic attr is
                 # missing, so create a dummy mapping file manually, required for reporting
-                mapping_file = ospath.join(corenrn_data, "%d" % fake_gid + "_3.dat")
+                mapping_file = ospath.join(corenrn_data, "%d_3.dat" % fake_gid)
                 if not ospath.isfile(mapping_file):
                     with open(mapping_file, "w") as dummyfile:
                         dummyfile.write("1.2\n0\n")
