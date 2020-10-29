@@ -5,7 +5,7 @@ from __future__ import absolute_import, print_function
 import logging
 from collections import defaultdict
 from os import path as ospath
-from .core.configuration import ConfigurationError
+from .core.configuration import ConfigurationError, SimConfig
 from .core import NeurodamusCore as Nd
 from .utils.logging import log_verbose
 
@@ -114,9 +114,13 @@ class METype(object):
 
         Returns: NetCon obj
         """
-        netcon = Nd.NetCon(self.CellRef.soma[0](1)._ref_v, target_pp,
-                           sec=self.CellRef.soma[0])
-        netcon.threshold = -30
+        if SimConfig.spike_location == "soma":
+            netcon = Nd.NetCon(self.CellRef.soma[0](1)._ref_v, target_pp,
+                               sec=self.CellRef.soma[0])
+        else:
+            netcon = Nd.NetCon(self.CellRef.axon[1](0.5)._ref_v, target_pp,
+                               sec=self.CellRef.axon[1])
+        netcon.threshold = SimConfig.spike_threshold
         return netcon
 
     def re_init_rng(self, ion_seed, need_invoke):

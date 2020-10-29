@@ -5,6 +5,7 @@ from __future__ import absolute_import
 import logging
 import os
 from enum import Enum
+from ..utils.logging import log_verbose
 from ..utils.pyutils import ConfigT
 
 
@@ -73,6 +74,15 @@ class _SimConfig(object):
         cls.extracellular_calcium = run_conf.get("ExtracellularCalcium", None)
 
         cls.secondorder = run_conf.get("SecondOrder", None)
+
+        conf_spike_location = run_conf.get("SpikeLocation", "soma")
+        if conf_spike_location in ["soma", "AIS"]:
+            cls.spike_location = conf_spike_location
+            log_verbose("Setting SpikeLocation to: {}".format(cls.spike_location))
+        else:
+            raise ConfigurationError("Possible options for SpikeLocation are \"soma\" and \"AIS\"")
+        cls.spike_threshold = run_conf.get("SpikeThreshold", -30)
+        log_verbose("Setting SpikeThreshold to: {}".format(cls.spike_threshold))
 
         try:
             cls.morphology_path = cls._simconf.getMorphologyPath().s

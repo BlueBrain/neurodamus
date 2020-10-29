@@ -95,6 +95,7 @@ class EngineBase(metaclass=_EngineMeta):
         if not self._cell_manager:
             self._cell_manager = self.CellManagerCls(base_cell_manager.pnm,
                                                      target_parser,
+                                                     circuit_conf,
                                                      base_cell_manager)
         self._cell_manager.load_cells(circuit_conf)
 

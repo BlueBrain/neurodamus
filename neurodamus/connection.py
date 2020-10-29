@@ -371,7 +371,7 @@ class Connection(ConnectionBase):
         self.netcon_set_type(nc, syn_obj, NetConType.NC_PRESYN)
         nc.delay = syn_params.delay
         nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
-        nc.threshold = -30
+        nc.threshold = SimConfig.spike_threshold
         self._netcons.append(nc)
         return nc
 
