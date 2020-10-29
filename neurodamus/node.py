@@ -295,6 +295,17 @@ class Node:
                                          " '1' (crank-nicholson) and"
                                          " '2' (crank-nicholson with fixed ion currents)"
                                          .format(second_order))
+
+        if "MinisSingleVesicle" in run_conf:
+            if not hasattr(h, "minis_single_vesicle_ProbAMPANMDA_EMS"):
+                raise NotImplementedError("Synapses don't implement minis_single_vesicle."
+                                          "More recent neurodamus model required.")
+            minis_single_vesicle = int(run_conf["MinisSingleVesicle"])
+            logging.info("Setting synapses minis_single_vesicle to %d", minis_single_vesicle)
+            h.minis_single_vesicle_ProbAMPANMDA_EMS = minis_single_vesicle
+            h.minis_single_vesicle_ProbGABAAB_EMS = minis_single_vesicle
+            h.minis_single_vesicle_GluSynapse = minis_single_vesicle
+
         return SimConfig
 
     # -
