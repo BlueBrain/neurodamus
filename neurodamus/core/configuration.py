@@ -109,6 +109,10 @@ class CircuitConfig(ConfigT):
     Engine = None
     CircuitPath = ConfigT.REQUIRED
     nrnPath = ConfigT.REQUIRED
+    CellLibraryFile = None
+    METypePath = None
+    MorphologyType = None
+    MorphologyPath = None
     CircuitTarget = None
     PopulationID = 0
 

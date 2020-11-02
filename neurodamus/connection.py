@@ -92,7 +92,7 @@ class ConnectionBase:
     )
 
     # Subclasses must implement instantiation of their connections in the simulator
-    def finalize(self, pnm, cell, base_seed=0, *args, **kw):
+    def finalize(self, cell, base_seed=0, *args, **kw):
         raise NotImplementedError("finalize must be implemented in sub-class")
 
     # Parameters Live update / Configuration
@@ -176,6 +176,7 @@ class Connection(ConnectionBase):
         cls._AMPAMDA_Helper = h.AMPANMDAHelper
         cls._GABAABHelper = h.GABAABHelper
         cls.ConnUtils = h.ConnectionUtils()
+        cls._pc = Nd.pc
         return h
 
     # -
@@ -280,16 +281,14 @@ class Connection(ConnectionBase):
         return len(self._replay)
 
     # -
-    def finalize(self, pnm, cell, base_seed=0, spgid=None, skip_disabled=False, *,
+    def finalize(self, cell, base_seed=0, spgid=None, skip_disabled=False, *,
                        replay_mode=ReplayMode.AS_REQUIRED, is_projection=False):
         """ When all parameters are set, create synapses and netcons
 
         Args:
-            pnm: parallelNetManager object which manages cells (& netcons)
-            cell: The cell to create synapses and netcons on. Provided
-                directly rather than via pnm to avoid loadbalance issues
+            cell: The cell to create synapses and netcons on.
             base_seed: base seed value (Default: None - no adjustment)
-            spgid: Part id, required With multisplit
+            spgid: target part id, required With multisplit
             skip_disabled: Dont instantiate at all if conn was disabled. Mostly
                 useful for CoreNeuron
             replay_mode: Policy to initialize replay in this conection
@@ -297,7 +296,6 @@ class Connection(ConnectionBase):
         """
         if skip_disabled and self._disabled:
             return False
-        target_spgid = spgid or self.tgid
 
         # Initialize member lists
         self._synapses = compat.List()  # Used by ConnUtils
@@ -338,8 +336,7 @@ class Connection(ConnectionBase):
                 self._synapses.append(syn_obj)
 
             if not is_projection:
-                syn_index = cell.CellRef.synlist.count() - 1
-                self._attach_source_cell(target_spgid, syn_obj, syn_index, syn_params, pnm)
+                self._attach_source_cell(syn_obj, syn_params)
 
             if self._spont_minis is not None:
                 self._spont_minis.create_on(self, sec, x, syn_obj, syn_params, base_seed)
@@ -363,11 +360,9 @@ class Connection(ConnectionBase):
         self._configure_synapses()
         return True
 
-    def _attach_source_cell(self, target_spgid, syn_obj, syn_index, syn_params, pnm):
+    def _attach_source_cell(self, syn_obj, syn_params):
         # See `neurodamus-core.Connection` for explanation. Also pc.gid_connect
-        nc_index = pnm.nc_append(self.sgid, target_spgid, syn_index,
-                                 syn_params.delay, syn_params.weight)
-        nc = pnm.nclist.object(nc_index)  # Netcon object
+        nc = self._pc.gid_connect(self.sgid, syn_obj)
         self.netcon_set_type(nc, syn_obj, NetConType.NC_PRESYN)
         nc.delay = syn_params.delay
         nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
@@ -419,13 +414,11 @@ class Connection(ConnectionBase):
         return syn_helper.synapse
 
     # -
-    def finalize_gap_junctions(self, pnm, cell, offset, end_offset):
+    def finalize_gap_junctions(self, cell, offset, end_offset):
         """ When all parameters are set, create synapses and netcons
 
         Args:
-            pnm: parallelNetManager object which manages cells (& netcons)
-            cell: The cell to create synapses and netcons on. Provided
-                directly rather than via pnm to avoid loadbalance issues
+            cell: The cell to create synapses and netcons on.
             offset: offset for this cell's gap junctions
             end_offset: offset for the other cell's gap junctions
 
@@ -445,8 +438,8 @@ class Connection(ConnectionBase):
                         end_offset, active_params.F, active_params.weight)
 
             with Nd.section_in_stack(sec):
-                pnm.pc.target_var(gap_junction, gap_junction._ref_vgap, (offset + active_params.D))
-                pnm.pc.source_var(sec(x)._ref_v, (end_offset + active_params.F))
+                self._pc.target_var(gap_junction, gap_junction._ref_vgap, (offset+active_params.D))
+                self._pc.source_var(sec(x)._ref_v, (end_offset + active_params.F))
             gap_junction.g = active_params.weight
             self._synapses.append(gap_junction)
             self._configure_cell(cell)

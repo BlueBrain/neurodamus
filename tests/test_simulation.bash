@@ -3,6 +3,7 @@ set -xe
 
 SIMDIR=$1
 
+#srun --pty python -m pdb $NEURODAMUS_PYTHON/init.py --configFile=${SIMDIR}/BlueConfig --verbose
 mpiexec neurodamus ${SIMDIR}/BlueConfig --verbose
 
 if [ -d "${SIMDIR}/results/" ]; then

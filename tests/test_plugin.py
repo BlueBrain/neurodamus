@@ -74,13 +74,13 @@ class ACellConnection(ConnectionBase):
         self._src_gids = np.concatenate((self._src_gids, sgids))
         self._synapse_params = np.concatenate((self._synapse_params, syn_params))
 
-    def finalize(self, pnm, target_cell, *_):
+    def finalize(self, target_cell, *_):
         syn = Nd.ExpSyn(target_cell.section(0.5))
         self._synapses = (syn,)
         self._netcons = []
 
         for sgid, syn_params in zip(self._src_gids, self._synapse_params):
-            nc = pnm.pc.gid_connect(sgid, syn)
+            nc = Nd.pc.gid_connect(sgid, syn)
             nc.weight[0] = syn_params.conductance * self._conn_params.weight_factor
             nc.delay = syn_params.delay
             self._netcons.append(nc)
@@ -113,7 +113,7 @@ class ACellSynapseManager(ConnectionManagerBase):
 
     def _finalize_conns(self, tgid, conns, *_, **_kw):
         target_cell = self._cell_distibutor[tgid]
-        conns[0].finalize(self._cell_distibutor.pnm, target_cell)
+        conns[0].finalize(target_cell)
         return conns[0].conn_count
 
 
@@ -135,6 +135,7 @@ requires_mpi = pytest.mark.skipif(
 def test_run_acell_circuit():
     simdir = os.path.join(sims, "acell_engine")
     env = os.environ.copy()
+    env['NEURODAMUS_PYTHON'] = "."
     env['PYTHONPATH'] += ":" + os.path.dirname(__file__)
     env['NEURODAMUS_PLUGIN'] = os.path.splitext(os.path.basename(__file__))[0]
     ps = subprocess.run(["bash", "tests/test_simulation.bash", simdir], env=env)

@@ -942,8 +942,7 @@ class SynapseRuleManager(ConnectionManagerBase):
         # Note: (Compat) neurodamus hoc keeps connections in reversed order.
         for conn in reversed(conns):  # type: Connection
             # Skip disabled if we are running with core-neuron
-            if conn.finalize(cell_distributor.pnm, metype, base_seed, spgid, sim_corenrn,
-                             **kwargs):
+            if conn.finalize(metype, base_seed, spgid, sim_corenrn, **kwargs):
                 n_created_conns += 1
         return n_created_conns
 
@@ -1057,15 +1056,13 @@ class GapJunctionManager(ConnectionManagerBase):
         super().finalize(conn_type="Gap-Junctions")
 
     def _finalize_conns(self, tgid, conns, *_, **_kw):
-        cell_distributor = self._cell_distibutor
-        metype = cell_distributor.getMEType(tgid)
+        metype = self._cell_distibutor.getMEType(tgid)
 
         if self._gj_offsets is None:
             for conn in reversed(conns):
-                conn.finalize_gap_junctions(cell_distributor.pnm, metype, 0, 0)
+                conn.finalize_gap_junctions(metype, 0, 0)
         else:
             t_gj_offset = self._gj_offsets[tgid - 1]   # Old nrn_gj uses offsets
             for conn in reversed(conns):
-                conn.finalize_gap_junctions(cell_distributor.pnm, metype, t_gj_offset,
-                                            self._gj_offsets[conn.sgid - 1])
+                conn.finalize_gap_junctions(metype, t_gj_offset, self._gj_offsets[conn.sgid - 1])
         return len(conns)

@@ -84,7 +84,7 @@ class EngineBase(metaclass=_EngineMeta):
     cell_manager = property(lambda self: self._cell_manager)
     synapse_manager = property(lambda self: self._synapse_manager)
 
-    def create_cells(self, circuit_conf, base_cell_manager, target_parser, *_):
+    def create_cells(self, circuit_conf, target_parser, run_conf):
         """Routine responsible for creating cells
 
         If not overridden, it will ensure a cell_manager exists and call
@@ -93,10 +93,7 @@ class EngineBase(metaclass=_EngineMeta):
         if not self.CellManagerCls:
             return NotImplemented
         if not self._cell_manager:
-            self._cell_manager = self.CellManagerCls(base_cell_manager.pnm,
-                                                     target_parser,
-                                                     circuit_conf,
-                                                     base_cell_manager)
+            self._cell_manager = self.CellManagerCls(circuit_conf, target_parser, run_conf)
         self._cell_manager.load_cells(circuit_conf)
 
     def finalize_cells(self):

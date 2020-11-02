@@ -52,37 +52,38 @@ class NodeFormat(Enum):
 
 class CellManagerBase(object):
 
-    def __init__(self, pnm, target_parser, run_conf, base_manager=None):
+    def __init__(self, circuit_conf, target_parser, run_conf):
         """Initializes CellDistributor
 
         Args:
-            pnm: The hoc ParallelNetManager object
-            target_parser: the target parser hoc object, to retrieve target cell ids
+            circuit_conf: The "Circuit" blueconfig block
+            target_parser: the target parser hoc object, to retrieve target cells' info
+            run_conf: Run configuration
 
         """
-        self._pnm = pnm
+        self._circuit_conf = circuit_conf
         self._target_parser = target_parser
 
-        self._gidvec = compat.Vector("I", ())
+        self._gidvec = compat.Vector("I")
         self._total_cells = 0
         self._cell_list = []
         self._gid2cell = {}
 
         self._global_seed = 0
         self._ionchannel_seed = 0
-        self.base_manager = base_manager
         self._run_conf = run_conf
+        self._pc = Nd.pc
 
     # read-only properties
-    pnm = property(lambda self: self._pnm)
     target_parser = property(lambda self: self._target_parser)
     local_gids = property(lambda self: self._gidvec)
     total_cells = property(lambda self: self._total_cells)
     cell_list = property(lambda self: self._cell_list)
-    cell_refs = property(lambda self: self._pnm.cells)
-    pc = property(lambda self: self._pnm.pc)
-    # Compatibility with neurodamus-core
-    getGidListForProcessor = lambda self: self._gidvec  # for TargetManager, CompMappping
+    pc = property(lambda self: self._pc)
+    report_vecs = property(lambda self: self._report_vecs)
+
+    # Compatibility with neurodamus-core (used by TargetManager, CompMappping)
+    getGidListForProcessor = lambda self: self._gidvec
 
     CellType = NotImplemented  # please override
     """The underlying Cell type class
@@ -121,8 +122,6 @@ class CellManagerBase(object):
             CellType = self.CellType
             assert CellType is not None, "Undefined CellType in Manager"
 
-        self._pnm.ncell = self._total_cells
-
         logging.info("Instantiating cells...")
         for gid in ProgressBar.iter(gidvec):
             cell = CellType(gid, cell_infos[gid], conf)
@@ -138,8 +137,8 @@ class CellManagerBase(object):
         self._store_cell(gid, cell)
         self._gidvec.append(gid)
         nc = cell.connect2target(None)
-        self._pnm.set_gid2node(cell.gid, self._pnm.myid)
-        self._pnm.pc.cell(cell.gid, nc)
+        self._pc.set_gid2node(cell.gid, self._pc.id())
+        self._pc.cell(cell.gid, nc)
 
     def _init_rng(self):
         rng_info = Nd.RNGSettings()
@@ -152,14 +151,13 @@ class CellManagerBase(object):
         self._init_rng()
         for cell in self._cell_list:
             nc = cell.connect2target(None)
-            self._pnm.set_gid2node(cell.gid, self._pnm.myid)
-            self._pnm.pc.cell(cell.gid, nc)
+            self._pc.set_gid2node(cell.gid, self._pc.id())
+            self._pc.cell(cell.gid, nc)
 
     def _store_cell(self, gid, cell):
         self._gidvec.append(gid)
         self._cell_list.append(cell)
         self._gid2cell[gid] = cell
-        self._pnm.cells.append(cell.CellRef)
 
     def __getitem__(self, gid):
         return self._gid2cell[gid]
@@ -177,12 +175,31 @@ class CellManagerBase(object):
                 cell.CellRef.clear()
         self._cell_list.clear()
 
+    def getSpGid(self, gid):
+        """Retrieves the part gid from a gid. Stub implementation
+        """
+        return gid
+
+    def record_spikes(self, gids=None):
+        """Setup recording of spike events (crossing of threshold) for cells on this node
+        """
+        spikevec, idvec = Nd.Vector(), Nd.Vector()
+        if gids is None:
+            gids = self.local_gids
+
+        for gid in gids:
+            # only want to collect spikes of cell pieces with the soma (i.e. the real gid)
+            if self.getSpGid(gid) == gid:
+                if gids:
+                    logging.debug("Collecting spikes for gid %d", gid)
+                self._pc.spike_record(gid, spikevec, idvec)
+        return spikevec, idvec
+
 
 class CellDistributor(CellManagerBase):
     """ Handle assignment of cells to processors.
 
-        Instantiated cells are stored locally (.cell_list), while CellRef's
-        are stored in _pnm.cells hoc list
+        Instantiated cells are stored locally (.cell_list)
     """
 
     cell_loader_dict = {
@@ -191,15 +208,16 @@ class CellDistributor(CellManagerBase):
         NodeFormat.SONATA: cell_readers.load_nodes
     }
 
-    def __init__(self, pnm, target_parser, run_conf, *args):
+    def __init__(self, circuit_conf, target_parser, run_conf, *args):
         """Initializes CellDistributor
 
         Args:
-            pnm: The hoc ParallelNetManager object
+            circuit_conf: The "Circuit" blueconfig block
             target_parser: the target parser hoc object, to retrieve target cells' info
+            run_conf: Run configuration
 
         """
-        super().__init__(pnm, target_parser, run_conf, *args)
+        super().__init__(circuit_conf, target_parser, run_conf, *args)
         # These wont ever be init'ed if not recomputing lb
         self._spgidvec = None   # cell parts gids
         self._binfo = None      # balanceInfo
@@ -209,12 +227,15 @@ class CellDistributor(CellManagerBase):
         if not hasattr(Nd, "nc_"):
             Nd.execute("objref nc_")
 
+        if circuit_conf.CircuitPath is not False:
+            self._init_config(circuit_conf)
+
     def _init_config(self, circuit_conf):
         Nd.execute("xopen_broadcast_ = 0")
 
         # determine the connectivity format: start.ncs (default), circuit.mvd3 or sonata
-        if "CellLibraryFile" in circuit_conf:
-            celldb_filename = circuit_conf["CellLibraryFile"]
+        if circuit_conf.CellLibraryFile:
+            celldb_filename = circuit_conf.CellLibraryFile
             if celldb_filename == "circuit.mvd3":
                 node_format = NodeFormat.MVD3
             elif celldb_filename == "start.ncs":
@@ -225,31 +246,30 @@ class CellDistributor(CellManagerBase):
         else:  # Default
             logging.warning("CellLibraryFile not defined. Assuming legacy NCS")
             node_format = NodeFormat.NCS
-            circuit_conf["CellLibraryFile"] = "start.ncs"
+            circuit_conf.CellLibraryFile = "start.ncs"
         self._node_format = node_format
 
-        if "MorphologyType" not in circuit_conf:  # Legacy behavior
-            circuit_conf["MorphologyPath"] += "/ascii"
-            circuit_conf["MorphologyType"] = "asc"
+        if not circuit_conf.MorphologyType:  # Legacy behavior
+            circuit_conf.MorphologyPath += "/ascii"
+            circuit_conf.MorphologyType = "asc"
 
     @mpi_no_errors
     def load_cells(self, circuit_conf, load_balancer=None):
         """Distribute and load target cells among CPUs.
 
         Args:
-            run_conf (dict): Blueconfig 'Run' configuration
+            circuit_conf: Blueconfig 'Circuit' configuration
             load_balancer: A LoadBalance object for helping distributing cells
                 or None -> Round-Robin
         """
         # for testing if xopen bcast is in use (NEURON 7.3). We will be loading
         # different templates on different cpus, so it must be disabled for now
-        self._init_config(circuit_conf)
         logging.info("Reading Nodes (METype) info from '%s' (format: %s)",
-                     circuit_conf["CellLibraryFile"], self._node_format.name)
+                     circuit_conf.CellLibraryFile, self._node_format.name)
 
         total_cells = None   # total cells in this simulation
         loader = self.cell_loader_dict[self._node_format]
-        target_spec = TargetSpec(circuit_conf.get("CircuitTarget"))
+        target_spec = TargetSpec(circuit_conf.CircuitTarget)
 
         #  are we using load balancing? If yes, init structs accordingly
         if load_balancer:
@@ -300,10 +320,10 @@ class CellDistributor(CellManagerBase):
 
     def _instantiate_cells(self, circuit_conf, gidvec, me_infos, *_):
         CellType = Cell_V5 if self._node_format == NodeFormat.NCS else Cell_V6
-        CellType.morpho_extension = circuit_conf["MorphologyType"]
-        log_verbose("Loading metypes from: %s", circuit_conf["METypePath"])
+        CellType.morpho_extension = circuit_conf.MorphologyType
+        log_verbose("Loading metypes from: %s", circuit_conf.METypePath)
         log_verbose("Loading '%s' morphologies from: %s",
-                    circuit_conf["MorphologyType"], circuit_conf["MorphologyPath"])
+                    circuit_conf.MorphologyType, circuit_conf.MorphologyPath)
 
         super()._instantiate_cells(circuit_conf, gidvec, me_infos, CellType)
 
@@ -339,7 +359,7 @@ class CellDistributor(CellManagerBase):
             return gid
 
     # -
-    def finalize(self, gids=None, *_):
+    def finalize(self, gids=None):
         """Do final steps to setup the network.\n
         Multisplit will handle gids depending on additional info from self.binfo
         object. Otherwise, normal cells do their finalization
@@ -379,14 +399,14 @@ class CellDistributor(CellManagerBase):
 
                 if cb.subtrees.count() == 0:
                     #  whole cell, normal creation
-                    self._pnm.set_gid2node(gid, MPI.rank)
+                    self._pc.set_gid2node(gid, MPI.rank)
                     pc.cell(gid, nc)
                     self._spgidvec.append(gid)
                 else:
                     spgid = cb.multisplit(nc, self._binfo.msgid, pc, MPI.rank)
                     self._spgidvec.append(int(spgid))
             else:
-                self._pnm.set_gid2node(gid, self._pnm.myid)
+                self._pc.set_gid2node(gid, self._pc.id())
                 pc.cell(gid, nc)
 
         pc.multisplit()
@@ -590,19 +610,19 @@ class LoadBalance:
         lcx = self._get_optimal_piece_complexity(total_cx,
                                                  self.target_cpu_count,
                                                  msfactor)
-        cells = cell_distributor.pnm.cells
+        cells = cell_distributor.cell_list
         ms_list = []
         tmp = Nd.Vector()
 
         for i, gid in enumerate(gidvec):
-            mcomplex.cell_complexity(cells.o(i))
+            mcomplex.cell_complexity(cells[i].CellRef)
             mcomplex.multisplit(gid, lcx, tmp)
             ms_list.append(tmp.c())
 
         # To output build independently the contents of the file then append
         ostring = StringIO()
         if MPI.rank == 0:
-            ostring.write("1\n%d\n" % cell_distributor.pnm.ncell)
+            ostring.write("1\n%d\n" % cell_distributor.total_cells)
             logging.info("LB Info: TC=%.3f MC=%.3f OptimalCx=%.3f FileName=%s",
                          total_cx, max_cx, lcx, out_filename)
         for ms in ms_list:

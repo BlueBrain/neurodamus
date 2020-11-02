@@ -121,8 +121,8 @@ class Cell_V6(METype):
     __slots__ = ()
 
     def __init__(self, gid, meinfo, circuit_conf):
-        mepath = circuit_conf["METypePath"]
-        morpho_path = circuit_conf["MorphologyPath"]
+        mepath = circuit_conf.METypePath
+        morpho_path = circuit_conf.MorphologyPath
         super().__init__(gid, mepath, meinfo.emodel, morpho_path, meinfo)
 
     def _instantiate_cell(self, gid, etype_path, emodel, morpho_path, meinfos_v6):
@@ -146,8 +146,8 @@ class Cell_V5(METype):
 
     def __init__(self, gid, meinfo, circuit_conf):
         # In NCS, meinfo is simply the metype filename (string)
-        mepath = circuit_conf["METypePath"]
-        morpho_path = circuit_conf["MorphologyPath"]
+        mepath = circuit_conf.METypePath
+        morpho_path = circuit_conf.MorphologyPath
         melabel = self._load_template(meinfo, mepath)
         super().__init__(gid, mepath, melabel, morpho_path)
 

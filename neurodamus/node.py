@@ -52,10 +52,11 @@ class Node:
         # It shall not be used as Public API
         if config_file is not None:
             self._target_parser = None
-            self._pnm = Nd.ParallelNetManager(0)
+            self._pc = Nd.pc
             self._options = opts = RunOptions(**(options or {}))
             self._blueconfig_path = ospath.dirname(config_file)
             self._core_replay_file = ''
+            self._spike_vecs = None
 
             self._config_parser = self._open_check_config(config_file, opts)
             self._run_conf = compat.Map(self._config_parser.parsedRun).as_dict(True)
@@ -464,7 +465,7 @@ class Node:
             return load_balancer
 
         logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
-        cell_dist = CellDistributor(self._pnm, self._target_parser, self._run_conf)
+        cell_dist = CellDistributor(self._base_circuit, self._target_parser, self._run_conf)
         with load_balancer.generate_load_balance(target.simple_name, cell_dist):
             # Instantiate a basic circuit to evaluate complexities
             self.create_cells(cell_distributor=cell_dist)
@@ -502,13 +503,13 @@ class Node:
         # Extra circuits may use it and not None is a sign of initialization done
         if cell_distributor is None:
             self._cell_distributor = CellDistributor(
-                self._pnm, self._target_parser, self._run_conf)
+                self._base_circuit, self._target_parser, self._run_conf)
         else:
             self._cell_distributor = cell_distributor
 
         # Dont use default cell_distributor if engine is disabled
         if self._base_circuit.CircuitPath:
-            self._cell_distributor.load_cells(self._run_conf, load_balance)
+            self._cell_distributor.load_cells(self._base_circuit, load_balance)
         else:
             logging.info(" => Base Circuit has been DISABLED")
 
@@ -518,8 +519,7 @@ class Node:
             engine = circuit.Engine
             output = NotImplemented  # NotImplemented stands for 'use the default one'
             if engine:
-                output = engine.create_cells(circuit.all, self._cell_distributor,
-                                             self._target_parser, self._run_conf)
+                output = engine.create_cells(circuit.all, self._target_parser, self._run_conf)
             if output is NotImplemented:
                 self._cell_distributor.load_cells(circuit)
 
@@ -984,6 +984,7 @@ class Node:
                 if not self._corenrn_conf and "Electrode" in rep_conf else None
 
             rep_target = TargetSpec(rep_conf["Target"])
+            target = self._target_parser.getTarget(rep_target.name)
             population_name = (rep_target.population or self._target_spec.population
                                or self._default_population)
             log_verbose("Report on Population: %s, Target: %s", population_name, rep_target.name)
@@ -1014,13 +1015,12 @@ class Node:
             )
 
             if self._corenrn_conf and MPI.rank == 0:
-                # Init report config
-                ptarget = self._target_parser.getTarget(rep_target.name)
-                self._corenrn_conf.write_report_config(
-                    rep_name, rep_target.name, rep_type, rep_params.report_on, rep_params.unit,
-                    rep_params.format, ptarget.isCellTarget(), rep_params.dt, rep_params.start,
-                    rep_params.end, ptarget.completegids(), self._corenrn_buff_size,
-                    population_name)
+                core_report_params = (
+                    (rep_name, rep_target.name) + rep_params[1:5]
+                    + (target.isCellTarget(),) + rep_params[5:8]
+                    + (target.completegids(), self._corenrn_buff_size, population_name)
+                )
+                self._corenrn_conf.write_report_config(*core_report_params)
 
             if not self._target_manager:
                 # When restoring with coreneuron we dont even need to initialize reports
@@ -1032,7 +1032,6 @@ class Node:
             # For summation targets - check if we were given a Cell target because we really want
             # all points of the cell which will ultimately be collapsed to a single value
             # on the soma. Otherwise, get target points as normal.
-            target = self._target_manager.getTarget(rep_target.name)
             points = self.get_target_points(target, rep_type.lower() == "summation")
 
             for point in points:
@@ -1115,7 +1114,7 @@ class Node:
             sim_opts - override _finalize_model options. E.g. spike_compress
         """
         if self._sim_ready:
-            return self._pnm
+            return self._pc
 
         if self._cell_distributor is None or self._cell_distributor._gidvec is None:
             raise RuntimeError("No CellDistributor was initialized. Please create a circuit.")
@@ -1133,7 +1132,7 @@ class Node:
         self.dump_cell_config()
 
         self._sim_ready = True
-        return self._pnm
+        return self._pc
 
     # -
     @mpi_no_errors
@@ -1147,32 +1146,21 @@ class Node:
         """
         logging.info("Preparing to run simulation...")
         is_save_state = any(c in self._run_conf for c in ("SaveTime", "Save", "Restore"))
-        pc = self._pnm.pc
-        pc.setup_transfer()
+        self._pc.setup_transfer()
 
         if spike_compress and not is_save_state:
             # multisend 13 is combination of multisend(1) + two_phase(8) + two_intervals(4)
             # to activate set spike_compress=(0, 0, 13)
             if not isinstance(spike_compress, tuple):
                 spike_compress = (spike_compress, 1, 0)
-            pc.spike_compress(*spike_compress)
+            self._pc.spike_compress(*spike_compress)
 
         # LFP calculation requires WholeCell balancing and extracellular mechanism.
         # This is incompatible with efficient caching atm.
         Nd.cvode.cache_efficient("ElectrodesPath" not in self._run_conf)
-        pc.set_maxstep(4)
+        self._pc.set_maxstep(4)
         with timeit(name="stdinit"):
             Nd.stdinit()
-
-    # -
-    def _record_spikes(self, gids=None):
-        """Setup recording of spike events (crossing of threshold) for cells on this node
-        """
-        for gid in (self.gidvec if gids is None else gids):
-            # only want to collect spikes of cell pieces with the soma (i.e. the real gid)
-            if self._cell_distributor.getSpGid(gid) == gid:
-                logging.debug("Collecting spikes for gid %d", gid)
-                self._pnm.spike_record(gid)
 
     # -
     def _sim_init_neuron(self):
@@ -1191,8 +1179,8 @@ class Node:
             Nd.t = 0
             Nd.frecord_init()
 
-        self._record_spikes()
-        self._pnm.pc.timeout(200)  # increase by 10x
+        self._spike_vecs = self._cell_distributor.record_spikes()
+        self._pc.timeout(200)  # increase by 10x
 
         if restore_path:
             with timeit(name="restoretime"):
@@ -1236,7 +1224,7 @@ class Node:
 
                 # load the ARTIFICIAL_CELL CoreConfig with a fake_gid in this empty rank
                 # to avoid errors during coreneuron model building
-                fake_gid = int(self._bbcore_fakegid_offset + self._pnm.pc.id())
+                fake_gid = int(self._bbcore_fakegid_offset + self._pc.id())
                 self._cell_distributor.load_artificial_cell(fake_gid, SimConfig.core_config)
                 # Nd.registerMapping doesn't work for this artificial cell as somatic attr is
                 # missing, so create a dummy mapping file manually, required for reporting
@@ -1244,7 +1232,7 @@ class Node:
                 if not ospath.isfile(mapping_file):
                     with open(mapping_file, "w") as dummyfile:
                         dummyfile.write("1.2\n0\n")
-            self._pnm.pc.nrnbbcore_write(corenrn_data)
+            self._pc.nrnbbcore_write(corenrn_data)
             if self._bbcore_fakegid_offset is not None:
                 self._bbcore_fakegid_offset += MPI.size
 
@@ -1386,7 +1374,7 @@ class Node:
         buffer_t = SimConfig.buffer_time
         for _ in range(math.ceil((tstop - cur_t) / buffer_t)):
             next_flush = min(tstop, cur_t + buffer_t)
-            self._pnm.psolve(next_flush)
+            self._pc.psolve(next_flush)
             self._binreport_helper.flush()
             cur_t = next_flush
         Nd.t = cur_t
@@ -1404,10 +1392,7 @@ class Node:
             return
 
         logging.info("Clearing model")
-        pnm = self._pnm
-        pnm.pc.gid_clear()
-        pnm.nclist.remove_all()
-        pnm.cells.remove_all()
+        self._pc.gid_clear()
 
         if self._cell_distributor:
             self._cell_distributor.clear_cells()
@@ -1476,36 +1461,23 @@ class Node:
         """
         logging.info("Writing spikes to %s", outfile)
         outfile = ospath.join(self._output_root, outfile)
-        pnm = self._pnm
-
-        # root node opens file for writing, all others append
-        if MPI.rank == 0:
-            with open(outfile, "w") as f:
-                f.write("/scatter\n")
-                for i, gid in enumerate(pnm.idvec):
-                    f.write("%.3f\t%d\n" % (pnm.spikevec.x[i], gid))
-
-        # Write other nodes' result in order
-        for nodeIndex in range(1, MPI.size):
-            MPI.barrier()
-            if MPI.rank == nodeIndex:
-                with open(outfile, "a") as f:
-                    for i, gid in enumerate(pnm.idvec):
-                        f.write("%.3f\t%d\n" % (pnm.spikevec.x[i], gid))
+        spikevec, idvec = self._spike_vecs
+        spikewriter = Nd.SpikeWriter()
+        spikewriter.write(spikevec, idvec, outfile)
 
         # Write spikes in SONATA format
         if self._target_spec.population:
-            self._sonatareport_helper.write_spikes(pnm.spikevec, pnm.idvec, self._output_root,
+            self._sonatareport_helper.write_spikes(spikevec, idvec, self._output_root,
                                                    self._target_spec.population)
         else:
-            self._sonatareport_helper.write_spikes(pnm.spikevec, pnm.idvec, self._output_root)
+            self._sonatareport_helper.write_spikes(spikevec, idvec, self._output_root)
 
     def dump_cell_config(self):
         if not self._pr_cell_gid:
             return
         log_verbose("Dumping info about cell %d", self._pr_cell_gid)
         simulator = "CoreNeuron" if self._corenrn_conf else "Neuron"
-        self._pnm.pc.prcellstate(self._pr_cell_gid, "py_{}_t{}".format(simulator, Nd.t))
+        self._pc.prcellstate(self._pr_cell_gid, "py_{}_t{}".format(simulator, Nd.t))
 
     # -
     def dump_circuit_config(self, suffix="nrn_python"):
@@ -1528,7 +1500,7 @@ class Node:
                         MPI.rank, len(gids))
 
         for gid in gids:
-            self._pnm.pc.prcellstate(gid, suffix)
+            self._pc.prcellstate(gid, suffix)
 
     # ---------------------------------------------------------------------------
     # Note: This method may be called automatically from Neurodamus.__del__
@@ -1727,7 +1699,7 @@ class Neurodamus(Node):
 
             self.clear_model()
             tmp_target_spec.name = cur_target.name
-            self._run_conf["CircuitTarget"] = str(tmp_target_spec)  # FQN
+            self._base_circuit.CircuitTarget = str(tmp_target_spec)  # FQN
             self._build_model()
 
             # Move generated files aside (to be merged later)

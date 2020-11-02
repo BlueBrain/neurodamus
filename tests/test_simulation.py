@@ -18,7 +18,7 @@ def test_quick_v6():
     We require launching with mpiexec, so we do it in a bash script
     """
     simdir = os.path.join(sims, "mini_v6")
-
+    os.environ['NEURODAMUS_PYTHON'] = "."
     ps = subprocess.run(["bash", "tests/test_simulation.bash", simdir])
     assert ps.returncode == 0
 
