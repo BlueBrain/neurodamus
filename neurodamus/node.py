@@ -266,7 +266,6 @@ class Node:
     @staticmethod
     def _configure_simulator(run_conf, user_options):
         Nd.execute("cvode = new CVode()")
-        Nd.execute("celsius=34")
 
         SimConfig.init(Nd.h, run_conf)
 
@@ -291,7 +290,7 @@ class Node:
             else:
                 raise ConfigurationError("Time integration method (SecondOrder value) {} is "
                                          "invalid. Valid options are:"
-                                         " '0' (implicity backward euler),"
+                                         " '0' (implicitly backward euler),"
                                          " '1' (crank-nicholson) and"
                                          " '2' (crank-nicholson with fixed ion currents)"
                                          .format(second_order))
@@ -305,6 +304,12 @@ class Node:
             h.minis_single_vesicle_ProbAMPANMDA_EMS = minis_single_vesicle
             h.minis_single_vesicle_ProbGABAAB_EMS = minis_single_vesicle
             h.minis_single_vesicle_GluSynapse = minis_single_vesicle
+
+        h.celsius = SimConfig.celsius
+        logging.info("Setting temperature to: {} degrees centigrade".format(h.celsius))
+
+        h.v_init = SimConfig.v_init
+        logging.info("Setting initial voltage to: {} (mV)".format(h.v_init))
 
         return SimConfig
 
@@ -1246,12 +1251,13 @@ class Node:
         if "BaseSeed" in self._run_conf:
             self._corenrn_conf.write_sim_config(
                 corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
-                self._pr_cell_gid or -1, self._core_replay_file, self._run_conf.get("BaseSeed")
+                self._pr_cell_gid or -1, Nd.h.celsius, Nd.h.v_init, self._core_replay_file,
+                self._run_conf.get("BaseSeed")
             )
         else:
             self._corenrn_conf.write_sim_config(
                 corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
-                self._pr_cell_gid or -1, self._core_replay_file
+                self._pr_cell_gid or -1, Nd.h.celsius, Nd.h.v_init, self._core_replay_file
             )
 
         logging.info(" => Dataset written to '{}'".format(corenrn_data))

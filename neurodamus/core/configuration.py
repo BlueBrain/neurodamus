@@ -84,6 +84,10 @@ class _SimConfig(object):
         cls.spike_threshold = run_conf.get("SpikeThreshold", -30)
         log_verbose("Setting SpikeThreshold to: {}".format(cls.spike_threshold))
 
+        cls.celsius = run_conf.get("Celsius", 34)
+
+        cls.v_init = run_conf.get("V_Init", -65)
+
         try:
             cls.morphology_path = cls._simconf.getMorphologyPath().s
             cls.morphology_ext = cls._simconf.getMorphologyExtension().s
