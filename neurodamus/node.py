@@ -1239,13 +1239,12 @@ class Node:
         if "BaseSeed" in self._run_conf:
             self._corenrn_conf.write_sim_config(
                 corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
-                self._pr_cell_gid or -1, Nd.h.celsius, Nd.h.v_init, self._core_replay_file,
-                self._run_conf.get("BaseSeed")
+                self._pr_cell_gid or -1, self._core_replay_file, self._run_conf.get("BaseSeed")
             )
         else:
             self._corenrn_conf.write_sim_config(
                 corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
-                self._pr_cell_gid or -1, Nd.h.celsius, Nd.h.v_init, self._core_replay_file
+                self._pr_cell_gid or -1, self._core_replay_file
             )
 
         logging.info(" => Dataset written to '{}'".format(corenrn_data))
