@@ -40,7 +40,7 @@ class ACellManager(CellManagerBase):
     CellType = ACellType
 
     @staticmethod
-    def load_cell_info(run_conf, gidvec, stride=1, stride_offset=0):
+    def _node_loader(circuit_conf, gidvec, stride=1, stride_offset=0):
         logging.info(" * HELLO from loading ACELL info")
         total_cells = 50
 

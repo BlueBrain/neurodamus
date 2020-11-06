@@ -22,5 +22,5 @@ Circuit ACellsTesting
     Engine ACell
     CircuitPath .
     nrnPath <NONE>
-    CircuitTarget small
+    CircuitTarget Small
 }

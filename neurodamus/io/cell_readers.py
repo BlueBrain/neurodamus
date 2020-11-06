@@ -99,11 +99,11 @@ def split_round_robin(all_gids, stride, stride_offset, total_cells):
     return gidvec
 
 
-def load_ncs(run_conf, all_gids, stride=1, stride_offset=0):
+def load_ncs(circuit_conf, all_gids, stride=1, stride_offset=0):
     """ Obtain the gids and the metypes for cells in the base circuit.
 
     Args:
-        run_conf: the Run secgion from the configuration
+        circuit_conf: the Run secgion from the configuration
         all_gids: The cells ids to be loaded. If it's None then all the cells shall be loaded
         stride: If distribution is desired stride can be set to a value > 1
         stride_offset: When using distribution, the offset to be read within the stride
@@ -112,7 +112,7 @@ def load_ncs(run_conf, all_gids, stride=1, stride_offset=0):
     """
     gids = compat.Vector("I")
     gid2mefile = {}
-    ncs_path = ospath.join(run_conf["nrnPath"], "start.ncs")
+    ncs_path = ospath.join(circuit_conf.nrnPath, "start.ncs")
 
     with open(ncs_path, "r") as ncs_f:
         total_ncs_cells = _ncs_get_total(ncs_f)
@@ -138,7 +138,7 @@ def load_ncs(run_conf, all_gids, stride=1, stride_offset=0):
     return gids, gid2mefile, total_ncs_cells
 
 
-def load_mvd3(run_conf, all_gids, stride=1, stride_offset=0):
+def load_mvd3(circuit_conf, all_gids, stride=1, stride_offset=0):
     """Load cells from MVD3, required for v6 circuits
        reuse load_nodes with mvdtool by default
        if py-mvdtool not installed, use the old h5py loader
@@ -147,16 +147,16 @@ def load_mvd3(run_conf, all_gids, stride=1, stride_offset=0):
         import mvdtool  # noqa: F401
     except ImportError:
         logging.warning("Cannot import mvdtool to load mvd3, will load with h5py")
-        return _load_mvd3_h5py(run_conf, all_gids, stride, stride_offset)
+        return _load_mvd3_h5py(circuit_conf, all_gids, stride, stride_offset)
 
-    return load_nodes(run_conf, all_gids, stride, stride_offset)
+    return load_nodes(circuit_conf, all_gids, stride, stride_offset)
 
 
-def _load_mvd3_h5py(run_conf, all_gids, stride=1, stride_offset=0):
+def _load_mvd3_h5py(circuit_conf, all_gids, stride=1, stride_offset=0):
     """Load cells from MVD3 using h5py
     """
     import h5py  # Can be heavy so loaded on demand
-    pth = ospath.join(run_conf["CircuitPath"], "circuit.mvd3")
+    pth = ospath.join(circuit_conf.CircuitPath, "circuit.mvd3")
     mvd = h5py.File(pth, 'r')
 
     mecombo_ds = mvd["/cells/properties/me_combo"]
@@ -182,27 +182,27 @@ def _load_mvd3_h5py(run_conf, all_gids, stride=1, stride_offset=0):
     gidvec = compat.Vector("I", gidvec)
 
     # now we can take the combo file and get the emodel + additional info
-    combo_file = run_conf.get("MEComboInfoFile")
+    combo_file = circuit_conf.MEComboInfoFile
     me_manager = load_combo_metypes(combo_file, gidvec, combo_names, morpho_names)
 
     return gidvec, me_manager, total_mvd_cells
 
 
-def load_nodes(run_conf, all_gids, stride=1, stride_offset=0):
+def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0):
     """Load cells from SONATA or MVD3 file
     """
     import mvdtool
-    pth = run_conf["CellLibraryFile"]
+    pth = circuit_conf.CellLibraryFile
     is_mvd = pth.endswith('.mvd3')
 
     if not ospath.isfile(pth):
-        pth = ospath.join(run_conf["CircuitPath"], run_conf["CellLibraryFile"])
+        pth = ospath.join(circuit_conf.CircuitPath, pth)
     if not ospath.isfile(pth):
-        raise ConfigurationError("Could not find Nodes: " + run_conf["CellLibraryFile"])
+        raise ConfigurationError("Could not find Nodes: " + circuit_conf.CellLibraryFile)
 
-    node_population = TargetSpec(run_conf.get("CircuitTarget")).population
+    node_population = TargetSpec(circuit_conf.CircuitTarget).population
     node_reader = mvdtool.open(pth, node_population or "")
-    combo_file = run_conf.get("MEComboInfoFile")
+    combo_file = circuit_conf.MEComboInfoFile
 
     if is_mvd:
         if not combo_file:

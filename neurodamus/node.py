@@ -419,7 +419,7 @@ class Node:
         """
         log_stage("Computing Load Balance")
         if not self._base_circuit.CircuitPath:
-            logging.info("  => No base circuit. Skipping... ")
+            logging.info(" => No base circuit. Skipping... ")
             return None
 
         # Info about the cells to be distributed
@@ -494,13 +494,14 @@ class Node:
                 prosp_hosts)
             Nd.quit()
 
-        log_stage("Loading circuit cells")
+        log_stage("LOADING NODES")
 
         if not load_balance and not cell_distributor:
             logging.info("Load-balance object not present. Continuing Round-Robin...")
 
         # Always create a cell_distributor even if engine is disabled.
         # Extra circuits may use it and not None is a sign of initialization done
+        logging.info(" * CIRCUIT (Default)")
         if cell_distributor is None:
             self._cell_distributor = CellDistributor(
                 self._base_circuit, self._target_parser, self._run_conf)
@@ -509,29 +510,33 @@ class Node:
 
         # Dont use default cell_distributor if engine is disabled
         if self._base_circuit.CircuitPath:
-            self._cell_distributor.load_cells(self._base_circuit, load_balance)
+            self._cell_distributor.load_nodes(load_balance)
         else:
             logging.info(" => Base Circuit has been DISABLED")
 
         # SUPPORT for extra/custom Circuits
         for name, circuit in self._extra_circuits.items():
-            log_stage("Loading Cells for Circuit: %s", name)
+            logging.info(" * CIRCUIT %s", name)
             engine = circuit.Engine
             output = NotImplemented  # NotImplemented stands for 'use the default one'
             if engine:
-                output = engine.create_cells(circuit.all, self._target_parser, self._run_conf)
+                output = engine.load_nodes(circuit, self._target_parser, self._run_conf)
             if output is NotImplemented:
-                self._cell_distributor.load_cells(circuit)
+                self._cell_distributor.load_nodes()
 
         # give a TargetManager the TargetParser's completed targetList
         self._target_manager = Nd.TargetManager(
             self._target_parser.targetList, self._cell_distributor)
 
         # Let the CellDistributor object have any final say in the cell objects
+        log_stage("FINALIZING CIRCUITS")
+
+        logging.info(" * Circuit (Default)")
         self._cell_distributor.finalize()
         # Extra circuits
         for engine in set(circuit.Engine for circuit in self._extra_circuits.values()
                           if circuit.Engine is not None):
+            logging.info(" * Circuit %s", engine.__class__.__name__)
             engine.finalize_cells()
 
     # -
@@ -1116,7 +1121,7 @@ class Node:
         if self._sim_ready:
             return self._pc
 
-        if self._cell_distributor is None or self._cell_distributor._gidvec is None:
+        if self._cell_distributor is None:
             raise RuntimeError("No CellDistributor was initialized. Please create a circuit.")
 
         self._finalize_model(**sim_opts)
@@ -1394,6 +1399,7 @@ class Node:
 
         logging.info("Clearing model")
         self._pc.gid_clear()
+        self._target_parser.updateTargets(Nd.Vector())  # reset targets local cells
 
         if self._cell_distributor:
             self._cell_distributor.clear_cells()
@@ -1414,7 +1420,7 @@ class Node:
 
     @property
     def gidvec(self):
-        if self._cell_distributor is None or self._cell_distributor._gidvec is None:
+        if self._cell_distributor is None:
             logging.error("No CellDistributor was initialized. Please create a circuit.")
         return self._cell_distributor.local_gids
 

@@ -55,7 +55,7 @@ def neurodamus(args=None):
             logging.error(str(e))
         return 1
     except Exception:
-        logging.critical("Unhandled Exception. Terminating...", exc_info=True)
+        logging.critical("Unhandled Exception. Terminating...", exc_info=(MPI._rank == 0))
         import ctypes
         import ctypes.util
         mpilib = ctypes.CDLL(ctypes.util.find_library('mpi'))

@@ -3,7 +3,6 @@ Mechanisms to load and balance cells across the computing resources.
 """
 from __future__ import absolute_import, print_function
 import logging  # active only in rank 0 (init)
-from abc import abstractmethod
 from contextlib import contextmanager
 from enum import Enum
 from io import StringIO
@@ -13,6 +12,8 @@ import numpy
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
+from .core.configuration import ConfigurationError
+from .core.nodeset import NodeSet
 from .io import cell_readers
 from .io.cell_readers import TargetSpec
 from .metype import Cell_V5, Cell_V6, EmptyCell
@@ -52,6 +53,18 @@ class NodeFormat(Enum):
 
 class CellManagerBase(object):
 
+    CellType = NotImplemented  # please override
+    """The underlying Cell type class
+    signature:
+        __init__(self, gid, cell_info, circuit_conf)
+    """
+
+    _node_loader = None
+    """Default function implementing the loading of nodes data, a.k.a. MVD
+    signature:
+        load(circuit_conf, gidvec, stride=1, stride_offset=0)
+    """
+
     def __init__(self, circuit_conf, target_parser, run_conf):
         """Initializes CellDistributor
 
@@ -63,79 +76,130 @@ class CellManagerBase(object):
         """
         self._circuit_conf = circuit_conf
         self._target_parser = target_parser
+        self._target_spec = TargetSpec(circuit_conf.CircuitTarget)
 
-        self._gidvec = compat.Vector("I")
-        self._total_cells = 0
-        self._cell_list = []
+        self._local_nodes = NodeSet()
+        self._total_cells = 0   # total cells in target, being simulated
         self._gid2cell = {}
 
         self._global_seed = 0
         self._ionchannel_seed = 0
-        self._run_conf = run_conf
+        self._binfo = None
         self._pc = Nd.pc
 
     # read-only properties
     target_parser = property(lambda self: self._target_parser)
-    local_gids = property(lambda self: self._gidvec)
+    local_gids = property(lambda self: self._local_nodes.final_gids())
     total_cells = property(lambda self: self._total_cells)
-    cell_list = property(lambda self: self._cell_list)
+    cells = property(lambda self: self._gid2cell.values())
     pc = property(lambda self: self._pc)
     report_vecs = property(lambda self: self._report_vecs)
 
-    # Compatibility with neurodamus-core (used by TargetManager, CompMappping)
-    getGidListForProcessor = lambda self: self._gidvec
+    # Compatibility with neurodamus-core (used by TargetManager, CompMapping)
+    getGidListForProcessor = lambda self: self._local_nodes.final_gids()
 
-    CellType = NotImplemented  # please override
-    """The underlying Cell type class
-    signature:
-        __init__(self, gid, cell_info, circuit_conf)
-    """
-
-    _node_loader = None
-    """Default function implementing the loading of nodes data, a.k.a. MVD
-    signature:
-        load(run_conf, gidvec, stride=1, stride_offset=0)
-    """
-
-    @staticmethod
-    @abstractmethod
-    def load_cell_info(run_conf, gidvec, stride=1, stride_offset=0):
-        """Implement the loading of nodes data, a.k.a. MVD.
-
-        Returns:
-            a tuple (gidvec, cell_infos, circuit_fullsize)
+    def load_nodes(self, load_balancer=None, *, _loader=None):
+        """Top-level loader of nodes.
         """
+        conf = self._circuit_conf
+        loader_f = _loader or self._node_loader
+        if conf.CircuitPath is False:  # Circuit is disabled
+            return
 
-    def load_cells(self, conf, load_balancer=None):
-        """A default implementation to load cells"""
-        logging.info("Loading custom cells info")
-        gidvec, cell_infos, fullsize = self.load_cell_info(conf, None, MPI.size, MPI.rank)
-        self._total_cells = MPI.allreduce(gidvec.size, MPI.SUM)
+        logging.info("Reading Nodes (METype) info from '%s'", conf.CellLibraryFile)
+        if not load_balancer:
+            # Use common loading routine, providing the loader
+            gidvec, me_infos, *cell_counts = self._load_nodes(loader_f)
+        else:
+            gidvec, me_infos, *cell_counts = self._load_nodes_balance(loader_f, load_balancer)
+        self._local_nodes.add_gids(gidvec, me_infos)
+        self._total_cells = cell_counts[0]
+        logging.info(" => Loaded info about %d target cells (out of %d)", *cell_counts)
 
-        logging.info("Instantiating %d target cells out of %d (Rank0: %d)...",
-                     self._total_cells, fullsize, gidvec.size)
+    def _load_nodes(self, loader_f):
+        """Base loader which handles targets"""
+        conf = self._circuit_conf
+        target_spec = self._target_spec
 
-        self._instantiate_cells(conf, gidvec, cell_infos)
+        if target_spec:
+            logging.info(" -> Distributing '%s' target cells Round-Robin", target_spec)
+            target = self._target_parser.getTarget(target_spec.name)
+            target_gids = target.completegids().as_numpy().astype("uint32")
+            gidvec, me_infos, full_size = loader_f(conf, target_gids, MPI.size, MPI.rank)
+            total_cells = len(target_gids)
+        else:
+            logging.info(" -> Distributing ALL cells Round-Robin (No target provided)")
+            gidvec, me_infos, full_size = loader_f(conf, None, MPI.size, MPI.rank)
+            total_cells = full_size
+        return gidvec, me_infos, total_cells, full_size
 
-    def _instantiate_cells(self, conf, gidvec, cell_infos, CellType=None):
-        if CellType is None:
-            CellType = self.CellType
-            assert CellType is not None, "Undefined CellType in Manager"
+    def _load_nodes_balance(self, loader_f, load_balancer):
+        target_spec = self._target_spec
+        if not load_balancer.valid_load_distribution(target_spec):
+            raise RuntimeError("No valid Load Balance info could be found or derived."
+                               "Please perform a full load balance.")
 
-        logging.info("Instantiating cells...")
-        for gid in ProgressBar.iter(gidvec):
-            cell = CellType(gid, cell_infos[gid], conf)
-            self._store_cell(gid, cell)
-        # Update targets info with locally loaded gids
-        self._target_parser.updateTargets(self._gidvec)
-        # Final stats
-        global_cells_created = MPI.allreduce(len(gidvec), MPI.SUM)
-        logging.info(" => Created %d cells", global_cells_created)
+        logging.info(" -> Distributing target '%s' using Load-Balance", target_spec.name)
+        self._binfo = Nd.BalanceInfo("cx_%s" % target_spec.simple_name, MPI.rank, MPI.size)
+
+        # self._binfo has gidlist, but gids can appear multiple times
+        all_gids = numpy.unique(self._binfo.gids.as_numpy().astype("uint32"))
+        total_cells = len(all_gids)
+        gidvec, me_infos, full_size = loader_f(self._circuit_conf, all_gids)
+        return gidvec, me_infos, total_cells, full_size
+
+    # -
+    def finalize(self, *_):
+        """Instantiates cells and initializes the network in the simulator.
+
+        Note: it should be called after all cell distributors have done load_nodes()
+            so gids offsets are final.
+        """
+        self._instantiate_cells()
+        self._update_targets_local_gids()
+        self._init_cell_network()
+        self._local_nodes.clear_cell_info()
+
+    @mpi_no_errors
+    def _instantiate_cells(self, _CellType=None):
+        CellType = _CellType or self.CellType
+        assert CellType is not None, "Undefined CellType in Manager"
+        Nd.execute("xopen_broadcast_ = 0")
+
+        logging.info("Instantiating cells... (%d in Rank 0)", len(self._local_nodes))
+        cell_offset = self._local_nodes.offset
+        for gid, cell_info in ProgressBar.iter(self._local_nodes.items(), len(self._local_nodes)):
+            cell = CellType(gid, cell_info, self._circuit_conf)
+            self._store_cell(gid + cell_offset, cell)
+
+    def _update_targets_local_gids(self):
+        logging.info("Updating targets")
+        cell_offset = self._local_nodes.offset
+        if cell_offset:
+            target = self._target_parser.getTarget(self._target_spec.name)
+            if not hasattr(target, "set_offset"):
+                raise NotImplementedError("No gid offsetting supported by neurodamus Target.hoc")
+            target.set_offset(cell_offset)
+        # Add local gids to matching targets
+        self._target_parser.updateTargets(self._local_nodes.final_gids(), 1)
+
+    def _init_cell_network(self):
+        """Init global gids for cell networking
+        """
+        logging.info("Initializing cell network")
+        self._init_rng()
+        gid_offset = self._local_nodes.offset
+        for cell in self.cells:
+            nc = cell.connect2target(None)  # temp Netcon
+            final_gid = cell.gid + gid_offset
+            self._pc.set_gid2node(final_gid, self._pc.id())
+            self._pc.cell(final_gid, nc)
+            # Only update the cell.gid at this point. We had to ensure RNGs used the base gid
+            cell.gid = final_gid
 
     def load_artificial_cell(self, gid, artificial_cell):
         cell = EmptyCell(gid, artificial_cell)
         self._store_cell(gid, cell)
-        self._gidvec.append(gid)
         nc = cell.connect2target(None)
         self._pc.set_gid2node(cell.gid, self._pc.id())
         self._pc.cell(cell.gid, nc)
@@ -146,34 +210,16 @@ class CellManagerBase(object):
         self._ionchannel_seed = rng_info.getIonChannelSeed()
         return rng_info
 
-    def finalize(self, *_):
-        """A default implementation for instantiating cells"""
-        self._init_rng()
-        for cell in self._cell_list:
-            nc = cell.connect2target(None)
-            self._pc.set_gid2node(cell.gid, self._pc.id())
-            self._pc.cell(cell.gid, nc)
-
     def _store_cell(self, gid, cell):
-        self._gidvec.append(gid)
-        self._cell_list.append(cell)
         self._gid2cell[gid] = cell
-
-    def __getitem__(self, gid):
-        return self._gid2cell[gid]
-
-    def __iter__(self):
-        """Iterator over this node GIDs
-        """
-        return iter(self._gidvec)
 
     def clear_cells(self):
         """Clear all cells
         """
-        for cell in self._cell_list:
+        for cell in self.cells:
             if cell.CellRef and hasattr(cell.CellRef, 'clear'):
                 cell.CellRef.clear()
-        self._cell_list.clear()
+        self._gid2cell.clear()
 
     def getSpGid(self, gid):
         """Retrieves the part gid from a gid. Stub implementation
@@ -185,7 +231,7 @@ class CellManagerBase(object):
         """
         spikevec, idvec = Nd.Vector(), Nd.Vector()
         if gids is None:
-            gids = self.local_gids
+            gids = self._local_nodes.final_gids()
 
         for gid in gids:
             # only want to collect spikes of cell pieces with the soma (i.e. the real gid)
@@ -197,18 +243,18 @@ class CellManagerBase(object):
 
 
 class CellDistributor(CellManagerBase):
-    """ Handle assignment of cells to processors.
+    """ Manages a group of cells for BBP simulations, V5 and V6
 
-        Instantiated cells are stored locally (.cell_list)
+        Instantiated cells are stored locally (.cells property)
     """
 
-    cell_loader_dict = {
+    _cell_loaders = {
         NodeFormat.NCS: cell_readers.load_ncs,
         NodeFormat.MVD3: cell_readers.load_mvd3,
         NodeFormat.SONATA: cell_readers.load_nodes
     }
 
-    def __init__(self, circuit_conf, target_parser, run_conf, *args):
+    def __init__(self, circuit_conf, target_parser, run_conf):
         """Initializes CellDistributor
 
         Args:
@@ -217,115 +263,43 @@ class CellDistributor(CellManagerBase):
             run_conf: Run configuration
 
         """
-        super().__init__(circuit_conf, target_parser, run_conf, *args)
-        # These wont ever be init'ed if not recomputing lb
-        self._spgidvec = None   # cell parts gids
-        self._binfo = None      # balanceInfo
+        super().__init__(circuit_conf, target_parser, run_conf)
         self._node_format = None  # NCS, Mvd, Sonata...
+        if circuit_conf.CircuitPath:
+            self._init_config(circuit_conf)
 
         # create a tmp netcon objref
         if not hasattr(Nd, "nc_"):
             Nd.execute("objref nc_")
 
-        if circuit_conf.CircuitPath is not False:
-            self._init_config(circuit_conf)
-
     def _init_config(self, circuit_conf):
-        Nd.execute("xopen_broadcast_ = 0")
-
-        # determine the connectivity format: start.ncs (default), circuit.mvd3 or sonata
-        if circuit_conf.CellLibraryFile:
-            celldb_filename = circuit_conf.CellLibraryFile
-            if celldb_filename == "circuit.mvd3":
-                node_format = NodeFormat.MVD3
-            elif celldb_filename == "start.ncs":
-                node_format = NodeFormat.NCS
-            else:
-                # Pass other types to mvdtool to detect
-                node_format = NodeFormat.SONATA
-        else:  # Default
-            logging.warning("CellLibraryFile not defined. Assuming legacy NCS")
-            node_format = NodeFormat.NCS
-            circuit_conf.CellLibraryFile = "start.ncs"
-        self._node_format = node_format
-
-        if not circuit_conf.MorphologyType:  # Legacy behavior
+        if not circuit_conf.MorphologyPath:
+            raise ConfigurationError("BlueConfig doesn't define a MorphologyPath")
+        if not circuit_conf.MorphologyType:
+            # Old configuration defaulted to ascii
             circuit_conf.MorphologyPath += "/ascii"
             circuit_conf.MorphologyType = "asc"
 
-    @mpi_no_errors
-    def load_cells(self, circuit_conf, load_balancer=None):
-        """Distribute and load target cells among CPUs.
+        if not circuit_conf.CellLibraryFile:
+            logging.warning("CellLibraryFile not set. Assuming legacy 'start.ncs'")
+            circuit_conf.CellLibraryFile = "start.ncs"
+        file2format = {"start.ncs": NodeFormat.NCS, "circuit.mvd3": NodeFormat.MVD3}
+        self._node_format = file2format.get(circuit_conf.CellLibraryFile, NodeFormat.SONATA)
 
-        Args:
-            circuit_conf: Blueconfig 'Circuit' configuration
-            load_balancer: A LoadBalance object for helping distributing cells
-                or None -> Round-Robin
+    def load_nodes(self, load_balancer=None, **kw):
+        """gets gids from target, splits and returns a GidSet with all metadata
         """
-        # for testing if xopen bcast is in use (NEURON 7.3). We will be loading
-        # different templates on different cpus, so it must be disabled for now
-        logging.info("Reading Nodes (METype) info from '%s' (format: %s)",
-                     circuit_conf.CellLibraryFile, self._node_format.name)
+        kw["_loader"] = self._cell_loaders[self._node_format]
+        return super().load_nodes(load_balancer, **kw)
 
-        total_cells = None   # total cells in this simulation
-        loader = self.cell_loader_dict[self._node_format]
-        target_spec = TargetSpec(circuit_conf.CircuitTarget)
-
-        #  are we using load balancing? If yes, init structs accordingly
-        if load_balancer:
-            if not load_balancer.valid_load_distribution(target_spec):
-                raise RuntimeError("No valid Load Balance info could be found or derived."
-                                   "Please perform a full load balance.")
-            log_verbose("Distributing target '%s' using Load-Balance", target_spec.name)
-            self._spgidvec = compat.Vector("I")
-            self._binfo = Nd.BalanceInfo("cx_%s" % target_spec.simple_name,
-                                         MPI.rank, MPI.size)
-
-            # self._binfo has gidlist, but gids can appear multiple times
-            all_gids = numpy.unique(self._binfo.gids.as_numpy().astype("uint32"))
-            if target_spec:
-                target = self._target_parser.getTarget(target_spec.name)
-                total_cells = int(target.getCellCount())
-            else:
-                total_cells = len(all_gids)
-            # LOAD
-            gidvec, me_infos, _ = loader(circuit_conf, all_gids)
-
-        elif target_spec:
-            log_verbose("Distributing '%s' target cells Round-Robin", target_spec.name)
-            target = self._target_parser.getTarget(target_spec.name)
-            all_gids = target.completegids().as_numpy().astype("uint32")
-            total_cells = len(all_gids)
-            gidvec, me_infos, _ = loader(circuit_conf, all_gids, MPI.size, MPI.rank)
-
-        else:
-            log_verbose("Distributing ALL cells Round-Robin")
-            gidvec, me_infos, total_cells = loader(circuit_conf, None, MPI.size, MPI.rank)
-
-        if self._total_cells:
-            logging.info("Appending %d cells to existing %d", total_cells, self._total_cells)
-        gidvec = compat.Vector("I", gidvec)  # convert to compat array
-        self._total_cells += total_cells
-
-        MPI.check_no_errors()  # First phase (read mvd) DONE. Check all good
-
-        if len(gidvec) == 0:
-            logging.warning("Rank %d has no cells assigned.", MPI.rank)
-            # We must not return, we have an allreduce later
-
-        logging.info(" => Cells distributed. %d cells in network, %d in rank 0",
-                     self._total_cells, len(gidvec))
-
-        self._instantiate_cells(circuit_conf, gidvec, me_infos)
-
-    def _instantiate_cells(self, circuit_conf, gidvec, me_infos, *_):
+    def _instantiate_cells(self, *_):
         CellType = Cell_V5 if self._node_format == NodeFormat.NCS else Cell_V6
-        CellType.morpho_extension = circuit_conf.MorphologyType
-        log_verbose("Loading metypes from: %s", circuit_conf.METypePath)
+        conf = self._circuit_conf
+        CellType.morpho_extension = conf.MorphologyType
+        log_verbose("Loading metypes from: %s", conf.METypePath)
         log_verbose("Loading '%s' morphologies from: %s",
-                    circuit_conf.MorphologyType, circuit_conf.MorphologyPath)
-
-        super()._instantiate_cells(circuit_conf, gidvec, me_infos, CellType)
+                    conf.MorphologyType, conf.MorphologyPath)
+        super()._instantiate_cells(CellType)
 
     # Accessor methods (Keep CamelCase API for compatibility with existing hoc)
     # ----------------
@@ -355,24 +329,22 @@ class CellDistributor(CellManagerBase):
         """
         if self._binfo:
             return self._binfo.thishost_gid(gid)
-        else:
-            return gid
+        return gid
 
     # -
-    def finalize(self, gids=None):
+    def finalize(self):
         """Do final steps to setup the network.\n
         Multisplit will handle gids depending on additional info from self.binfo
         object. Otherwise, normal cells do their finalization
         """
+        self._instantiate_cells()
+        self._update_targets_local_gids()
+
         rng_info = self._init_rng()
         pc = self.pc
-        if gids is None:
-            gids = self._gidvec
 
-        for i, gid in enumerate(gids):
-            gid = int(gid)
-            metype = self._cell_list[i]
-
+        for metype in self.cells:
+            gid = int(metype.gid)
             # for v6 and beyond - we can just try to invoke rng initialization
             # for v5 circuits and earlier check if cell has re_init function.
             # Instantiate random123 or mcellran4 as appropriate
@@ -401,12 +373,10 @@ class CellDistributor(CellManagerBase):
                     #  whole cell, normal creation
                     self._pc.set_gid2node(gid, MPI.rank)
                     pc.cell(gid, nc)
-                    self._spgidvec.append(gid)
                 else:
-                    spgid = cb.multisplit(nc, self._binfo.msgid, pc, MPI.rank)
-                    self._spgidvec.append(int(spgid))
+                    cb.multisplit(nc, self._binfo.msgid, pc, MPI.rank)
             else:
-                self._pc.set_gid2node(gid, self._pc.id())
+                self._pc.set_gid2node(gid, pc.id())
                 pc.cell(gid, nc)
 
         pc.multisplit()
@@ -601,7 +571,6 @@ class LoadBalance:
 
     @mpi_no_errors
     def _compute_save_complexities(self, target_str, mcomplex, cell_distributor):
-        gidvec = cell_distributor.local_gids
         msfactor = 1e6 if self.lb_mode == LoadBalanceMode.WholeCell else 0.8
         out_filename = self._cx_filename_tpl % target_str
 
@@ -610,13 +579,12 @@ class LoadBalance:
         lcx = self._get_optimal_piece_complexity(total_cx,
                                                  self.target_cpu_count,
                                                  msfactor)
-        cells = cell_distributor.cell_list
         ms_list = []
         tmp = Nd.Vector()
 
-        for i, gid in enumerate(gidvec):
-            mcomplex.cell_complexity(cells[i].CellRef)
-            mcomplex.multisplit(gid, lcx, tmp)
+        for cell in cell_distributor.cells:
+            mcomplex.cell_complexity(cell.CellRef)
+            mcomplex.multisplit(cell.gid, lcx, tmp)
             ms_list.append(tmp.c())
 
         # To output build independently the contents of the file then append

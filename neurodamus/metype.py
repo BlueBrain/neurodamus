@@ -43,6 +43,8 @@ class METype(object):
 
         self._instantiate_cell(gid, etype_path, emodel, morpho_path, meinfos)
 
+    gid = property(lambda self: self._cellref.gid)
+
     # Ensure no METype instances created. Only Subclasses
     @abstractmethod
     def _instantiate_cell(self, *args):
@@ -81,20 +83,19 @@ class METype(object):
     def CellRef(self):
         return self._cellref
 
-    def connect2target(self, target_pp):
+    def connect2target(self, target_pp=None):
         """ Connects MEtype cell to target
 
         Args:
-            target_pp: target point process
+            target_pp: target point process [default: None]
 
         Returns: NetCon obj
         """
         if SimConfig.spike_location == "soma":
-            netcon = Nd.NetCon(self.CellRef.soma[0](1)._ref_v, target_pp,
-                               sec=self.CellRef.soma[0])
+            sec, seg = self.CellRef.soma[0], self.CellRef.soma[0](1)
         else:
-            netcon = Nd.NetCon(self.CellRef.axon[1](0.5)._ref_v, target_pp,
-                               sec=self.CellRef.axon[1])
+            sec, seg = self.CellRef.axon[1], self.CellRef.axon[1](0.5)
+        netcon = Nd.NetCon(seg._ref_v, target_pp, sec=sec)
         netcon.threshold = SimConfig.spike_threshold
         return netcon
 
