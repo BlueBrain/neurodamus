@@ -161,7 +161,7 @@ class _Timer(object):
         self._start_time = None  # invalidate start time
 
     def log(self, keyword, seq_no=None):
-        log_verbose("{:s} {} {:<30s} {:g} {:s}".
+        log_verbose("{:s} {} {:<30s} {:.4f} {:s}".
                     format(keyword,
                            seq_no if seq_no is not None else '',
                            self._name,

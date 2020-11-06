@@ -16,23 +16,21 @@ from neurodamus.core import EngineBase
 from neurodamus.core import NeurodamusCore as Nd
 from neurodamus.io.synapse_reader import SynapseParameters
 from neurodamus.io.cell_readers import split_round_robin
+from neurodamus.metype import BaseCell
 
 
-class ACellType:
+class ACellType(BaseCell):
     """A new testing cell type
     """
     def __init__(self, gid, cell_info, circuit_conf):
         """Instantiate a new Cell from mvd/node info"""
+        super().__init__(gid, cell_info, circuit_conf)
         self.gid = gid
         self.section = Nd.Section(name="soma", cell="a" + str(gid))
         self.f0 = cell_info[0]
         self.f1 = cell_info[1]
 
-    @property
-    def CellRef(self):
-        return self  # We dont use hoc cells
-
-    def connect2target(self, target_pp):
+    def connect2target(self, target_pp=None):
         return Nd.NetCon(self.section(1)._ref_v, target_pp, sec=self.section)
 
 

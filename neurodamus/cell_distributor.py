@@ -93,7 +93,6 @@ class CellManagerBase(object):
     total_cells = property(lambda self: self._total_cells)
     cells = property(lambda self: self._gid2cell.values())
     pc = property(lambda self: self._pc)
-    report_vecs = property(lambda self: self._report_vecs)
 
     # Compatibility with neurodamus-core (used by TargetManager, CompMapping)
     getGidListForProcessor = lambda self: self._local_nodes.final_gids()
@@ -189,13 +188,28 @@ class CellManagerBase(object):
         logging.info("Initializing cell network")
         self._init_rng()
         gid_offset = self._local_nodes.offset
+        pc = self._pc
+
         for cell in self.cells:
-            nc = cell.connect2target(None)  # temp Netcon
-            final_gid = cell.gid + gid_offset
-            self._pc.set_gid2node(final_gid, self._pc.id())
-            self._pc.cell(final_gid, nc)
-            # Only update the cell.gid at this point. We had to ensure RNGs used the base gid
-            cell.gid = final_gid
+            final_gid = int(cell.gid) + gid_offset
+            cell.re_init_rng(self._ionchannel_seed)
+
+            nc = cell.connect2target(None)  # Netcon doesnt require being stored
+
+            if self._binfo:
+                gid_i = int(self._binfo.gids.indwhere("==", final_gid))
+                cb = self._binfo.bilist.object(self._binfo.cbindex.x[gid_i])
+                # multisplit cells call cb.multisplit() instead
+                if cb.subtrees.count() > 0:
+                    cb.multisplit(nc, self._binfo.msgid, pc, pc.id())
+                    cell.gid = final_gid
+                    continue
+
+            pc.set_gid2node(final_gid, pc.id())
+            pc.cell(final_gid, nc)
+            cell.gid = final_gid  # update the cell.gid last (RNGs had to use the base gid)
+
+        pc.multisplit()
 
     def load_artificial_cell(self, gid, artificial_cell):
         cell = EmptyCell(gid, artificial_cell)
@@ -221,11 +235,6 @@ class CellManagerBase(object):
                 cell.CellRef.clear()
         self._gid2cell.clear()
 
-    def getSpGid(self, gid):
-        """Retrieves the part gid from a gid. Stub implementation
-        """
-        return gid
-
     def record_spikes(self, gids=None):
         """Setup recording of spike events (crossing of threshold) for cells on this node
         """
@@ -240,66 +249,6 @@ class CellManagerBase(object):
                     logging.debug("Collecting spikes for gid %d", gid)
                 self._pc.spike_record(gid, spikevec, idvec)
         return spikevec, idvec
-
-
-class CellDistributor(CellManagerBase):
-    """ Manages a group of cells for BBP simulations, V5 and V6
-
-        Instantiated cells are stored locally (.cells property)
-    """
-
-    _cell_loaders = {
-        NodeFormat.NCS: cell_readers.load_ncs,
-        NodeFormat.MVD3: cell_readers.load_mvd3,
-        NodeFormat.SONATA: cell_readers.load_nodes
-    }
-
-    def __init__(self, circuit_conf, target_parser, run_conf):
-        """Initializes CellDistributor
-
-        Args:
-            circuit_conf: The "Circuit" blueconfig block
-            target_parser: the target parser hoc object, to retrieve target cells' info
-            run_conf: Run configuration
-
-        """
-        super().__init__(circuit_conf, target_parser, run_conf)
-        self._node_format = None  # NCS, Mvd, Sonata...
-        if circuit_conf.CircuitPath:
-            self._init_config(circuit_conf)
-
-        # create a tmp netcon objref
-        if not hasattr(Nd, "nc_"):
-            Nd.execute("objref nc_")
-
-    def _init_config(self, circuit_conf):
-        if not circuit_conf.MorphologyPath:
-            raise ConfigurationError("BlueConfig doesn't define a MorphologyPath")
-        if not circuit_conf.MorphologyType:
-            # Old configuration defaulted to ascii
-            circuit_conf.MorphologyPath += "/ascii"
-            circuit_conf.MorphologyType = "asc"
-
-        if not circuit_conf.CellLibraryFile:
-            logging.warning("CellLibraryFile not set. Assuming legacy 'start.ncs'")
-            circuit_conf.CellLibraryFile = "start.ncs"
-        file2format = {"start.ncs": NodeFormat.NCS, "circuit.mvd3": NodeFormat.MVD3}
-        self._node_format = file2format.get(circuit_conf.CellLibraryFile, NodeFormat.SONATA)
-
-    def load_nodes(self, load_balancer=None, **kw):
-        """gets gids from target, splits and returns a GidSet with all metadata
-        """
-        kw["_loader"] = self._cell_loaders[self._node_format]
-        return super().load_nodes(load_balancer, **kw)
-
-    def _instantiate_cells(self, *_):
-        CellType = Cell_V5 if self._node_format == NodeFormat.NCS else Cell_V6
-        conf = self._circuit_conf
-        CellType.morpho_extension = conf.MorphologyType
-        log_verbose("Loading metypes from: %s", conf.METypePath)
-        log_verbose("Loading '%s' morphologies from: %s",
-                    conf.MorphologyType, conf.MorphologyPath)
-        super()._instantiate_cells(CellType)
 
     # Accessor methods (Keep CamelCase API for compatibility with existing hoc)
     # ----------------
@@ -331,55 +280,62 @@ class CellDistributor(CellManagerBase):
             return self._binfo.thishost_gid(gid)
         return gid
 
-    # -
-    def finalize(self):
-        """Do final steps to setup the network.\n
-        Multisplit will handle gids depending on additional info from self.binfo
-        object. Otherwise, normal cells do their finalization
+
+class CellDistributor(CellManagerBase):
+    """ Manages a group of cells for BBP simulations, V5 and V6
+
+        Instantiated cells are stored locally (.cells property)
+    """
+
+    _cell_loaders = {
+        NodeFormat.NCS: cell_readers.load_ncs,
+        NodeFormat.MVD3: cell_readers.load_mvd3,
+        NodeFormat.SONATA: cell_readers.load_nodes
+    }
+
+    def __init__(self, circuit_conf, target_parser, run_conf):
+        """Initializes CellDistributor
+
+        Args:
+            circuit_conf: The "Circuit" blueconfig block
+            target_parser: the target parser hoc object, to retrieve target cells' info
+            run_conf: Run configuration
+
         """
-        self._instantiate_cells()
-        self._update_targets_local_gids()
+        super().__init__(circuit_conf, target_parser, run_conf)
+        self._node_format = None  # NCS, Mvd, Sonata...
 
-        rng_info = self._init_rng()
-        pc = self.pc
+        if circuit_conf.CircuitPath:
+            self._init_config(circuit_conf)
 
-        for metype in self.cells:
-            gid = int(metype.gid)
-            # for v6 and beyond - we can just try to invoke rng initialization
-            # for v5 circuits and earlier check if cell has re_init function.
-            # Instantiate random123 or mcellran4 as appropriate
-            # Note: should CellDist be aware that metype has CCell member?
-            need_invoke = self._node_format != NodeFormat.NCS \
-                          or rng_info.getRNGMode() == rng_info.COMPATIBILITY
-            if not need_invoke:
-                if hasattr(metype.CCell, "re_init_rng") and \
-                   rng_info.getRNGMode() != rng_info.RANDOM123:
-                    if gid > 400000:
-                        logging.warning("mcellran4 cannot init properly with large gids")
-            metype.re_init_rng(self._ionchannel_seed, need_invoke)
+    def _init_config(self, circuit_conf):
+        if not circuit_conf.MorphologyPath:
+            raise ConfigurationError("BlueConfig doesn't define a MorphologyPath")
+        if not circuit_conf.MorphologyType:
+            # Old configuration defaulted to ascii
+            circuit_conf.MorphologyPath += "/ascii"
+            circuit_conf.MorphologyType = "asc"
 
-            version = metype.getVersion()
-            if version < 2:
-                nc = Nd.nc_   # tmp netcon
-                metype.CellRef.connect2target(Nd.nil, nc)
-            else:
-                nc = metype.connect2target(Nd.nil)
+        if not circuit_conf.CellLibraryFile:
+            logging.warning("CellLibraryFile not set. Assuming legacy 'start.ncs'")
+            circuit_conf.CellLibraryFile = "start.ncs"
+        file2format = {"start.ncs": NodeFormat.NCS, "circuit.mvd3": NodeFormat.MVD3}
+        self._node_format = file2format.get(circuit_conf.CellLibraryFile, NodeFormat.SONATA)
 
-            if self._binfo:
-                gid_i = int(self._binfo.gids.indwhere("==", gid))
-                cb = self._binfo.bilist.object(self._binfo.cbindex.x[gid_i])
+    def load_nodes(self, load_balancer=None, **kw):
+        """gets gids from target, splits and returns a GidSet with all metadata
+        """
+        kw["_loader"] = self._cell_loaders[self._node_format]
+        return super().load_nodes(load_balancer, **kw)
 
-                if cb.subtrees.count() == 0:
-                    #  whole cell, normal creation
-                    self._pc.set_gid2node(gid, MPI.rank)
-                    pc.cell(gid, nc)
-                else:
-                    cb.multisplit(nc, self._binfo.msgid, pc, MPI.rank)
-            else:
-                self._pc.set_gid2node(gid, pc.id())
-                pc.cell(gid, nc)
-
-        pc.multisplit()
+    def _instantiate_cells(self, *_):
+        CellType = Cell_V5 if self._node_format == NodeFormat.NCS else Cell_V6
+        conf = self._circuit_conf
+        CellType.morpho_extension = conf.MorphologyType
+        log_verbose("Loading metypes from: %s", conf.METypePath)
+        log_verbose("Loading '%s' morphologies from: %s",
+                    conf.MorphologyType, conf.MorphologyPath)
+        super()._instantiate_cells(CellType)
 
 
 class LoadBalance:

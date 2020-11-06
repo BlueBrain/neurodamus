@@ -9,14 +9,42 @@ from .core.configuration import SimConfig
 from .core import NeurodamusCore as Nd
 
 
-class METype(object):
+class BaseCell:
+    """
+    Class representing an basic cell, e.g. an artificial cell
+    """
+    __slots__ = ("_cellref", "_ccell")
+
+    def __init__(self, gid, cell_info, circuit_info):
+        self._cellref = None
+        self._ccell = None
+
+    @property
+    def CellRef(self):
+        return self._cellref
+
+    @property
+    def CCell(self):
+        return self._ccell
+
+    def connect2target(self, target_pp=None):
+        """ Connects empty cell to target
+        """
+        netcon = Nd.NetCon(self._cellref, target_pp)
+        return netcon
+
+    def re_init_rng(self, ion_seed):
+        pass
+
+
+class METype(BaseCell):
     """
     Class representing an METype. Will instantiate a Hoc-level cell as well
     """
     morpho_extension = "asc"
     """The extension to be applied to morphology files"""
 
-    __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons', '_ccell', '_cellref',
+    __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons',
                  '_synapses', '_syn_helper_list', '_emodel_name',
                  'exc_mini_frequency', 'inh_mini_frequency')
 
@@ -30,11 +58,10 @@ class METype(object):
             morpho_path: path for morphologies
             meinfos: dictionary with v6 infos (if v6 circuit)
         """
+        super().__init__(gid, meinfos, None)
         self._threshold_current = None
         self._hypAmp_current = None
         self._netcons = []
-        self._ccell = None
-        self._cellref = None
         self._synapses = None
         self._syn_helper_list = None
         self._emodel_name = emodel
@@ -43,7 +70,8 @@ class METype(object):
 
         self._instantiate_cell(gid, etype_path, emodel, morpho_path, meinfos)
 
-    gid = property(lambda self: self._cellref.gid)
+    gid = property(lambda self: int(self._cellref.gid),
+                   lambda self, val: setattr(self._cellref, 'gid', val))
 
     # Ensure no METype instances created. Only Subclasses
     @abstractmethod
@@ -75,14 +103,6 @@ class METype(object):
     def getVersion():
         return 3
 
-    @property
-    def CCell(self):
-        return self._ccell
-
-    @property
-    def CellRef(self):
-        return self._cellref
-
     def connect2target(self, target_pp=None):
         """ Connects MEtype cell to target
 
@@ -99,23 +119,13 @@ class METype(object):
         netcon.threshold = SimConfig.spike_threshold
         return netcon
 
-    def re_init_rng(self, ion_seed, need_invoke):
+    def re_init_rng(self, ion_seed):
         """Re-Init RNG for cell
 
         Args:
             ion_seed: ion channel seed
-            need_invoke : True, invoke rng initialization (v6 circuits and beyond)
-                          False, check if cell has re_init function (v5 and earlier)
         """
-        if need_invoke:
-            Nd.execute1("re_init_rng(%d)" % ion_seed, self._ccell, 0)
-        else:
-            rng_info = Nd.RNGSettings()
-            if hasattr(self.CCell, "re_init_rng"):
-                if rng_info.getRNGMode() == rng_info.RANDOM123:
-                    Nd.rng123ForStochKvInit(self.CCell)
-                else:
-                    Nd.rngForStochKvInit(self.CCell)
+        self._ccell.re_init_rng(ion_seed)
 
 
 class Cell_V6(METype):
@@ -143,7 +153,7 @@ class Cell_V6(METype):
 
 
 class Cell_V5(METype):
-    __slots__ = ()
+    __slots__ = ('_rng_list',)
 
     def __init__(self, gid, meinfo, circuit_conf):
         # In NCS, meinfo is simply the metype filename (string)
@@ -165,6 +175,23 @@ class Cell_V5(METype):
             self._hypAmp_current = ccell.getHypAmp()
         except Exception:
             pass
+
+    def re_init_rng(self, ion_seed):
+        if not hasattr(self._ccell, "re_init_rng"):
+            return  # dont apply on cells without re_init_rng func
+        rng = SimConfig.rng_info
+        rng_mode = rng.getRNGMode()
+
+        if rng_mode == rng.COMPATIBILITY:
+            return super().re_init_rng(ion_seed)
+        if rng_mode == rng.RANDOM123:
+            Nd.rng123ForStochKvInit(self._ccell)
+            return
+        # otherwise rng_mode is mcellran4
+        self._rng_list = Nd.rngForStochKvInit(self._ccell)
+        gid = self._cellref.gid
+        if gid > 400000:
+            logging.warning("mcellran4 cannot initialize properly with large gids: %d", gid)
 
     @staticmethod
     def _load_template(tpl_filename, tpl_location=None):
@@ -195,21 +222,17 @@ class Cell_V5(METype):
         return tpl_name
 
 
-class EmptyCell(METype):
+class EmptyCell(BaseCell):
     """
     Class representing an empty cell, e.g. an artificial cell
     Workaround for the neuron issue https://github.com/neuronsimulator/nrn/issues/635
     """
-    def __init__(self, gid, cell):
-        self._cellref = cell
-        self._ccell = None
-        self.gid = gid
+    __slots__ = ('gid',)
 
-    def connect2target(self, target_pp):
-        """ Connects empty cell to target
-        """
-        netcon = Nd.NetCon(self.CellRef, target_pp)
-        return netcon
+    def __init__(self, gid, cell):
+        super().__init__(gid, None, None)
+        self._cellref = cell
+        self.gid = gid
 
 
 # Metadata
