@@ -150,6 +150,7 @@ public evalType, isCellTarget, isSectionTarget, isCompartmentTarget, isSynapseTa
 public update, getgid, gids, completegids, getCellExtraValues, getCellSubset, evaluateSynapses, getPointList, getCompletePointList
 public isDefined, isEmpty, completeContains, contains, localCount, getCellCount
 
+
 //------------------------------------------------------------------------------------------------------------
 // Member functions
 //------------------------------------------------------------------------------------------------------------
@@ -180,6 +181,10 @@ proc init() {
         evalType()
     }
 
+    // The offset of the gids locally instantiated.
+    // This is required in order to match offset cells with the targets
+    gid_offset = 0
+
     flattenedGids = new Vector()
     isFlattened = 0
 
@@ -203,6 +208,22 @@ proc init() {
 
     hasCellsCounted = 0
 }
+
+
+/*!
+ * Sets gid offsetting for this and sub targets
+ * This enables multiple populations to be instantiated.
+ * Naturally the same targets cant be used by several circuits
+ * @arg 1: The gid offset to be applied
+ */
+proc set_offset() {
+    gid_offset = $1
+
+    for targetIndex=0, subtargets.count()-1 {
+        subtargets.object(targetIndex).set_offset($1)
+    }
+}
+
 
 //------------------------------------------------------------------------------------------------------------
 
@@ -299,7 +320,7 @@ proc update() { local gid, cellIndex, binsrch_low, binsrch_high, binsrch_mid, do
 
     //for each cell on node, determine if it exists in this target
     for cellIndex=0, $o1.size()-1 {
-        gid = $o1.x[cellIndex]
+        gid = $o1.x[cellIndex] - gid_offset
 
         //special binary_search - indirect vector access
         binsrch_low = 0
@@ -359,7 +380,7 @@ func getCellCount() { local subtargetIndex
  */
 func getgid() {
 	//Note that localCellsMap is just a map into all the cells of this target
-	return gidMembers.x[ localCellsMap.x[$1]]
+	return gidMembers.x[ localCellsMap.x[$1]] + gid_offset
 }
 
 //------------------------------------------------------------------------------------------------------------
