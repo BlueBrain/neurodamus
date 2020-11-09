@@ -110,7 +110,11 @@ def setup_logging(loglevel, logfile=None, rank=None):
 
     # Stdout
     hdlr = _logging.StreamHandler(sys.stdout)
-    use_color = not hasattr(sys.stdout, 'isatty') or sys.stdout.isatty()
+    try:
+        sys.stdout.tell()   # works only if it's file
+        use_color = False
+    except IOError:
+        use_color = True
     hdlr.setFormatter(_LevelColorFormatter(False, rank, use_color))
     if rank == 0:
         _logging.root.setLevel(verbosity_levels[loglevel])
