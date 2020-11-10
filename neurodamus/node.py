@@ -1375,6 +1375,8 @@ class Node:
         # Run until the end
         if t < tstop:
             self._psolve_loop(tstop)
+        # Final flush
+        self._sonatareport_helper.flush()
 
     # psolve_loop: There was an issue where MPI collective routines for reporting and spike exchange
     # are mixed such that some cpus are blocked waiting to complete reporting while others to
