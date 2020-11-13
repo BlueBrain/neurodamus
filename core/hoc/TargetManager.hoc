@@ -540,6 +540,8 @@ obfunc compartmentCast() { localobj target, wrapper
  * @return TPointList with 1 item, where the synapse should go
  */
 obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localobj resultPoint, cellSections, tmpSection, nil, helpCell
+    strdef errorMessage
+
     gid = $1
     isec = $2
     ipt = $3
@@ -555,6 +557,11 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
     if( object_id(cellSections) == 0 ) {
         print "getting locations for non-bg sims is not implemented yet..."
         quit()
+    }
+
+    if ( isec >= cellSections.count() ) {
+        sprint( errorMessage, "Error: section %d out of bounds (%d total). Morphology section count is low, is this a good morphology?", isec, cellSections.count() )
+        execerror( errorMessage )
     }
 
     distance = 0.5
