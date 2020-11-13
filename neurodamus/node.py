@@ -1020,9 +1020,52 @@ class Node:
             )
 
             if self._corenrn_conf and MPI.rank == 0:
+                corenrn_target = target
+
+                # 0=Compartment, 1=Cell, Section { 2=Axon, 3=Dendrite, 4=Apical }
+                target_type = target.isCellTarget()
+                compartment_offset = 0
+
+                # Note: CoreNEURON does not support more than one Section in a Compartment target
+                if target.isCompartmentTarget():
+                    for activeTarget in target.subtargets:
+                        if activeTarget.isSectionTarget():
+                            # Ensure only one Section (i.e., number of subtargets is also 1)
+                            if target.subtargets.count() > 1:
+                                logging.error("Report '%s': only a single Section is allowed in a "
+                                              "Compartment target", rep_name)
+                                n_errors += 1
+                                break
+
+                            # If we reach this point, update original target and offset
+                            corenrn_target = activeTarget
+                            compartment_offset = 3
+
+                if corenrn_target.isSectionTarget():
+                    if (corenrn_target.subtargets.count() != 1
+                            or not corenrn_target.subtargets[0].isCellTarget()):
+                        logging.error("Report '%s': only a single Cell subtarget is allowed in a "
+                                      "Section target", rep_name)
+                        n_errors += 1
+                        continue
+
+                    section_type = corenrn_target.targetSubsets[0].s
+
+                    if section_type == "soma":
+                        # Force it to be a Cell target type
+                        target_type = 1
+                    elif section_type == "axon":
+                        target_type = 2 + compartment_offset
+                    elif section_type == "dend":
+                        target_type = 3 + compartment_offset
+                    elif section_type == "apic":
+                        target_type = 4 + compartment_offset
+                    else:
+                        target_type = 0
+
                 core_report_params = (
                     (rep_name, rep_target.name) + rep_params[1:5]
-                    + (target.isCellTarget(),) + rep_params[5:8]
+                    + (target_type,) + rep_params[5:8]
                     + (target.completegids(), self._corenrn_buff_size, population_name)
                 )
                 self._corenrn_conf.write_report_config(*core_report_params)
