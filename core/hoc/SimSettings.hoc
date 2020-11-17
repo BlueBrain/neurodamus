@@ -123,6 +123,18 @@ proc interpret() { localobj runInfo, pc, rng, commandString, configMorphPath
         print "SimulatorMode set to '", simulator, "'"
     }
 
+    if( runInfo.exists( "RandomizeGabaRiseTime" ) ) {
+        execute("{load_file(\"GABAABHelper.hoc\")}")
+        if( name_declared("randomize_Gaba_risetime") ) {
+            // Set the HOC global variable randomize_Gaba_risetime
+            strdef cmd
+            sprint( cmd, "randomize_Gaba_risetime=\"%s\"", runInfo.get( "RandomizeGabaRiseTime" ).s )
+            execute( cmd )
+        } else {
+            execerror( "Models don't support the parameter RandomizeGabaRiseTime, please load a newer version." )
+        }
+    }
+
     pc.barrier()
 }
 
