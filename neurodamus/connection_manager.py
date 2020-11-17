@@ -12,7 +12,7 @@ from os import path as ospath
 
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
-from .core.configuration import GlobalConfig, ConfigurationError
+from .core.configuration import GlobalConfig, SimConfig, ConfigurationError
 from .connection import Connection, SynapseMode, ReplayMode
 from .io.cell_readers import TargetSpec
 from .io.synapse_reader import SynapseReader
@@ -321,7 +321,8 @@ class ConnectionManagerBase(object):
         logging.info("Opening Synapse file %s, population: %s", synapse_file, pop_name)
         return self.SynapseReader.create(
             synapse_file, self.CONNECTIONS_TYPE, pop_name,
-            n_nrn_files, self._local_gids  # Used eventually by NRN reader
+            n_nrn_files, self._local_gids,  # Used eventually by NRN reader
+            extracellular_calcium=SimConfig.extracellular_calcium
         )
 
     def _init_conn_population(self, pop_name, src_pop_id):

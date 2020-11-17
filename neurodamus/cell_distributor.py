@@ -12,7 +12,6 @@ import numpy
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
-from .core.configuration import ConfigurationError
 from .core.nodeset import NodeSet
 from .io import cell_readers
 from .io.cell_readers import TargetSpec
@@ -193,7 +192,6 @@ class CellManagerBase(object):
         for cell in self.cells:
             final_gid = int(cell.gid) + gid_offset
             cell.re_init_rng(self._ionchannel_seed)
-
             nc = cell.connect2target(None)  # Netcon doesnt require being stored
 
             if self._binfo:
@@ -309,13 +307,6 @@ class CellDistributor(CellManagerBase):
             self._init_config(circuit_conf)
 
     def _init_config(self, circuit_conf):
-        if not circuit_conf.MorphologyPath:
-            raise ConfigurationError("BlueConfig doesn't define a MorphologyPath")
-        if not circuit_conf.MorphologyType:
-            # Old configuration defaulted to ascii
-            circuit_conf.MorphologyPath += "/ascii"
-            circuit_conf.MorphologyType = "asc"
-
         if not circuit_conf.CellLibraryFile:
             logging.warning("CellLibraryFile not set. Assuming legacy 'start.ncs'")
             circuit_conf.CellLibraryFile = "start.ncs"

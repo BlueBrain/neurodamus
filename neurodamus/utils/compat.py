@@ -37,11 +37,13 @@ class List(list):
 class Map(collections_abc.Mapping):
     """Class which bring Python map API to hoc Maps
     """
-    __slots__ = ('_hoc_map', '_size')
+    __slots__ = ('_hoc_map', '_size', 'String')
 
     def __init__(self, hoc_map):
         self._hoc_map = hoc_map
         self._size = int(hoc_map.count())
+        from neuron import h
+        self.String = h.String
 
     def __iter__(self):
         return (self._hoc_map.key(i).s for i in range(self._size))
@@ -60,6 +62,16 @@ class Map(collections_abc.Mapping):
         if hasattr(value, 's'):  # hoc strings have the value in .s attribute
             value = value.s
         return value
+
+    def __setitem__(self, key, value):
+        if self._hoc_map.exists(key):
+            self._hoc_map.get(key).s = str(value)
+        else:
+            self._hoc_map.put(key, self.String(str(value)))
+
+    def update(self, other_map):
+        for key, val in other_map.items():
+            self[key] = val
 
     def __contains__(self, item):
         return self._hoc_map.exists(item) > 0

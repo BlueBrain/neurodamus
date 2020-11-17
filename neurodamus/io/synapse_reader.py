@@ -7,7 +7,6 @@ from os import path as Path
 import numpy as np
 
 from ..core import NeurodamusCore as Nd, MPI
-from ..core.configuration import SimConfig
 from ..utils.logging import log_verbose
 
 
@@ -50,7 +49,7 @@ class SynapseReader(object):
 
     def __init__(self, src, conn_type, population=None, *_, **kw):
         self._conn_type = conn_type
-        self._ca_concentration = SimConfig.extracellular_calcium
+        self._ca_concentration = kw.get("extracellular_calcium")
         self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
         self._open_file(src, population, kw.get("verbose", False))
 
@@ -94,7 +93,7 @@ class SynapseReader(object):
 
         f_scale = lambda x, y: constrained_hill(x)(y)
         scale_factors = np.vectorize(f_scale)(syn_params.u_hill_coefficient,
-                                                 extra_cellular_calcium)
+                                              extra_cellular_calcium)
         syn_params.U *= scale_factors
 
     @abstractmethod

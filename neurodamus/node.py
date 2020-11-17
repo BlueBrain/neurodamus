@@ -12,14 +12,12 @@ import subprocess
 from os import path as ospath
 from collections import namedtuple, defaultdict
 
-from .core import EngineBase
 from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeurodamusCore as Nd
-from .core.configuration import GlobalConfig, RunOptions, SimConfig, CircuitConfig
+from .core.configuration import GlobalConfig, SimConfig
 from .core.configuration import ConfigurationError
 from .cell_distributor import CellDistributor, LoadBalance, LoadBalanceMode
 from .io.cell_readers import TargetSpec
-from .io.config_parser import BlueConfig
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
 from .utils import compat
@@ -51,29 +49,21 @@ class Node:
         # The Recipe being None is allowed internally for e.g. setting up multi-cycle runs
         # It shall not be used as Public API
         if config_file is not None:
-            self._target_parser = None
+            # This is global initialization, happening once, regardless of number of cycles
+            log_stage("Setting up Neurodamus configuration")
             self._pc = Nd.pc
-            self._options = opts = RunOptions(**(options or {}))
-            self._blueconfig_path = ospath.dirname(config_file)
-            self._core_replay_file = ''
             self._spike_vecs = None
-
-            self._config_parser = self._open_check_config(config_file, opts)
-            self._run_conf = compat.Map(self._config_parser.parsedRun).as_dict(True)
-            self._output_root = self._run_conf["OutputRoot"]
-            self._pr_cell_gid = self._run_conf.get("prCellGid")
-            self._base_circuit, self._extra_circuits = self._config_circuits(config_file)
-
-            _sim_config = self._configure_simulator(self._run_conf, opts)
-            self._corenrn_conf = _sim_config.core_config
-            self._binreport_helper = Nd.BinReportHelper(Nd.dt, True) \
-                if _sim_config.runNeuron() else None
-            self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True) \
-                if _sim_config.runNeuron() else None
+            Nd.execute("cvode = new CVode()")
+            SimConfig.init(config_file, options)
+            self._run_conf = SimConfig.run_conf
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
-            self._corenrn_buff_size = self._run_conf["ReportingBufferSize"] \
-                if "ReportingBufferSize" in self._run_conf else 8
-            MPI.check_no_errors()  # Ensure no rank terminated unexpectedly
+            if SimConfig.use_neuron:
+                self._binreport_helper = Nd.BinReportHelper(Nd.dt, True)
+                self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True)
+            self._base_circuit = SimConfig.base_circuit
+            self._extra_circuits = SimConfig.extra_circuits
+            self._pr_cell_gid = self._run_conf.get("prCellGid")
+            self._core_replay_file = ""
 
         self._target_manager = None
         self._stim_list = None
@@ -85,6 +75,7 @@ class Node:
         self._cell_distributor = None  # type: CellDistributor
         self._synapse_manager = None   # type: SynapseRuleManager
         self._gj_manager = None        # type: GapJunctionManager
+        self._cell_managers = {}       # dict {population -> cell_manager}
         self._jumpstarters = []
 
     #
@@ -100,219 +91,6 @@ class Node:
 
     # Compat
     cellDistributor = CellDistributor
-
-    @classmethod
-    def _open_check_config(cls, config_file, user_options):
-        """ Initialize config objects and set Neuron global options from BlueConfig
-
-        Args:
-            config_file: Name of Config file to load
-            user_options: The object of user options
-        """
-        log_stage("Loading settings from BlueConfig and CLI")
-        config_parser = Nd.ConfigParser()
-        config_parser.open(config_file)
-        if MPI.rank == 0:
-            config_parser.toggleVerbose()
-
-        if config_parser.parsedRun is None:
-            raise ConfigurationError("No 'Run' block found in BlueConfig %s", config_file)
-        parsed_run = config_parser.parsedRun
-
-        # Setup source dirs
-        blueconfig_dir = ospath.abspath(ospath.dirname(config_file))
-        parsed_run.put("BlueConfigDir", Nd.String(blueconfig_dir))
-
-        if parsed_run.exists("CurrentDir"):
-            curdir = parsed_run.get("CurrentDir").s
-
-            if not ospath.isabs(curdir):
-                if curdir == ".":
-                    logging.warning("Setting CurrentDir to '.' is discouraged and "
-                                    "shall never be used in production jobs.")
-                else:
-                    raise ConfigurationError("CurrentDir: Relative paths not allowed")
-                curdir = ospath.abspath(curdir)
-                parsed_run.put("CurrentDir", Nd.String(curdir))
-
-            if not ospath.isdir(curdir):
-                raise ConfigurationError("CurrentDir doesnt exist: " + curdir)
-        else:
-            log_verbose("Setting CurrentDir to BlueConfig path [default]")
-            curdir = blueconfig_dir
-
-        # confirm output_path exists and is usable -> use utility.mod
-        output_path_obj = parsed_run.get("OutputRoot")
-        if user_options.output_path:
-            output_path_obj.s = user_options.output_path
-        output_path = output_path_obj.s
-
-        # Warn about new behavior of relative path. Remove warning in next version
-        if not ospath.isabs(output_path):
-            logging.warning("Relative OutputRoot directories are now constructed from "
-                            "CurrentDir, which defaults to BlueConfig location.\nPlease "
-                            "ensure your toolchains dont expect results in CWD.")
-            output_path = ospath.join(curdir, output_path)
-            output_path_obj.s = output_path
-
-        if MPI.rank == 0:
-            if Nd.checkDirectory(output_path) < 0:
-                logging.error("Error with OutputRoot %s. Terminating", output_path)
-                raise ConfigurationError("Output directory error")
-
-        simulator = cls._check_model_build_mode(user_options, parsed_run, output_path)
-
-        # BlueConfig integrity checks
-        if parsed_run.exists("Restore") and simulator == "CORENEURON":
-            user_options.build_model = False
-            if not user_options.simulate_model:
-                raise ConfigurationError("CoreNeuron Restore with simulate_model=OFF")
-
-        if not user_options.simulate_model and not user_options.build_model:
-            raise ConfigurationError("NoOP: Both build and simulation have been disabled")
-
-        # Make sure we can load mvdtool if CellLibraryFile is sonata file
-        run_conf = compat.Map(parsed_run)
-        if run_conf.get('CellLibraryFile', 'start.ncs') not in ('start.ncs', 'circuit.mvd3'):
-            try:
-                import mvdtool  # noqa: F401
-            except ImportError:
-                raise ConfigurationError("Cannot import mvdtool, please install py-mvdtool")
-        else:
-            if TargetSpec(run_conf.get("CircuitTarget")).population is not None:
-                raise ConfigurationError("Targets with population require Sonata Node file")
-
-        # Display final settings
-        logging.info("Config:")
-        logging.info(" - CurrentDir: %s", curdir)
-        logging.info(" - OutputRoot: %s", output_path)
-        logging.info(" - PHASES Build: %s, Simulate: %s",
-                     user_options.build_model, user_options.simulate_model)
-
-        return config_parser
-
-    def _config_circuits(self, config_file):
-        """Load directly from config file info about circuits and Validate
-        CircuitPath and nrnPath. Values may be set to <NONE> in case the user
-        wants to disable the whole circuit or the base synapses respectively.
-        """
-        def _make_circuit_config(config_dict, circuit_name):
-            if config_dict["CircuitPath"] == "<NONE>":
-                logging.info("%s Circuit DISABLED", circuit_name)
-                config_dict["CircuitPath"] = False
-                config_dict["nrnPath"] = False
-            elif config_dict["nrnPath"] == "<NONE>":
-                config_dict["nrnPath"] = False
-            return CircuitConfig(config_dict)
-
-        blueconfig = BlueConfig(config_file)
-        base_circuit = _make_circuit_config(blueconfig.Run, "Default")
-        extra_circuits = {}
-
-        for name, circuit_info in blueconfig.Circuit.items():
-            logging.info("Configuring circuit %s", name)
-            if "Engine" in circuit_info:
-                # Replace name by actual engine
-                circuit_info["Engine"] = EngineBase.get(circuit_info["Engine"])
-            else:
-                # Without custom engine, inherit base circuit infos
-                for field in ("CircuitPath", "MorphologyPath", "MorphologyType",
-                              "METypePath", "CellLibraryFile"):
-                    if field in base_circuit and field not in circuit_info:
-                        log_verbose("Inheriting '%s' from base circuit", field)
-                        circuit_info[field] = base_circuit[field]
-
-            extra_circuits[name] = _make_circuit_config(circuit_info, name)
-
-        return base_circuit, extra_circuits
-
-    @staticmethod
-    def _check_model_build_mode(user_config, parsed_run, output_path):
-        coreneuron_datadir = "coreneuron_input"  # SimConfig isn't initd yet
-        core_data_exists = (
-            ospath.isfile(ospath.join(output_path, "sim.conf"))
-            and ospath.isfile(ospath.join(output_path, coreneuron_datadir, 'files.dat'))
-        )
-        simulator = parsed_run.get("Simulator").s if parsed_run.exists("Simulator") \
-            else None
-        if simulator == "NEURON" and (user_config.build_model is False
-                                      or user_config.simulate_model is False):
-            raise ConfigurationError("Disabling model building or simulation is only"
-                                     " compatible with CoreNEURON")
-
-        if user_config.build_model is False and not core_data_exists:
-            raise ConfigurationError("Model build was disabled, but sim.conf not found")
-
-        if user_config.build_model not in (True, False):
-            # No sim.conf -> can leave as is
-            if not core_data_exists:
-                logging.info("CoreNeuron data do not exist in '%s'. "
-                             "Neurodamus will proceed to model building.", output_path)
-                user_config.build_model = True
-                return
-
-            # Otherwise we can activate if the simulator supports it
-            if simulator == "CORENEURON":
-                user_config.build_model = False
-                logging.info("CoreNeuron data found. Attempting to resume execution")
-            elif simulator == "NEURON":
-                logging.warning("CoreNeuron data found but simulator is NEURON. "
-                                "To reuse please set 'Simulator' to CORENEURON.")
-            else:
-                logging.warning("Setting simulator to CORENEURON to resume execution")
-                parsed_run.put("Simulator", Nd.String("CORENEURON"))
-                user_config.build_model = False
-        return simulator
-
-    @staticmethod
-    def _configure_simulator(run_conf, user_options):
-        Nd.execute("cvode = new CVode()")
-
-        SimConfig.init(Nd.h, run_conf)
-
-        keep_core_data = False
-        if SimConfig.core_config:
-            if user_options.keep_build or run_conf.get("KeepModelData", False) == "True":
-                keep_core_data = True
-            elif not user_options.simulate_model or "Save" in run_conf:
-                logging.warning("Keeping coreneuron data for CoreNeuron Save-Restore")
-                keep_core_data = True
-        SimConfig.delete_corenrn_data = SimConfig.core_config and not keep_core_data
-
-        h = Nd.h
-        h.tstop = run_conf["Duration"]
-        h.dt = run_conf["Dt"]
-        h.steps_per_ms = 1.0 / h.dt
-        second_order = SimConfig.secondorder
-        if second_order is not None:
-            if second_order in (0, 1, 2):
-                h.secondorder = int(second_order)
-                logging.info("Setting SecondOrder to: {}".format(int(second_order)))
-            else:
-                raise ConfigurationError("Time integration method (SecondOrder value) {} is "
-                                         "invalid. Valid options are:"
-                                         " '0' (implicitly backward euler),"
-                                         " '1' (crank-nicholson) and"
-                                         " '2' (crank-nicholson with fixed ion currents)"
-                                         .format(second_order))
-
-        if "MinisSingleVesicle" in run_conf:
-            if not hasattr(h, "minis_single_vesicle_ProbAMPANMDA_EMS"):
-                raise NotImplementedError("Synapses don't implement minis_single_vesicle."
-                                          "More recent neurodamus model required.")
-            minis_single_vesicle = int(run_conf["MinisSingleVesicle"])
-            logging.info("Setting synapses minis_single_vesicle to %d", minis_single_vesicle)
-            h.minis_single_vesicle_ProbAMPANMDA_EMS = minis_single_vesicle
-            h.minis_single_vesicle_ProbGABAAB_EMS = minis_single_vesicle
-            h.minis_single_vesicle_GluSynapse = minis_single_vesicle
-
-        h.celsius = SimConfig.celsius
-        logging.info("Setting temperature to: {} degrees centigrade".format(h.celsius))
-
-        h.v_init = SimConfig.v_init
-        logging.info("Setting initial voltage to: {} (mV)".format(h.v_init))
-
-        return SimConfig
 
     # -
     def check_resume(self):
@@ -334,34 +112,15 @@ class Node:
         Returns:
             list with generated targets, or empty if no splitting was done
         """
-        run_conf = self._run_conf
-        if self._options.modelbuilding_steps is not None:
-            ncycles = int(self._options.modelbuilding_steps)
-            src_is_cli = True
-        elif "ModelBuildingSteps" in run_conf:
-            ncycles = int(run_conf["ModelBuildingSteps"])
-            src_is_cli = False
-        else:
+        if SimConfig.modelbuilding_steps == 1:
             return False
 
-        logging.info("Splitting Target for multi-iteration CoreNeuron data generation")
-        logging.info(" -> Cycles: %d. [src: %s]", ncycles, "CLI" if src_is_cli else "BlueConfig")
-        assert ncycles > 0, "splitdata_generation yielded 0 cycles. Please check ModelBuildingSteps"
-
-        if not self._corenrn_conf:
-            logging.warning("Splitdata DISABLED since simulator is not CoreNeuron")
-            return False
-
-        if "CircuitTarget" not in run_conf:
-            raise ConfigurationError(
-                "Multi-iteration coreneuron data generation requires CircuitTarget")
-
-        target_spec = TargetSpec(run_conf["CircuitTarget"])
+        target_spec = TargetSpec(self._run_conf["CircuitTarget"])
         target = self._target_parser.getTarget(target_spec.name)
         allgids = target.completegids()
         new_targets = []
 
-        for cycle_i in range(ncycles):
+        for cycle_i in range(SimConfig.modelbuilding_steps):
             target = Nd.Target()
             target.name = "{}_{}".format(target_spec.name, cycle_i)
             new_targets.append(target)
@@ -432,7 +191,7 @@ class Node:
         # Check / set load balance mode
         lb_mode = LoadBalanceMode.parse(self._run_conf.get("RunMode"))
         if lb_mode == LoadBalanceMode.MultiSplit:
-            if not self._corenrn_conf:
+            if not SimConfig.use_coreneuron:
                 logging.info("Load Balancing ENABLED. Mode: MultiSplit")
             else:
                 logging.warning("Load Balancing mode CHANGED to WholeCell for CoreNeuron")
@@ -444,7 +203,7 @@ class Node:
         elif lb_mode is None:
             # BBPBGLIB-555 - simple heuristics for auto selecting load balance
             lb_mode = LoadBalanceMode.RoundRobin
-            if MPI.size > 1.5 * target_cells:
+            if SimConfig.use_neuron and MPI.size > 1.5 * target_cells:
                 logging.warning("Load Balance: AUTO SELECTED MultiSplit (CPU-Cell ratio)")
                 lb_mode = LoadBalanceMode.MultiSplit
             elif target_cells > 1000 and (self._run_conf["Duration"] > 500 or MPI.size > 100):
@@ -530,7 +289,6 @@ class Node:
 
         # Let the CellDistributor object have any final say in the cell objects
         log_stage("FINALIZING CIRCUITS")
-
         logging.info(" * Circuit (Default)")
         self._cell_distributor.finalize()
         # Extra circuits
@@ -609,10 +367,10 @@ class Node:
             self._create_group_connections()
 
         # Check for Projection blocks
-        if self._config_parser.parsedProjections.count() > 0:
+        if len(SimConfig.projections) > 0:
             logging.info("Creating Projections connections...")
 
-        for pname, projection in compat.Map(self._config_parser.parsedProjections).items():
+        for pname, projection in SimConfig.projections.items():
             logging.info(" * %s", pname)
             projection = compat.Map(projection).as_dict(True)
 
@@ -650,11 +408,10 @@ class Node:
         """
         # Create all Projection connections if no Connection block uses
         # that source. Otherwise create only specified connections
-        connection_blocks = compat.Map(self._config_parser.parsedConnects)
         conn_src_pop = self._synapse_manager.current_population.src_name
         is_base_pop = self._synapse_manager.current_population.src_id == 0
         matching_conns = [
-            conn for conn in connection_blocks.values()
+            conn for conn in SimConfig.connections.values()
             if TargetSpec(conn.get("Source").s).match_filter(conn_src_pop, src_target, is_base_pop)
         ]
 
@@ -691,7 +448,7 @@ class Node:
         """
         conn_manager = conn_manager or self._synapse_manager
 
-        for conn_conf in compat.Map(self._config_parser.parsedConnects).values():
+        for conn_conf in SimConfig.connections.values():
             conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
 
             conn_src = conn_conf["Source"]
@@ -719,7 +476,7 @@ class Node:
         """
         log_stage("Gap Junctions create")
 
-        for name, projection in compat.Map(self._config_parser.parsedProjections).items():
+        for name, projection in SimConfig.projections.items():
             projection = compat.Map(projection).as_dict()
             if projection.get("Type") != "GapJunction":
                 continue
@@ -812,7 +569,6 @@ class Node:
         text and instantiate an actual stimulus object.
         """
         log_stage("Stimulus Apply.")
-        conf = self._config_parser
 
         # Setup of Electrode objects part of enable stimulus
         self._enable_electrodes()
@@ -828,7 +584,7 @@ class Node:
         # while we are at it, check if any stims are using extracellular
         has_extra_cellular = False
         stim_dict = {}
-        for stim_name, stim in compat.Map(conf.parsedStimuli).items():
+        for stim_name, stim in SimConfig.stimuli.items():
             if stim_name in stim_dict:
                 raise ConfigurationError("Stimulus declared more than once: %s", stim_name)
             stim_dict[stim_name] = stim  # keep as hoc obj for stim_manager
@@ -837,11 +593,12 @@ class Node:
 
         # Treat extracellular stimuli
         if has_extra_cellular:
-            self._stim_manager.interpretExtracellulars(conf.parsedInjects, conf.parsedStimuli)
+            self._stim_manager.interpretExtracellulars(SimConfig.injects.hoc_map,
+                                                       SimConfig.stimuli.hoc_map)
 
         logging.info("Instantiating Stimulus Injects:")
 
-        for name, inject in compat.Map(conf.parsedInjects).items():
+        for name, inject in SimConfig.injects.items():
             target_name = inject.get("Target").s
             stim_name = inject.get("Stimulus").s
             stim = stim_dict.get(stim_name)
@@ -859,19 +616,19 @@ class Node:
 
     # -
     def _enable_electrodes(self):
-        if self._corenrn_conf:
+        if SimConfig.use_coreneuron:
             # Coreneuron doesnt support electrodes
             return False
-        conf = self._config_parser
-        electrodes_path_o = None
-
-        if conf.parsedRun.exists("ElectrodesPath"):
-            electrodes_path_o = conf.parsedRun.get("ElectrodesPath")
-            logging.info("ElectrodeManager using electrodes from %s", electrodes_path_o.s)
+        electrode_path = self._run_conf.get("ElectrodesPath")
+        if electrode_path is not None:
+            logging.info("ElectrodeManager using electrodes from %s", electrode_path)
         else:
-            logging.info("No electrodes ospath. Extracellular class of stimuli will be unavailable")
+            logging.info("No electrodes path. Extracellular class of stimuli will be unavailable")
 
-        self._elec_manager = Nd.ElectrodeManager(electrodes_path_o, conf.parsedElectrodes)
+        self._elec_manager = Nd.ElectrodeManager(
+            electrode_path and Nd.String(electrode_path),
+            SimConfig.get_blueconfig_hoc_section("parsedElectrodes")
+        )
 
     # -
     @mpi_no_errors
@@ -879,18 +636,17 @@ class Node:
         """Activate replay according to BlueConfig. Call before connManager.finalize
         """
         log_stage("Handling Replay")
-        conf = self._config_parser
 
-        if self._corenrn_conf and bool(self._core_replay_file):
+        if SimConfig.use_coreneuron and bool(self._core_replay_file):
             logging.info(" -> [REPLAY] Reusing stim file from previous cycle")
             return
 
         replay_dict = {}
-        for stim_name, stim in compat.Map(conf.parsedStimuli).items():
+        for stim_name, stim in SimConfig.stimuli.items():
             if stim.get("Pattern").s == "SynapseReplay":
                 replay_dict[stim_name] = compat.Map(stim).as_dict(parse_strings=True)
 
-        for name, inject in compat.Map(conf.parsedInjects).items():
+        for name, inject in SimConfig.injects.items():
             inject = compat.Map(inject).as_dict(parse_strings=True)
             target = inject["Target"]
             source = inject.get("Source")
@@ -914,10 +670,10 @@ class Node:
         spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
 
         # For CoreNeuron, we should put the replays into a single file to be used as PatternStim
-        if self._corenrn_conf:
+        if SimConfig.use_coreneuron:
             # Initialize file if non-existing
             if not self._core_replay_file:
-                self._core_replay_file = ospath.join(self._output_root, 'pattern.dat')
+                self._core_replay_file = ospath.join(SimConfig.output_root, 'pattern.dat')
                 if MPI.rank == 0:
                     log_verbose("Creating pattern.dat file for CoreNEURON")
                     spike_manager.dump_ascii(self._core_replay_file)
@@ -941,7 +697,8 @@ class Node:
         # mod_mananger gets destroyed when function returns (not required)
         mod_manager = Nd.ModificationManager(self._target_manager)
         log_stage("Enabling modifications...")
-        for mod in compat.Map(self._config_parser.parsedModifications).values():
+        modifications = SimConfig.get_blueconfig_hoc_section("parsedModifications")
+        for mod in compat.Map(modifications).values():
             mod_manager.interpret(mod)
 
     # -
@@ -953,12 +710,12 @@ class Node:
         log_stage("Reports Enabling")
         n_errors = 0
         sim_end = self._run_conf["Duration"]
-        reports_conf = compat.Map(self._config_parser.parsedReports)
+        reports_conf = SimConfig.reports
         self._report_list = []
 
         # Report count for coreneuron
-        if self._corenrn_conf:
-            self._corenrn_conf.write_report_count(self._config_parser.parsedReports.count())
+        if SimConfig.use_coreneuron:
+            SimConfig.coreneuron.write_report_count(len(reports_conf))
 
         for rep_name, rep_conf in reports_conf.items():
             rep_conf = compat.Map(rep_conf).as_dict(parse_strings=True)
@@ -986,8 +743,7 @@ class Node:
                 continue
 
             electrode = self._elec_manager.getElectrode(rep_conf["Electrode"]) \
-                if not self._corenrn_conf and "Electrode" in rep_conf else None
-
+                if SimConfig.use_neuron and "Electrode" in rep_conf else None
             rep_target = TargetSpec(rep_conf["Target"])
             target = self._target_parser.getTarget(rep_target.name)
             population_name = (rep_target.population or self._target_spec.population
@@ -1002,8 +758,8 @@ class Node:
                 continue
 
             rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
-                                    "start, end, output_dir, electrode, scaling, isc, \
-                                     population_name")(
+                                    "start, end, output_dir, electrode, scaling, isc, "
+                                    "population_name")(
                 rep_name,
                 rep_type,  # rep type is case sensitive !!
                 rep_conf["ReportOn"],
@@ -1012,14 +768,14 @@ class Node:
                 rep_dt,
                 start_time,
                 end_time,
-                self._output_root,
+                SimConfig.output_root,
                 electrode,
                 Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
                 rep_conf.get("ISC", ""),
                 population_name
             )
 
-            if self._corenrn_conf and MPI.rank == 0:
+            if SimConfig.use_coreneuron and MPI.rank == 0:
                 corenrn_target = target
 
                 # 0=Compartment, 1=Cell, Section { 2=Axon, 3=Dendrite, 4=Apical }
@@ -1066,9 +822,9 @@ class Node:
                 core_report_params = (
                     (rep_name, rep_target.name) + rep_params[1:5]
                     + (target_type,) + rep_params[5:8]
-                    + (target.completegids(), self._corenrn_buff_size, population_name)
+                    + (target.completegids(), SimConfig.corenrn_buff_size, population_name)
                 )
-                self._corenrn_conf.write_report_config(*core_report_params)
+                SimConfig.coreneuron.write_report_config(*core_report_params)
 
             if not self._target_manager:
                 # When restoring with coreneuron we dont even need to initialize reports
@@ -1089,12 +845,12 @@ class Node:
 
                 # may need to take different actions based on report type
                 if rep_type.lower() == "compartment":
-                    report.addCompartmentReport(cell, point, spgid, bool(self._corenrn_conf))
+                    report.addCompartmentReport(cell, point, spgid, SimConfig.use_coreneuron)
                 elif rep_type.lower() == "summation":
                     report.addSummationReport(
-                        cell, point, target.isCellTarget(), spgid, bool(self._corenrn_conf))
+                        cell, point, target.isCellTarget(), spgid, SimConfig.use_coreneuron)
                 elif rep_type.lower() == "synapse":
-                    report.addSynapseReport(cell, point, spgid, bool(self._corenrn_conf))
+                    report.addSynapseReport(cell, point, spgid, SimConfig.use_coreneuron)
 
             # keep report object? Who has the ascii/hdf5 object? (1 per cell)
             # the bin object? (1 per report)
@@ -1105,11 +861,11 @@ class Node:
 
         MPI.check_no_errors()
 
-        if self._corenrn_conf:
-            self._corenrn_conf.write_spike_population(self._target_spec.population or
-                                                      self._default_population)
+        if SimConfig.use_coreneuron:
+            SimConfig.coreneuron.write_spike_population(self._target_spec.population or
+                                                        self._default_population)
 
-        if not self._corenrn_conf:
+        if not SimConfig.use_coreneuron:
             # Report Buffer Size hint in MB.
             reporting_buffer_size = self._run_conf.get("ReportingBufferSize")
             if reporting_buffer_size is not None:
@@ -1132,7 +888,7 @@ class Node:
         These are simple hoc statements that can be executed with minimal substitutions
         """
         logging.info("Executing neuron configures")
-        for config in compat.Map(self._config_parser.parsedConfigures).values():
+        for config in SimConfig.configures.values():
             target_name = config.get("Target").s
             configure_str = config.get("Configure").s
             log_verbose("Apply configuration \"%s\" on target %s",
@@ -1273,7 +1029,7 @@ class Node:
                 # load the ARTIFICIAL_CELL CoreConfig with a fake_gid in this empty rank
                 # to avoid errors during coreneuron model building
                 fake_gid = int(self._bbcore_fakegid_offset + self._pc.id())
-                self._cell_distributor.load_artificial_cell(fake_gid, SimConfig.core_config)
+                self._cell_distributor.load_artificial_cell(fake_gid, SimConfig.coreneuron)
                 # Nd.registerMapping doesn't work for this artificial cell as somatic attr is
                 # missing, so create a dummy mapping file manually, required for reporting
                 mapping_file = ospath.join(corenrn_data, "%d_3.dat" % fake_gid)
@@ -1285,12 +1041,12 @@ class Node:
                 self._bbcore_fakegid_offset += MPI.size
 
         if "BaseSeed" in self._run_conf:
-            self._corenrn_conf.write_sim_config(
+            SimConfig.coreneuron.write_sim_config(
                 corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
                 self._pr_cell_gid or -1, self._core_replay_file, self._run_conf.get("BaseSeed")
             )
         else:
-            self._corenrn_conf.write_sim_config(
+            SimConfig.coreneuron.write_sim_config(
                 corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
                 self._pr_cell_gid or -1, self._core_replay_file
             )
@@ -1308,7 +1064,7 @@ class Node:
         if SimConfig.use_neuron:
             timings = self._run_neuron()
             self.spike2file("out.dat")
-        if self._corenrn_conf:
+        if SimConfig.use_coreneuron:
             self.clear_model()
             self._run_coreneuron()
         return timings
@@ -1331,7 +1087,7 @@ class Node:
         opts_expanded = functools.reduce(operator.iconcat, opts, [])
 
         log_verbose("solve_core(..., %s)", ", ".join(opts_expanded))
-        self._corenrn_conf.psolve_core(*opts_expanded)
+        SimConfig.coreneuron.psolve_core(*opts_expanded)
 
     #
     def _sim_event_handlers(self, tstart, tstop):
@@ -1450,10 +1206,11 @@ class Node:
         if not avoid_creating_objs:
             bbss = Nd.BBSaveState()
             bbss.ignore()
-            if self._binreport_helper:
-                self._binreport_helper.clear()
-            if self._sonatareport_helper:
-                self._sonatareport_helper.clear()
+            if SimConfig.use_neuron:
+                if self._binreport_helper:
+                    self._binreport_helper.clear()
+                if self._sonatareport_helper:
+                    self._sonatareport_helper.clear()
 
         Node.__init__(self, None, None)  # Reset vars
 
@@ -1492,15 +1249,14 @@ class Node:
            if CircuitTarget is not specified in the configuration, use Mosaic target
         """
         target = self._target_spec
+        target_name = target.name or "Mosaic"
+        target_cells = self._target_parser.getTarget(target_name).getCellCount()
+        all_gids = self._target_parser.getTarget(target_name).completegids()
         if target.name:
-            target_cells = self._target_parser.getTarget(target.name).getCellCount()
-            all_gids = self._target_parser.getTarget(target.name).completegids()
             logging.info("CIRCUIT: Population: %s, Target: %s (%d Cells)",
                          target.population or "(default)", target.name, target_cells)
         else:
-            target_cells = self._target_parser.getTarget("Mosaic").getCellCount()
-            all_gids = self._target_parser.getTarget("Mosaic").completegids()
-            logging.warning("No Target defined. Loading ALL cells: %d", target_cells)
+            logging.warning("No CircuitTarget set. Loading ALL cells: %d", target_cells)
         return target_cells, max(all_gids) if all_gids else 0
 
     # -
@@ -1510,23 +1266,21 @@ class Node:
         Nodes will write in order, one after the other.
         """
         logging.info("Writing spikes to %s", outfile)
-        outfile = ospath.join(self._output_root, outfile)
+        output_root = SimConfig.output_root
+        outfile = ospath.join(output_root, outfile)
         spikevec, idvec = self._spike_vecs
         spikewriter = Nd.SpikeWriter()
         spikewriter.write(spikevec, idvec, outfile)
-
-        # Write spikes in SONATA format
-        if self._target_spec.population:
-            self._sonatareport_helper.write_spikes(spikevec, idvec, self._output_root,
-                                                   self._target_spec.population)
-        else:
-            self._sonatareport_helper.write_spikes(spikevec, idvec, self._output_root)
+        # SONATA SPIKES
+        population = self._target_spec.population
+        extra_args = (population,) if population else ()
+        self._sonatareport_helper.write_spikes(spikevec, idvec, output_root, *extra_args)
 
     def dump_cell_config(self):
         if not self._pr_cell_gid:
             return
         log_verbose("Dumping info about cell %d", self._pr_cell_gid)
-        simulator = "CoreNeuron" if self._corenrn_conf else "Neuron"
+        simulator = "CoreNeuron" if SimConfig.coreneuron else "Neuron"
         self._pc.prcellstate(self._pr_cell_gid, "py_{}_t{}".format(simulator, Nd.t))
 
     # -
@@ -1562,7 +1316,7 @@ class Node:
         Nd.MemUsage().print_mem_usage()
 
         # Coreneuron runs clear the model before starting
-        if not self._corenrn_conf or self._options.simulate_model is False:
+        if not SimConfig.coreneuron or SimConfig.simulate_model is False:
             self.clear_model(avoid_creating_objs=True)
 
         if SimConfig.delete_corenrn_data:
@@ -1576,8 +1330,8 @@ class Node:
                         os.unlink(data_folder)
                     else:
                         subprocess.call(['/bin/rm', '-rf', data_folder])
-                    os.remove(ospath.join(self._output_root, "sim.conf"))
-                    os.remove(ospath.join(self._output_root, "report.conf"))
+                    os.remove(ospath.join(SimConfig.output_root, "sim.conf"))
+                    os.remove(ospath.join(SimConfig.output_root, "report.conf"))
             MPI.barrier()
 
         logging.info("Finished")
@@ -1620,11 +1374,9 @@ class Neurodamus(Node):
         self._run_conf["EnableReports"] = enable_reports
         self._run_conf["AutoInit"] = auto_init
 
-        logging.info("Running Neurodamus with config from " + config_file)
-
-        if self._corenrn_conf and "Restore" in self._run_conf:
+        if SimConfig.coreneuron and "Restore" in self._run_conf:
             self._coreneuron_restore()
-        elif self._options.build_model:
+        elif SimConfig.build_model:
             self._instantiate_simulation()
 
         # In case an exception occurs we must prevent the destructor from cleaning
@@ -1645,7 +1397,7 @@ class Neurodamus(Node):
 
         log_stage("================ INSTANTIATING SIMULATION ================")
 
-        if not self._corenrn_conf:
+        if not SimConfig.coreneuron:
             self.check_resume()  # For CoreNeuron there _coreneuron_restore
 
         # Apply replay
@@ -1661,7 +1413,7 @@ class Neurodamus(Node):
         base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
 
         log_stage("Creating connections in the simulator")
-        self._synapse_manager.finalize(base_seed, self._corenrn_conf)
+        self._synapse_manager.finalize(base_seed, SimConfig.coreneuron)
 
         if self._gj_manager is not None:
             self._gj_manager.finalize()
@@ -1759,7 +1511,7 @@ class Neurodamus(Node):
             # Archive timers for this cycle
             TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
         if MPI.rank == 0:
-            self._merge_filesdat(n_cycles, self._output_root)
+            self._merge_filesdat(n_cycles, SimConfig.output_root)
 
     # -
     @timeit(name="finished Run")
@@ -1767,10 +1519,10 @@ class Neurodamus(Node):
         """Prepares and launches the simulation according to the loaded config.
         If '--only-build-model' option is set, simulation is skipped.
         """
-        if not self._options.simulate_model:
+        if not SimConfig.simulate_model:
             self.sim_init()
-            log_stage("============= SIMULATION (MODEL BUILD ONLY) =============")
-        elif not self._options.build_model:
+            log_stage("======== [SKIPPED] SIMULATION (MODEL BUILD ONLY) ========")
+        elif not SimConfig.build_model:
             log_stage("============= SIMULATION (SKIP MODEL BUILD) =============")
             self._run_coreneuron()
         else:

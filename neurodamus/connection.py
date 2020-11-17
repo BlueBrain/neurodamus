@@ -606,7 +606,7 @@ class SpontMinis(ArtificialStim):
         ips.setRate(rate_vec)
         # In Neuron we can limit the duration of the Minis since InhPoissonStim's are
         # recreated on restore. CoreNeuron reuses them and we dont know final duration
-        if SimConfig.core_config is None:
+        if SimConfig.use_neuron:
             ips.duration = Nd.tstop
 
         # A simple NetCon will do, as the synapse and cell are local.
