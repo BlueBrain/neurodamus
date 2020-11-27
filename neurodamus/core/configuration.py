@@ -266,6 +266,9 @@ def _global_parameters(config: _SimConfig, run_conf):
     props = ("celsius", "v_init", "extracellular_calcium", "tstop", "buffer_time")
     log_verbose("Global params: %s",
                 " | ".join(p + ": %s" % getattr(config, p) for p in props))
+    if "CompartmentsPerSection" in run_conf:
+        logging.warning("CompartmentsPerSection is currently not supported. "
+                        "If needed, please request with a detailed usecase.")
 
 
 @SimConfig.validator
@@ -330,6 +333,20 @@ def _single_vesicle(config: _SimConfig, run_conf):
     h.minis_single_vesicle_ProbAMPANMDA_EMS = minis_single_vesicle
     h.minis_single_vesicle_ProbGABAAB_EMS = minis_single_vesicle
     h.minis_single_vesicle_GluSynapse = minis_single_vesicle
+
+
+@SimConfig.validator
+def _randomize_gaba_risetime(config: _SimConfig, run_conf):
+    randomize_risetime = run_conf.get("RandomizeGabaRiseTime")
+    if randomize_risetime is None:
+        return
+    from neuron import h
+    h.load_file("GABAABHelper.hoc")
+    if not hasattr(h, "randomize_Gaba_risetime"):
+        raise NotImplementedError("Models don't support setting RandomizeGabaRiseTime. "
+                                  "Please load a more recent model or drop the option.")
+    assert randomize_risetime in ("True", "False", "0", "false")  # any non-"True" value is negative
+    h.randomize_Gaba_risetime = randomize_risetime
 
 
 @SimConfig.validator
