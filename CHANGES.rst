@@ -2,6 +2,25 @@
 Change Log
 ==========
 
+
+Version 2.1.2
+=============
+**Nov. 27, 2020**
+
+*New Features*
+  * Support for MinisSingleVesicle BlueConfig option (BBPBGLIB-660)
+  * Added options for setting SpikeLocation, SpikeThreshold, temperature and initial voltage
+
+*Fixes*
+  * Fixing call to write sim config
+  * Flush SONATA reports at the end of the simulation
+  * Documentation: launch notes
+  * Throw error when report tstart > tend
+
+*Improvements*
+  * CellDistributor: Refactoring cell loading
+
+
 Version 2.0.2
 =============
 **Oct. 28, 2020**
