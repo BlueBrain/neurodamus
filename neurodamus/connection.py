@@ -167,6 +167,7 @@ class Connection(ConnectionBase):
     _AMPAMDA_Helper = None
     _GABAAB_Helper = None
     ConnUtils = None  # Collection of hoc routines to speedup execution
+    _mod_overrides = set()
 
     @classmethod
     def _init_hmod(cls):
@@ -357,6 +358,13 @@ class Connection(ConnectionBase):
                 syn_obj.setup_delay_vecs(self._delay_vec, self._delayweight_vec)
 
         # Apply configurations to the synapses
+        # Set global options in mod overrides
+        for mod_override in self._mod_overrides:
+            for syn_option, value in SimConfig.synapse_options.items():
+                syn_opt_name = "{}_{}".format(syn_option, mod_override)
+                if hasattr(Nd.h, syn_opt_name):
+                    setattr(Nd.h, syn_opt_name, value)
+
         self._configure_synapses()
         return True
 
@@ -391,7 +399,9 @@ class Connection(ConnectionBase):
         """
         is_inh = params_obj.synType < 100
         if self._mod_override is not None:
-            override_helper = self._mod_override.get("ModOverride").s + "Helper"
+            mod_override = self._mod_override.get("ModOverride").s
+            self._mod_overrides.add(mod_override)
+            override_helper = mod_override + "Helper"
             helper_cls = getattr(Nd.h, override_helper)
             add_params = (self._mod_override,)
         else:

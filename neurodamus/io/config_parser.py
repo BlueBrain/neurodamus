@@ -12,7 +12,7 @@ class BlueConfigParserError(Exception):
 class BlueConfig:
     _known_sections = (
         "Run", "Connection", "Projection", "Stimulus", "StimulusInject", "Report",
-        "Electrode", "Modification", "NeuronConfigure", "Circuit"
+        "Electrode", "Modification", "NeuronConfigure", "Circuit", "Conditions",
     )
 
     def __init__(self, filename):

@@ -6,6 +6,7 @@ import logging
 import os
 import os.path
 from enum import Enum
+from ..io.config_parser import BlueConfig
 from ..utils import compat
 from ..utils.logging import log_verbose
 from ..utils.pyutils import ConfigT
@@ -101,6 +102,7 @@ class _SimConfig(object):
     # Hoc objects used
     _config_parser = None
     _parsed_run = None
+    _blueconfig = None  # new python BlueConfig parser
     _simconf = None
     rng_info = None
     coreneuron = None  # bridge to CoreNeuron, instance of CoreConfig
@@ -118,6 +120,7 @@ class _SimConfig(object):
     modelbuilding_steps = 1
     build_model = True
     simulate_model = True
+    synapse_options = {}
 
     _validators = []
 
@@ -132,6 +135,8 @@ class _SimConfig(object):
         cls.config_file = config_file
         cls._config_parser = cls._init_config_parser(config_file, Nd)
         cls._parsed_run = compat.Map(cls._config_parser.parsedRun)  # easy access to hoc Map
+        cls._blueconfig = BlueConfig(config_file)
+
         cls.run_conf = run_conf = cls._parsed_run.as_dict(parse_strings=True)
         cls.projections = compat.Map(cls._config_parser.parsedProjections)
         cls.connections = compat.Map(cls._config_parser.parsedConnects)
@@ -230,11 +235,9 @@ def _base_circuit(config: _SimConfig, run_conf):
 @SimConfig.validator
 def _extra_circuits(config: _SimConfig, run_conf):
     from . import EngineBase
-    from ..io.config_parser import BlueConfig
-    blueconfig = BlueConfig(config.config_file)
     extra_circuits = {}
 
-    for name, circuit_info in blueconfig.Circuit.items():
+    for name, circuit_info in config._blueconfig.Circuit.items():
         log_verbose("CIRCUIT %s (%s)", name, circuit_info.get("Engine", "(default)"))
         if "Engine" in circuit_info:
             # Replace name by actual engine
@@ -296,10 +299,56 @@ def _spike_parameters(config: _SimConfig, run_conf):
     if spike_location not in ["soma", "AIS"]:
         raise ConfigurationError("Possible options for SpikeLocation are 'soma' and 'AIS'")
     spike_threshold = run_conf.get("SpikeThreshold", -30)
-    log_verbose("Spike Location set to: {}".format(spike_location))
-    log_verbose("Spike Threshold set to: {}".format(spike_threshold))
+    log_verbose("Spike_Location = %s", spike_location)
+    log_verbose("Spike_Threshold = %s", spike_threshold)
     config.spike_location = spike_location
     config.spike_threshold = spike_threshold
+
+
+_condition_checks = {
+    "secondorder": (
+        (0, 1, 2),
+        ConfigurationError(
+            "Time integration method (SecondOrder value) {} is invalid. Valid options are:"
+            " '0' (implicitly backward euler),"
+            " '1' (crank-nicholson) and"
+            " '2' (crank-nicholson with fixed ion currents)")
+    ),
+    "randomize_Gaba_risetime": (
+        ("True", "False", "0", "false"),
+        ConfigurationError("randomize_Gaba_risetime must be True or False")
+    ),
+    "SYNAPSES__minis_single_vesicle": ((0, 1), None),
+    "SYNAPSES__init_depleted": ((0, 1), None),
+}
+
+
+@SimConfig.validator
+def _simulator_globals(config: _SimConfig, run_conf):
+    if not hasattr(config._blueconfig, "Conditions"):
+        return None
+    from neuron import h
+    # Hackish but some constants only live in the helper
+    h.load_file("GABAABHelper.hoc")
+
+    for group in config._blueconfig.Conditions.values():
+        for key, value in group.items():
+            validator = _condition_checks.get(key)
+            if validator:
+                config_exception = validator[1] or ConfigurationError(
+                    "Value {} not valid for key {}. Allowed: {}".format(value, key, validator[0])
+                )
+                if value not in validator[0]:
+                    raise config_exception
+            if key.startswith("SYNAPSES__"):
+                key = key[len("SYNAPSES__"):]
+                config.synapse_options[key] = value
+                log_verbose("SYNAPSES %s = %s", key, value)
+                for synapse_name in ("ProbAMPANMDA_EMS", "ProbGABAAB_EMS", "GluSynapse"):
+                    setattr(h, key + "_" + synapse_name, value)
+            else:
+                log_verbose("GLOBAL %s = %s", key, value)
+                setattr(h, key, value)
 
 
 @SimConfig.validator
@@ -307,17 +356,14 @@ def _second_order(config: _SimConfig, run_conf):
     second_order = run_conf.get("SecondOrder")
     if second_order is None:
         return None
+    second_order = int(second_order)
     if second_order in (0, 1, 2):
         from neuron import h
-        logging.info("SecondOrder = %g", second_order)
+        log_verbose("SecondOrder = %g", second_order)
         config.second_order = second_order
         h.secondorder = second_order
     else:
-        raise ConfigurationError(
-            ("Time integration method (SecondOrder value) {} is invalid. Valid options are:"
-             " '0' (implicitly backward euler),"
-             " '1' (crank-nicholson) and"
-             " '2' (crank-nicholson with fixed ion currents)").format(second_order))
+        raise _condition_checks["secondorder"][1]
 
 
 @SimConfig.validator
@@ -329,7 +375,7 @@ def _single_vesicle(config: _SimConfig, run_conf):
         raise NotImplementedError("Synapses don't implement minis_single_vesicle. "
                                   "More recent neurodamus model required.")
     minis_single_vesicle = int(run_conf["MinisSingleVesicle"])
-    logging.info("minis_single_vesicle = %d", minis_single_vesicle)
+    log_verbose("minis_single_vesicle = %d", minis_single_vesicle)
     h.minis_single_vesicle_ProbAMPANMDA_EMS = minis_single_vesicle
     h.minis_single_vesicle_ProbGABAAB_EMS = minis_single_vesicle
     h.minis_single_vesicle_GluSynapse = minis_single_vesicle
@@ -346,6 +392,7 @@ def _randomize_gaba_risetime(config: _SimConfig, run_conf):
         raise NotImplementedError("Models don't support setting RandomizeGabaRiseTime. "
                                   "Please load a more recent model or drop the option.")
     assert randomize_risetime in ("True", "False", "0", "false")  # any non-"True" value is negative
+    log_verbose("randomize_Gaba_risetime = %s", randomize_risetime)
     h.randomize_Gaba_risetime = randomize_risetime
 
 
@@ -356,7 +403,7 @@ def _current_dir(config: _SimConfig, run_conf):
     run_conf["BlueConfigDir"] = blueconfig_dir
 
     if curdir is None:
-        log_verbose("Setting CurrentDir to BlueConfig path [default]")
+        log_verbose("CurrentDir using BlueConfig path [default]")
         curdir = blueconfig_dir
     else:
         if not os.path.isabs(curdir):
