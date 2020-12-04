@@ -17,9 +17,11 @@ if (name_declared("simConfig")) {
     execute1("ext_simconfig = simConfig")  // Hoc way of doing late-binding
 }
 
+objref pyobj
+pyobj = new PythonObject()
 
 begintemplate Cell
-public init, printInfo, AddMorph, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
+public init, printInfo, execute_commands, AddHocMorph, AddMorph, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
 public locateBAPSite, getLongestBranch, locateSites2, enable_ttx, disable_ttx
 public soma, dend, apic, axon, myelin, nSecAxonal, nSecAxonalOrig, segCounts, rnglist, synHelperList
 public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
@@ -30,6 +32,8 @@ external lambda_f
 
 external ext_simconfig
 
+external pyobj
+
 /*!
  * Constructor to create a Cell object usable in the bbp toolchain
  *
@@ -37,16 +41,16 @@ external ext_simconfig
  * @param $s2 full path to morphology [optional] file to load in cell's geometric information
  */
 proc init() {
-	gid 	= 0
-	all 	= new SectionList()
-	somatic = new SectionList()
-	basal 	= new SectionList()
-	apical 	= new SectionList()
-	axonal 	= new SectionList()
+    gid     = 0
+    all     = new SectionList()
+    somatic = new SectionList()
+    basal   = new SectionList()
+    apical  = new SectionList()
+    axonal  = new SectionList()
     forall delete_section()
     if(numarg()>0) gid = $1
-	if(numarg()>1){
-		AddMorph($s2)
+    if(numarg()>1){
+        AddMorph($s2)
     }
 
     synlist = new List()
@@ -55,7 +59,30 @@ proc init() {
 }
 create soma[1], dend[1], apic[1], axon[1], myelin[1]
 
-proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, global_extension, pyobj, commands
+/**
+ *  Execute hoc commands in the cell's context.
+ *
+ * @param $o1 python List holding commands
+ */
+proc execute_commands () { localobj cmds
+    cmds = $o1
+    for i = 0, pyobj.len(cmds) - 1 {
+        execute(cmds._[i], this)
+    }
+}
+
+/**
+ *  Load hoc-based morphology.
+ *
+ * @param $o1 python List holding morphology hoc commands
+ */
+proc AddHocMorph() {
+    execute_commands($o1)
+    indexSections()
+    geom_nsec()
+}
+
+proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, global_extension, commands
     forall delete_section()
 
     strobj = new StringFunctions()
@@ -70,7 +97,7 @@ proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, global_ex
     // in case neurodamus is requesting another morphology type
     if( object_id(ext_simconfig) != 0 ) {
         global_extension = ext_simconfig.getMorphologyExtension()
-        if ( strcmp(global_extension.s, extension.s) != 0 ) {
+        if ( strcmp(global_extension.s, extension.s) != 0 && strcmp(global_extension.s, "")) {
             strobj.left(morphPath.s, strobj.len(morphPath.s) - strobj.len(extension.s) - 1)
             sprint(morphPath.s, "%s.%s", morphPath.s, global_extension.s)
             extension.s = global_extension.s
@@ -89,13 +116,7 @@ proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, global_ex
             printf( ".h5 morphlogy used but cannot load 'morphio_wrapper.py' from neurodamus-core" )
             quit()
         }
-        pyobj = new PythonObject()
-        commands = pyobj.morphio_wrapper.MorphIOWrapper(morphPath.s).get_hoc_commands()
-        for i = 0, pyobj.len(commands) - 1 {
-            execute(commands._[i], this)
-        }
-        indexSections()
-        geom_nsec()
+        AddHocMorph(pyobj.morphio_wrapper.MorphIOWrapper(morphPath.s).morph_as_hoc())
         return
     }
 

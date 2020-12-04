@@ -1,8 +1,12 @@
+"""
+A wrapper for MorphIO objects. Provides additional neuron
+features on top of MorphIO basic morphology handling.
+"""
 import logging
 import numpy as np
-from itertools import chain
 from morphio import SomaType, Option
 from morphio import Morphology
+from morphio.mut import Morphology as MutMorphology
 from numpy.linalg import eig, norm
 
 '''
@@ -156,37 +160,93 @@ class MorphIOWrapper:
         A class that wraps a MorphIO object and gets everything ready for HOC usage
     """
     morph_file = property(lambda self: self._morph_file)
-    morph_object = property(lambda self: self._morph)
+    morph = property(lambda self: self._morph)
+    section_index2name_dict = property(lambda self: self._sec_idx2names)
+    section_typeid_distrib = property(lambda self: self._sec_typeid_distrib)
 
     def __init__(self, input_file, options=Option.nrn_order):
         self._morph_file = input_file
-        self._morph = Morphology(input_file, options)
-        self._compute_soma()
+        self._options = options
+        self._build_morph()
+        self._sec_idx2names = {}
+        self._build_sec_idx2names()
+        self._build_sec_typeid_distrib()
 
-    def _compute_soma(self):
-        """ Re-computes the soma points as they are computed in import3d_gui.hoc """
+    def _build_morph(self):
+        """ Build immutable morphology, going trough mutable and applying neuron adjustemnts """
+
+        # We start out with a mutable morphology since we compute soma points
+        self._morph = MutMorphology(self._morph_file, self._options)
+
+        # Re-compute the soma points as they are computed in import3d_gui.hoc
         if self._morph.soma_type not in {SomaType.SOMA_SINGLE_POINT, SomaType.SOMA_SIMPLE_CONTOUR}:
             raise Exception(
                 'A H5 file morphology is not supposed to have a soma of type: {}'.format(
                     self._morph.soma_type))
         logging.debug("{} has soma type : {}".format(self._morph_file, self._morph.soma_type))
 
-        mutable_neuron = self._morph.as_mutable()
-
-        if mutable_neuron.soma_type == SomaType.SOMA_SINGLE_POINT:
+        if self._morph.soma_type == SomaType.SOMA_SINGLE_POINT:
             ''' See NRN import3d_gui.hoc -> instantiate()
                             -> sphere_rep(xx, yy, zz, dd) '''
-            single_point_sphere_to_circular_contour(mutable_neuron)
-        elif mutable_neuron.soma_type == SomaType.SOMA_SIMPLE_CONTOUR:
+            single_point_sphere_to_circular_contour(self._morph)
+        elif self._morph.soma_type == SomaType.SOMA_SIMPLE_CONTOUR:
             ''' See NRN import3d_gui.hoc -> instantiate()
                             -> contour2centroid(xx, yy, zz, dd, sec) '''
-            mean, new_xyz = contourcenter(mutable_neuron.soma.points)
-            mutable_neuron.soma.points, mutable_neuron.soma.diameters = contour2centroid(
+            mean, new_xyz = contourcenter(self._morph.soma.points)
+            self._morph.soma.points, self._morph.soma.diameters = contour2centroid(
                 mean, new_xyz)
 
-        self._morph = Morphology(mutable_neuron)
+        self._morph = Morphology(self._morph)
 
-    def get_hoc_commands(self):
+    def _build_sec_idx2names(self):
+        """ Build section index to nrn section names mapping on top of MorphIO section.id """
+
+        # soma is not accounted for in sections
+        self._sec_idx2names[0] = 'soma'
+
+        idx_adjust = 0  # section ids don't restart from 0 for each type in MorphIO
+        current_type = -1  # used for index adjustment
+        for i, sec in enumerate(self._morph.sections):
+            index = i + 1
+            # When we have a new type, update idx_adjust
+            if self._morph.section_types[sec.id] != current_type:
+                current_type = self._morph.section_types[sec.id]
+                idx_adjust = i
+
+            self._sec_idx2names[index] = self.name(current_type, i - idx_adjust)
+
+    def _build_sec_typeid_distrib(self):
+        """ Build typeid distribution on top of MorphIO section_types """
+
+        '''
+            This will hold np.array that will map the different type ids to the
+            start id wrt to section_types and their count. For example, axon type(2)
+            starts at section.id 0 and and totals 2724 sections.
+
+                | type_id | start_id  |   count   |
+                | ------- | --------- | --------- |
+                |      2  |        0  |     2724  |
+                |      3  |     2724  |       75  |
+
+
+            >>> _sec_typeid_distrib
+            array([[(2,    0, 2724)],
+                   [(3, 2724,   75)]],
+                  dtype=[('type_id', '<i8'), ('start_id', '<i8'), ('count', '<i8')])
+
+            Then use it like this:
+            >>> _sec_typeid_distrib[['type_id', 'start_id']]
+            array([[(2,    0)],
+                   [(3, 2724)]],
+                  dtype={'names':['type_id','start_id'],....}
+        '''
+        self._sec_typeid_distrib = np.dstack(np.unique(self._morph.section_types,
+                                                       return_counts=True,
+                                                       return_index=True))[0]
+        self._sec_typeid_distrib = np.concatenate(([(1, -1, 1)], self._sec_typeid_distrib), axis=0)
+        self._sec_typeid_distrib.dtype = [('type_id', '<i8'), ('start_id', '<i8'), ('count', '<i8')]
+
+    def morph_as_hoc(self):
         """ Uses morphio object to read and generate hoc commands just like import3d_gui.hoc """
 
         cmds = []
@@ -199,13 +259,12 @@ class MorphIOWrapper:
                 ( axon , 23 )
                 ( apic , 5  )
         '''
-        stype_freq = np.dstack(np.unique(self._morph.section_types, return_counts=True))
-        # generate create commands - (1,1) is to add soma since it's not in morphio object
-        for stype, sfreq in chain([(1, 1)], stype_freq[0]):
-            tstr = self.type2name(stype)
-            tstr1 = "create {}[{}]".format(tstr, sfreq)
+        # generate create commands
+        for [(type_id, count)] in self._sec_typeid_distrib[['type_id', 'count']]:
+            tstr = self.type2name(type_id)
+            tstr1 = "create {}[{}]".format(tstr, count)
             cmds.append(tstr1)
-            tstr1 = self.mksubset(stype, sfreq, tstr)
+            tstr1 = self.mksubset(type_id, count, tstr)
             cmds.append(tstr1)
 
         cmds.append("forall all.append")
@@ -216,21 +275,14 @@ class MorphIOWrapper:
                                      reversed(self._morph.soma.diameters))))
 
         # generate sections connect + their respective 3D points commands
-        idx_adjust = 0  # section ids don't restart from 0 for each type in MorphIO
-        current_type = -1  # used for index adjustment
-
         for i, sec in enumerate(self._morph.sections):
-            # When we have a new type, update idx_adjust
-            if self._morph.section_types[sec.id] != current_type:
-                current_type = self._morph.section_types[sec.id]
-                idx_adjust = i
-
-            tstr = self.name(current_type, i - idx_adjust)
+            index = i + 1
+            tstr = self._sec_idx2names[index]
 
             if not sec.is_root:
                 if sec.parent is not None:
-                    tstr1 = self.name(self._morph.section_types[sec.parent.id],
-                                      sec.parent.id - idx_adjust)
+                    parent_index = sec.parent.id + 1
+                    tstr1 = self._sec_idx2names[parent_index]
                     tstr1 = "{} connect {}(0), {}".format(tstr1, tstr, 1)
                     cmds.append(tstr1)
             else:
@@ -245,12 +297,13 @@ class MorphIOWrapper:
             # 3D point info
             cmds.extend("{} {{ pt3dadd({:g}, {:g}, {:g}, {:g}) }}".format(tstr, p[0], p[1], p[2], d)
                         for p, d in zip(sec.points, sec.diameters))
+
         return cmds
 
     '''
          [START] Python versions of import3d_gui.hoc helper functions
          Note: nrn function names will be kept for reference
-     '''
+    '''
 
     _type2name_dict = {1: "soma",
                        2: "axon",
@@ -267,8 +320,8 @@ class MorphIOWrapper:
                     else: "dend_{}".format(type)
         """
         return cls._type2name_dict.get(type_id) or \
-               ("minus_{}".format(-type_id) if type_id < 0
-                else "dend_{}".format(type_id))
+            ("minus_{}".format(-type_id) if type_id < 0
+             else "dend_{}".format(type_id))
 
     _mksubset_dict = {1: "somatic",
                       2: "axonal",
@@ -284,8 +337,8 @@ class MorphIOWrapper:
         :return: command to append section type to subset
         """
         tstr = cls._mksubset_dict.get(type_id) or \
-               ("minus_{}set".format(-type_id) if type_id < 0
-                else "dendritic_{}".format(type_id))
+            ("minus_{}set".format(-type_id) if type_id < 0
+             else "dendritic_{}".format(type_id))
 
         tstr1 = "forsec \"{}\" {}.append".format(type_name, tstr)
         return tstr1
