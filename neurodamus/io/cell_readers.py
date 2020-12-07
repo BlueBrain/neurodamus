@@ -6,6 +6,7 @@ import logging
 import numpy as np
 from collections import defaultdict
 from os import path as ospath
+from ..core import NeurodamusCore as Nd
 from ..core.configuration import ConfigurationError
 from ..metype import METypeManager, METypeItem
 from ..utils import compat
@@ -232,10 +233,13 @@ def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0):
         if node_reader.hasCurrents() else None
     holding_currents = node_reader.holding_currents(indexes) \
         if node_reader.hasCurrents() else None
+    # For Sonata and new emodel hoc template, we may need additional attributes for building metype
+    add_params_list = _getNeededAttributes(node_reader, circuit_conf.METypePath, emodels, indexes) \
+        if not is_mvd else None
 
     meinfo = METypeManager()
     meinfo.load_infoNP(gidvec, morpho_names, emodels, threshold_currents, holding_currents,
-                       exc_mini_freqs, inh_mini_freqs)
+                       exc_mini_freqs, inh_mini_freqs, add_params_list)
 
     return gidvec, meinfo, total_cells
 
@@ -290,3 +294,26 @@ def load_combo_metypes(combo_file, gidvec, combo_list, morph_list):
         raise CellReaderError("Errors found during processing of mecombo file. See log")
 
     return me_manager
+
+
+def _getNeededAttributes(node_reader, etype_path, emodels, indexes):
+    """
+    Read additional attributes required by emodel templates global var <emodel>__NeededAttributes
+    Args:
+        node_reader: Sonata node reader
+        etype_path: Location of emodel hoc templates
+        emodels: Array of emodel names
+        indexes: Array of corresponding indexes in the node file
+    """
+    add_params_list = []
+    for idx, emodel in zip(indexes, emodels):
+        Nd.load_hoc(ospath.join(etype_path, emodel))
+        attr_names = getattr(Nd, emodel + "_NeededAttributes", None)  # format "attr1;attr2;attr3"
+        vals = []
+        if attr_names is not None:
+            if not hasattr(node_reader, "getAttribute"):
+                logging.error("The MVDTool API is old. Please load a newer version of neurodamus")
+                raise ConfigurationError("Please load a newer version of neurodamus")
+            vals += [node_reader.getAttribute(name, idx, 1)[0] for name in attr_names.split(";")]
+        add_params_list.append(vals)
+    return add_params_list

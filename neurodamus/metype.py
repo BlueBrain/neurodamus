@@ -142,7 +142,8 @@ class Cell_V6(METype):
         Nd.load_hoc(ospath.join(etype_path, emodel))
         EModel = getattr(Nd, emodel)
         morpho_file = meinfos_v6.morph_name + "." + self.morpho_extension
-        self._cellref = EModel(gid, morpho_path, morpho_file)
+        add_params = meinfos_v6.add_params or ()
+        self._cellref = EModel(gid, morpho_path, morpho_file, *add_params)
         self._ccell = self._cellref
         self._synapses = Nd.List()
         self._syn_helper_list = Nd.List()
@@ -243,11 +244,11 @@ class METypeItem(object):
     """
     __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
                  "threshold_current", "holding_current",
-                 "exc_mini_frequency", "inh_mini_frequency")
+                 "exc_mini_frequency", "inh_mini_frequency", "add_params")
 
     def __init__(self, morph_name, layer=None, fullmtype=None, etype=None, emodel=None,
                  combo_name=None, threshold_current=0, holding_current=0,
-                 exc_mini_frequency=0, inh_mini_frequency=0):
+                 exc_mini_frequency=0, inh_mini_frequency=0, add_params=None):
         self.morph_name = morph_name
         self.layer = layer
         self.fullmtype = fullmtype
@@ -258,6 +259,7 @@ class METypeItem(object):
         self.holding_current = float(holding_current)
         self.exc_mini_frequency = float(exc_mini_frequency)
         self.inh_mini_frequency = float(inh_mini_frequency)
+        self.add_params = add_params
 
 
 class METypeManager(dict):
@@ -271,7 +273,7 @@ class METypeManager(dict):
 
     def load_infoNP(self, gidvec, morph_list, emodels,
                     threshold_currents=None, holding_currents=None,
-                    exc_mini_freqs=None, inh_mini_freqs=None):
+                    exc_mini_freqs=None, inh_mini_freqs=None, add_params_list=None):
         """Loads METype information in bulk from Numpy arrays
         """
         for idx, gid in enumerate(gidvec):
@@ -279,11 +281,13 @@ class METypeManager(dict):
             hd_current = holding_currents[idx] if holding_currents is not None else .0
             exc_mini_freq = exc_mini_freqs[idx] if exc_mini_freqs is not None else .0
             inh_mini_freq = inh_mini_freqs[idx] if inh_mini_freqs is not None else .0
+            add_params = add_params_list[idx] if add_params_list is not None else None
             self[int(gid)] = METypeItem(morph_list[idx], emodel=emodels[idx],
                                         threshold_current=th_current,
                                         holding_current=hd_current,
                                         exc_mini_frequency=exc_mini_freq,
-                                        inh_mini_frequency=inh_mini_freq)
+                                        inh_mini_frequency=inh_mini_freq,
+                                        add_params=add_params)
 
     def retrieve_info(self, gid):
         return self.get(gid) \
