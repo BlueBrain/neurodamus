@@ -622,6 +622,7 @@ class ConnectionManagerBase(object):
         _properties = {
             "Weight": "weight_factor",
             "SpontMinis": "minis_spont_rate",
+            "AxonalDelay": "axonal_delay"
         }
         syn_params = dict_filter_map(conn_config, _properties)
 

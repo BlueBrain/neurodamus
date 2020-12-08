@@ -65,16 +65,16 @@ class ConnectionBase:
     _match_index = re.compile(r"\[[0-9]+\]")
     """Regex to match indexes of hoc objects, useful to get mechs name"""
 
-    def __init__(self, sgid, tgid, src_pop_id=0, dst_pop_id=0, weight_factor=1):
+    def __init__(self, sgid, tgid, src_pop_id=0, dst_pop_id=0, weight_factor=1, axonal_delay=None):
         self.sgid = int(sgid or -1)
         self.tgid = int(tgid)
         self.locked = False
         self._disabled = False
         self._conn_params = np.recarray(1, dtype=dict(
-            names=['weight_factor', 'src_pop_id', 'dst_pop_id'],
-            formats=['f8', 'i4', 'i4']
+            names=['weight_factor', 'axonal_delay', 'src_pop_id', 'dst_pop_id'],
+            formats=['f8', 'f8', 'i4', 'i4']
         ))[0]
-        self._conn_params.put(0, (weight_factor, src_pop_id, dst_pop_id))
+        self._conn_params.put(0, (weight_factor, axonal_delay, src_pop_id, dst_pop_id))
         self._synapse_params = []
         # Initialized in specific routines
         self._netcons = None
@@ -89,6 +89,10 @@ class ConnectionBase:
     weight_factor = property(
         lambda self: self._conn_params.weight_factor,
         lambda self, weight: self._conn_params.__setattr__('weight_factor', weight)
+    )
+    axonal_delay = property(
+        lambda self: self._conn_params.axonal_delay,
+        lambda self, axonal_delay: self._conn_params.__setattr__('axonal_delay', axonal_delay)
     )
 
     # Subclasses must implement instantiation of their connections in the simulator
@@ -187,7 +191,8 @@ class Connection(ConnectionBase):
                  minis_spont_rate=None,
                  configuration=None,
                  mod_override=None,
-                 synapse_mode=SynapseMode.DUAL_SYNS):
+                 synapse_mode=SynapseMode.DUAL_SYNS,
+                 axonal_delay=None):
         """Creates a connection object
 
         Args:
@@ -202,7 +207,7 @@ class Connection(ConnectionBase):
 
         """
         h = self._init_hmod()
-        super().__init__(sgid, tgid, src_pop_id, dst_pop_id, weight_factor)
+        super().__init__(sgid, tgid, src_pop_id, dst_pop_id, weight_factor, axonal_delay)
         self._synapse_mode = synapse_mode
         self._mod_override = mod_override
         self._synapse_points = h.TPointList(tgid, 1)
@@ -372,7 +377,8 @@ class Connection(ConnectionBase):
         # See `neurodamus-core.Connection` for explanation. Also pc.gid_connect
         nc = self._pc.gid_connect(self.sgid, syn_obj)
         self.netcon_set_type(nc, syn_obj, NetConType.NC_PRESYN)
-        nc.delay = syn_params.delay
+        nc.delay = syn_params.delay if np.isnan(self._conn_params.axonal_delay) \
+            else self._conn_params.axonal_delay
         nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
         nc.threshold = SimConfig.spike_threshold
         self._netcons.append(nc)
