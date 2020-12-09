@@ -3,6 +3,19 @@ Change Log
 ==========
 
 
+Version 2.2.1
+=============
+**Dec. 10, 2020**
+
+*New features*
+  * Support for Section target reports
+
+*Improvements*
+  * Completely drop hoc ParallelNetManager
+  * Refactoring cell distribution: explicit V5 and V6 cells, gid offset, unified finalize
+  * Refactoring Sim-Config: New config validation framework
+
+
 Version 2.1.2
 =============
 **Nov. 27, 2020**
