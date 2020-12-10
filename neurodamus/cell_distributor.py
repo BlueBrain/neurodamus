@@ -8,6 +8,7 @@ from enum import Enum
 from io import StringIO
 from os import path as ospath
 import numpy
+import os
 
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
@@ -138,7 +139,8 @@ class CellManagerBase(object):
                                "Please perform a full load balance.")
 
         logging.info(" -> Distributing target '%s' using Load-Balance", target_spec.name)
-        self._binfo = Nd.BalanceInfo("cx_%s" % target_spec.simple_name, MPI.rank, MPI.size)
+        self._binfo = Nd.BalanceInfo(ospath.join(load_balancer.cx_datafolder, "cx_%s")
+                                     % target_spec.simple_name, MPI.rank, MPI.size)
 
         # self._binfo has gidlist, but gids can appear multiple times
         all_gids = numpy.unique(self._binfo.gids.as_numpy().astype("uint32"))
@@ -337,9 +339,10 @@ class LoadBalance:
     LoadBalance instances target the current system (cpu count) and circuit
     (nrn_path) BUT check/create load distribution for any given target.
     """
-    cxinfo_filename = "cxinfo.txt"
-    _cx_filename_tpl = "cx_%s.dat"
-    _cpu_assign_filename_tpl = "cx_%s.%s.dat"
+    cx_datafolder = "sim_conf"
+    cxinfo_filename = ospath.join(cx_datafolder, "cxinfo.txt")
+    _cx_filename_tpl = ospath.join(cx_datafolder, "cx_%s.dat")
+    _cpu_assign_filename_tpl = ospath.join(cx_datafolder, "cx_%s.%s.dat")
 
     def __init__(self, balance_mode, nrn_path, target_parser, target_cpu_count=None):
         self.lb_mode = balance_mode
@@ -419,6 +422,8 @@ class LoadBalance:
                      target_spec.name, previous_target, new_cx_filename)
 
         # Write the new cx file since Neuron needs it to do CPU assignment
+        if not ospath.isdir(ospath.dirname(new_cx_filename)):
+            os.mkdir(ospath.dirname(new_cx_filename))
         with open(new_cx_filename, "w") as newfile:
             self._write_msdat_dict(newfile, cx_other, target_gids)
         # Write updated cxinfo
@@ -507,6 +512,8 @@ class LoadBalance:
         """
         all_targets = sorted(set(self.cxinfo_targets) | set(targets_append))
 
+        if not ospath.isdir(ospath.dirname(self.cxinfo_filename)):
+            os.mkdir(ospath.dirname(self.cxinfo_filename))
         with open(self.cxinfo_filename, "w") as cxinfo:
             print(self.nrnpath, file=cxinfo)
             for tname in all_targets:
@@ -545,6 +552,8 @@ class LoadBalance:
 
         all_ranks_cx = MPI.py_gather(ostring.getvalue(), 0)
         if MPI.rank == 0:
+            if not ospath.isdir(ospath.dirname(out_filename)):
+                os.mkdir(ospath.dirname(out_filename))
             with open(out_filename, "w") as fp:
                 for cx_info in all_ranks_cx:
                     fp.write(cx_info)
@@ -584,7 +593,7 @@ class LoadBalance:
         """Assigns cells to 'prospective_hosts' cpus using mymetis3.
         """
         logging.info("Assigning Cells <-> %d CPUs [mymetis3]", self.target_cpu_count)
-        Nd.mymetis3("cx_%s" % target_name, self.target_cpu_count)
+        Nd.mymetis3(ospath.join(self.cx_datafolder, "cx_%s" % target_name), self.target_cpu_count)
 
     @staticmethod
     def _write_msdat(fp, ms):
