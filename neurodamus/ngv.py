@@ -2,6 +2,7 @@
 Module which defines and handles Glia Cells and connectivity
 """
 import logging
+import numpy as np
 import os.path
 
 from .cell_distributor import CellDistributor
@@ -14,6 +15,7 @@ from .core.configuration import GlobalConfig
 from .io.synapse_reader import SynapseParameters, SynReaderSynTool
 from .utils import bin_search
 from .utils.logging import log_verbose
+from .morphio_wrapper import MorphIOWrapper
 
 
 class Astrocyte(BaseCell):
@@ -32,8 +34,89 @@ class Astrocyte(BaseCell):
                    lambda self, val: setattr(self._cellref, 'gid', val))
 
     @staticmethod
+    def _er_as_hoc(morph_wrap):
+        """
+            Create hoc commands for Endoplasmic Reticulum data.
+            :param morph_wrap: MorphIOWrapper object holding MorphIO morphology object
+        """
+
+        '''
+            For example:
+                dend[0] { er_area_mcd = 0.21 er_vol_mcd = 0.4 }
+                dend[1] { er_area_mcd = 0.56 er_vol_mcd = 0.23 }
+                dend[2] { er_area_mcd = 1.3 er_vol_mcd = 0.78 }
+                dend[3] { er_area_mcd = 0.98 er_vol_mcd = 1.1 }
+        '''
+        cmds = []
+        cmds.extend(("{} {{ er_area_mcd = {:g} er_volume_mcd = {:g} }}".format(
+            morph_wrap.section_index2name_dict[sec_index],
+            er_area,
+            er_vol)
+            for sec_index, er_area, er_vol in zip(
+            morph_wrap.morph.endoplasmic_reticulum.section_indices,
+            morph_wrap.morph.endoplasmic_reticulum.surface_areas,
+            morph_wrap.morph.endoplasmic_reticulum.volumes)))
+        return cmds
+
+    @staticmethod
+    def _truncated_cone_surface_areas(perimeters, seg_lengths):
+        radii = perimeters / (2. * np.pi)
+        radii_starts = radii[:-1]
+        radii_ends = radii[1:]
+        slant_heights = np.sqrt(seg_lengths ** 2 + (radii_ends - radii_starts) ** 2)
+        return np.pi * (radii_starts + radii_ends) * slant_heights
+
+    @staticmethod
+    def _truncated_cone_volumes(diameters, seg_lengths):
+        r_begs = 0.5 * diameters[:-1]
+        r_ends = 0.5 * diameters[1:]
+        return (1. / 3.) * np.pi * (r_begs ** 2 + r_begs * r_ends + r_ends ** 2) * seg_lengths
+
+    @staticmethod
+    def _mcd_section_parameters(section):
+        points = section.points
+        diameters = section.diameters
+        perimeters = section.perimeters
+
+        segment_lengths = np.linalg.norm(points[1:] - points[:-1], axis=1)
+        segment_volumes = Astrocyte._truncated_cone_volumes(diameters, segment_lengths)
+        segment_surface_areas = Astrocyte._truncated_cone_surface_areas(perimeters, segment_lengths)
+
+        total_length = segment_lengths.sum()
+
+        # representing the entire section as a single cylinder
+        perimeter = segment_surface_areas.sum() / total_length
+        cross_sectional_area = segment_volumes.sum() / total_length
+
+        return section.id, perimeter, cross_sectional_area
+
+    @staticmethod
+    def _secparams_as_hoc(morph_wrap):
+        """
+            Create hoc commands for section parameters (perimeters & cross-sectional area)
+            :param morph_wrap: MorphIOWrapper object holding MorphIO morphology object
+        """
+
+        '''
+            For example:
+                dend[0] { perimeter_mcd = 32 cross_sectional_area_mcd = 33}
+                ....
+        '''
+        cmds = []
+        cmds.extend(("{} {{ perimeter_mcd = {:g} cross_sectional_area_mcd = {:g} }}".format(
+            morph_wrap.section_index2name_dict[morph_sec_index + 1],
+            sec_perimeter,
+            sec_xsect_area)
+            for morph_sec_index, sec_perimeter, sec_xsect_area in
+            (Astrocyte._mcd_section_parameters(sec) for sec in morph_wrap.morph.sections)))
+        return cmds
+
+    @staticmethod
     def _init_cell(gid, morph_file):
-        c = Nd.Cell(gid, morph_file)
+        c = Nd.Cell(gid)
+        m = MorphIOWrapper(morph_file)
+        c.AddHocMorph(m.morph_as_hoc())
+
         glut_list = []
         c.geom_nseg_fixed()
         c.geom_nsec()  # To recount all sections
@@ -45,6 +128,22 @@ class Astrocyte(BaseCell):
             glut = Nd.GlutReceive(sec(0.5), sec=sec)
             Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).mcd)
             glut_list.append(glut)
+
+        # Endoplasmic reticulum
+        c.execute_commands(Astrocyte._er_as_hoc(m))
+
+        # Section parameters (perimeters & cross-sectional area)
+        c.execute_commands(Astrocyte._secparams_as_hoc(m))
+
+        # # Print out mcd section parameters
+        # for sec in c.all:
+        #     if hasattr(sec(0.5), 'mcd'):
+        #         print("{}: \tP={:.4g}\tX-Area={:.4g}\tER[area={:.4g}\tvolume={:.4g}]".format(
+        #             sec,
+        #             sec(0.5).mcd.perimeter,
+        #             sec(0.5).mcd.cross_sectional_area,
+        #             sec(0.5).mcd.er_area,
+        #             sec(0.5).mcd.er_volume))
 
         soma = c.soma[0]
         soma.insert("glia_2013")
