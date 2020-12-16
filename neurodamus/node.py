@@ -3,7 +3,6 @@
 
 from __future__ import absolute_import
 import functools
-import itertools
 import logging
 import math
 import operator
@@ -15,14 +14,21 @@ from collections import namedtuple, defaultdict
 from .core import MPI, mpi_no_errors, return_neuron_timings
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, SimConfig
-from .core.configuration import ConfigurationError
+from .core._engine import EngineBase
+from .core.configuration import ConfigurationError, find_input_file
 from .cell_distributor import CellDistributor, LoadBalance, LoadBalanceMode
 from .io.cell_readers import TargetSpec
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
+from .target_manager import TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.timeit import TimerManager, timeit, timeit_rank0
+
+
+class METypeEngine(EngineBase):
+    CellManagerCls = CellDistributor
+    SynapseManagerCls = SynapseRuleManager
 
 
 class Node:
@@ -56,6 +62,7 @@ class Node:
             Nd.execute("cvode = new CVode()")
             SimConfig.init(config_file, options)
             self._run_conf = SimConfig.run_conf
+            self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
             if SimConfig.use_neuron:
                 self._binreport_helper = Nd.BinReportHelper(Nd.dt, True)
@@ -65,7 +72,6 @@ class Node:
             self._pr_cell_gid = self._run_conf.get("prCellGid")
             self._core_replay_file = ""
 
-        self._target_manager = None
         self._stim_list = None
         self._report_list = None
         self._stim_manager = None
@@ -76,6 +82,7 @@ class Node:
         self._synapse_manager = None   # type: SynapseRuleManager
         self._gj_manager = None        # type: GapJunctionManager
         self._cell_managers = {}       # dict {population -> cell_manager}
+        self._synapse_managers = []
         self._jumpstarters = []
 
     #
@@ -95,79 +102,15 @@ class Node:
     # -
     def check_resume(self):
         """Checks run_config for Restore info and sets simulation accordingly"""
-        if "Restore" not in self._run_conf:
+        if not SimConfig.restore:
             return
         _ = Nd.BBSaveState()
-        restore_path = self._run_conf["Restore"]
-        self._binreport_helper.restoretime(restore_path)
+        self._binreport_helper.restoretime(SimConfig.restore)
         logging.info("RESTORE: Recovered previous time: %.3f ms", Nd.t)
 
     # -
-    @mpi_no_errors
-    def multicycle_data_generation(self):
-        """To facilitate CoreNeuron data generation, we allow users to use ModelBuildingSteps to
-        indicate that the CircuitTarget should be split among multiple, smaller targets that will
-        be built step by step.
-
-        Returns:
-            list with generated targets, or empty if no splitting was done
-        """
-        if SimConfig.modelbuilding_steps == 1:
-            return False
-
-        target_spec = TargetSpec(self._run_conf["CircuitTarget"])
-        target = self._target_parser.getTarget(target_spec.name)
-        allgids = target.completegids()
-        new_targets = []
-
-        for cycle_i in range(SimConfig.modelbuilding_steps):
-            target = Nd.Target()
-            target.name = "{}_{}".format(target_spec.name, cycle_i)
-            new_targets.append(target)
-            self._target_parser.updateTargetList(target)
-
-        target_looper = itertools.cycle(new_targets)
-        for gid in allgids.x:
-            target = next(target_looper)
-            target.gidMembers.append(gid)
-
-        return new_targets
-
-    # -
-    @mpi_no_errors
-    @timeit(name="Target Load")
     def load_targets(self):
-        """Provided that the circuit location is known and whether a user.target file has been
-        specified, load any target files via a TargetParser.
-        Note that these will be moved into a TargetManager after the cells have been distributed,
-        instantiated, and potentially split.
-        """
-        log_stage("Loading Targets")
-        run_conf = self._run_conf
-        self._target_parser = Nd.TargetParser()
-        if MPI.rank == 0:
-            self._target_parser.isVerbose = 1
-
-        if self._base_circuit.CircuitPath:
-            start_target_file = ospath.join(run_conf["CircuitPath"], "start.target")
-            if not ospath.isfile(start_target_file):
-                logging.warning("DEPRECATION: start.target shall be within CircuitPath. "
-                                "Within nrnPath is deprecated and will be removed")
-                start_target_file = ospath.join(run_conf["nrnPath"], "start.target")  # fallback
-
-            if not ospath.isfile(start_target_file):
-                raise ConfigurationError("start.target not found! Check circuit.")
-
-            self._target_parser.open(start_target_file)
-
-        if "TargetFile" in run_conf:
-            user_target = self._find_input_file(run_conf["TargetFile"])
-            self._target_parser.open(user_target, True)
-
-        if MPI.rank == 0:
-            logging.info(" => Loaded %d targets", self._target_parser.targetList.count())
-            if GlobalConfig.verbosity >= 3:
-                self._target_parser.printCellCounts()
+        self._target_manager.load_targets(self._base_circuit)
 
     # -
     @mpi_no_errors
@@ -217,14 +160,19 @@ class Node:
         # Build load balancer as per requested options
         prosp_hosts = self._run_conf.get("ProspectiveHosts")
         load_balancer = LoadBalance(
-            lb_mode, self._run_conf["nrnPath"], self._target_parser, prosp_hosts)
+            lb_mode,
+            self._run_conf["nrnPath"],
+            self._target_manager.parser,
+            prosp_hosts
+        )
 
         if load_balancer.valid_load_distribution(target):
             logging.info("Load Balancing done.")
             return load_balancer
 
         logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
-        cell_dist = CellDistributor(self._base_circuit, self._target_parser, self._run_conf)
+        target_parser = self._target_manager.parser
+        cell_dist = CellDistributor(self._base_circuit, target_parser, self._run_conf)
         with load_balancer.generate_load_balance(target.simple_name, cell_dist):
             # Instantiate a basic circuit to evaluate complexities
             self.create_cells(cell_distributor=cell_dist)
@@ -263,39 +211,34 @@ class Node:
         logging.info(" * CIRCUIT (Default)")
         if cell_distributor is None:
             self._cell_distributor = CellDistributor(
-                self._base_circuit, self._target_parser, self._run_conf)
+                self._base_circuit, self._target_manager.parser, self._run_conf)
         else:
             self._cell_distributor = cell_distributor
 
         # Dont use default cell_distributor if engine is disabled
         if self._base_circuit.CircuitPath:
+            self._cell_managers["(default)"] = self._cell_distributor
             self._cell_distributor.load_nodes(load_balance)
+
         else:
             logging.info(" => Base Circuit has been DISABLED")
 
         # SUPPORT for extra/custom Circuits
         for name, circuit in self._extra_circuits.items():
-            logging.info(" * CIRCUIT %s", name)
-            engine = circuit.Engine
-            output = NotImplemented  # NotImplemented stands for 'use the default one'
-            if engine:
-                output = engine.load_nodes(circuit, self._target_parser, self._run_conf)
-            if output is NotImplemented:
-                self._cell_distributor.load_nodes()
+            logging.info(" * Circuit %s", name)
+            engine = circuit.Engine or METypeEngine
+            CellManagerCls = engine.CellManagerCls or SynapseRuleManager
+            cell_manager = CellManagerCls(circuit, self._target_manager.parser, self._run_conf)
+            self._cell_managers[name] = cell_manager
+            cell_manager.load_nodes()
 
-        # give a TargetManager the TargetParser's completed targetList
-        self._target_manager = Nd.TargetManager(
-            self._target_parser.targetList, self._cell_distributor)
+        self._target_manager.init_hoc_manager(self._cell_distributor)
 
-        # Let the CellDistributor object have any final say in the cell objects
-        log_stage("FINALIZING CIRCUITS")
-        logging.info(" * Circuit (Default)")
-        self._cell_distributor.finalize()
-        # Extra circuits
-        for engine in set(circuit.Engine for circuit in self._extra_circuits.values()
-                          if circuit.Engine is not None):
-            logging.info(" * Circuit %s", engine.__class__.__name__)
-            engine.finalize_cells()
+        # Let the cell managers have any final say in the cell objects
+        log_stage("FINALIZING CIRCUIT CELLS")
+        for circuit_name, cell_manager in self._cell_managers.items():
+            logging.info(" * Circuit %s", circuit_name)
+            cell_manager.finalize()
 
     # -
     @mpi_no_errors
@@ -303,56 +246,41 @@ class Node:
     def create_synapses(self):
         """Create synapses among the cells, handling connections that appear in the config file
         """
+        log_stage("LOADING CIRCUIT CONNECTIVITY")
+
         if self._base_circuit.nrnPath:
-            log_stage("Creating base circuit connections")
+            log_stage("Circuit (default)")
             self._create_connections()
         else:
             # Instantiate a bare synapse manager
             self._synapse_manager = SynapseRuleManager(
-                self._base_circuit, self._target_manager, self._cell_distributor)
-
-        # Loop over additional circuits to instantiate synapses
-        # Synapse creation is slightly more complex since there are three possible
-        # outcomes: NotImplemented (use default), None (no connections) or custom obj
-        extra_managers = []
+                self._base_circuit, self._target_manager.hoc, self._cell_distributor)
+        self._synapse_managers.append(self._synapse_manager)
 
         for name, circuit in self._extra_circuits.items():
-            log_stage("Creating connections for Extra Circuit %s", name)
-            engine = circuit.Engine
+            log_stage("Circuit %s", name)
+            Engine = circuit.Engine or METypeEngine
+            SynapseManagerCls = Engine.SynapseManagerCls or SynapseRuleManager
+            target_cell_manager = self._cell_managers[name]
 
-            if engine:
-                syn_manager = engine.create_synapses(
-                    circuit, self._target_manager, self._synapse_manager)
-                # If syn_manager is None then, either everything was done by create_synapses
-                # or SynaManagerCls was not set
-                if syn_manager is None:
-                    continue
-                if syn_manager is NotImplemented:
-                    syn_manager = self._synapse_manager
-                else:
-                    extra_managers.append(syn_manager)
-            else:
-                syn_manager = self._synapse_manager
+            syn_manager = SynapseManagerCls(circuit, self._target_manager.hoc, target_cell_manager)
+            self._synapse_managers.append(syn_manager)
 
             if circuit.nrnPath:
                 syn_manager.open_synapse_file(circuit.nrnPath, 1, int(circuit.PopulationID))
-                self._create_group_connections(syn_manager=syn_manager)
+                self._create_group_connections(synapse_manager=syn_manager)
             else:
                 logging.info(" * %s connections have been disabled", name)
 
-        # Configure all created connections in one go
-        logging.info("Configuring all Base Circuit connections...")
-        self._configure_connections()
-
-        for extra_syn_manager in extra_managers:
-            logging.info("Configuring all %s connections...", extra_syn_manager.__class__.__name__)
-            self._configure_connections(extra_syn_manager)
+        for syn_manager in self._synapse_managers:
+            logging.info("Configuring all %s connections...", syn_manager.__class__.__name__)
+            self._configure_connections(syn_manager)
 
     # -
     def _create_connections(self):
         with timeit(name="Synapse init"):
             self._synapse_manager = SynapseRuleManager(
-                self._base_circuit, self._target_manager, self._cell_distributor)
+                self._base_circuit, self._target_manager.hoc, self._cell_distributor)
 
         logging.info("Creating circuit connections...")
         self._create_group_connections()
@@ -488,7 +416,8 @@ class Node:
                 break
 
             self._gj_manager = GapJunctionManager(
-                projection, self._target_manager, self._cell_distributor, self._target_spec.name)
+                projection, self._target_manager.hoc, self._cell_distributor,
+                self._target_spec.name)
 
         if self._gj_manager is None:
             logging.info("No Gap-junctions found")
@@ -503,60 +432,14 @@ class Node:
         """Determine the full path to a projection.
         The "Path" might specify the filename. If not, it will attempt the old 'proj_nrn.h5'
         """
-        return self._find_input_file(proj_path,
-                                     ("ProjectionPath", "CircuitPath"),
-                                     alt_filename="proj_nrn.h5")
+        return self._find_config_file(
+            proj_path, ("ProjectionPath", "CircuitPath"), alt_filename="proj_nrn.h5")
 
-    def _find_input_file(self, filepath, path_conf_entries=(), alt_filename=None):
-        """Determine the full path of input files.
-
-        Relative paths are built from Run configuration entries, and never pwd.
-        In case filepath points to a file, alt_filename is disregarded
-
-        Args:
-            filepath: The relative or absolute path of the file to find
-            path_conf_entries: (tuple) Run configuration entries to build the absolute path
-            alt_filename: When the filepath is a directory, attempt finding a given filename
-        Returns:
-            The absolute path to the data file
-        Raises:
-            (ConfigurationError) If the file could not be found
-        """
-        path_conf_entries += ("CurrentDir", "BlueConfigDir")
-        run_config = self._run_conf
-
-        def try_find_in(fullpath):
-            if ospath.isfile(fullpath):
-                return fullpath
-            if alt_filename is not None:
-                alt_file_path = ospath.join(fullpath, alt_filename)
-                if ospath.isfile(alt_file_path):
-                    return alt_file_path
-            return None
-
-        if ospath.isabs(filepath):
-            # if it's absolute path then can be used immediately
-            file_found = try_find_in(filepath)
-        else:
-            file_found = None
-            for path_key in path_conf_entries:
-                if path_key in run_config:
-                    file_found = try_find_in(ospath.join(run_config.get(path_key), filepath))
-                    if file_found:
-                        break
-
-            # NOTE: Using PWD is DEPRECATED so this search should be removed in next version
-            if not file_found:
-                file_found = try_find_in(filepath)
-                if file_found:
-                    logging.warning("DEPRECATION: Input files shall NOT be relative to PWD."
-                                    "Please use full paths or set CurrentDir manually.")
-
-        if not file_found:
-            raise ConfigurationError("Could not find file %s" % filepath)
-
-        logging.debug("data file %s path: %s", filepath, file_found)
-        return file_found
+    def _find_config_file(self, filepath, path_conf_entries=(), alt_filename=None):
+        search_paths = [self._run_conf[path_key]
+                        for path_key in path_conf_entries
+                        if path_key in self._run_conf]
+        return find_input_file(filepath, search_paths, alt_filename)
 
     # -
     @mpi_no_errors
@@ -578,7 +461,7 @@ class Node:
         if "BaseSeed" in self._run_conf:
             extra_params.append(self._run_conf["BaseSeed"])
         self._stim_manager = Nd.StimulusManager(
-            self._target_manager, self._elec_manager, *extra_params)
+            self._target_manager.hoc, self._elec_manager, *extra_params)
 
         # build a dictionary of stims for faster lookup : useful when applying 10k+ stims
         # while we are at it, check if any stims are using extracellular
@@ -666,7 +549,7 @@ class Node:
 
     # -
     def _enable_replay(self, source, target, stim_conf, tshift=.0, delay=.0):
-        spike_filepath = self._find_input_file(stim_conf["SpikeFile"])
+        spike_filepath = find_input_file(stim_conf["SpikeFile"])
         spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
 
         # For CoreNeuron, we should put the replays into a single file to be used as PatternStim
@@ -695,7 +578,7 @@ class Node:
         expected to write the hoc directly, but rather access a library of already available mods.
         """
         # mod_mananger gets destroyed when function returns (not required)
-        mod_manager = Nd.ModificationManager(self._target_manager)
+        mod_manager = Nd.ModificationManager(self._target_manager.hoc)
         log_stage("Enabling modifications...")
         modifications = SimConfig.get_blueconfig_hoc_section("parsedModifications")
         for mod in compat.Map(modifications).values():
@@ -745,7 +628,7 @@ class Node:
             electrode = self._elec_manager.getElectrode(rep_conf["Electrode"]) \
                 if SimConfig.use_neuron and "Electrode" in rep_conf else None
             rep_target = TargetSpec(rep_conf["Target"])
-            target = self._target_parser.getTarget(rep_target.name)
+            target = self._target_manager.get_target(rep_target.name)
             population_name = (rep_target.population or self._target_spec.population
                                or self._default_population)
             log_verbose("Report on Population: %s, Target: %s", population_name, rep_target.name)
@@ -826,9 +709,8 @@ class Node:
                 )
                 SimConfig.coreneuron.write_report_config(*core_report_params)
 
-            if not self._target_manager:
-                # When restoring with coreneuron we dont even need to initialize reports
-                continue
+            if SimConfig.restore_coreneuron:
+                continue  # we dont even need to initialize reports
 
             report = Nd.Report(*rep_params)
 
@@ -1040,16 +922,11 @@ class Node:
             if self._bbcore_fakegid_offset is not None:
                 self._bbcore_fakegid_offset += MPI.size
 
-        if "BaseSeed" in self._run_conf:
-            SimConfig.coreneuron.write_sim_config(
-                corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
-                self._pr_cell_gid or -1, self._core_replay_file, self._run_conf.get("BaseSeed")
-            )
-        else:
-            SimConfig.coreneuron.write_sim_config(
-                corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
-                self._pr_cell_gid or -1, self._core_replay_file
-            )
+        optional_params = [self._run_conf["BaseSeed"]] if "BaseSeed" in self._run_conf else []
+        SimConfig.coreneuron.write_sim_config(
+            corenrn_output, corenrn_data, Nd.tstop, Nd.dt, fwd_skip,
+            self._pr_cell_gid or -1, self._core_replay_file, *optional_params
+        )
 
         logging.info(" => Dataset written to '{}'".format(corenrn_data))
 
@@ -1192,13 +1069,13 @@ class Node:
         round robin distribution, we want to clear the cells and synapses in order to have a
         clean slate on which to instantiate the balanced cells.
         """
-        if not self._target_parser:
+        if not self._target_manager.parser:
             # Target parser is the ground block. If not there model is clear
             return
 
         logging.info("Clearing model")
         self._pc.gid_clear()
-        self._target_parser.updateTargets(Nd.Vector())  # reset targets local cells
+        self._target_manager.parser.updateTargets(Nd.Vector())  # reset targets local cells
 
         if self._cell_distributor:
             self._cell_distributor.clear_cells()
@@ -1238,9 +1115,9 @@ class Node:
         Returns: The target list of points
         """
         if isinstance(target, str):
-            target = self._target_manager.getTarget(target)
+            target = self._target_manager.get_target(target)
         if target.isCellTarget() and cell_use_compartment_cast:
-            return self._target_manager.compartmentCast(target, "") \
+            return self._target_manager.hoc.compartmentCast(target, "") \
                 .getPointList(self._cell_distributor)
         return target.getPointList(self._cell_distributor)
 
@@ -1250,8 +1127,9 @@ class Node:
         """
         target = self._target_spec
         target_name = target.name or "Mosaic"
-        target_cells = self._target_parser.getTarget(target_name).getCellCount()
-        all_gids = self._target_parser.getTarget(target_name).completegids()
+        target_obj = self._target_manager.get_target(target_name)
+        target_cells = target_obj.getCellCount()
+        all_gids = target_obj.completegids()
         if target.name:
             logging.info("CIRCUIT: Population: %s, Target: %s (%d Cells)",
                          target.population or "(default)", target.name, target_cells)
@@ -1413,16 +1291,12 @@ class Neurodamus(Node):
         base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
 
         log_stage("Creating connections in the simulator")
-        self._synapse_manager.finalize(base_seed, SimConfig.coreneuron)
+        for syn_manager in self._synapse_managers:
+
+            syn_manager.finalize(base_seed, SimConfig.coreneuron)
 
         if self._gj_manager is not None:
             self._gj_manager.finalize()
-
-        for name, circuit in self._extra_circuits.items():
-            log_stage("Init connections for Extra Circuit %s", name)
-            engine = circuit.Engine
-            if engine not in (None, NotImplemented):
-                engine.finalize_synapses()
 
         self.enable_stimulus()
         self.enable_modifications()
@@ -1461,6 +1335,7 @@ class Neurodamus(Node):
 
     # -
     def _coreneuron_restore(self):
+
         self.load_targets()
         self.enable_replay()
         if self._run_conf["EnableReports"]:
@@ -1474,8 +1349,9 @@ class Neurodamus(Node):
         target_cells, max_gid = self.get_targetcell_count()
 
         # Check if user wants to build the model in several steps (only for CoreNeuron)
-        sub_targets = self.multicycle_data_generation()
-        n_cycles = len(sub_targets) if sub_targets else 1
+        target = TargetSpec(self._run_conf.get("CircuitTarget", "Mosaic")).name
+        n_cycles = SimConfig.modelbuilding_steps
+        sub_targets = self._target_manager.generate_subtargets(target, n_cycles)
 
         if SimConfig.use_coreneuron and target_cells/n_cycles < MPI.size and target_cells > 0:
             # coreneuron with no. ranks >> no. cells
@@ -1484,7 +1360,7 @@ class Neurodamus(Node):
             # currently not support engine plugin where target is loaded later
             self._bbcore_fakegid_offset = max_gid + 1
 
-        # Without multi-cycle, it's a trivial model build
+        # Without multi-cycle, it's a trivial model build. sub_targets is False
         if n_cycles == 1:
             self._build_model()
             return

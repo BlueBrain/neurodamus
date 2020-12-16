@@ -234,8 +234,10 @@ class ConnectionManagerBase(object):
     _circuit_target = None  # gaj junctions require the target obj to validate src cells
     _synapse_mode = SynapseMode.default
 
+    cell_manager = property(lambda self: self._cell_manager)
+
     # -
-    def __init__(self, circuit_conf, target_manager, cell_distributor, base_manager=None):
+    def __init__(self, circuit_conf, target_manager, cell_manager, base_manager=None):
         """Base class c-tor for connections (Synapses & Gap-Junctions)
 
         Args:
@@ -246,7 +248,7 @@ class ConnectionManagerBase(object):
             base_manager: In other engines, this is the base engine cell manager
         """
         self._target_manager = target_manager
-        self._cell_distibutor = cell_distributor
+        self._cell_manager = cell_manager
 
         self._base_population = None  # the node population name that base connectivity targets
         self._populations = {}  # Multiple edge populations support. key is a tuple (src, dst)
@@ -255,7 +257,7 @@ class ConnectionManagerBase(object):
         self._disabled_conns = defaultdict(list)
 
         self._synapse_reader = None
-        self._local_gids = cell_distributor.local_gids
+        self._local_gids = cell_manager.local_gids
         self._total_connections = 0
         self.circuit_conf = circuit_conf
         self.base_manager = base_manager
@@ -937,7 +939,7 @@ class SynapseRuleManager(ConnectionManagerBase):
         By default it calls finalize on each cell.
         Note: *args normally contains the REPLAY mode but may differ for other types
         """
-        cell_distributor = self._cell_distibutor
+        cell_distributor = self._cell_manager
         metype = cell_distributor.getMEType(tgid)
         spgid = cell_distributor.getSpGid(tgid)
         n_created_conns = 0
@@ -1059,7 +1061,7 @@ class GapJunctionManager(ConnectionManagerBase):
         super().finalize(conn_type="Gap-Junctions")
 
     def _finalize_conns(self, tgid, conns, *_, **_kw):
-        metype = self._cell_distibutor.getMEType(tgid)
+        metype = self._cell_manager.getMEType(tgid)
 
         if self._gj_offsets is None:
             for conn in reversed(conns):

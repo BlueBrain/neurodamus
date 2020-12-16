@@ -108,7 +108,10 @@ class _SimConfig(object):
     coreneuron = None  # bridge to CoreNeuron, instance of CoreConfig
 
     # In principle not all vars need to be required as they'r set by the parameter functions
+    blueconfig_dir = None
+    current_dir = None
     buffer_time = 25
+    restore = None
     extracellular_calcium = None
     secondorder = None
     use_coreneuron = False
@@ -124,6 +127,8 @@ class _SimConfig(object):
 
     _validators = []
 
+    restore_coreneuron = property(lambda self: self.use_coreneuron and bool(self.restore))
+
     @classmethod
     def init(cls, config_file, cli_options):
         # Import these objects scope-level to avoid cross module dependency
@@ -136,6 +141,7 @@ class _SimConfig(object):
         cls._config_parser = cls._init_config_parser(config_file, Nd)
         cls._parsed_run = compat.Map(cls._config_parser.parsedRun)  # easy access to hoc Map
         cls._blueconfig = BlueConfig(config_file)
+        cls.blueconfig_dir = os.path.dirname(os.path.abspath(config_file))
 
         cls.run_conf = run_conf = cls._parsed_run.as_dict(parse_strings=True)
         cls.projections = compat.Map(cls._config_parser.parsedProjections)
@@ -194,6 +200,49 @@ class _SimConfig(object):
 
 # Singleton
 SimConfig = _SimConfig()
+
+
+def find_input_file(filepath, search_paths=(), alt_filename=None):
+    """Determine the full path of input files.
+
+    Relative paths are built from Run configuration entries, and never pwd.
+    In case filepath points to a file, alt_filename is disregarded
+
+    Args:
+        filepath: The relative or absolute path of the file to find
+        path_conf_entries: (tuple) Run configuration entries to build the absolute path
+        alt_filename: When the filepath is a directory, attempt finding a given filename
+    Returns:
+        The absolute path to the data file
+    Raises:
+        (ConfigurationError) If the file could not be found
+    """
+    search_paths += (SimConfig.current_dir, SimConfig.blueconfig_dir)
+
+    def try_find_in(fullpath):
+        if os.path.isfile(fullpath):
+            return fullpath
+        if alt_filename is not None:
+            alt_file_path = os.path.join(fullpath, alt_filename)
+            if os.path.isfile(alt_file_path):
+                return alt_file_path
+        return None
+
+    if os.path.isabs(filepath):
+        # if it's absolute path then can be used immediately
+        file_found = try_find_in(filepath)
+    else:
+        file_found = None
+        for path in search_paths:
+            file_found = try_find_in(os.path.join(path, filepath))
+            if file_found:
+                break
+
+    if not file_found:
+        raise ConfigurationError("Could not find file %s" % filepath)
+
+    logging.debug("data file %s path: %s", filepath, file_found)
+    return file_found
 
 
 def _make_circuit_config(config_dict, req_morphology=True):
@@ -399,12 +448,11 @@ def _randomize_gaba_risetime(config: _SimConfig, run_conf):
 @SimConfig.validator
 def _current_dir(config: _SimConfig, run_conf):
     curdir = run_conf.get("CurrentDir")
-    blueconfig_dir = os.path.abspath(os.path.dirname(config.config_file))
-    run_conf["BlueConfigDir"] = blueconfig_dir
+    run_conf["BlueConfigDir"] = config.blueconfig_dir
 
     if curdir is None:
         log_verbose("CurrentDir using BlueConfig path [default]")
-        curdir = blueconfig_dir
+        curdir = config.blueconfig_dir
     else:
         if not os.path.isabs(curdir):
             if curdir == ".":
@@ -441,6 +489,15 @@ def _output_root(config: _SimConfig, run_conf):
     log_verbose("OutputRoot = %s", output_path)
     run_conf["OutputRoot"] = output_path
     config.output_root = output_path
+
+
+@SimConfig.validator
+def _check_restore(config: _SimConfig, run_conf):
+    if "Restore" not in run_conf:
+        return
+    restore_path = os.path.join(config.current_dir, run_conf["Restore"])
+    assert os.path.isdir(os.path.dirname(restore_path))
+    config.restore = restore_path
 
 
 @SimConfig.validator

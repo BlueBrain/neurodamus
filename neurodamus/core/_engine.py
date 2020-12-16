@@ -28,12 +28,8 @@ class _EngineMeta(type):
         """Each engine is a singleton"""
         if name is None:
             return True  # Not setting means use default
-        if name in cls.__instances:
-            return cls.__instances[name]
         if name in cls.__engines:
-            logging.info("Instantiating Neurodamus Engine: %s", name)
-            obj = cls.__instances[name] = cls.__engines[name]()
-            return obj
+            return cls.__engines[name]
         raise RuntimeError("Engine could not be found: " + name)
 
     def find_plugins(cls):
@@ -72,58 +68,17 @@ class EngineBase(metaclass=_EngineMeta):
     CellManagerCls = None
     SynapseManagerCls = None
 
-    def __init__(self):
-        # For each engine a single cell manager and single synapse_manager exist
-        # this makes possible to read several circuits of the same kind and
-        # instantiate cells/connections in one go, per engine
-        # They are lazily instantiated as Engines have full freedom to override the
-        # methods below
-        self._cell_manager = None
-        self._synapse_manager = None
-
-    cell_manager = property(lambda self: self._cell_manager)
-    synapse_manager = property(lambda self: self._synapse_manager)
-
-    def load_nodes(self, circuit_conf, target_parser, run_conf):
-        """Routine responsible for creating cells
-
-        If not overridden, it will ensure a cell_manager exists and call
-        load_cells() and finalize() on it.
-        """
-        if not self.CellManagerCls:
+    @classmethod
+    def new_cell_manager(cls, circuit_conf, target_parser, run_conf):
+        if not cls.CellManagerCls:
             return NotImplemented
-        if not self._cell_manager:
-            self._cell_manager = self.CellManagerCls(circuit_conf, target_parser, run_conf)
-        self._cell_manager.load_nodes()
+        return cls.CellManagerCls(circuit_conf, target_parser, run_conf)
 
-    def finalize_cells(self):
-        self._cell_manager.finalize()
-
-    def create_synapses(self, circuit_conf, target_manager, base_manager):
-        """Routine responsible for creating synapses.
-
-        If the user doesnt override it will, by default, attempt to create a
-        SynapseManagerCls instance and return it. Node uses it to instantiate
-        connections with the same routine it uses for the built-in SynapseManager.
-
-        Returns: None in case no further actions should be taken, NotImplemented
-        if the system SynapseManager should be used, or an instance of SynapseManager
-        for a default instantiation over the custom container
+    def new_synapse_manager(cls, circuit_conf, target_manager, cell_manager):
+        """Routine responsible for creating connection managers.
         """
-        if self.CellManagerCls is None:
-            if self.SynapseManagerCls is None:
-                return NotImplemented
-            else:
-                raise RuntimeError("Circuit Not Initialized. Please create_cells() first")
-        if self.SynapseManagerCls is None:
-            return None
-
-        if not self._synapse_manager:
-            self._synapse_manager = self.SynapseManagerCls(circuit_conf, target_manager,
-                                                           self._cell_manager,
-                                                           base_manager=base_manager)
-
-        return self._synapse_manager
-
-    def finalize_synapses(self):
-        self._synapse_manager.finalize()
+        if not cls.SynapseManagerCls:
+            return NotImplemented
+        if cell_manager is None:
+            raise RuntimeError("Circuit Not Initialized. Please load_nodes() first")
+        return cls.SynapseManagerCls(circuit_conf, target_manager, cell_manager)
