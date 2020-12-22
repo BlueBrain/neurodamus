@@ -280,7 +280,7 @@ class Connection(ConnectionBase):
         """
         assert self._netcons is None, "Replay must be setup prior to finalize()"
         hoc_tvec = Nd.Vector(tvec[tvec >= start_delay])
-        logging.debug("Replaying %d spikes on %d", hoc_tvec.size(), self.sgid)
+        logging.debug("Replaying %d spikes on %d - %d", hoc_tvec.size(), self.sgid, self.tgid)
         logging.debug(" > First replay event for connection at %f", hoc_tvec.x[0])
 
         self._replay.add_spikes(hoc_tvec)
@@ -288,7 +288,7 @@ class Connection(ConnectionBase):
 
     # -
     def finalize(self, cell, base_seed=0, spgid=None, skip_disabled=False, *,
-                       replay_mode=ReplayMode.AS_REQUIRED, is_projection=False):
+                       replay_mode=ReplayMode.AS_REQUIRED, attach_src_cell=True):
         """ When all parameters are set, create synapses and netcons
 
         Args:
@@ -339,9 +339,10 @@ class Connection(ConnectionBase):
             with Nd.section_in_stack(sec):
                 syn_obj = self._create_synapse(cell, syn_params, x,
                                                self._synapse_ids[syn_i], base_seed)
-                self._synapses.append(syn_obj)
+            self._synapses.append(syn_obj)
+            # syn_obj.verboseLevel = 1  # debugging purposes
 
-            if not is_projection:
+            if attach_src_cell:
                 self._attach_source_cell(syn_obj, syn_params)
 
             if self._spont_minis is not None:

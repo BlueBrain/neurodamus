@@ -850,7 +850,8 @@ class ConnectionManagerBase(object):
         n_created_conns = 0
 
         for popid, pop in self._populations.items():
-            conn_params["is_projection"] = pop.src_id != 0
+            conn_params["attach_src_cell"] = (pop.src_id == 0
+                                              or (pop.src_name is None and sim_corenrn))
             for tgid, conns in ProgressBar.iter(pop.items(), name="Pop:" + str(popid)):
                 n_created_conns += self._finalize_conns(
                     tgid, conns, base_seed, sim_corenrn, **conn_params)
