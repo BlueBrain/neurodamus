@@ -24,14 +24,19 @@ class BlueConfig:
         self._sections['Run'] = self._sections['Run']['Default']
 
     def _parse_top(self, f):
+        is_comment = False
         for line in f:
             line = line.strip()
-            if not line or line == '#':
+            if not line:
                 continue
             if line[0] == '#':
+                is_comment = True
+                continue
+            if line[0] == '{' and is_comment:
                 logging.debug("Skipping BlueConfig section %s", line)
                 self._skip_section(f)
                 continue
+            is_comment = False
             header_parts = line.split()
             if len(header_parts) != 2:
                 raise BlueConfigParserError("Invalid section header: " + line)
@@ -68,7 +73,6 @@ class BlueConfig:
 
     @staticmethod
     def _skip_section(file_iter):
-        next(file_iter)  # skip {
         for line in file_iter:
             line = line.strip(" \t#")
             if line.startswith("}"):
