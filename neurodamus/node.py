@@ -84,6 +84,7 @@ class Node:
         self._cell_managers = {}       # dict {population -> cell_manager}
         self._synapse_managers = []
         self._jumpstarters = []
+        self._cell_state_dump_t = None
 
     #
     # public 'read-only' properties - object modification on user responsibility
@@ -1044,6 +1045,8 @@ class Node:
         # Run until the end
         if t < tstop:
             self._psolve_loop(tstop)
+            self.dump_cell_config()
+
         # Final flush
         self._sonatareport_helper.flush()
 
@@ -1157,9 +1160,12 @@ class Node:
     def dump_cell_config(self):
         if not self._pr_cell_gid:
             return
+        if self._cell_state_dump_t == Nd.t:   # avoid duplicating output
+            return
         log_verbose("Dumping info about cell %d", self._pr_cell_gid)
         simulator = "CoreNeuron" if SimConfig.coreneuron else "Neuron"
         self._pc.prcellstate(self._pr_cell_gid, "py_{}_t{}".format(simulator, Nd.t))
+        self._cell_state_dump_t = Nd.t
 
     # -
     def dump_circuit_config(self, suffix="nrn_python"):
