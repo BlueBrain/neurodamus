@@ -92,6 +92,7 @@ class CellManagerBase(object):
     local_gids = property(lambda self: self._local_nodes.final_gids())
     total_cells = property(lambda self: self._total_cells)
     cells = property(lambda self: self._gid2cell.values())
+    gid2cell = property(lambda self: self._gid2cell)
     pc = property(lambda self: self._pc)
 
     # Compatibility with neurodamus-core (used by TargetManager, CompMapping)
@@ -235,10 +236,10 @@ class CellManagerBase(object):
                 cell.CellRef.clear()
         self._gid2cell.clear()
 
-    def record_spikes(self, gids=None):
+    def record_spikes(self, gids=None, append_spike_vecs=None):
         """Setup recording of spike events (crossing of threshold) for cells on this node
         """
-        spikevec, idvec = Nd.Vector(), Nd.Vector()
+        spikevec, idvec = append_spike_vecs or (Nd.Vector(), Nd.Vector())
         if gids is None:
             gids = self._local_nodes.final_gids()
 

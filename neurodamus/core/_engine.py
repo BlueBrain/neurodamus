@@ -82,3 +82,10 @@ class EngineBase(metaclass=_EngineMeta):
         if cell_manager is None:
             raise RuntimeError("Circuit Not Initialized. Please load_nodes() first")
         return cls.SynapseManagerCls(circuit_conf, target_manager, cell_manager)
+
+    def report(report, target_parser, rep_target, corenrn_conf, cell_manager):
+        """Create reports for this type of engine.
+        """
+        if cell_manager is None:
+            raise RuntimeError("Circuit Not Initialized. Please load_nodes() first")
+        return NotImplemented

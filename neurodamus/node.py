@@ -275,7 +275,16 @@ class Node:
             conn_manager.open_synapse_file(bonus_file, n_synapse_files)
             conn_manager.create_connections()
 
-        # Check for Projection blocks
+        # Connect the projections if any
+        self._connect_projections(conn_manager)
+
+        logging.info("Configuring connections...")
+        conn_manager.configure_connections()
+
+    # -
+    def _connect_projections(self, conn_manager):
+        """Check for Projection blocks
+        """
         if len(SimConfig.projections) > 0:
             logging.info("Creating Projections connections...")
 
@@ -309,9 +318,6 @@ class Node:
 
             conn_manager.open_synapse_file(nrn_path, 1, pop_id)
             conn_manager.create_connections(src_target=projection.get("Source"))
-
-        logging.info("Configuring connections...")
-        conn_manager.configure_connections()
 
     # -
     @mpi_no_errors
@@ -484,8 +490,9 @@ class Node:
                     with open(self._core_replay_file, "a") as f:
                         spike_manager.dump_ascii(f)
         else:
-            # Otherwise just apply it to the current connections
-            self._synapse_managers[0].replay(spike_manager, source, target, delay)
+            # Apply replay to all connections (default and extra circuits)
+            for syn_manager in self._synapse_managers:
+                syn_manager.replay(spike_manager, source, target, delay)
 
     # -
     @mpi_no_errors
@@ -652,6 +659,16 @@ class Node:
                 elif rep_type.lower() == "synapse":
                     report.addSynapseReport(cell, point, spgid, SimConfig.use_coreneuron)
 
+            for name, circuit in self._extra_circuits.items():
+                log_stage("Enabling Reports for Extra Circuit %s", name)
+                cell_manager = self._cell_managers[name]
+                engine = circuit.Engine or METypeEngine
+                engine.report(report,
+                              self._target_manager,
+                              rep_target,
+                              SimConfig.use_coreneuron,
+                              cell_manager)
+
             # keep report object? Who has the ascii/hdf5 object? (1 per cell)
             # the bin object? (1 per report)
             self._report_list.append(report)
@@ -783,7 +800,12 @@ class Node:
             Nd.t = 0
             Nd.frecord_init()
 
+        # create a spike_id vector which stores the pairs for spikes and timings for
+        # every engine
         self._spike_vecs = self._cell_distributor.record_spikes()
+        for name, circuit in self._extra_circuits.items():
+            self._cell_managers[name].record_spikes(append_spike_vecs=self._spike_vecs)
+
         self._pc.timeout(200)  # increase by 10x
 
         if restore_path:
@@ -1068,6 +1090,7 @@ class Node:
         output_root = SimConfig.output_root
         outfile = ospath.join(output_root, outfile)
         spikevec, idvec = self._spike_vecs
+
         spikewriter = Nd.SpikeWriter()
         spikewriter.write(spikevec, idvec, outfile)
         # SONATA SPIKES

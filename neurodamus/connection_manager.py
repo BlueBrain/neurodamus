@@ -938,6 +938,9 @@ class ConnectionManagerBase(object):
         """Method finalizing a gid connections, invoked for each target gid.
         """
 
+    def replay(self, *_, **_kw):
+        logging.warning("Replay is not available in %s", self.__class__.__name__)
+
 
 # ######################################################################
 # SynapseRuleManager
