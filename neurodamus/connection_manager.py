@@ -235,6 +235,7 @@ class ConnectionManagerBase(object):
     _synapse_mode = SynapseMode.default
 
     cell_manager = property(lambda self: self._cell_manager)
+    is_file_open = property(lambda self: bool(self._synapse_reader))
 
     # -
     def __init__(self, circuit_conf, target_manager, cell_manager, base_manager=None):
@@ -268,6 +269,8 @@ class ConnectionManagerBase(object):
 
     # -
     def init_synapse_location(self, nrn_path, circuit_conf, load_offsets=False):
+        """Initializes the reader from compat nrn_path values and sets base population
+        """
         logging.info("Initialize cell manager from nrnPath=%s", nrn_path)
         n_synapse_files = 1
         nrn_path, *pop = nrn_path.split(":")  # fspath:population
@@ -449,6 +452,73 @@ class ConnectionManagerBase(object):
                 yield conn
 
     # -
+    def create_connections(self, *, src_target=None):
+        """Creates connections according to loaded parameters in 'Connection'
+           blocks of the BlueConfig in the currently active ConnectionSet
+        """
+        # Create all Projection connections if no Connection block uses
+        # that source. Otherwise create only specified connections
+        conn_src_pop = self.current_population.src_name
+        is_base_pop = self.current_population.src_id == 0
+        matching_conns = [
+            conn for conn in SimConfig.connections.values()
+            if TargetSpec(conn.get("Source").s).match_filter(conn_src_pop, src_target, is_base_pop)
+        ]
+
+        if not matching_conns:
+            logging.info("No matching Connection blocks. Loading all synapses...")
+            self.connect_all()
+            return
+
+        # if we have a single connect block with weight=0, skip synapse creation entirely
+        if len(matching_conns) == 1 and matching_conns[0].valueOf("Weight") == .0:
+            logging.warning("SKIPPING Connection create since they have invariably weight=0")
+            return
+
+        logging.info("Creating group connections (%d groups match)", len(matching_conns))
+        for conn_conf in matching_conns:
+            conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
+            if "Delay" in conn_conf:
+                # Delayed connections are for configuration only, not creation
+                continue
+
+            # check if we are not supposed to create (only configure later)
+            if conn_conf.get("CreateMode") == "NoCreate":
+                continue
+
+            conn_src = conn_conf["Source"]
+            conn_dst = conn_conf["Destination"]
+            synapse_id = conn_conf.get("SynapseID")
+            self.connect_group(conn_src, conn_dst, synapse_id)
+
+    # -
+    def configure_connections(self):
+        """Configure-only circuit connections according to BlueConfig Connection blocks
+        """
+        for conn_conf in SimConfig.connections.values():
+            conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
+
+            conn_src = conn_conf["Source"]
+            conn_dst = conn_conf["Destination"]
+            is_delayed_connection = "Delay" in conn_conf
+
+            log_msg = " * Pathway {:s} -> {:s}".format(conn_src, conn_dst)
+            if is_delayed_connection:
+                log_msg += ":\t[DELAYED] t={0[Delay]:g}, weight={0[Weight]:g}".format(conn_conf)
+            if "SynapseConfigure" in conn_conf:
+                log_msg += ":\tconfigure with '{:s}'".format(conn_conf["SynapseConfigure"])
+            logging.info(log_msg)
+
+            if is_delayed_connection:
+                self.setup_delayed_connection(conn_conf)
+            else:
+                self.configure_group(conn_conf)
+
+    def setup_delayed_connection(self, conn_config):
+        raise NotImplementedError("Manager %s doesn't implement delayed connections"
+                                  % self.__class__.__name__)
+
+    # -
     def connect_all(self, weight_factor=1, only_gids=None, only_sgid_in_target=False):
         """For every gid access its synapse parameters and instantiate
         all synapses.
@@ -502,6 +572,7 @@ class ConnectionManagerBase(object):
             _dbg_conn = GlobalConfig.debug_conn
             if _dbg_conn and _dbg_conn in ([tgid], [sgid, tgid]):
                 log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s", sgid, tgid, syns_params)
+
             self._add_synapses(cur_conn, syns_params, synapse_type_restrict, offset)
             cur_conn.locked = True
 

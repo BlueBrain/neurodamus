@@ -79,7 +79,6 @@ class Node:
         self._sim_ready = False
 
         self._cell_distributor = None  # type: CellDistributor
-        self._synapse_manager = None   # type: SynapseRuleManager
         self._gj_manager = None        # type: GapJunctionManager
         self._cell_managers = {}       # dict {population -> cell_manager}
         self._synapse_managers = []
@@ -89,7 +88,7 @@ class Node:
     #
     # public 'read-only' properties - object modification on user responsibility
     target_manager = property(lambda self: self._target_manager)
-    synapse_manager = property(lambda self: self._synapse_manager)
+    synapse_manager = property(lambda self: self._synapse_managers[0])
     gj_manager = property(lambda self: self._gj_manager)
     stim_manager = property(lambda self: self._stim_manager)
     elec_manager = property(lambda self: self._elec_manager)
@@ -248,52 +247,33 @@ class Node:
         """Create synapses among the cells, handling connections that appear in the config file
         """
         log_stage("LOADING CIRCUIT CONNECTIVITY")
+        target_manager = self._target_manager.hoc
 
-        if self._base_circuit.nrnPath:
-            log_stage("Circuit (default)")
-            self._create_connections()
-        else:
-            # Instantiate a bare synapse manager
-            self._synapse_manager = SynapseRuleManager(
-                self._base_circuit, self._target_manager.hoc, self._cell_distributor)
-        self._synapse_managers.append(self._synapse_manager)
+        log_stage("Circuit (default)")
+        syn_manager = SynapseRuleManager(self._base_circuit, target_manager, self._cell_distributor)
+        self._load_connections(syn_manager)
+        self._synapse_managers.append(syn_manager)
 
         for name, circuit in self._extra_circuits.items():
             log_stage("Circuit %s", name)
             Engine = circuit.Engine or METypeEngine
             SynapseManagerCls = Engine.SynapseManagerCls or SynapseRuleManager
-            target_cell_manager = self._cell_managers[name]
-
-            syn_manager = SynapseManagerCls(circuit, self._target_manager.hoc, target_cell_manager)
+            cell_manager = self._cell_managers[name]  # manager of circuitTarget cells
+            syn_manager = SynapseManagerCls(circuit, target_manager, cell_manager)
+            self._load_connections(syn_manager)
             self._synapse_managers.append(syn_manager)
 
-            if circuit.nrnPath:
-                syn_manager.open_synapse_file(circuit.nrnPath, 1, int(circuit.PopulationID))
-                self._create_group_connections(synapse_manager=syn_manager)
-            else:
-                logging.info(" * %s connections have been disabled", name)
-
-        for syn_manager in self._synapse_managers:
-            logging.info("Configuring all %s connections...", syn_manager.__class__.__name__)
-            self._configure_connections(syn_manager)
-
     # -
-    def _create_connections(self):
-        with timeit(name="Synapse init"):
-            self._synapse_manager = SynapseRuleManager(
-                self._base_circuit, self._target_manager.hoc, self._cell_distributor)
+    def _load_connections(self, conn_manager):
+        if conn_manager.is_file_open:  # Base connectivity
+            conn_manager.create_connections()
 
-        logging.info("Creating circuit connections...")
-        self._create_group_connections()
-
-        # Check for additional synapse files.  Now requires a connection block.
         # Continue support for compatibility, but new BlueConfigs should use Projection blocks
         bonus_file = self._run_conf.get("BonusSynapseFile")
         if bonus_file:
-            logging.info("Creating connections from Bonus synapse file...")
-            bonus_n_synapse_files = int(self._run_conf.get("NumBonusFiles", 1))
-            self._synapse_manager.open_synapse_file(bonus_file, bonus_n_synapse_files)
-            self._create_group_connections()
+            n_synapse_files = int(self._run_conf.get("NumBonusFiles", 1))
+            conn_manager.open_synapse_file(bonus_file, n_synapse_files)
+            conn_manager.create_connections()
 
         # Check for Projection blocks
         if len(SimConfig.projections) > 0:
@@ -327,74 +307,11 @@ class Node:
                 log_verbose("Appending projection to base connectivity (AppendBasePopulation)")
                 pop_id = 0
 
-            self._synapse_manager.open_synapse_file(nrn_path, 1, pop_id)
-            self._create_group_connections(src_target=projection.get("Source"))
+            conn_manager.open_synapse_file(nrn_path, 1, pop_id)
+            conn_manager.create_connections(src_target=projection.get("Source"))
 
-    @mpi_no_errors
-    def _create_group_connections(self, *, src_target=None, synapse_manager=None):
-        """Creates connections according to loaded parameters in 'Connection'
-           blocks of the BlueConfig in the currently active ConnectionSet
-        """
-        # Create all Projection connections if no Connection block uses
-        # that source. Otherwise create only specified connections
-        conn_src_pop = self._synapse_manager.current_population.src_name
-        is_base_pop = self._synapse_manager.current_population.src_id == 0
-        matching_conns = [
-            conn for conn in SimConfig.connections.values()
-            if TargetSpec(conn.get("Source").s).match_filter(conn_src_pop, src_target, is_base_pop)
-        ]
-
-        # if we have a single connect block with weight=0, skip synapse creation entirely
-        if len(matching_conns) == 1:
-            if matching_conns[0].valueOf("Weight") == .0:
-                logging.warning("SKIPPING Connection create since they have invariably weight=0")
-                return
-
-        synapse_manager = synapse_manager or self._synapse_manager
-        if not matching_conns:
-            logging.info("No matching Connection blocks. Loading all synapses...")
-            synapse_manager.connect_all()
-            return
-
-        for conn_conf in matching_conns:
-            conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
-            if "Delay" in conn_conf:
-                # Delayed connections are for configuration only, not creation
-                continue
-
-            # check if we are not supposed to create (only configure later)
-            if conn_conf.get("CreateMode") == "NoCreate":
-                continue
-
-            conn_src = conn_conf["Source"]
-            conn_dst = conn_conf["Destination"]
-            synapse_id = conn_conf.get("SynapseID")
-            synapse_manager.connect_group(conn_src, conn_dst, synapse_id)
-
-    # -
-    def _configure_connections(self, conn_manager=None):
-        """Configure-only circuit connections according to BlueConfig Connection blocks
-        """
-        conn_manager = conn_manager or self._synapse_manager
-
-        for conn_conf in SimConfig.connections.values():
-            conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
-
-            conn_src = conn_conf["Source"]
-            conn_dst = conn_conf["Destination"]
-            is_delayed_connection = "Delay" in conn_conf
-
-            log_msg = " * Pathway {:s} -> {:s}".format(conn_src, conn_dst)
-            if is_delayed_connection:
-                log_msg += ":\t[DELAYED] t={0[Delay]:g}, weight={0[Weight]:g}".format(conn_conf)
-            if "SynapseConfigure" in conn_conf:
-                log_msg += ":\tconfigure with '{:s}'".format(conn_conf["SynapseConfigure"])
-            logging.info(log_msg)
-
-            if is_delayed_connection:
-                conn_manager.setup_delayed_connection(conn_conf)
-            else:
-                conn_manager.configure_group(conn_conf)
+        logging.info("Configuring connections...")
+        conn_manager.configure_connections()
 
     # -
     @mpi_no_errors
@@ -568,7 +485,7 @@ class Node:
                         spike_manager.dump_ascii(f)
         else:
             # Otherwise just apply it to the current connections
-            self._synapse_manager.replay(spike_manager, source, target, delay)
+            self._synapse_managers[0].replay(spike_manager, source, target, delay)
 
     # -
     @mpi_no_errors
@@ -885,7 +802,8 @@ class Node:
     # -
     def _restart_events(self):
         logging.info("Restarting connections events (Replay and Spont Minis)")
-        self._synapse_manager.restart_events()
+        for syn_manager in self._synapse_managers:
+            syn_manager.restart_events()
 
         logging.info("Restarting Reports events")
         nc = Nd.NetCon(None, self._binreport_helper, 10, 1, 1)
