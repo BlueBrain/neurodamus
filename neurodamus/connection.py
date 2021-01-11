@@ -160,6 +160,9 @@ class ConnectionBase:
             nc_type_param = int(getattr(Nd, nc_param_name))
             netcon.weight[nc_type_param] = int(nc_type)
 
+    def __str__(self):
+        return "[%d->%d]" % (self.sgid, self.tgid)
+
 
 # ----------------------------------------------------------------------
 # Connection class

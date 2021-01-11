@@ -537,9 +537,6 @@ class ConnectionManagerBase(object):
 
         for sgid, tgid, syns_params, offset in self._iterate_conn_params(
                 src_target_filter, None, gids, True):
-            if GlobalConfig.debug_conn in ([tgid], [sgid, tgid]):
-                log_all(logging.DEBUG, "Connection Params:(%d-%d)\n%s", sgid, tgid, syns_params)
-
             # Create all synapses. No need to lock since the whole file is consumed
             cur_conn = pop.get_or_create_connection(sgid, tgid, **conn_options)
             self._add_synapses(cur_conn, syns_params, None, offset)
@@ -568,11 +565,6 @@ class ConnectionManagerBase(object):
             cur_conn = pop.get_or_create_connection(sgid, tgid, **conn_kwargs)
             if cur_conn.locked:
                 continue
-
-            _dbg_conn = GlobalConfig.debug_conn
-            if _dbg_conn and _dbg_conn in ([tgid], [sgid, tgid]):
-                log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s", sgid, tgid, syns_params)
-
             self._add_synapses(cur_conn, syns_params, synapse_type_restrict, offset)
             cur_conn.locked = True
 
@@ -615,6 +607,7 @@ class ConnectionManagerBase(object):
             sgids = syns_params[syns_params.dtype.names[0]].copy()
             found_conns = 0
             yielded_conns = 0
+            yielded_src_gids = compat.Vector("i")
 
             while cur_i < syn_count:
                 # Use numpy to get all the synapses of the same gid at once
@@ -624,12 +617,19 @@ class ConnectionManagerBase(object):
                     next_i = syn_count
 
                 if src_target is None or src_target.completeContains(sgid):
+                    if GlobalConfig.debug_conn == [tgid]:
+                        yielded_src_gids.append(sgid)
+                    elif GlobalConfig.debug_conn == [sgid, tgid]:
+                        log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s", sgid, tgid,
+                                syns_params)
                     yield sgid, tgid, syns_params[cur_i:next_i], cur_i
                     yielded_conns += 1
 
                 found_conns += 1
                 cur_i = next_i
 
+            if yielded_src_gids:
+                log_all(logging.DEBUG, "Source GIDs for debug cell: %s", yielded_src_gids)
             logging.debug(" > Yielded %d out of %d connections. (Filter by src Target: %s)",
                           yielded_conns, found_conns, src_target and src_target.name)
 
@@ -938,6 +938,7 @@ class ConnectionManagerBase(object):
         """Method finalizing a gid connections, invoked for each target gid.
         """
 
+    # -
     def replay(self, *_, **_kw):
         logging.warning("Replay is not available in %s", self.__class__.__name__)
 
