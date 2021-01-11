@@ -552,19 +552,6 @@ proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProce
                 dist = activeProcess.get_loc()
                 cmpID = int(dist*nseg)
                 if( cmpID == int(x*nseg) ) {
-
-                    // Here is the "hack" to report synapses with the Summation ALU
-                    ALUhelper = new ALU( x, reportDt )
-                    ALUhelper.setop( "summation" )
-                    sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
-                    result = execute(tstr, this)
-                    if( result == 0 ) {
-                        //is this an error?
-                    }
-                    bbss = new BBSaveState()
-                    bbss.ignore(ALUhelper)
-
-                    locALUList.append(ALUhelper)
                     locTPointList.append(x)
                     synList.append(activeProcess)
                     activeProcess.selected_for_report = 1
@@ -573,18 +560,16 @@ proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProce
                 pop_section()
             }
         }
-
     }
 
-    // In Neuron mode, If a cell has no pt processes, don't commit the ALU
-    if( ! corenrnDataMode && locALUList.count() > 0 ) {
-        //TODO: copy/edit this function to fix mapping?
+    if( ! corenrnDataMode && synList.count() > 0 ) {
         rpt = prepareReportForCell( $o1, locTPointList, vgid )
-
-        for ALUIndex=0, locALUList.count()-1 {
-            ALUhelper = locALUList.o(ALUIndex)
-                // Use the stored synapseID for the report mapping
-                addSummationVarAndCommitALU( synList.o(ALUIndex).synapseID, rpt )
+        for synIndex=0, synList.count()-1 {
+            activeProcess = synList.o(synIndex)
+            if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
+                sprint(tstr, "rec.AddVar( &activeProcess.%s, %d, %d)", internalVar.s, activeProcess.synapseID, $o1.gid)
+                execute(tstr, this)
+            }
         }
     }
 }
