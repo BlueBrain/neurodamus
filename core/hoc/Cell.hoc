@@ -95,7 +95,7 @@ proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, global_ex
 
     // V5 will always ask ASCII morphologies. We need to replace the extension
     // in case neurodamus is requesting another morphology type
-    if( object_id(ext_simconfig) != 0 ) {
+    if( object_id(ext_simconfig) != 0 && strcmp(extension.s, "asc") == 0 ) {
         global_extension = ext_simconfig.getMorphologyExtension()
         if ( strcmp(global_extension.s, extension.s) != 0 && strcmp(global_extension.s, "")) {
             strobj.left(morphPath.s, strobj.len(morphPath.s) - strobj.len(extension.s) - 1)
