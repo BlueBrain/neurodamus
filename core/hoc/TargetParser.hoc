@@ -24,6 +24,9 @@ public init, open, targetList, getTarget, updateTargets, updateTargetList, print
 //allow some nodes (i.e. node 1) to output messages to the console
 public isVerbose
 
+// The whole set of gids local to this node, defined in Target.hoc
+external local_gids
+
 //------------------------------------------------------------------------------------------------------------
 
 /*!
@@ -186,14 +189,21 @@ obfunc updateTargetList() { local targetIndex  localobj targetUtil
  * @param $o1 Vector containing gids that are on the local cpu
  * @param $2 Append mode. 0 (default) will reset the vector first.
  */
-proc updateTargets() { local targetIndex, append_mode localobj activeTarget
+proc updateTargets() { local targetIndex, append_mode localobj activeTarget, tmpvec
     append_mode = 0
     if (numarg() > 1) {
         append_mode = $2
     }
+    if (append_mode) {
+        tmpvec = new Vector($o1)  // o1 may be a python obj
+        local_gids.append(tmpvec)
+    } else {
+        local_gids = $o1.c
+    }
+    local_gids.sort()
+
     for targetIndex=0, targetList.count()-1 {
-        activeTarget = targetList.o(targetIndex)
-        activeTarget.update( $o1, append_mode )
+        targetList.o(targetIndex).isUpToDate = 0
     }
 }
 

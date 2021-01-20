@@ -208,7 +208,6 @@ obfunc getTarget() { local targetIndex, potentialGid  localobj targetUtil, singl
         if( strcmp( $s1, remake ) == 0 )  { //cell detected
             singleTarget = new Target( "gid", "Cell" )
             singleTarget.gidMembers.append( potentialGid )
-            singleTarget.update( cellDistributor.getGidListForProcessor() )
             return singleTarget
         }
 
