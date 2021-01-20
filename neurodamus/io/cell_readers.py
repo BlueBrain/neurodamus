@@ -9,55 +9,13 @@ from os import path as ospath
 from ..core import NeurodamusCore as Nd
 from ..core.configuration import ConfigurationError
 from ..metype import METypeManager, METypeItem
+from ..target_manager import TargetSpec
 from ..utils import compat
 from ..utils.logging import log_verbose
 
 
 class CellReaderError(Exception):
     pass
-
-
-class TargetSpec:
-    """Definition of a new-style target, accounting for multipopulation
-    """
-
-    def __init__(self, target_name):
-        """Initialize a target specification
-
-        Args:
-            target_name: the target name. For specifying a population use
-                the format ``population:target_name``
-        """
-        if target_name and ':' in target_name:
-            self.population, self.name = target_name.split(':')
-        else:
-            self.name = target_name
-            self.population = None
-        if self.name == "":
-            self.name = None
-
-    def __str__(self):
-        return self.name if self.population is None \
-            else "{}:{}".format(self.population, self.name)
-
-    def __bool__(self):
-        return bool(self.name)
-
-    @property
-    def simple_name(self):
-        if self.name is None:
-            return "_ALL_"
-        return self.__str__().replace(":", "_")
-
-    def matches(self, pop, target_name):
-        return pop == self.population and target_name == self.name
-
-    def match_filter(self, pop, target_name, is_base_population=False):
-        return ((self.population == pop or (is_base_population and self.population is None))
-                and target_name in (None, self.name))
-
-    def __eq__(self, other):
-        return self.matches(other.population, other.name)
 
 
 def _ncs_get_total(ncs_f):

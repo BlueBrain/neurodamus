@@ -15,8 +15,8 @@ from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
 from .core.nodeset import NodeSet
 from .io import cell_readers
-from .io.cell_readers import TargetSpec
 from .metype import Cell_V5, Cell_V6, EmptyCell
+from .target_manager import TargetSpec
 from .utils import compat
 from .utils.logging import log_verbose
 
@@ -89,6 +89,7 @@ class CellManagerBase(object):
 
     # read-only properties
     target_parser = property(lambda self: self._target_parser)
+    gid_offset = property(lambda self: self._local_nodes.offset)
     local_gids = property(lambda self: self._local_nodes.final_gids())
     total_cells = property(lambda self: self._total_cells)
     cells = property(lambda self: self._gid2cell.values())

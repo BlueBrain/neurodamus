@@ -18,10 +18,9 @@ from .core.configuration import GlobalConfig, SimConfig
 from .core._engine import EngineBase
 from .core.configuration import ConfigurationError, find_input_file
 from .cell_distributor import CellDistributor, LoadBalance, LoadBalanceMode
-from .io.cell_readers import TargetSpec
 from .connection_manager import SynapseRuleManager, GapJunctionManager
 from .replay import SpikeManager
-from .target_manager import TargetManager
+from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.timeit import TimerManager, timeit, timeit_rank0
@@ -127,8 +126,8 @@ class Node:
 
         # Info about the cells to be distributed
         target = self._target_spec
-        target_cells, _ = self.get_targetcell_count()
-        if target_cells > 100 * MPI.size:
+        cell_count, _ = self._target_manager.get_target_info(target, verbose=True)
+        if cell_count > 100 * MPI.size:
             logging.warning("Your simulation has a very high count of cells per CPU. "
                             "Please consider launching it in a larger MPI cluster")
 
@@ -147,10 +146,10 @@ class Node:
         elif lb_mode is None:
             # BBPBGLIB-555 - simple heuristics for auto selecting load balance
             lb_mode = LoadBalanceMode.RoundRobin
-            if SimConfig.use_neuron and MPI.size > 1.5 * target_cells:
+            if SimConfig.use_neuron and MPI.size > 1.5 * cell_count:
                 logging.warning("Load Balance: AUTO SELECTED MultiSplit (CPU-Cell ratio)")
                 lb_mode = LoadBalanceMode.MultiSplit
-            elif target_cells > 1000 and (self._run_conf["Duration"] > 500 or MPI.size > 100):
+            elif cell_count > 1000 and (self._run_conf["Duration"] > 500 or MPI.size > 100):
                 logging.warning("Load Balance: AUTO SELECTED WholeCell (Sim Size)")
                 lb_mode = LoadBalanceMode.WholeCell
 
@@ -584,6 +583,12 @@ class Node:
                 population_name
             )
 
+            cell_manager = self._cell_distributor
+            if "Circuit" in rep_conf:
+                cell_manager = self._cell_managers[rep_conf["Circuit"]]
+                # Update the target to the offsetting used in this nodeset
+                target.set_offset(cell_manager.gid_offset)
+
             if SimConfig.use_coreneuron and MPI.rank == 0:
                 corenrn_target = target
 
@@ -644,12 +649,12 @@ class Node:
             # For summation targets - check if we were given a Cell target because we really want
             # all points of the cell which will ultimately be collapsed to a single value
             # on the soma. Otherwise, get target points as normal.
-            points = self.get_target_points(target, rep_type.lower() == "summation")
-
+            points = self._target_manager.get_target_points(target, cell_manager,
+                                                            rep_type.lower() == "summation")
             for point in points:
                 gid = point.gid
-                cell = self._cell_distributor.getCell(gid)
-                spgid = self._cell_distributor.getSpGid(gid)
+                cell = cell_manager.getCell(gid)
+                spgid = cell_manager.getSpGid(gid)
 
                 # may need to take different actions based on report type
                 if rep_type.lower() == "compartment":
@@ -1054,42 +1059,6 @@ class Node:
         return self._cell_distributor.local_gids
 
     # -
-    def get_target_points(self, target, cell_use_compartment_cast=True):
-        """Helper to retrieve the points of a target.
-        If target is a cell then uses compartmentCast to obtain its points.
-        Otherwise returns the result of calling getPointList directly on the target.
-
-        Args:
-            target: The target name or object (faster)
-            cell_use_compartment_cast: if enabled (default) will use target_manager.compartmentCast
-                to get the point list.
-
-        Returns: The target list of points
-        """
-        if isinstance(target, str):
-            target = self._target_manager.get_target(target)
-        if target.isCellTarget() and cell_use_compartment_cast:
-            return self._target_manager.hoc.compartmentCast(target, "") \
-                .getPointList(self._cell_distributor)
-        return target.getPointList(self._cell_distributor)
-
-    def get_targetcell_count(self):
-        """Count the total number of the target cells, and get the max gid
-           if CircuitTarget is not specified in the configuration, use Mosaic target
-        """
-        target = self._target_spec
-        target_name = target.name or "Mosaic"
-        target_obj = self._target_manager.get_target(target_name)
-        target_cells = target_obj.getCellCount()
-        all_gids = target_obj.completegids()
-        if target.name:
-            logging.info("CIRCUIT: Population: %s, Target: %s (%d Cells)",
-                         target.population or "(default)", target.name, target_cells)
-        else:
-            logging.warning("No CircuitTarget set. Loading ALL cells: %d", target_cells)
-        return target_cells, max(all_gids) if all_gids else 0
-
-    # -
     @mpi_no_errors
     def spike2file(self, outfile):
         """ Write the spike events that occured on each node into a single output file.
@@ -1244,11 +1213,9 @@ class Neurodamus(Node):
     def init(self):
         """Explicitly initialize, allowing users to make last changes before simulation
         """
-        base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
-
         log_stage("Creating connections in the simulator")
+        base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
         for syn_manager in self._synapse_managers:
-
             syn_manager.finalize(base_seed, SimConfig.coreneuron)
 
         if self._gj_manager is not None:
@@ -1302,21 +1269,21 @@ class Neurodamus(Node):
     # -
     def _instantiate_simulation(self):
         self.load_targets()
-        target_cells, max_gid = self.get_targetcell_count()
+        cell_count, max_gid = self._target_manager.get_target_info(self._target_spec, verbose=True)
 
         # Check if user wants to build the model in several steps (only for CoreNeuron)
         target = TargetSpec(self._run_conf.get("CircuitTarget", "Mosaic")).name
         n_cycles = SimConfig.modelbuilding_steps
         sub_targets = self._target_manager.generate_subtargets(target, n_cycles)
 
-        if SimConfig.use_coreneuron and target_cells/n_cycles < MPI.size and target_cells > 0:
+        if SimConfig.use_coreneuron and cell_count/n_cycles < MPI.size and cell_count > 0:
             # coreneuron with no. ranks >> no. cells
             # need to assign fake gids to artificial cells in empty threads during module building
             # fake gids start from max_gid + 1
             # currently not support engine plugin where target is loaded later
             logging.warning("Running on average %d cells in %d ranks for CORENEURON simulator, "
                             "please consider reducing the number of processes.",
-                            target_cells/n_cycles, MPI.size)
+                            cell_count/n_cycles, MPI.size)
             self._bbcore_fakegid_offset = max_gid + 1
 
         # Without multi-cycle, it's a trivial model build. sub_targets is False
