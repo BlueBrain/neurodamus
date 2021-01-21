@@ -5,7 +5,10 @@ from __future__ import absolute_import
 import logging
 import os
 import os.path
+import re
+from collections import defaultdict
 from enum import Enum
+
 from ..io.config_parser import BlueConfig
 from ..utils import compat
 from ..utils.logging import log_verbose
@@ -222,6 +225,10 @@ class _SimConfig(object):
             new_connections[name] = conn
         cls.connections = new_connections
 
+    @classmethod
+    def check_connections_configure(cls, target_manager):
+        check_connections_configure(cls, target_manager)  # top_level
+
 
 # Singleton
 SimConfig = _SimConfig()
@@ -417,8 +424,8 @@ _condition_checks = {
         ConfigurationError(
             "Time integration method (SecondOrder value) {} is invalid. Valid options are:"
             " '0' (implicitly backward euler),"
-            " '1' (crank-nicholson) and"
-            " '2' (crank-nicholson with fixed ion currents)")
+            " '1' (Crank-Nicolson) and"
+            " '2' (Crank-Nicolson with fixed ion currents)")
     ),
     "randomize_Gaba_risetime": (
         ("True", "False", "0", "false"),
@@ -642,3 +649,114 @@ def _model_building_steps(config: _SimConfig, run_conf):
     logging.info("Splitting Target for multi-iteration CoreNeuron data generation")
     logging.info(" -> Cycles: %d. [src: %s]", ncycles, "CLI" if src_is_cli else "BlueConfig")
     config.modelbuilding_steps = ncycles
+
+
+def check_connections_configure(SimConfig, target_manager):
+    """Check connection block configuration and raise warnings for:
+    1. Global variable should be set in the Conditions block,
+    2. Connection overriding chains (t=0)
+    3. Connections with Weight=0 not overridden by delayed (not instantiated)
+    4. Partial Connection overriding -> Error
+    5. Connections with delay > 0 not overriding anything
+    """
+    config_assignment = re.compile(r"(\S+)\s*\*?=\s*(\S+)")
+    processed_conn_blocks = []
+    zero_weight_conns = []
+    conn_configure_global_vars = defaultdict(list)
+
+    def get_overlapping_connection_pathway(base_conns, conn):
+        for base_conn in reversed(base_conns):
+            if target_manager.pathways_overlap(base_conn, conn):
+                yield base_conn
+
+    def process_t0_parameter_override(conn):
+        if float(conn.get("Weight", 1)) == 0:
+            zero_weight_conns.append(conn)
+        for overridden_conn in get_overlapping_connection_pathway(processed_conn_blocks, conn):
+            conn["_overrides"] = overridden_conn
+            if target_manager.pathways_overlap(conn, overridden_conn, equal_only=True):
+                overridden_conn["_full_overridden"] = True
+            break  # We always compute only against the first overridden block
+        processed_conn_blocks.append(conn)
+
+    def process_weight0_override(conn):
+        is_overriding = False
+        for conn2 in get_overlapping_connection_pathway(zero_weight_conns, conn):
+            is_overriding = True
+            # If there isn't a full override for zero weights, we must raise exception (later)
+            if not conn2.get("_full_overridden"):
+                conn2["_full_overridden"] = target_manager.pathways_overlap(conn, conn2, True)
+        if not is_overriding:
+            logging.warning("Delayed connection %s is not overriding any weight=0 Connection",
+                            conn["_name"])
+
+    def get_syn_config_vars(conn):
+        return [var for var, _ in config_assignment.findall(conn.get("SynapseConfigure", ""))]
+
+    def display_overriding_chain(conn):
+        logging.warning("Connection %s takes part in overriding chain:", conn["_name"])
+        while conn is not None:
+            logging.info(
+                " -> %-6s %-60.60s Weight: %-8s SpontMinis: %-8s SynConfigure: %s",
+                "(base)" if not conn.get("_overrides") else " ^",
+                "{0[_name]}  {0[Source]} -> {0[Destination]}".format(conn),
+                conn.get("Weight", "-"),
+                conn.get("SpontMinis", "-"),
+                ", ".join(get_syn_config_vars(conn))
+            )
+            if conn.get("_visited"):
+                break
+            conn["_visited"] = True
+            conn = conn.get("_overrides")
+
+    logging.info("Checking Connection Configurations")
+    all_conn_blocks = [compat.Map(conn).as_dict(parse_strings=True)
+                       for conn in SimConfig.connections.values()]
+
+    # On a first phase process only for t=0
+    for name, conn_conf in zip(SimConfig.connections, all_conn_blocks):
+        conn_conf["_name"] = name
+        if float(conn_conf.get("Delay", 0)) > .0:
+            continue
+        for var in get_syn_config_vars(conn_conf):
+            if not var.startswith("%s"):
+                conn_configure_global_vars[name].append(var)
+        # Process all conns to show full override chains to help debug
+        process_t0_parameter_override(conn_conf)
+
+    # Second phase: find overridden zero_weights at t > 0
+    for conn_conf in all_conn_blocks:
+        if float(conn_conf.get("Delay", 0)) > 0:
+            process_weight0_override(conn_conf)
+
+    # CHECK 1: Global vars
+    if conn_configure_global_vars:
+        logging.warning("Global variables in SynapseConfigure. Review the following "
+                        "connections and move the global vars to Conditions block")
+        for name, vars in conn_configure_global_vars.items():
+            logging.warning(" -> %s: %s", name, vars)
+    else:
+        logging.info(" => CHECK No Global vars!")
+
+    # CHECK 2: Block override chains
+    if not [display_overriding_chain(conn_conf)
+            for conn_conf in reversed(processed_conn_blocks)
+            if conn_conf.get("_overrides") and not conn_conf.get("_visited")]:
+        logging.info(" => CHECK No Block Overrides!")
+
+    # CHECK 3: Weight 0 not/badly overridden
+    not_overridden_weight_0 = []
+    for conn in zero_weight_conns:
+        full_overriden = conn.get("_full_overridden")
+        if full_overriden is None:
+            not_overridden_weight_0.append(conn)
+        elif full_overriden is False:  # incomplete override
+            raise ConfigurationError(
+                "Partial Weight=0 override is not supported: Conn %s" % conn["_name"])
+    if not_overridden_weight_0:
+        logging.warning("The following connections with Weight=0 are not overridden, "
+                        "thus won't be instantiated:")
+        for conn in not_overridden_weight_0:
+            logging.warning(" -> %s", conn["_name"])
+    else:
+        logging.info(" => CHECK No single Weight=0 blocks!")

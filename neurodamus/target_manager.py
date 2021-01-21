@@ -1,6 +1,7 @@
 import itertools
 import logging
 import os.path
+from functools import lru_cache
 from .core.configuration import GlobalConfig, find_input_file
 from .core import MPI, NeurodamusCore as Nd
 from .utils.logging import log_verbose
@@ -35,11 +36,16 @@ class TargetSpec:
             return "_ALL_"
         return self.__str__().replace(":", "_")
 
+    @property
+    def is_full(self):
+        return (self.name or "Mosaic") == "Mosaic"
+
     def matches(self, pop, target_name):
-        return pop == self.population and target_name == self.name
+        """Check if it matches a given target. Mosaic and (empty) are equivalent"""
+        return pop == self.population and (target_name or "Mosaic") == (self.name or "Mosaic")
 
     def match_filter(self, pop, target_name):
-        return self.population == pop and target_name in (None, '', self.name)
+        return self.population == pop and (target_name or "Mosaic") in ("Mosaic", self.name)
 
     def __eq__(self, other):
         return self.matches(other.population, other.name)
@@ -150,3 +156,24 @@ class TargetManager:
             target = self.hoc.compartmentCast(target, "")
         log_verbose("Using cell manager with cells offset by %d", cell_manager.local_nodes.offset)
         return target.getPointList(cell_manager)
+
+    @lru_cache
+    def intersecting(self, target1, target2):
+        """Checks whether two targets intersect"""
+        target1_spec = TargetSpec(target1)
+        target2_spec = TargetSpec(target2)
+        if target1_spec.population != target2_spec.population:
+            return False
+        if target1_spec.is_full or target2_spec.is_full or target1_spec.name == target2_spec.name:
+            return True
+        # From this point, both are sub targets (and not the same)
+        cells1 = self.get_target(target1_spec.name).completegids()
+        cells2 = self.get_target(target2_spec.name).completegids()
+        return not set(cells1).isdisjoint(cells2)
+
+    def pathways_overlap(self, conn1, conn2, equal_only=False):
+        src1, dst1 = conn1["Source"], conn1["Destination"]
+        src2, dst2 = conn2["Source"], conn2["Destination"]
+        if equal_only:
+            return TargetSpec(src1) == TargetSpec(src2) and TargetSpec(dst1) == TargetSpec(dst2)
+        return self.intersecting(src1, src2) and self.intersecting(dst1, dst2)

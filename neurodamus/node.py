@@ -1335,6 +1335,9 @@ class Neurodamus(Node):
                             cell_count/n_cycles, MPI.size)
             self._bbcore_fakegid_offset = max_gid + 1
 
+        # Check connection block configuration and raise warnings for overriding parameters
+        SimConfig.check_connections_configure(self._target_manager)
+
         # Without multi-cycle, it's a trivial model build. sub_targets is False
         if n_cycles == 1:
             self._build_model()
