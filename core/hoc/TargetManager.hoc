@@ -11,6 +11,7 @@
 {load_file( "nrngui.hoc" )}
 {load_file( "Map.hoc" )}
 {load_file( "SerializedSections.hoc" )}
+{load_file("fileUtils.hoc")}
 
 /**
  * Target Manager itself, providing the interface for the user to get cell points to use
@@ -18,6 +19,8 @@
 begintemplate TargetManager
 
 {load_file("Target.hoc")}
+
+external terminate
 
 //-----------------------------------------------------------------------------------------------
 // Declare member variables
@@ -212,9 +215,8 @@ obfunc getTarget() { local targetIndex, potentialGid  localobj targetUtil, singl
         }
 
         // otherwise, at a loss for what to do
-        print "Error: target ", $s1, " not found.  Attempting to terminate"
         sprint( errorMessage, "Error: target %s not found", $s1 )
-        execerror( errorMessage )
+        terminate( errorMessage )
     } else {
         return targetList.object(targetIndex)
     }
@@ -337,11 +339,11 @@ obfunc selectRandomPoints() { local synIndex, cmpIndex, x  localobj ptList, allP
 obfunc getApicalPoints() { local cellIndex  localobj tempTarget, ptList, activeCell
 
     if( argtype(1) != 0 ) {
-        execerror("getApicalPoints() now only accepts one int arg")
+        terminate("getApicalPoints() now only accepts one int arg")
     }
 
     if( object_id(cellList, 1) == -1 ) {
-        execerror( "No cells registered with my null cellList" )
+        terminate( "No cells registered with my null cellList" )
     }
 
     ptList = new TPointList($1)
@@ -380,10 +382,10 @@ obfunc getApicalPoints() { local cellIndex  localobj tempTarget, ptList, activeC
 obfunc getBasalPoints() { local cellIndex  localobj tempTarget, ptList, activeCell
 
     if( argtype(1) != 0 ) {
-        execerror("getApicalPoints() now only accepts one int arg")
+        terminate("getApicalPoints() now only accepts one int arg")
     }
     if( object_id(cellList, 1) == -1 ) {
-        execerror( "No cells registered with my null cellList" )
+        terminate( "No cells registered with my null cellList" )
     }
 
     ptList = new TPointList($1)
@@ -486,7 +488,7 @@ obfunc sectionCast() { localobj target, wrapper
     }
 
     if( !target.isCellTarget() ) {
-        execerror( "Attempting to apply sectionCast to non-Cell target" )
+        terminate( "Attempting to apply sectionCast to non-Cell target" )
     }
 
     wrapper = new Target( "temp", "Section" )
@@ -515,7 +517,7 @@ obfunc compartmentCast() { localobj target, wrapper
     }
 
     if( !target.isCellTarget() ) {
-        execerror( "Attempting to apply compartmentCast to non-Cell target" )
+        terminate( "Attempting to apply compartmentCast to non-Cell target" )
     }
 
     wrapper = new Target( "temp", "Compartment" )
@@ -554,13 +556,12 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
 
     cellSections = gidToSections( gid )
     if( object_id(cellSections) == 0 ) {
-        print "getting locations for non-bg sims is not implemented yet..."
-        quit()
+        terminate( "getting locations for non-bg sims is not implemented yet..." )
     }
 
     if ( isec >= cellSections.count() ) {
         sprint( errorMessage, "Error: section %d out of bounds (%d total). Morphology section count is low, is this a good morphology?", isec, cellSections.count() )
-        execerror( errorMessage )
+        terminate( errorMessage )
     }
 
     distance = 0.5

@@ -6,6 +6,7 @@
  * @remark Copyright © BBP/EPFL 2005-2017; All rights reserved. Do not distribute without further notice.
  */
 {load_file("SimSettings.hoc")}
+{load_file("fileUtils.hoc")}
 
 rngMode = 0  // corresponds to COMPATIBILITY defined below
 ionchannelSeed = 0
@@ -19,7 +20,7 @@ begintemplate RNGSettings
 public init, interpret, getRNGMode, getIonChannelSeed, getSynapseSeed, getStimulusSeed, getMinisSeed, getGlobalSeed
 public COMPATIBILITY, RANDOM123, UPMCELLRAN4
 
-external rngMode, ionchannelSeed, synapseSeed, stimulusSeed, minisSeed, globalSeed, simConfig
+external rngMode, ionchannelSeed, synapseSeed, stimulusSeed, minisSeed, globalSeed, simConfig, terminate
 
 proc init() {
     // consts for random number handling
@@ -52,11 +53,7 @@ proc interpret() { localobj runInfo, pc, rng
         } else if( strcmp( rngModeField, "Random123" ) == 0 ) {
             rngMode = RANDOM123
         } else {
-            if( pc.id() == 0 ) {
-                print "Invalid RNGMode '", rngModeField, "'; use Compatibility, UpdatedMCell, or Random123.  Terminating"
-            }
-            pc.barrier()
-            quit()
+            terminate( "Invalid RNGMode ", rngModeField )
         }
         if( pc.id() == 0 ) {
             print "RNGMode set to ", rngMode, " [COMPATIBILITY=0, RANDOM123=1, UPMCELLRAN4=2]"
@@ -65,10 +62,7 @@ proc interpret() { localobj runInfo, pc, rng
 
     if( simConfig.coreNeuronUsed() && rngMode != RANDOM123) {
         // Given R123 is now the default there's no sense to allow an explicit invalid option
-        if( pc.id() == 0 ) {
-            print "Config Error: CoreNEURON requires Random123 RNG"
-        }
-        quit()
+        terminate( "Config Error: CoreNEURON requires Random123 RNG" )
     }
 
     if( runInfo.exists("BaseSeed") ) {

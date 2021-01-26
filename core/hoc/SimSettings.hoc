@@ -17,7 +17,7 @@ public init, interpret, execResult
 public getSimulatorMode, generateData, runNeuron, getCoreneuronDataDir, coreNeuronUsed, getCoreneuronOutputDir, getMorphologyPath, getMorphologyExtension
 public NEURON, CORENEURON, NEURON_CORENEURON
 
-external simulatorMode, coreneuronDataDir, simulator, coreneuronOutputDir, ospath
+external simulatorMode, coreneuronDataDir, simulator, coreneuronOutputDir, ospath, terminate
 objref this
 objref morphologyPath, morphologyExtension
 
@@ -60,11 +60,7 @@ proc interpret() { localobj runInfo, pc, rng, commandString, configMorphPath
             if( pc.id == 0 ) { print "No MorphologyType in BlueConfig, default to legacy 'asc'. MorphologyPath becomes: ", morphologyPath.s }
         }
     } else {
-        if( pc.id() == 0 ) {
-            print "MorphologyPath not available in the BlueConfig. Terminating"
-        }
-        pc.barrier()
-        quit()
+        terminate( "MorphologyPath not available in the BlueConfig. Terminating" )
     }
 
     if( runInfo.exists( "Simulator" ) ) {
@@ -80,11 +76,9 @@ proc interpret() { localobj runInfo, pc, rng, commandString, configMorphPath
     } else if( strcmp( simulator, "NEURON_CORENEURON" ) == 0 ) {
         simulatorMode = NEURON_CORENEURON
     } else {
-        if( pc.id() == 0 ) {
-            print "Invalid SimulatorMode '", simulator, "'; use NEURON, CORENEURON or NEURON_CORENEURON. Terminating"
-        }
-        pc.barrier()
-        quit()
+        strdef errmsg
+        sprint( errmsg, "Invalid SimulatorMode '%s'; use NEURON, CORENEURON or NEURON_CORENEURON. Terminating", simulator)
+        terminate( errmsg )
     }
 
     // create directory for dumping dataset into separate directory inside OutputRoot
@@ -100,7 +94,9 @@ proc interpret() { localobj runInfo, pc, rng, commandString, configMorphPath
             sprint( commandString.s, "%s.execResult = checkDirectory( \"%s\" )", this, coreneuronOutputDir.s )
             execute( commandString.s )
             if( execResult < 0 ) {
-                execerror( "Error while creating directory '", coreneuronOutputDir.s, "'.  Terminating." )
+                strdef errmsg
+                sprint( errmsg, "Error while creating directory '%s'. Terminating.", coreneuronOutputDir.s)
+                terminate( errmsg )
             }
 
             // if we are Restoring, then we will reuse the datadirectory
@@ -113,7 +109,9 @@ proc interpret() { localobj runInfo, pc, rng, commandString, configMorphPath
               sprint( commandString.s, "%s.execResult = checkDirectory( \"%s\" )", this, coreneuronDataDir.s )
               execute( commandString.s )
               if( execResult < 0 ) {
-                execerror( "Error while creating directory '", coreneuronDataDir.s, "'.  Terminating." )
+                strdef errmsg
+                sprint( errmsg, "Error while creating directory '%s'. Terminating.", coreneuronOutputDir.s)
+                terminate( errmsg )
               }
             }
         }
@@ -131,7 +129,7 @@ proc interpret() { localobj runInfo, pc, rng, commandString, configMorphPath
             sprint( cmd, "randomize_Gaba_risetime=\"%s\"", runInfo.get( "RandomizeGabaRiseTime" ).s )
             execute( cmd )
         } else {
-            execerror( "Models don't support the parameter RandomizeGabaRiseTime, please load a newer version." )
+            terminate( "Models don't support the parameter RandomizeGabaRiseTime, please load a newer version." )
         }
     }
 

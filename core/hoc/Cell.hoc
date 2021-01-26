@@ -8,6 +8,7 @@
 
 {load_file("stdlib.hoc")}
 {load_file("import3d.hoc")}
+{load_file("fileUtils.hoc")}
 
 
 // In case in SimConfig there's a new extension registered, pass that info to Cell to attempt lo load it
@@ -32,7 +33,7 @@ external lambda_f
 
 external ext_simconfig
 
-external pyobj
+external pyobj, terminate
 
 /*!
  * Constructor to create a Cell object usable in the bbp toolchain
@@ -113,8 +114,7 @@ proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, global_ex
 
     if( strcmp(extension.s, "h5") == 0 ) {
         if( nrnpython("import morphio_wrapper") == 0 ) {
-            printf( ".h5 morphlogy used but cannot load 'morphio_wrapper.py' from neurodamus-core" )
-            quit()
+            terminate( ".h5 morphlogy used but cannot load 'morphio_wrapper.py' from neurodamus-core" )
         }
         AddHocMorph(pyobj.morphio_wrapper.MorphIOWrapper(morphPath.s).morph_as_hoc())
         return
@@ -126,8 +126,7 @@ proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, global_ex
     } else if( strcmp(extension.s, "swc") == 0 ) {
         morph = new Import3d_SWC_read()
     } else {
-        printf("Unsupported file format: Morphology file has to end with .asc or .swc" )
-        quit()
+        terminate("Unsupported file format: Morphology file has to end with .asc or .swc" )
     }
 
     morph.quiet = 1

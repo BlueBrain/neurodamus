@@ -7,6 +7,7 @@
  */
 
 {load_file("Target.hoc")}
+{load_file("fileUtils.hoc")}
 
 /*!
  * TargetParser for reading and storing initial targets from files.  This is intended for bglib simulations as opposed
@@ -25,7 +26,7 @@ public init, open, targetList, getTarget, updateTargets, updateTargetList, print
 public isVerbose
 
 // The whole set of gids local to this node, defined in Target.hoc
-external local_gids
+external local_gids, terminate
 
 //------------------------------------------------------------------------------------------------------------
 
@@ -84,11 +85,7 @@ proc open() { local nErrors, printCounts, i  localobj tFile, targetInstance, new
     }
 
     if (tFile.isopen == 0) {
-        if( isVerbose != 0 ) {
-            //limit how many error messages are printed since people have difficulty not lying about having a user target :P
-            print "Error : Could not open target file :[", $s1,"]"
-        }
-        quit()
+        terminate( "Error : Could not open target file", $s1 )
     }
 
     //Read till end of file
@@ -105,7 +102,7 @@ proc open() { local nErrors, printCounts, i  localobj tFile, targetInstance, new
 
             //make sure that contents for this target haven't been seen before
             if( targetInstance.isDefined ) {
-                if( isVerbose != 0 ) {
+                if ( isVerbose ) {
                     print "Error.  Multiple definitions for Target ", targetInstance.name
                 }
                 nErrors = nErrors + 1
@@ -136,7 +133,7 @@ proc open() { local nErrors, printCounts, i  localobj tFile, targetInstance, new
 
     tFile.close()
     if (nErrors > 0) {
-        quit()
+        terminate ( "Target with multiple definitions" )
     }
     if (printCounts) for i=0, newTargets.count()-1 {
         subtargets = newTargets.o(i).subtargets.count()
@@ -399,10 +396,9 @@ obfunc getTarget() { local targetIndex  localobj targetUtil
     targetUtil = new TargetUtility()
     targetIndex = targetUtil.findTarget( $s1, targetList )
     if( targetIndex < 0 ) {  //not found, error
-        if( isVerbose ) {
-            print "Error: target ", $s1, " not found.  Attempting to terminate"
-        }
-        quit()
+        strdef errmsg
+        sprint( errmsg, "Error: target %s not found.  Attempting to terminate", $s1)
+        terminate( errmsg )
     } else {
         return targetList.object(targetIndex)
     }

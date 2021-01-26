@@ -9,6 +9,7 @@
 
 {load_file("stdlib.hoc")}
 {load_file( "TPointList.hoc" )}
+{load_file("fileUtils.hoc")}
 
 
 // The whole set of gids local to this node
@@ -22,6 +23,8 @@ local_gids = new Vector()
  * that finds an int (gid) in a vector (gidvec)
  */
 begintemplate TargetUtility
+
+external terminate
 
 public findTarget, binary_search_contains
 
@@ -397,8 +400,7 @@ func getgid() {
 obfunc getCellExtraValues() {
     //localCellsMap is just a map into all the cells of this target
     if( isCellTarget() ) {
-        print "Attempting to access extra positioning data (subset or normalized location info or synapse ids) for Cell target"
-        execerror( "Attempting to access extra positioning data (subset or normalized location info or synapse ids) for Cell target" )
+        terminate( "Attempting to access extra positioning data (subset or normalized location info or synapse ids) for Cell target" )
     }
     return cellExtraValues.object( localCellsMap.x[$1] )
 }
@@ -418,8 +420,7 @@ obfunc getCellExtraValues() {
 obfunc getCellSubset() {
     //localCellsMap is just a map into all the cells of this target
     if( isCellTarget() ) {
-        print "Attempting to access subset data for Cell target"
-        execerror( "Attempting to access subset data for Cell target" )
+        terminate( "Attempting to access subset data for Cell target" )
     }
     return cellSubsets.object( localCellsMap.x[$1] )
 }
@@ -795,7 +796,7 @@ proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj s
                 if( $o4.x[count] > SecSize ) {
                     errorMsg = new String()
                     sprint( errorMsg.s, "Invalid section access for target %s: requested section %s[%d] (%d) available", name, $s3, $o4.x[count], SecSize )
-                    execerror( errorMsg.s )
+                    terminate( errorMsg.s )
                 }
 
                 addressSection( tobj, gid, $s3, $o4.x[count], $o5, $o6 )
@@ -918,8 +919,7 @@ func getSectionNo(){ local SecNo
     if( $2>=0 && $2 <=1){
         SecNo = $2 * ($1-1)
     }else {
-        print "Error Normalized Section not within range 0 to 1"
-        execerror("Error Normalized Section not within range 0 to 1")
+        terminate("Error Normalized Section not within range 0 to 1")
     }
 
     return(int(SecNo))

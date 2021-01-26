@@ -11,6 +11,7 @@
 
 {load_file("nrngui.hoc")}
 {load_file("Map.hoc")}
+{load_file("fileUtils.hoc")}
 
 //------------------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------------------
@@ -22,6 +23,8 @@
  */
 begintemplate ConfigParser
     //TODO: make a better encapsulated version
+
+external terminate
 
 //------------------------------------------------------------------------------------------------------------
 // Member fields
@@ -74,8 +77,7 @@ proc open() { local commentCheck, verbose  localobj configIn, sectionName, secti
     configIn.ropen( $s1 )
 
     if( configIn.isopen == 0 ) {
-        printf( "Error: Could not open BlueConfig file '%s'\n", $s1 )
-        quit()
+        terminate( "Error: Could not open BlueConfig file", $s1 )
     }
 
     //read line by line, branch off when encountering major block type: run, stimulus, report, stimulusinject, connect
@@ -121,7 +123,7 @@ proc open() { local commentCheck, verbose  localobj configIn, sectionName, secti
         if( strcmp( sectionType.s, "Run" ) == 0 ) {
             if( object_id(parsedRun) > 0 ) {
                 //user is only allowed to declare one Run section in the config file
-                execerror("Error: multiple Run objects declared in config file")
+                terminate("Error: multiple Run objects declared in config file")
             }
             parsedRun = parseBlock(configIn)
         } else {
@@ -181,7 +183,7 @@ obfunc parseBlock() { localobj pendingBlock, configIn, fieldName, fieldValue
         trimFront( fieldValue.s )
 
         if( pendingBlock.exists(fieldName.s) ) {
-            execerror("Key defined twice in Config:",  fieldName.s)
+            terminate("Key defined twice in Config", fieldName.s)
         }
 
         //add to the map

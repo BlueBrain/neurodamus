@@ -8,8 +8,11 @@
 
 {load_file("TStim.hoc")}  //note that the TStim functions are used in a way where our naming schemes don't match 100%
 {load_file("EStim.hoc")}
+{load_file("fileUtils.hoc")}
 
 begintemplate StimulusManager
+
+external terminate
 
 //-----------------------------------------------------------------------------------------------
 // Declare member variables
@@ -130,7 +133,7 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
     strdef tstr
     //verify that electrode manager was passed to StimulusManager
     if( elecManager == nil ) {
-        execerror("Error: attempting to use extracellular stimulation without ElectrodeManager" )
+        terminate("Error: attempting to use extracellular stimulation without ElectrodeManager" )
     }
 
 	stimlist = getExtracellularParams($o1,$o2)
@@ -172,8 +175,7 @@ proc interpretExtracellulars() { local cellIndex, targetIndex, stimIndex, elecIn
 							continue
 						}
 					} else {
-						print "Problem identifying section type and number for", secname()
-						quit()
+						terminate( "Problem identifying section type and number for ", secname() )
 					}
 					estim.inject(x,scaleFac)
 				}
@@ -336,7 +338,7 @@ proc interpret() { local tempVal, del, dur, relamp, threshold, targetVm  localob
                 replayVoltageTrace( $s1, stim.get( "File" ).s, stim.get( "DataSetLabel" ).s, del, dur )
             }
         } else {
-            execerror("Unknown stimulus type", patternName.s)
+            terminate("Unknown stimulus type", patternName.s)
         }
     }
 }

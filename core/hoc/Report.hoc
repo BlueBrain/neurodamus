@@ -5,7 +5,7 @@
  * @date 2009-11-20
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
-
+{load_file("fileUtils.hoc")}
 
 begintemplate Report
 
@@ -16,7 +16,7 @@ begintemplate Report
 strdef reportName, reportType, reportOn, unit, format, outputDir, iscParam, population_name
 objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, memory_report, activeProcess, electrode
 
-external cvode
+external cvode, terminate
 
 //-----------------------------------------------------------------------------------------------
 // public members
@@ -386,7 +386,7 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
     localobj intrinsicList, ptProcessList, mechtype, internalVar, nil, bbss
     strdef tstr
     if( numarg() >= 5 && $5 ) {  // Exit when in CoreNeuron mode
-        execerror( "Summation report not supported in CoreNeuron\n" )
+        terminate( "Summation report not supported in CoreNeuron\n" )
     }
 
     evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
@@ -407,7 +407,7 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
 
     //validate that we are not using multisplit and a collapsed summation report
     if( collapsed && $o1.gid != vgid ) {
-        execerror( "Attempting to use a collapsed summation report while using mutlisplt\n" )
+        terminate( "Attempting to use a collapsed summation report while using mutlisplt\n" )
     }
 
     if( collapsed ) {  //Since the summations will be collapsed to a single value, we will store the ptprocess in the soma
@@ -719,11 +719,11 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
         		$o3 = new String( "i" )
         	}
         } else {
-        	if(numarg() > 2){
-        		$o3 = new String( internalVar )
-        	} else {
-        		execerror("Internal variable to report on specified but evaluateSummationReport called with 2 args!")
-        	}
+            if(numarg() > 2){
+                $o3 = new String( internalVar )
+            } else {
+                terminate("Internal variable to report on specified but evaluateSummationReport called with 2 args!")
+            }
         }
         //print "token ", token
 
@@ -759,11 +759,11 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
         	for libIndex=0, ptProcessLibrary.count()-1 {
         	     ptProcessList.append( ptProcessLibrary.o(libIndex) )
         	}
-        	if( numarg() > 2){
-        		$o3 = new String( "g" ) //assumes that total conductance is available as 'g' in evere synapse model file!
-        	} else {
-        		execerror("Conductance report demanded but function call to evaluateSummationReport with only 2 arguments!")
-        	}
+            if( numarg() > 2){
+                $o3 = new String( "g" ) //assumes that total conductance is available as 'g' in evere synapse model file!
+            } else {
+                terminate("Conductance report demanded but function call to evaluateSummationReport with only 2 arguments!")
+            }
         } else if( strcmp(token, "AllConductances") == 0 ){
         	for libIndex=0, condLibrary.count()-1 {
         	    intrinsicList.append( condLibrary.o(libIndex) )
@@ -772,11 +772,11 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
         	for libIndex=0, ptProcessLibrary.count()-1 {
         	   ptProcessList.append( ptProcessLibrary.o(libIndex) )
         	}
-        	if( numarg() > 2){
-        		$o3 = new String( "g" )
-        	} else {
-        	   execerror("Conductance report demanded but function call to evaluateSummationReport with only 2 arguments!")
-        	}
+            if( numarg() > 2){
+                $o3 = new String( "g" )
+            } else {
+                terminate("Conductance report demanded but function call to evaluateSummationReport with only 2 arguments!")
+            }
         } else {
             // Not matched yet, start scanning the lists for specific intance names
             matched = 0
@@ -817,7 +817,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
             if( matched == 0 ) {
                 // Note that we now check for intrinsic names individually like with synapses.  Therefore, this else no longer
                 //  needs to assume that an unmatched token is an ion.  (In the event new ions are added, we can update the lists)
-                execerror( "Bad type given to Current Summation report: %s", token )
+                terminate( "Bad type given to Current Summation report: %s", token )
 
             }
         }
