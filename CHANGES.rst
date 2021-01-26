@@ -3,6 +3,34 @@ Change Log
 ==========
 
 
+Version 2.3.1
+=============
+**Jan. 26, 2021**
+
+*New features*
+  * Read additional attributes from new emodel hoc template and pass to metype constructor
+  * New key SynDelayOverride in Connection block to modify synaptic delays
+  * New key SYNAPSES__init_depleted in Conditions block to initialize synapses in depleted state
+
+*Improvements*
+  * Full debug logging only for src-dst
+  * Fixes related to Engines
+  * Refactoring Node and Engine for multi-circuit
+  * Pass population ids to override_helper
+
+
+Version 2.3.0
+=============
+**Dec. 22, 2020**
+
+*New features*
+  * Implement global options block in BlueConfig
+
+*Improvements*
+  * Attach to src cell when not offset and CoreNeuron
+  * Save load balance data to folder sim_conf
+
+
 Version 2.2.1
 =============
 **Dec. 10, 2020**
