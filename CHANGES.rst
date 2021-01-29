@@ -3,6 +3,26 @@ Change Log
 ==========
 
 
+Version 2.3.1
+=============
+**Jan. 29, 2021**
+
+*Fixes*
+  * Issue when launching CoreNEURON sim with more cells than ranks
+
+
+Version 2.3.0
+=============
+**Dec. 22, 2020**
+
+*New features*
+  * Implement global options block in BlueConfig
+
+*Improvements*
+  * Attach to src cell when not offset and CoreNeuron
+  * Save load balance data to folder sim_conf
+
+
 Version 2.2.1
 =============
 **Dec. 10, 2020**

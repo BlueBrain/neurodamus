@@ -1035,7 +1035,7 @@ class Node:
                 mapping_file = ospath.join(corenrn_data, "%d_3.dat" % fake_gid)
                 if not ospath.isfile(mapping_file):
                     with open(mapping_file, "w") as dummyfile:
-                        dummyfile.write("1.2\n0\n")
+                        dummyfile.write("1.3\n0\n")
             self._pc.nrnbbcore_write(corenrn_data)
             if self._bbcore_fakegid_offset is not None:
                 self._bbcore_fakegid_offset += MPI.size
