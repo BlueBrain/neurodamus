@@ -3,12 +3,29 @@ Change Log
 ==========
 
 
+Version 2.4.0
+=============
+**Feb. 2, 2021**
+
+*New features*
+  * Read additional attributes from new emodel hoc template and pass to metype constructor
+  * New key SynDelayOverride in Connection block to modify synaptic delays
+  * New key SYNAPSES__init_depleted in Conditions block to initialize synapses in depleted state
+
+*Improvements*
+  * Read CoreNeuron data version dynamically than hard coded number in case of more ranks than cells
+  * Full debug logging only for src-dst
+  * Fixes related to Engines
+  * Refactoring Node and Engine for multi-circuit
+  * Pass population ids to override_helper
+
+
 Version 2.3.1
 =============
 **Jan. 29, 2021**
 
 *Fixes*
-  * Issue when launching CoreNEURON sim with more cells than ranks
+  * Issue when launching CoreNEURON sim with more ranks than cells
 
 
 Version 2.3.0
