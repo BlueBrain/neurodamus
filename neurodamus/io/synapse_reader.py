@@ -3,7 +3,8 @@ Module implementing interfaces to the several synapse readers (eg.: synapsetool,
 """
 import logging
 from abc import abstractmethod
-from os import path as Path
+from os import path as ospath
+
 import numpy as np
 
 from ..core import NeurodamusCore as Nd, MPI
@@ -122,13 +123,13 @@ class SynapseReader(object):
                 log_verbose("[SynReader] Using new-gen SynapseReader.")
                 return SynReaderSynTool(syn_src, conn_type, population, **kw)
             else:
-                if not syn_src.endswith(".h5"):
+                if not ospath.isdir(syn_src) and not syn_src.endswith(".h5"):
                     raise SynToolNotAvail(
                         "Can't load new synapse formats without syntool. File: {}".format(syn_src))
                 logging.info("[SynReader] Attempting legacy hdf5 reader.")
                 return SynReaderNRN(syn_src, conn_type, None, *args, **kw)
         else:
-            return cls(args, conn_type, *args, **kw)
+            return cls(syn_src, conn_type, population, *args, **kw)
 
     @classmethod
     def is_syntool_enabled(cls):
@@ -147,15 +148,20 @@ class SynReaderSynTool(SynapseReader):
     _has_warned_field_count_mismatch = False
 
     def _open_file(self, syn_src, population, verbose=False):
-        reader = self._syn_reader = Nd.SynapseReader(syn_src, verbose)
-        if not reader.modEnabled():
+        if not self.is_syntool_enabled():
             raise SynToolNotAvail("SynapseReader support not available.")
+        if ospath.isdir(syn_src) and self._conn_type == self.GAP_JUNCTIONS:
+            alt_gj_nrn_file = ospath.join(syn_src, "nrn_gj.h5")
+            if ospath.isfile(alt_gj_nrn_file):
+                log_verbose("Found gj nrn file: nrn_gj.h5")
+                syn_src = alt_gj_nrn_file
+            # else pass the dir as is, SynapseReader can find e.g. nrn.h5
+        reader = self._syn_reader = Nd.SynapseReader(syn_src, verbose)
         if population:
             reader.selectPopulation(population)
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader
-
         nrow = int(reader.loadSynapses(gid) if self._conn_type == self.SYNAPSES
                    else reader.loadGapJunctions(gid))
         if nrow < 1:
@@ -204,29 +210,33 @@ class SynReaderNRN(SynapseReader):
     """
     def __init__(self,
                  syn_src, conn_type, population=None,
-                 n_synapse_files=1, local_gids=(),  # Specific to NRNReader
+                 n_synapse_files=None, local_gids=(),  # Specific to NRNReader
                  *_, **kw):
-        if Path.isdir(syn_src):
-            syn_src = Path.join(syn_src, 'nrn.h5')
-        # Hdf5 reader doesnt do checks, failing badly (and crypticly) later
-        if not Path.isfile(syn_src) and not Path.isfile(syn_src + ".1"):
+        if ospath.isdir(syn_src):
+            filename = "nrn_gj.h5" if conn_type == self.GAP_JUNCTIONS else "nrn.h5"
+            syn_src = ospath.join(syn_src, filename)
+            log_verbose("Found nrn file: %s", filename)
+
+        # Hdf5 reader doesnt do checks, failing badly (and cryptically) later
+        if not ospath.isfile(syn_src) and not ospath.isfile(syn_src + ".1"):
             raise RuntimeError("NRN synapses file not found: " + syn_src)
 
         # Generic init now that we know the file
-        self._n_synapse_files = n_synapse_files  # needed during init
+        self._n_synapse_files = n_synapse_files or 1  # needed during init
         SynapseReader.__init__(self, syn_src, conn_type, population, **kw)
 
-        if n_synapse_files > 1:
+        if self._n_synapse_files > 1:
             vec = Nd.Vector(len(local_gids))  # excg-location requires true vector
             for num in local_gids:
                 vec.append(num)
             self._syn_reader.exchangeSynapseLocations(vec)
 
     def _open_file(self, syn_src, population, verbose=False):
-        self._syn_reader = Nd.HDF5Reader(syn_src, self._n_synapse_files)
-        self.nrn_version = self._syn_reader.checkVersion()
         if population:
             raise RuntimeError("HDF5Reader doesn't support Populations.")
+        log_verbose("Opening synapse file: %s", syn_src)
+        self._syn_reader = Nd.HDF5Reader(syn_src, self._n_synapse_files)
+        self.nrn_version = self._syn_reader.checkVersion()
 
     def has_nrrp(self):
         return self.nrn_version > 4

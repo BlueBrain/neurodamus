@@ -46,6 +46,7 @@ class RunOptions(ConfigT):
 
 
 class CircuitConfig(ConfigT):
+    _name = None
     Engine = None
     CircuitPath = ConfigT.REQUIRED
     nrnPath = ConfigT.REQUIRED
@@ -197,6 +198,30 @@ class _SimConfig(object):
         """Decorator to register parameters / config validators"""
         cls._validators.append(f)
 
+    @classmethod
+    def update_connection_blocks(cls, alias):
+        """Convert source destination to real population names
+
+        Args:
+            alias: A dict associating alias->real_name's
+        """
+        from ..target_manager import TargetSpec  # avoid cyclic deps
+        if isinstance(cls.connections, dict):
+            return  # Already processed
+
+        def update_item(conn, item):
+            src_spec = TargetSpec(conn.get(item))
+            src_spec.population = alias.get(src_spec.population, src_spec.population)
+            conn[item] = str(src_spec)
+
+        new_connections = {}
+        for name, conn in cls.connections.items():
+            conn = compat.Map(conn).as_dict(True)
+            update_item(conn, "Source")
+            update_item(conn, "Destination")
+            new_connections[name] = conn
+        cls.connections = new_connections
+
 
 # Singleton
 SimConfig = _SimConfig()
@@ -266,7 +291,7 @@ def _validate_circuit_morphology(config_dict, required=True):
         log_verbose(" > Morphology src: <Disabled> MorphologyType: %s, ", morph_type or "<None>")
         return
     if morph_type is None:
-        logging.warning(" > MorphologyType not set. Assuming ascii and legacy /ascii subdir")
+        logging.warning("MorphologyType not set. Assuming ascii and legacy /ascii subdir")
         morph_type = "asc"
         morph_path = os.path.join(morph_path, "ascii")
         config_dict["MorphologyType"] = morph_type
@@ -298,7 +323,9 @@ def _extra_circuits(config: _SimConfig, run_conf):
                 if field in config.base_circuit and field not in circuit_info:
                     log_verbose(" > Inheriting '%s' from base circuit", field)
                     circuit_info[field] = config.base_circuit[field]
+        circuit_info.setdefault("nrnPath", False)
         extra_circuits[name] = _make_circuit_config(circuit_info, req_morphology=False)
+        extra_circuits[name]._name = name
     config.extra_circuits = extra_circuits
 
 

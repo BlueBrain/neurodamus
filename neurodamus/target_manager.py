@@ -27,10 +27,7 @@ class TargetSpec:
 
     def __str__(self):
         return self.name if self.population is None \
-            else "{}:{}".format(self.population, self.name)
-
-    def __bool__(self):
-        return bool(self.name)
+            else "{}:{}".format(self.population, self.name or '')
 
     @property
     def simple_name(self):
@@ -41,9 +38,8 @@ class TargetSpec:
     def matches(self, pop, target_name):
         return pop == self.population and target_name == self.name
 
-    def match_filter(self, pop, target_name, is_base_population=False):
-        return ((self.population == pop or (is_base_population and self.population is None))
-                and target_name in (None, self.name))
+    def match_filter(self, pop, target_name):
+        return self.population == pop and target_name in (None, '', self.name)
 
     def __eq__(self, other):
         return self.matches(other.population, other.name)
@@ -152,5 +148,5 @@ class TargetManager:
             target = self.get_target(target)
         if target.isCellTarget() and cell_use_compartment_cast:
             target = self.hoc.compartmentCast(target, "")
-        log_verbose("Using cell manager with cells offset by %d", cell_manager.gid_offset)
+        log_verbose("Using cell manager with cells offset by %d", cell_manager.local_nodes.offset)
         return target.getPointList(cell_manager)

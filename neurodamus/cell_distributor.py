@@ -3,13 +3,16 @@ Mechanisms to load and balance cells across the computing resources.
 """
 from __future__ import absolute_import, print_function
 import logging  # active only in rank 0 (init)
+import os
+import weakref
 from contextlib import contextmanager
 from enum import Enum
 from io import StringIO
 from os import path as ospath
-import numpy
-import os
 
+import numpy
+
+from .connection_manager import ConnectionManagerBase
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
@@ -44,11 +47,57 @@ class LoadBalanceMode(Enum):
         }
         return _modes[lb_mode.lower()]
 
+    class AutoBalanceModeParams:
+        """Parameters for auto-selecting a load-balance mode"""
+        multisplit_cpu_cell_ratio = 1.5
+        cell_count = 1000
+        duration = 1000
+        mpi_ranks = 200
+
+    @classmethod
+    def auto_select(cls, use_neuron, cell_count, duration, auto_params=AutoBalanceModeParams):
+        """Simple heuristics for auto selecting load balance"""
+        lb_mode = LoadBalanceMode.RoundRobin
+        reason = ""
+        if use_neuron and MPI.size > auto_params.multisplit_cpu_cell_ratio * cell_count:
+            lb_mode = LoadBalanceMode.MultiSplit
+            reason = "CPU-Cell ratio"
+        elif (cell_count > auto_params.cell_count
+              and duration > auto_params.duration
+              and MPI.size > auto_params.mpi_ranks):
+            lb_mode = LoadBalanceMode.WholeCell
+            reason = 'Simulation size'
+        return lb_mode, reason
+
 
 class NodeFormat(Enum):
     NCS = 1
     MVD3 = 2
     SONATA = 3
+
+
+class VirtualCellPopulation:
+    """
+    A virtual cell population offers a compatible interface with Cell Manager,
+    however it doesnt instantiate cells.
+    It is mostly used as source of projections
+    """
+    _total_count = 0
+
+    def __init__(self, population_name):
+        self._population_name = population_name
+        self._local_nodes = NodeSet().register_global(population_name or '')
+        VirtualCellPopulation._total_count += 1
+        if VirtualCellPopulation._total_count > 1:
+            logging.warning("At the moment only a single Virtual Cell Population works with REPLAY")
+
+    local_nodes = property(lambda self: self._local_nodes)
+    population_name = property(lambda self: self._population_name)
+    is_default = property(lambda self: False)
+    is_virtual = property(lambda self: True)
+
+    def __str__(self):
+        return "([VIRT] {:s})".format(self._population_name)
 
 
 class CellManagerBase(object):
@@ -65,7 +114,10 @@ class CellManagerBase(object):
         load(circuit_conf, gidvec, stride=1, stride_offset=0)
     """
 
-    def __init__(self, circuit_conf, target_parser, run_conf):
+    _node_format = NodeFormat.SONATA  # NCS, Mvd, Sonata...
+    """Default Node file format"""
+
+    def __init__(self, circuit_conf, target_parser, *_):
         """Initializes CellDistributor
 
         Args:
@@ -75,10 +127,11 @@ class CellManagerBase(object):
 
         """
         self._circuit_conf = circuit_conf
+        self._circuit_name = circuit_conf._name
         self._target_parser = target_parser
         self._target_spec = TargetSpec(circuit_conf.CircuitTarget)
-
-        self._local_nodes = NodeSet()
+        self._population_name = None
+        self._local_nodes = None
         self._total_cells = 0   # total cells in target, being simulated
         self._gid2cell = {}
 
@@ -86,26 +139,61 @@ class CellManagerBase(object):
         self._ionchannel_seed = 0
         self._binfo = None
         self._pc = Nd.pc
+        self._conn_managers_per_src_pop = weakref.WeakValueDictionary()
+
+        if circuit_conf.CircuitPath:
+            self._init_config(circuit_conf, self._target_spec.population)
+        else:
+            logging.info(" => %s Circuit has been disabled", self.circuit_name or "(default)")
 
     # read-only properties
     target_parser = property(lambda self: self._target_parser)
-    gid_offset = property(lambda self: self._local_nodes.offset)
-    local_gids = property(lambda self: self._local_nodes.final_gids())
+    local_nodes = property(lambda self: self._local_nodes or NodeSet())
     total_cells = property(lambda self: self._total_cells)
     cells = property(lambda self: self._gid2cell.values())
     gid2cell = property(lambda self: self._gid2cell)
     pc = property(lambda self: self._pc)
+    population_name = property(lambda self: self._population_name)
+    circuit_target = property(lambda self: self._target_spec.name)
+    circuit_name = property(lambda self: self._circuit_name)
+    is_default = property(lambda self: self._circuit_name is None)
+    is_virtual = property(lambda self: False)
+    connection_managers = property(lambda self: self._conn_managers_per_src_pop)
+
+    def __str__(self):
+        return "({}: {})".format(self.__class__.__name__, str(self._population_name))
 
     # Compatibility with neurodamus-core (used by TargetManager, CompMapping)
-    getGidListForProcessor = lambda self: self._local_nodes.final_gids()
+    def getGidListForProcessor(self):
+        return self._local_nodes.final_gids()
+
+    def _init_config(self, circuit_conf, pop):
+        if not pop and self._node_format == NodeFormat.SONATA:  # Last attempt to get pop name
+            pop = self._get_sonata_population_name(circuit_conf.CellLibraryFile)
+            logging.info(" -> Discovered node population name: %s", pop)
+        if not pop and circuit_conf._name:
+            pop = circuit_conf._name
+            logging.warning("(Compat) Assuming population name from Circuit: %s", pop)
+        self._population_name = pop
+        # Base population should be registered as "" so it doesnt do offsetting
+        if not pop and not self.is_default:
+            raise Exception("Only the default population can be unnamed")
+        self._local_nodes = NodeSet().register_global("" if self.is_default else pop)
+
+    @classmethod
+    def _get_sonata_population_name(self, node_file):
+        import h5py  # only for Sonata
+        ds = h5py.File(node_file, "r")["nodes"]
+        assert len(ds) == 1  # single population
+        return next(iter(ds.keys()))
 
     def load_nodes(self, load_balancer=None, *, _loader=None):
         """Top-level loader of nodes.
         """
+        if self._local_nodes is None:
+            return
         conf = self._circuit_conf
         loader_f = _loader or self._node_loader
-        if conf.CircuitPath is False:  # Circuit is disabled
-            return
 
         logging.info("Reading Nodes (METype) info from '%s'", conf.CellLibraryFile)
         if not load_balancer:
@@ -122,7 +210,7 @@ class CellManagerBase(object):
         conf = self._circuit_conf
         target_spec = self._target_spec
 
-        if target_spec:
+        if target_spec.name:
             logging.info(" -> Distributing '%s' target cells Round-Robin", target_spec)
             target = self._target_parser.getTarget(target_spec.name)
             target_gids = target.completegids().as_numpy().astype("uint32")
@@ -157,6 +245,9 @@ class CellManagerBase(object):
         Note: it should be called after all cell distributors have done load_nodes()
             so gids offsets are final.
         """
+        if self._local_nodes is None:
+            return
+        logging.info("Finalizing cells... Gid offset: %d", self._local_nodes.offset)
         self._instantiate_cells()
         self._update_targets_local_gids()
         self._init_cell_network()
@@ -168,16 +259,16 @@ class CellManagerBase(object):
         assert CellType is not None, "Undefined CellType in Manager"
         Nd.execute("xopen_broadcast_ = 0")
 
-        logging.info("Instantiating cells... (%d in Rank 0)", len(self._local_nodes))
+        logging.info(" > Instantiating cells... (%d in Rank 0)", len(self._local_nodes))
         cell_offset = self._local_nodes.offset
         for gid, cell_info in ProgressBar.iter(self._local_nodes.items(), len(self._local_nodes)):
             cell = CellType(gid, cell_info, self._circuit_conf)
             self._store_cell(gid + cell_offset, cell)
 
     def _update_targets_local_gids(self):
-        logging.info("Updating targets")
+        logging.info(" > Updating targets")
         cell_offset = self._local_nodes.offset
-        if cell_offset:
+        if cell_offset and self._target_spec.name:
             target = self._target_parser.getTarget(self._target_spec.name)
             if not hasattr(target, "set_offset"):
                 raise NotImplementedError("No gid offsetting supported by neurodamus Target.hoc")
@@ -188,13 +279,11 @@ class CellManagerBase(object):
     def _init_cell_network(self):
         """Init global gids for cell networking
         """
-        logging.info("Initializing cell network")
+        logging.info(" > Initializing cell network")
         self._init_rng()
-        gid_offset = self._local_nodes.offset
         pc = self._pc
 
-        for cell in self.cells:
-            final_gid = int(cell.gid) + gid_offset
+        for final_gid, cell in self._gid2cell.items():
             cell.re_init_rng(self._ionchannel_seed)
             nc = cell.connect2target(None)  # Netcon doesnt require being stored
 
@@ -213,7 +302,18 @@ class CellManagerBase(object):
 
         pc.multisplit()
 
+    def enable_report(self, report_conf, target_name, use_coreneuron):
+        """Placeholder for Engines implementing their own reporting
+
+        Args:
+            report_conf: The dict containing the report configuration
+            target_name: The target of the report
+            use_coreneuron: Whether the simulator is CoreNeuron
+        """
+        pass
+
     def load_artificial_cell(self, gid, artificial_cell):
+        logging.info(" > Adding Artificial cell for CoreNeuron")
         cell = EmptyCell(gid, artificial_cell)
         self._store_cell(gid, cell)
         nc = cell.connect2target(None)
@@ -229,17 +329,11 @@ class CellManagerBase(object):
     def _store_cell(self, gid, cell):
         self._gid2cell[gid] = cell
 
-    def clear_cells(self):
-        """Clear all cells
-        """
-        for cell in self.cells:
-            if cell.CellRef and hasattr(cell.CellRef, 'clear'):
-                cell.CellRef.clear()
-        self._gid2cell.clear()
-
     def record_spikes(self, gids=None, append_spike_vecs=None):
         """Setup recording of spike events (crossing of threshold) for cells on this node
         """
+        if not self._local_nodes:
+            return
         spikevec, idvec = append_spike_vecs or (Nd.Vector(), Nd.Vector())
         if gids is None:
             gids = self._local_nodes.final_gids()
@@ -251,6 +345,13 @@ class CellManagerBase(object):
                     logging.debug("Collecting spikes for gid %d", gid)
                 self._pc.spike_record(gid, spikevec, idvec)
         return spikevec, idvec
+
+    def register_connection_manager(self, conn_manager: ConnectionManagerBase):
+        src_population = conn_manager.src_cell_manager.population_name
+        if src_population in self._conn_managers_per_src_pop:
+            logging.warning("Skip registering %s as a second pop source", conn_manager)
+        else:
+            self._conn_managers_per_src_pop[src_population] = conn_manager
 
     # Accessor methods (Keep CamelCase API for compatibility with existing hoc)
     # ----------------
@@ -295,27 +396,13 @@ class CellDistributor(CellManagerBase):
         NodeFormat.SONATA: cell_readers.load_nodes
     }
 
-    def __init__(self, circuit_conf, target_parser, run_conf):
-        """Initializes CellDistributor
-
-        Args:
-            circuit_conf: The "Circuit" blueconfig block
-            target_parser: the target parser hoc object, to retrieve target cells' info
-            run_conf: Run configuration
-
-        """
-        super().__init__(circuit_conf, target_parser, run_conf)
-        self._node_format = None  # NCS, Mvd, Sonata...
-
-        if circuit_conf.CircuitPath:
-            self._init_config(circuit_conf)
-
-    def _init_config(self, circuit_conf):
+    def _init_config(self, circuit_conf, _pop):
         if not circuit_conf.CellLibraryFile:
             logging.warning("CellLibraryFile not set. Assuming legacy 'start.ncs'")
             circuit_conf.CellLibraryFile = "start.ncs"
         file2format = {"start.ncs": NodeFormat.NCS, "circuit.mvd3": NodeFormat.MVD3}
         self._node_format = file2format.get(circuit_conf.CellLibraryFile, NodeFormat.SONATA)
+        super()._init_config(circuit_conf, _pop)
 
     def load_nodes(self, load_balancer=None, **kw):
         """gets gids from target, splits and returns a GidSet with all metadata
@@ -324,6 +411,8 @@ class CellDistributor(CellManagerBase):
         return super().load_nodes(load_balancer, **kw)
 
     def _instantiate_cells(self, *_):
+        if self.CellType is not NotImplemented:
+            return super()._instantiate_cells(self.CellType)
         CellType = Cell_V5 if self._node_format == NodeFormat.NCS else Cell_V6
         conf = self._circuit_conf
         CellType.morpho_extension = conf.MorphologyType
@@ -400,7 +489,7 @@ class LoadBalance:
         # Abort if the circuit changed or in case now we request full circuit
         # since its Impossible to have a superset of it
         if (self.cxinfo_nrnpath != self.nrnpath
-                or not target_spec
+                or not target_spec.name
                 or not self.cxinfo_targets):
             logging.info(" => Target Cx reusing is not available.")
             return False
@@ -576,7 +665,7 @@ class LoadBalance:
     def _compute_complexities(cls, mcomplex, cell_distributor):
         cx_cell = compat.Vector("f")
         pc = cell_distributor.pc
-        for gid in cell_distributor.local_gids:
+        for gid in cell_distributor.local_nodes.final_gids():
             cx_cell.append(mcomplex.cell_complexity(pc.gid2cell(gid)))
         return cx_cell
 

@@ -45,7 +45,7 @@ def _ncs_get_cells(ncs_f):
         yield cell_i, _gid, metype
 
 
-def split_round_robin(all_gids, stride, stride_offset, total_cells):
+def split_round_robin(all_gids, stride=1, stride_offset=0, total_cells=None):
     """ Splits a numpy ndarray[uint32] round-robin.
     If the array is None generates new arrays based on the nr of total cells
     """
@@ -53,6 +53,7 @@ def split_round_robin(all_gids, stride, stride_offset, total_cells):
         gidvec = all_gids[stride_offset::stride] if stride > 1 else all_gids
         gidvec.sort()
     else:
+        assert total_cells, "split_round_robin: total_cells required without gids"
         cell_i = stride_offset + 1  # gids start from 1
         gidvec = np.arange(cell_i, total_cells + 1, stride, dtype="uint32")
     return gidvec
@@ -265,13 +266,13 @@ def _getNeededAttributes(node_reader, etype_path, emodels, indexes):
     """
     add_params_list = []
     for idx, emodel in zip(indexes, emodels):
-        Nd.load_hoc(ospath.join(etype_path, emodel))
+        Nd.h.load_file(ospath.join(etype_path, emodel) + ".hoc")  # hoc doesn't throw
         attr_names = getattr(Nd, emodel + "_NeededAttributes", None)  # format "attr1;attr2;attr3"
         vals = []
         if attr_names is not None:
             if not hasattr(node_reader, "getAttribute"):
                 logging.error("The MVDTool API is old. Please load a newer version of neurodamus")
                 raise ConfigurationError("Please load a newer version of neurodamus")
-            vals += [node_reader.getAttribute(name, idx, 1)[0] for name in attr_names.split(";")]
+            vals = [node_reader.getAttribute(name, idx, 1)[0] for name in attr_names.split(";")]
         add_params_list.append(vals)
     return add_params_list

@@ -57,6 +57,9 @@ class Map(collections_abc.Mapping):
 
     keys = __iter__
 
+    def get(self, key, default=None):
+        return self[key] if key in self else default
+
     def __getitem__(self, item):
         value = self._hoc_map.get(item)
         if hasattr(value, 's'):  # hoc strings have the value in .s attribute

@@ -2,27 +2,33 @@
 Definitions for implementing new Engines to handle different cell types
 """
 
-import logging
 import importlib
-import pkgutil
+import logging
 import os
+import pkgutil
 
 
 class _EngineMeta(type):
     """A metaclass providing registration for new Engines
     """
-    __engines = dict()
-    __instances = dict()
+    __engines = {}
+    __connection_types = {}
+    __instances = {}
 
     def __init__(cls, name, bases, attrs):
         type.__init__(cls, name, bases, attrs)
         ename = name.replace("Engine", "")
         logging.info(" * Registering Engine %s (%s.%s)", ename, cls.__module__, name)
         cls.__engines.setdefault(ename, cls)
+        cls.__connection_types.update(cls.ConnectionTypes)
 
     @property
     def engines(cls):
-        return cls.__engines.keys()
+        return cls.__engines.values()
+
+    @property
+    def connection_types(cls):
+        return cls.__connection_types
 
     def get(cls, name):
         """Each engine is a singleton"""
@@ -41,7 +47,8 @@ class _EngineMeta(type):
         for finder, name, ispkg in pkgutil.iter_modules():
             if name.startswith('neurodamus_'):
                 importlib.import_module(name)
-        logging.info(" => Engines Available: %s", list(cls.engines))
+        logging.info(" => Engines Available: %s", list(cls.__engines.keys()))
+        logging.info("  : Connections Types: %s", list(cls.__connection_types.keys()))
 
 
 class EngineBase(metaclass=_EngineMeta):
@@ -66,7 +73,9 @@ class EngineBase(metaclass=_EngineMeta):
     """
 
     CellManagerCls = None
-    SynapseManagerCls = None
+    InnerConnectivityCls = None
+    ConnectionTypes = {}
+    """A dict of the new connection types and associated Manager class"""
 
     @classmethod
     def new_cell_manager(cls, circuit_conf, target_parser, run_conf):

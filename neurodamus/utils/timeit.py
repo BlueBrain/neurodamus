@@ -170,7 +170,7 @@ class _Timer(object):
                            else ""))
 
 
-class TimerManager(object):
+class _TimerManager(object):
     _timers = dict()
     _timers_sequence = 0
     _archived_timers = {}
@@ -220,11 +220,8 @@ class TimerManager(object):
         stats_name = " TIMEIT STATS {}".format('(' + timers_name + ') ' if timers_name
                                                else timers_name)
         logging.info("+{:=^111s}+".format(stats_name))
-        logging.info("|{:^58s}|{:^10s}|{:^10s}|{:^10s}|{:^19s}|".format('Event Label',
-                                                                                'Avg.Time',
-                                                                                'Min.Time',
-                                                                                'Max.Time',
-                                                                                'Hits R0 / Total '))
+        logging.info("|{:^58s}|{:^10s}|{:^10s}|{:^10s}|{:^19s}|".format(
+            'Event Label', 'Avg.Time', 'Min.Time', 'Max.Time', 'Hits R0 / Total '))
         logging.info("+{:-^111s}+".format('-'))
 
         for t, (name, tinfo) in enumerate(timers.items()):
@@ -239,7 +236,7 @@ class TimerManager(object):
         logging.info("+{:-^111s}+".format('-'))
 
 
-TimerManager = TimerManager()  # singleton
+TimerManager = _TimerManager()  # singleton
 
 
 # Can be used as context manager or decorator

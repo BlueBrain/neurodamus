@@ -22,11 +22,14 @@ from neurodamus.metype import BaseCell
 class ACellType(BaseCell):
     """A new testing cell type
     """
+    class CellName(str):
+        pass
+
     def __init__(self, gid, cell_info, circuit_conf):
         """Instantiate a new Cell from mvd/node info"""
         super().__init__(gid, cell_info, circuit_conf)
         self.gid = gid
-        self.section = Nd.Section(name="soma", cell="a" + str(gid))
+        self.section = Nd.Section(name="soma", cell=self.CellName("a" + str(gid)))
         self.f0 = cell_info[0]
         self.f1 = cell_info[1]
 
@@ -36,6 +39,7 @@ class ACellType(BaseCell):
 
 class ACellManager(CellManagerBase):
     CellType = ACellType
+    _node_format = "fake"
 
     @staticmethod
     def _node_loader(circuit_conf, gidvec, stride=1, stride_offset=0):
@@ -117,7 +121,7 @@ class ACellSynapseManager(ConnectionManagerBase):
 
 class ACellEngine(EngineBase):
     CellManagerCls = ACellManager
-    SynapseManagerCls = ACellSynapseManager
+    InnerConnectivityCls = ACellSynapseManager
 
 
 #

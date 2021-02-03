@@ -11,7 +11,7 @@ class OtherRankError(RuntimeError):
     pass
 
 
-class MPI(object):
+class _MPI(object):
     """A singleton of MPI runtime information
     """
     _size = 1
@@ -84,5 +84,5 @@ class MPI(object):
         return getattr(self._pc, name)
 
 
-MPI = MPI()
+MPI = _MPI()
 """A singleton of MPI runtime information"""

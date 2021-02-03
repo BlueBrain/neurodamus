@@ -12,23 +12,6 @@ from .utils import compat
 from .utils.logging import log_all
 
 
-class SynapseMode:
-    """Synapse Modes, as req. by SynapseRuleManager
-    """
-    AMPA_ONLY = 1
-    DUAL_SYNS = 2
-    default = DUAL_SYNS
-
-    @classmethod
-    def from_str(cls, str_repr):
-        if str_repr.lower().startswith("ampa"):
-            return cls.AMPA_ONLY
-        elif str_repr.lower().startswith("dual"):
-            return cls.DUAL_SYNS
-        raise ValueError("Invalid synapse mode: " + str_repr + ". "
-                         "Possible values are Ampa* and Dual*")
-
-
 class ReplayMode(Enum):
     """Replay instantiation mode.
     """
@@ -65,17 +48,35 @@ class ConnectionBase:
     _match_index = re.compile(r"\[[0-9]+\]")
     """Regex to match indexes of hoc objects, useful to get mechs name"""
 
-    def __init__(self, sgid, tgid, src_pop_id=0, dst_pop_id=0, weight_factor=1,
-                 syndelay_override=None):
+    def __init__(self,
+                 sgid, tgid,
+                 src_pop_id=0, dst_pop_id=0,
+                 weight_factor=1,
+                 syndelay_override=None,
+                 synapses_offset=0):
+        """Initializes a base connection object
+
+        Args:
+            sgid: presynaptic gid
+            tgid: postsynaptic gid
+            src_pop_id: The id of the source node population
+            dst_pop_id: The id of the target node population
+            weight_factor: the weight factor to be applied to the connection. Default: 1
+            syndelay_override: The delay for this connection, overriding "delay" property
+            synapses_offset: The offset within the edge file (metadata)
+        """
         self.sgid = int(sgid or -1)
         self.tgid = int(tgid)
         self.locked = False
         self._disabled = False
         self._conn_params = np.recarray(1, dtype=dict(
-            names=['weight_factor', 'syndelay_override', 'src_pop_id', 'dst_pop_id'],
-            formats=['f8', 'f8', 'i4', 'i4']
+            names=['weight_factor', 'syndelay_override', 'syn_offset', 'src_pop_id', 'dst_pop_id'],
+            formats=['f8', 'f8', 'u8', 'i4', 'i4']
         ))[0]
-        self._conn_params.put(0, (weight_factor, syndelay_override, src_pop_id, dst_pop_id))
+        self._conn_params.put(
+            0,
+            (weight_factor, syndelay_override, synapses_offset, src_pop_id, dst_pop_id)
+        )
         self._synapse_params = []
         # Initialized in specific routines
         self._netcons = None
@@ -85,6 +86,7 @@ class ConnectionBase:
 
     synapse_params = property(lambda self: self._synapse_params)
     synapses = property(lambda self: self._synapses)
+    synapses_offset = property(lambda self: self._conn_params.syn_offset)
     population_id = property(lambda self: (self._conn_params.src_pop_id,
                                            self._conn_params.dst_pop_id))
     weight_factor = property(
@@ -196,8 +198,7 @@ class Connection(ConnectionBase):
                  minis_spont_rate=None,
                  configuration=None,
                  mod_override=None,
-                 synapse_mode=SynapseMode.DUAL_SYNS,
-                 syndelay_override=None):
+                 **kwargs):
         """Creates a connection object
 
         Args:
@@ -208,12 +209,9 @@ class Connection(ConnectionBase):
                 when the synapses are instantiated (or None)
             minis_spont_rate: rate for spontaneous minis. Default: None
             mod_override: Alternative Synapse type. Default: None (use standard Inh/Exc)
-            synapse_mode: synapse mode. Default: DUAL_SYNS
-
         """
         h = self._init_hmod()
-        super().__init__(sgid, tgid, src_pop_id, dst_pop_id, weight_factor, syndelay_override)
-        self._synapse_mode = synapse_mode
+        super().__init__(sgid, tgid, src_pop_id, dst_pop_id, weight_factor, **kwargs)
         self._mod_override = mod_override
         self._synapse_points = h.TPointList(tgid, 1)
         self._synapse_ids = compat.Vector("i")
@@ -223,8 +221,6 @@ class Connection(ConnectionBase):
         self._spont_minis = SpontMinis(minis_spont_rate)
         self._replay = ReplayStim()
 
-    # read-only properties
-    synapse_mode = property(lambda self: self._synapse_mode)
     # R/W properties
     minis_spont_rate = property(
         lambda self: self._spont_minis.rate,
@@ -292,50 +288,27 @@ class Connection(ConnectionBase):
         return len(self._replay)
 
     # -
-    def finalize(self, cell, base_seed=0, spgid=None, skip_disabled=False, *,
-                       replay_mode=ReplayMode.AS_REQUIRED, attach_src_cell=True):
+    def finalize(self, cell, base_seed=0, *,
+                 skip_disabled=False,
+                 replay_mode=ReplayMode.AS_REQUIRED,
+                 attach_src_cell=True):
         """ When all parameters are set, create synapses and netcons
 
         Args:
             cell: The cell to create synapses and netcons on.
             base_seed: base seed value (Default: None - no adjustment)
-            spgid: target part id, required With multisplit
             skip_disabled: Dont instantiate at all if conn was disabled. Mostly
                 useful for CoreNeuron
             replay_mode: Policy to initialize replay in this conection
 
         """
         if skip_disabled and self._disabled:
-            return False
+            return 0
 
         # Initialize member lists
         self._synapses = compat.List()  # Used by ConnUtils
         self._netcons = []
-
-        shall_create_replay = replay_mode == ReplayMode.COMPLETE or \
-            replay_mode == ReplayMode.AS_REQUIRED and self._replay.has_data()
-
-        # Release objects if not needed
-        if not shall_create_replay:
-            self._replay = None
-        # if spont_minis not set by user, set with default rates from circuit if available
-        if not self._spont_minis.has_data():
-            if cell.inh_mini_frequency or cell.exc_mini_frequency:
-                self._spont_minis = InhExcSpontMinis(cell.inh_mini_frequency,
-                                                     cell.exc_mini_frequency)
-        # Release spont_minis object if it evaluates to false (rates are 0)
-        if not self._spont_minis:
-            self._spont_minis = None
-
-        # Delayed vecs: release if not used, sort if over 1 value
-        total_delays = self._delay_vec.size()
-        if total_delays == 0:
-            self._delay_vec = None
-            self._delayweight_vec = None
-        elif total_delays > 1:
-            sort_indx = self._delay_vec.sortindex()
-            self._delay_vec = Nd.Vector(total_delays).index(self._delay_vec, sort_indx)
-            self._delayweight_vec = Nd.Vector(total_delays).index(self._delayweight_vec, sort_indx)
+        self._init_artificial_stims(cell, replay_mode)
 
         for syn_i, sec in self.sections_with_synapses:
             x = self._synapse_points.x[syn_i]
@@ -377,7 +350,34 @@ class Connection(ConnectionBase):
                     setattr(Nd.h, syn_opt_name, value)
 
         self._configure_synapses()
-        return True
+        return 1
+
+    def _init_artificial_stims(self, cell, replay_mode):
+        shall_create_replay = (
+            replay_mode == ReplayMode.COMPLETE or
+            replay_mode == ReplayMode.AS_REQUIRED and self._replay.has_data())
+
+        # Release objects if not needed
+        if not shall_create_replay:
+            self._replay = None
+        # if spont_minis not set by user, set with default rates from circuit if available
+        if not self._spont_minis.has_data():
+            if cell.inh_mini_frequency or cell.exc_mini_frequency:
+                self._spont_minis = InhExcSpontMinis(cell.inh_mini_frequency,
+                                                     cell.exc_mini_frequency)
+        # Release spont_minis object if it evaluates to false (rates are 0)
+        if not self._spont_minis:
+            self._spont_minis = None
+
+        # Delayed vecs: release if not used, sort if over 1 value
+        total_delays = self._delay_vec.size()
+        if total_delays == 0:
+            self._delay_vec = None
+            self._delayweight_vec = None
+        elif total_delays > 1:
+            sort_indx = self._delay_vec.sortindex()
+            self._delay_vec = Nd.Vector(total_delays).index(self._delay_vec, sort_indx)
+            self._delayweight_vec = Nd.Vector(total_delays).index(self._delayweight_vec, sort_indx)
 
     def _attach_source_cell(self, syn_obj, syn_params):
         # See `neurodamus-core.Connection` for explanation. Also pc.gid_connect

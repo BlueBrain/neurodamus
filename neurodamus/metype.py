@@ -28,10 +28,8 @@ class BaseCell:
         return self._ccell
 
     def connect2target(self, target_pp=None):
-        """ Connects empty cell to target
-        """
-        netcon = Nd.NetCon(self._cellref, target_pp)
-        return netcon
+        """ Connects empty cell to target """
+        return Nd.NetCon(self._cellref, target_pp)
 
     def re_init_rng(self, ion_seed):
         pass
@@ -126,6 +124,9 @@ class METype(BaseCell):
             ion_seed: ion channel seed
         """
         self._ccell.re_init_rng(ion_seed)
+
+    def __del__(self):
+        self._cellref.clear()  # cut cyclic reference
 
 
 class Cell_V6(METype):
@@ -282,7 +283,7 @@ class METypeManager(dict):
             exc_mini_freq = exc_mini_freqs[idx] if exc_mini_freqs is not None else .0
             inh_mini_freq = inh_mini_freqs[idx] if inh_mini_freqs is not None else .0
             add_params = add_params_list[idx] if add_params_list is not None else None
-            self[int(gid)] = METypeItem(morph_list[idx], emodel=emodels[idx],
+            self[int(gid)] = METypeItem(morph_list[idx], emodel=emodels and emodels[idx],
                                         threshold_current=th_current,
                                         holding_current=hd_current,
                                         exc_mini_frequency=exc_mini_freq,

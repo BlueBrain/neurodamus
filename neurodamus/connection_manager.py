@@ -5,7 +5,6 @@ from __future__ import absolute_import
 import hashlib
 import logging
 import numpy
-from abc import abstractmethod
 from collections import defaultdict
 from itertools import chain
 from os import path as ospath
@@ -13,7 +12,7 @@ from os import path as ospath
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core.configuration import GlobalConfig, SimConfig, ConfigurationError
-from .connection import Connection, SynapseMode, ReplayMode
+from .connection import Connection, ReplayMode
 from .io.cell_readers import TargetSpec
 from .io.synapse_reader import SynapseReader
 from .utils import compat, bin_search, dict_filter_map
@@ -32,6 +31,7 @@ class ConnectionSet(object):
         self.dst_id = dst_id
         self.src_name = None
         self.dst_name = None
+        self.virtual_source = False
         self._conn_factory = conn_factory
         self._connections_map = defaultdict(list)
         self._conn_count = 0
@@ -212,16 +212,22 @@ class ConnectionSet(object):
     def __str__(self):
         if self.is_default():
             return "<ConnectionSet: Default>"
-        return "<ConnectionSet: SrcID: %d (%s->%s)>" % (self.src_id, self.src_name, self.dst_name)
+        return "<ConnectionSet: %d-%d (%s->%s)>" % (
+               self.src_id, self.dst_id, self.src_name, self.dst_name)
+
+    def __repr__(self):
+        return str(self)
 
 
 class ConnectionManagerBase(object):
     """
     An abstract base class common to Synapse and GapJunction connections
-    """
 
-    CIRCUIT_FILENAMES = None
-    """The possible circuit filenames specificed in search order"""
+    Connection Managers hold and manage connectivity among cell populations.
+    To simplify, and stay backwards compatible, projections coming from virtual
+    populations stay in the same manager of the internal connectivity.
+   """
+
     CONNECTIONS_TYPE = None
     """The type of connections subclasses handle"""
 
@@ -230,167 +236,147 @@ class ConnectionManagerBase(object):
     SynapseReader = SynapseReader
     conn_factory = Connection
 
-    # We declare class variables which might be used in subclass methods
-    _circuit_target = None  # gaj junctions require the target obj to validate src cells
-    _synapse_mode = SynapseMode.default
-
     cell_manager = property(lambda self: self._cell_manager)
+    src_cell_manager = property(lambda self: self._src_cell_manager)
     is_file_open = property(lambda self: bool(self._synapse_reader))
 
     # -
-    def __init__(self, circuit_conf, target_manager, cell_manager, base_manager=None):
+    def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
         """Base class c-tor for connections (Synapses & Gap-Junctions)
 
         Args:
             circuit_conf: A circuit config object where to get the synapse source from
                 or None if the ConnecionManager is to be constructed empty
             target_manager: A target manager, where to query target cells
-            cell_distributor: Query the local gids
-            base_manager: In other engines, this is the base engine cell manager
+            cell_manager: Manager to query the local target cells
+            src_cell_manager: Manager to query the local source cells [default: None -> internal]
+            load_offsets: Whether to load synapse offsets
+
         """
         self._target_manager = target_manager
         self._cell_manager = cell_manager
+        self._src_cell_manager = src_cell_manager or cell_manager
 
-        self._base_population = None  # the node population name that base connectivity targets
         self._populations = {}  # Multiple edge populations support. key is a tuple (src, dst)
         self._populations_by_src_nodes = defaultdict(list)  # find edge populations by src nodes
-        self._cur_population = self.get_population(0, 0)  # Instantiate a default pop
+        self._cur_population = None
         self._disabled_conns = defaultdict(list)
 
         self._synapse_reader = None
-        self._local_gids = cell_manager.local_gids
+        self._raw_gids = cell_manager.local_nodes.raw_gids()
         self._total_connections = 0
         self.circuit_conf = circuit_conf
-        self.base_manager = base_manager
-        self.has_syn_indexes = False
+        self._load_offsets = False
+        self._src_target_filter = None  # filter by src target in all_connect (E.g: GapJ)
 
-        if GlobalConfig.debug_conn:
-            logging.info("Debugging activated for cell/conn %s", GlobalConfig.debug_conn)
+    def __str__(self):
+        return "<{:s} | {:s} -> {:s}>".format(
+            self.__class__.__name__, str(self._src_cell_manager), str(self._cell_manager))
 
-    # -
-    def init_synapse_location(self, nrn_path, circuit_conf, load_offsets=False):
-        """Initializes the reader from compat nrn_path values and sets base population
+    def open_synapse_location(self, syn_source, circuit_conf, **kw):
+        edge_file, *pop = syn_source.split(":")
+        pop_name = pop[0] if pop else None
+        n_files = circuit_conf.get("NumSynapseFiles")
+        src_pop_id = _get_projection_population_id(circuit_conf)
+        return self.open_synapse_file(edge_file, pop_name, n_files, src_pop_id=src_pop_id, **kw)
+
+    def open_synapse_file(self, synapse_file, edge_population, n_files=1, load_offsets=False, *,
+                          src_pop_id=None, src_name=None, **_kw):
+        """Initializes a reader for Synapses config objects and associated population
+
+        Args:
+            synapse_file: The nrn/edge file. For old nrn files it may be a dir.
+            edge_population: The population of the edges
+            n_files: (nrn only) the number of nrn files in the directory (without nrn.h5)
+            load_offsets: Whether the synapse offset should be loaded. So far only for NGV
+            src_pop_id: (compat) Allow overriding the src population ID
+            src_name: The source pop name, normally matching that of the source cell manager
         """
-        logging.info("Initialize cell manager from nrnPath=%s", nrn_path)
-        n_synapse_files = 1
-        nrn_path, *pop = nrn_path.split(":")  # fspath:population
+        if not ospath.exists(synapse_file):
+            raise ConfigurationError("Connectivity (Edge) file not found: {}".format(synapse_file))
+        if ospath.isdir(synapse_file):
+            logging.warning("Edges source is a directory (legacy nrn.h5 only)")
+            if ospath.isfile(ospath.join(synapse_file, "nrn.h5")):
+                n_files = 1
 
-        if ospath.isdir(nrn_path):
-            # legacy nrnreader may require manual NumSynapseFiles
-            # But with a wrapper nrn.h5 dont change from 1
-            if not ospath.isfile(ospath.join(nrn_path, "nrn.h5")):
-                n_synapse_files = circuit_conf.get("NumSynapseFiles", 1)
+        self._synapse_reader = self._open_synapse_file(synapse_file, edge_population, n_files)
+        self._load_offsets = load_offsets
+        if load_offsets:
+            if not self._synapse_reader.has_property("synapse_index"):
+                raise Exception("Synapse offsets required but not available. "
+                                "Please use a more recent version of neurodamus-core/synapse-tool")
 
-            nrn_path = self._find_circuit_file(nrn_path)
-        assert ospath.isfile(nrn_path), "nrnPath doesnt contain valid Edge files"
-
-        if pop:
-            src_pop, dst_pop = self._edge_to_node_population_names(pop[0])
-            assert src_pop == dst_pop, "Base connectivity must be within the same node population"
-            self._base_population = dst_pop
-
-        synapse_source = ":".join([nrn_path] + pop)
-        self.open_synapse_file(synapse_source, n_synapse_files, 0)
-        self._populations_by_src_nodes[None].append(self._cur_population)  # Default population
-
-        self.has_syn_indexes = load_offsets and self._synapse_reader.has_property("synapse_index")
-        logging.info("Enabled reading Synapse offsets: %s", self.has_syn_indexes)
-        return nrn_path
-
-    @staticmethod
-    def _edge_to_node_population_names(edge_pop_name):
-        if edge_pop_name is None:
-            log_verbose("No edge population name. Matching all unprefixed targets")
-            return None, None
-        pop_infos = edge_pop_name.split("__")
-        if len(pop_infos) == 1:
-            # Dont raise exception yet since this is a new feature and we can keep on
-            logging.error("Bad format of edge populaton name. "
-                          "Requires two or three groups separated by '__'")
-        src_pop = pop_infos[0]
-        dst_pop = pop_infos[1] if len(pop_infos) > 2 else src_pop
-        return src_pop, dst_pop
-
-    # -
-    def open_synapse_file(self, synapse_source, n_files=1, src_pop_id=None):
-        """Initializes a reader for Synapses"""
-        synapse_file, *pop_name = synapse_source.split(":")  # fspath:population
-        pop_name = pop_name[0] if pop_name else None
-
-        self._synapse_reader = self._open_synapse_file(synapse_file, pop_name, n_files)
-        self._init_conn_population(pop_name, src_pop_id)
+        self._init_conn_population(src_name, src_pop_id)
         self._unlock_all_connections()  # Allow appending synapses from new sources
+        return synapse_file
 
-    # -
+    # - override if needed
     def _open_synapse_file(self, synapse_file, pop_name, n_nrn_files=None):
         logging.info("Opening Synapse file %s, population: %s", synapse_file, pop_name)
         return self.SynapseReader.create(
             synapse_file, self.CONNECTIONS_TYPE, pop_name,
-            n_nrn_files, self._local_gids,  # Used eventually by NRN reader
+            n_nrn_files, self._raw_gids,  # Used eventually by NRN reader
             extracellular_calcium=SimConfig.extracellular_calcium
         )
 
-    def _init_conn_population(self, pop_name, src_pop_id):
-        # For base connectivity src_pop_id=0 and so we immediately have pop (0,0)
-        dst_pop_id = 0
-        if src_pop_id is None:
-            src_pop_id, dst_pop_id = self._compute_pop_ids(pop_name)
+    def _init_conn_population(self, src_pop_name, src_pop_id):
+        if not src_pop_name:
+            src_pop_name = self._src_cell_manager.population_name
+        dst_pop_name = self._cell_manager.population_name
+        src_pop_id, dst_pop_id = self._compute_pop_ids(src_pop_name, dst_pop_name, src_pop_id)
 
-        self.select_populations(src_pop_id, dst_pop_id)
-        cur_pop = self._cur_population
-
-        pop_names = self._edge_to_node_population_names(pop_name)
-        if pop_names[0] is not None or src_pop_id > 0:
-            cur_pop.src_name, cur_pop.dst_name = pop_names
-            self._populations_by_src_nodes[pop_names[0]].append(cur_pop)
-        logging.info("Loading connections to population: %s", cur_pop)
-
-    def _find_conn_populations_nodesets(self, src_pop, dst_pop=None):
-        populations = self._populations_by_src_nodes[src_pop]
-        if dst_pop is not None:
-            populations = [p for p in populations if p.dst_name == dst_pop]
-        return populations
-
-    def _compute_pop_ids(self, edge_pop_name):
-        """Compute pop id automatically. pop src 0 is base population"""
-        if not edge_pop_name:
+        if self._cur_population and src_pop_id == 0 and not src_pop_name:
             logging.warning("Neither Sonata population nor populationID set. "
                             "Edges will be merged with base circuit")
-            return 0, 0
 
+        cur_pop = self.select_connection_set(src_pop_id, dst_pop_id)  # type: ConnectionSet
+        cur_pop.src_name = src_pop_name
+        cur_pop.dst_name = dst_pop_name
+        cur_pop.virtual_source = self._src_cell_manager.is_virtual \
+                                 or src_pop_name != self._src_cell_manager.population_name
+        if cur_pop not in self._populations_by_src_nodes[src_pop_name]:
+            self._populations_by_src_nodes[src_pop_name].append(cur_pop)
+        logging.info("Loading connections to population: %s", cur_pop)
+
+    def _compute_pop_ids(self, src_pop, dst_pop, src_pop_id=None):
+        """Compute pop id automatically. pop src 0 is base population.
+        if src_pop_id is provided, it will be used instead.
+        """
         def make_id(node_pop):
             pop_hash = hashlib.md5(node_pop.encode()).digest()
             return ((pop_hash[1] & 0x0f) << 8) + pop_hash[0]  # id: 12bit hash
 
-        # From this point we are dealing with edge population names (in BlueConfig)
-        # We can extract the node populations, make checks and create ids
-        src_pop, dst_pop = self._edge_to_node_population_names(edge_pop_name)
-
-        if self._base_population is None:
-            logging.warning("No base connectivity population name. Assuming Edge target population")
-            self._base_population = dst_pop
-
-        # For now enforce all projections to target base connectivity.
-        if dst_pop != self._base_population:
-            ConfigurationError("Edges must target same nodes as base connectivity")
-        dst_pop_id = 0  # always 0. Future nodesets will require similar expression as below
-        src_pop_id = 0 if src_pop == self._base_population else make_id(src_pop)
+        dst_pop_id = 0 if self._cell_manager.is_default else make_id(dst_pop)
+        if src_pop_id is None:
+            src_pop_id = 0 if self._src_cell_manager.is_default else make_id(src_pop)
         return src_pop_id, dst_pop_id
 
-    # -
-    def select_populations(self, src_id, dst_id):
-        """Select the active population of connections. `connect_all()` and
-        `connect_group()` will apply only to the active population.
-        """
-        self._cur_population = self.get_population(src_id, dst_id)
+    def _find_conn_populations_nodesets(self, src_pop, dst_pop=None):
+        if dst_pop != self._cell_manager.population_name:
+            logging.warning("%s doesnt handle target population %s", self, dst_pop)
+            return []
+        if src_pop not in self._populations_by_src_nodes:
+            logging.warning("%s doesnt handle source population %s", self, src_pop)
+            return []
+        return self._populations_by_src_nodes[src_pop]
 
     # -
-    def get_population(self, src_id, dst_id=0):
-        """Retrieves a connection set given node src and dst ids"""
-        pop = self._populations.get((src_id, dst_id))
+    def select_connection_set(self, src_pop_id, dst_pop_id):
+        """Select the active population of connections given src and dst node pop ids.
+        `connect_all()` and `connect_group()` will apply only to the active population.
+
+        Returns: The selected ConnectionSet, eventually created
+        """
+        self._cur_population = self.get_population(src_pop_id, dst_pop_id)
+        return self._cur_population
+
+    # -
+    def get_population(self, src_pop_id, dst_pop_id=0):
+        """Retrieves a connection set given node src and dst pop ids"""
+        pop = self._populations.get((src_pop_id, dst_pop_id))
         if not pop:
-            pop = self.ConnectionSet(src_id, dst_id, conn_factory=self.conn_factory)
-            self._populations[(src_id, dst_id)] = pop
+            pop = self.ConnectionSet(src_pop_id, dst_pop_id, conn_factory=self.conn_factory)
+            self._populations[(src_pop_id, dst_pop_id)] = pop
         return pop
 
     # NOTE: Several methods use a selector of the connectivity populations
@@ -452,17 +438,23 @@ class ConnectionManagerBase(object):
                 yield conn
 
     # -
-    def create_connections(self, *, src_target=None):
+    def create_connections(self, src_target=None, dst_target=None):
         """Creates connections according to loaded parameters in 'Connection'
-           blocks of the BlueConfig in the currently active ConnectionSet
+        blocks of the BlueConfig in the currently active ConnectionSet.
+
+        If no Connection block relates to the current population, then load all
+        edges. If a single blocks exists with Weight=0, skip creation entirely.
+
+        Args:
+            src_target: Target name to restrict creating connections coming from it
+            dst_target: Target name to restrict creating connections going into it
         """
-        # Create all Projection connections if no Connection block uses
-        # that source. Otherwise create only specified connections
         conn_src_pop = self.current_population.src_name
-        is_base_pop = self.current_population.src_id == 0
+        conn_dst_pop = self.current_population.dst_name
         matching_conns = [
             conn for conn in SimConfig.connections.values()
-            if TargetSpec(conn.get("Source").s).match_filter(conn_src_pop, src_target, is_base_pop)
+            if TargetSpec(conn.get("Source")).match_filter(conn_src_pop, src_target)
+            and TargetSpec(conn.get("Destination")).match_filter(conn_dst_pop, dst_target)
         ]
 
         if not matching_conns:
@@ -471,13 +463,12 @@ class ConnectionManagerBase(object):
             return
 
         # if we have a single connect block with weight=0, skip synapse creation entirely
-        if len(matching_conns) == 1 and matching_conns[0].valueOf("Weight") == .0:
+        if len(matching_conns) == 1 and matching_conns[0].get("Weight") == .0:
             logging.warning("SKIPPING Connection create since they have invariably weight=0")
             return
 
         logging.info("Creating group connections (%d groups match)", len(matching_conns))
         for conn_conf in matching_conns:
-            conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
             if "Delay" in conn_conf:
                 # Delayed connections are for configuration only, not creation
                 continue
@@ -492,75 +483,72 @@ class ConnectionManagerBase(object):
             self.connect_group(conn_src, conn_dst, synapse_id)
 
     # -
-    def configure_connections(self):
-        """Configure-only circuit connections according to BlueConfig Connection blocks
+    def configure_connections(self, conn_conf):
+        """Configure-only circuit connections according to a BlueConfig Connection block
+
+        Args:
+            conn_conf: The BlueConfig configuration block (dict)
         """
-        for conn_conf in SimConfig.connections.values():
-            conn_conf = compat.Map(conn_conf).as_dict(parse_strings=True)
+        log_msg = " * Pathway {:s} -> {:s}".format(conn_conf["Source"], conn_conf["Destination"])
+        is_delayed_connection = "Delay" in conn_conf
+        if is_delayed_connection:
+            log_msg += ":\t[DELAYED] t={0[Delay]:g}, weight={0[Weight]:g}".format(conn_conf)
+        if "SynapseConfigure" in conn_conf:
+            log_msg += ":\tconfigure with '{:s}'".format(conn_conf["SynapseConfigure"])
+        logging.info(log_msg)
 
-            conn_src = conn_conf["Source"]
-            conn_dst = conn_conf["Destination"]
-            is_delayed_connection = "Delay" in conn_conf
-
-            log_msg = " * Pathway {:s} -> {:s}".format(conn_src, conn_dst)
-            if is_delayed_connection:
-                log_msg += ":\t[DELAYED] t={0[Delay]:g}, weight={0[Weight]:g}".format(conn_conf)
-            if "SynapseConfigure" in conn_conf:
-                log_msg += ":\tconfigure with '{:s}'".format(conn_conf["SynapseConfigure"])
-            logging.info(log_msg)
-
-            if is_delayed_connection:
-                self.setup_delayed_connection(conn_conf)
-            else:
-                self.configure_group(conn_conf)
+        if is_delayed_connection:
+            self.setup_delayed_connection(conn_conf)
+        else:
+            self.configure_group(conn_conf)
 
     def setup_delayed_connection(self, conn_config):
         raise NotImplementedError("Manager %s doesn't implement delayed connections"
                                   % self.__class__.__name__)
 
     # -
-    def connect_all(self, weight_factor=1, only_gids=None, only_sgid_in_target=False):
+    def connect_all(self, weight_factor=1, only_gids=None):
         """For every gid access its synapse parameters and instantiate
         all synapses.
 
         Args:
             weight_factor: Factor to scale all netcon weights (default: 1)
             only_gids: Create connections only for these tgids (default: Off)
-            only_sgid_in_target: sgids must belong to the main circuit target
-                This is mostly useful for Gap-Junctions. (default: False)
         """
-        conn_options = {'weight_factor': weight_factor,
-                        'synapse_mode': self._synapse_mode}
+        conn_options = {'weight_factor': weight_factor}
         pop = self._cur_population
-        gids = self._local_gids if only_gids is None else only_gids
-        src_target_filter = self._circuit_target if only_sgid_in_target else None
 
-        for sgid, tgid, syns_params, offset in self._iterate_conn_params(
-                src_target_filter, None, gids, True):
+        for sgid, tgid, syns_params, extra_params, offset in \
+                self._iterate_conn_params(self._src_target_filter, None, only_gids, True):
+            if self._load_offsets:
+                conn_options["synapses_offset"] = extra_params["synapse_index"][0]
             # Create all synapses. No need to lock since the whole file is consumed
             cur_conn = pop.get_or_create_connection(sgid, tgid, **conn_options)
             self._add_synapses(cur_conn, syns_params, None, offset)
 
     # -
-    def connect_group(self, src_target_name, dst_target_name, synapse_type_restrict=None):
+    def connect_group(self, conn_source, conn_destination, synapse_type_restrict=None):
         """Instantiates pathway connections & synapses given src-dst
 
         Args:
-            src_target_name (str): The target name of the source cells
-            dst_target_name (str): The target of the destination cells
+            conn_source (str): The target name of the source cells
+            conn_destination (str): The target of the destination cells
             synapse_type_restrict(int): Create only given synType synapses
         """
-        conn_kwargs = {'synapse_mode': self._synapse_mode}
+        conn_kwargs = {}
         pop = self._cur_population
-        src_tname = TargetSpec(src_target_name).name
-        dst_tname = TargetSpec(dst_target_name).name
+        logging.debug("Connecting group %s -> %s", conn_source, conn_destination)
+        src_tname = TargetSpec(conn_source).name
+        dst_tname = TargetSpec(conn_destination).name
         src_target = src_tname and self._target_manager.getTarget(src_tname)
         dst_target = dst_tname and self._target_manager.getTarget(dst_tname)
-        logging.debug("Connecting group %s -> %s", src_tname, dst_tname)
 
-        for sgid, tgid, syns_params, offset in self._iterate_conn_params(src_target, dst_target):
+        for sgid, tgid, syns_params, extra_params, offset in \
+                self._iterate_conn_params(src_target, dst_target):
             if sgid == tgid:
                 logging.warning("Making connection within same Gid: %d", sgid)
+            if self._load_offsets:
+                conn_kwargs["synapses_offset"] = extra_params["synapse_index"][0]
 
             cur_conn = pop.get_or_create_connection(sgid, tgid, **conn_kwargs)
             if cur_conn.locked:
@@ -588,60 +576,74 @@ class ConnectionManagerBase(object):
             show_progress: Display a progress bar as tgids are processed
         """
         if gids is None:
-            gids = self._local_gids
+            gids = self._raw_gids
         if show_progress:
             gids = ProgressBar.iter(gids)
         created_conns_0 = self._cur_population.count()
+        sgid_offset = self._src_cell_manager.local_nodes.offset
+        tgid_offset = self._cell_manager.local_nodes.offset
+        # Ensure targets that are used are up to date with the offsets
+        if src_target:
+            src_target.set_offset(sgid_offset)
+        if dst_target:
+            dst_target.set_offset(tgid_offset)
 
-        for tgid in gids:
+        for base_tgid in gids:
+            tgid = base_tgid + tgid_offset
             if dst_target is not None and not dst_target.contains(tgid):
                 continue
 
             # Retrieve all synapses for tgid
-            syns_params = self._synapse_reader.get_synapse_parameters(tgid)
+            syns_params = self._synapse_reader.get_synapse_parameters(base_tgid)
             logging.debug("GID %d Syn count: %d", tgid, len(syns_params))
             cur_i = 0
             syn_count = len(syns_params)
 
-            # The first field is typically sgid, but to generalize we use field 0
-            sgids = syns_params[syns_params.dtype.names[0]].copy()
+            extra_params = {}
+            if self._load_offsets:
+                syn_index = self._synapse_reader.get_property(base_tgid, "synapse_index")
+                extra_params["synapse_index"] = syn_index.as_numpy()
+
+            sgids = syns_params[syns_params.dtype.names[0]].copy()  # expect src-gid in field 0
             found_conns = 0
             yielded_conns = 0
-            yielded_src_gids = compat.Vector("i")
+            _dbg_yielded_src_gids = compat.Vector("i")
 
             while cur_i < syn_count:
                 # Use numpy to get all the synapses of the same gid at once
                 sgid = int(sgids[cur_i])
+                final_sgid = sgid + sgid_offset
                 next_i = numpy.argmax(sgids[cur_i:] != sgid) + cur_i
                 if cur_i == next_i:  # last group
                     next_i = syn_count
 
-                if src_target is None or src_target.completeContains(sgid):
-                    if GlobalConfig.debug_conn == [tgid]:
-                        yielded_src_gids.append(sgid)
-                    elif GlobalConfig.debug_conn == [sgid, tgid]:
-                        log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s", sgid, tgid,
+                if src_target is None or src_target.completeContains(final_sgid):
+                    if GlobalConfig.debug_conn == [base_tgid]:
+                        _dbg_yielded_src_gids.append(sgid)
+                    elif GlobalConfig.debug_conn == [sgid, base_tgid]:
+                        log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s", sgid, base_tgid,
                                 syns_params)
-                    yield sgid, tgid, syns_params[cur_i:next_i], cur_i
+                    other_params = {name: prop[cur_i:next_i] for name, prop in extra_params.items()}
+                    yield final_sgid, tgid, syns_params[cur_i:next_i], other_params, cur_i
                     yielded_conns += 1
 
                 found_conns += 1
                 cur_i = next_i
 
-            if yielded_src_gids:
-                log_all(logging.DEBUG, "Source GIDs for debug cell: %s", yielded_src_gids)
+            if _dbg_yielded_src_gids:
+                log_all(logging.DEBUG, "Source GIDs for debug cell: %s", _dbg_yielded_src_gids)
             logging.debug(" > Yielded %d out of %d connections. (Filter by src Target: %s)",
                           yielded_conns, found_conns, src_target and src_target.name)
 
         created_conns = self._cur_population.count() - created_conns_0
         self._total_connections += created_conns
 
-        if created_conns:
+        all_created = MPI.allreduce(created_conns, MPI.SUM)
+        if all_created:
             pathway_repr = "[ALL]"
             if src_target and dst_target:
                 pathway_repr = "Pathway {} -> {}".format(src_target.name, dst_target.name)
-            logging.info(" * %s. [Rank 0]: Created %d connections",
-                         pathway_repr, created_conns)
+            logging.info(" * %s. Created %d connections", pathway_repr, all_created)
 
     # -
     def get_target_connections(self, src_target_name,
@@ -657,8 +659,11 @@ class ConnectionManagerBase(object):
         dst_target_spec = TargetSpec(dst_target_name)
         src_target = self._target_manager.getTarget(src_target_spec.name) \
             if src_target_spec.name is not None else None
+        assert dst_target_spec.name, "No target specified for `get_target_connections`"
         dst_target = self._target_manager.getTarget(dst_target_spec.name)
-        gidvec = self._local_gids if gidvec is None else gidvec
+        gidvec = self._raw_gids if gidvec is None else gidvec
+        tgid_offset = self._cell_manager.local_nodes.offset
+        sgid_offset = self._src_cell_manager.local_nodes.offset
 
         if conn_population is not None:
             populations = (conn_population,)
@@ -672,12 +677,13 @@ class ConnectionManagerBase(object):
 
         for population in populations:
             logging.debug("Connections from population %s", population)
-            for tgid in gidvec:
-                if not dst_target.contains(tgid) or tgid not in population:
+            for raw_tgid in gidvec:
+                tgid = raw_tgid + tgid_offset
+                if not dst_target.contains(raw_tgid) or tgid not in population:
                     continue
                 for conn in population[tgid]:
-                    sgid = conn.sgid
-                    if src_target is None or src_target.completeContains(sgid):
+                    raw_sgid = conn.sgid - sgid_offset
+                    if src_target is None or src_target.completeContains(raw_sgid):
                         yield conn
 
     # -
@@ -687,8 +693,6 @@ class ConnectionManagerBase(object):
         Args:
             conn_config: The connection configuration dict
             gidvec: A restricted set of gids to configure
-            population_ids: A tuple of populations' connections.
-                Default: None (all populations)
         """
         src_target = conn_config["Source"]
         dst_target = conn_config["Destination"]
@@ -819,8 +823,10 @@ class ConnectionManagerBase(object):
         Args:
             post_gids: The list of target gids to enable (Default: all)
         """
-        gids = self._local_gids if post_gids is None else post_gids
+        gids = self._raw_gids if post_gids is None else post_gids
+        offset = self._cell_manager.local_nodes.offset
         for tgid in gids:
+            tgid += offset
             for c in self._disabled_conns[tgid]:
                 c.enable()
             del self._disabled_conns[tgid][:]
@@ -860,11 +866,14 @@ class ConnectionManagerBase(object):
         """Enable a number of connections given lists of pre and post gids.
         Note: None will match all gids.
         """
-        post_gids = self._local_gids if post_gids is None else post_gids
+        if post_gids is None:
+            post_gids = self._raw_gids
+        offset = self._cell_manager.local_nodes.offset
         pre_gids = set(pre_gids)
         allowed_pops = self.find_populations(population_ids)
 
         for tgid in post_gids:
+            tgid += offset
             to_delete = []
             for i, conn in enumerate(self._disabled_conns[tgid]):
                 if conn.sgid in pre_gids and \
@@ -884,42 +893,27 @@ class ConnectionManagerBase(object):
             return self._disabled_conns[post_gid]
         return chain.from_iterable(self._disabled_conns.values())
 
-    @classmethod
-    def _find_circuit_file(cls, location):
-        """Attempts to find a circuit file given any directory or file
-        """
-        compat_file = cls.CIRCUIT_FILENAMES[-1]  # last is the nrn.h5 format
-        files_avail = [f for f in cls.CIRCUIT_FILENAMES
-                       if ospath.isfile(ospath.join(location, f))]
-        # Custom readers responsible for their formats
-        can_read_newer_formats = SynapseReader.is_syntool_enabled() \
-            if cls.SynapseReader is SynapseReader else True
-        if not files_avail:
-            raise ConfigurationError(
-                "nrnPath is not a file and could not find any synapse file within.")
-        if not can_read_newer_formats and compat_file not in files_avail:
-            raise ConfigurationError(
-                "Found synapse file requires synapsetool, which is not available")
-        if len(files_avail) > 1:
-            logging.warning("DEPRECATION: Found several synapse file formats in nrnPath. "
-                            "Auto-select is deprecated and will be removed")
-            if not can_read_newer_formats:
-                files_avail[0] = compat_file
-        return ospath.join(location, files_avail[0])
-
     def _unlock_all_connections(self):
         """Unlock all, mainly when we load a new connectivity source"""
         for conn in self.all_connections():
             conn.locked = False
 
-    def finalize(self, base_seed=0, sim_corenrn=False, *, conn_type="synapses", **conn_params):
-        """Instantiates the netcons and Synapses for all GapJunctions.
-        """
-        # Connections must have been placed and all weight scalars should have their
-        # final values. We can destroy _reader to release memory (all cached params)
-        self._synapse_reader = None
+    def finalize(self, base_seed=0, sim_corenrn=False, *, _conn_type="synapses", **conn_params):
+        """Instantiates the netcons and Synapses for all connections.
 
-        logging.info("Instantiating %s... Params: %s", conn_type, str(conn_params))
+        Note: All weight scalars should have their final values.
+
+        Args:
+            base_seed: optional argument to adjust synapse RNGs (default=0)
+            sim_corenrn: Finalize accordingly in case we target CoreNeuron
+            _conn_type: (Internal) A string repr of the connectivity type
+            conn_params: Additional finalize parameters for the specific _finalize_conns
+                E.g. replay_mode (Default: Auto-Detect) Use DISABLED to skip replay
+                and COMPLETE to instantiate VecStims in all synapses
+
+        """
+        self._synapse_reader = None  # Destroy to release memory (all cached params)
+        logging.info("Instantiating %s... Params: %s", _conn_type, str(conn_params))
         n_created_conns = 0
 
         for popid, pop in self._populations.items():
@@ -930,17 +924,81 @@ class ConnectionManagerBase(object):
                     tgid, conns, base_seed, sim_corenrn, **conn_params)
 
         all_ranks_total = MPI.allreduce(n_created_conns, MPI.SUM)
-        logging.info(" => Created %d %s", all_ranks_total, conn_type)
+        logging.info(" => Created %d %s", all_ranks_total, _conn_type)
         return all_ranks_total
 
-    @abstractmethod
-    def _finalize_conns(self, tgid, conns, base_seed, sim_corenrn, **_):
-        """Method finalizing a gid connections, invoked for each target gid.
+    def _finalize_conns(self, tgid, conns, base_seed, sim_corenrn, *, reverse=False, **kwargs):
+        """ Low-level handling of finalizing connections belonging to a target gid.
+        By default it calls finalize on each cell.
         """
+        # Note: *kwargs normally contains 'replay_mode' but may differ for other types
+        metype = self._cell_manager.getMEType(tgid)
+        n_created_conns = 0
+        if reverse:
+            conns = reversed(conns)
+        for conn in conns:  # type: Connection
+            n_created_conns += conn.finalize(metype, base_seed, skip_disabled=sim_corenrn, **kwargs)
+        return n_created_conns
 
     # -
     def replay(self, *_, **_kw):
         logging.warning("Replay is not available in %s", self.__class__.__name__)
+
+
+# ##############
+# Helper methods
+# ##############
+
+def edge_node_pop_names(_edge_file, edge_pop_name, src_pop_name=None, dst_pop_name=None):
+    """Find/decides the node populations names from several edge configurations
+
+    Args:
+        _edge_file: (future) To edge file to extract the population names from
+        edge_pop_name: The name of the edge population
+        src_pop_name: Overriding source pop name
+        dst_pop_name: Overriding target population name
+    """
+    if src_pop_name is None or dst_pop_name is None:
+        logging.debug("Try edge population name to know intervening nodes")
+        edge_src_pop, edge_dst_pop = _edge_to_node_population_names(edge_pop_name)
+        if src_pop_name is None:
+            src_pop_name = edge_src_pop
+        if dst_pop_name is None:
+            dst_pop_name = edge_dst_pop
+    return src_pop_name, dst_pop_name
+
+
+def _edge_to_node_population_names(edge_pop_name):
+    """Obtain the node source and destination population names from an edge population name
+    """
+    if edge_pop_name is None:
+        return None, None
+    pop_infos = edge_pop_name.split("__")
+    if len(pop_infos) == 1:
+        # Dont raise exception yet since this is a new feature and we can keep on
+        logging.error("Bad format of edge populaton name. "
+                      "Requires two or three groups separated by '__'")
+    src_pop = pop_infos[0]
+    dst_pop = pop_infos[1] if len(pop_infos) > 2 else src_pop
+    return src_pop, dst_pop
+
+
+def _get_projection_population_id(projection):
+    """Check projection config for overrides to the population ID
+    """
+    pop_id = None
+    if "PopulationID" in projection:
+        pop_id = int(projection["PopulationID"])
+    if pop_id == 0:
+        raise ConfigurationError("PopulationID 0 is not allowed")
+    # If the projections are to be merged with base connectivity and the base
+    # population is unknown, with Sonata pop we need a way to explicitly request it.
+    # Note: gid offsetting must have been previously done
+    if projection.get("AppendBasePopulation"):
+        assert pop_id is None, "AppendBasePopulation is incompatible with PopulationID"
+        log_verbose("Appending projection to base connectivity (AppendBasePopulation)")
+        pop_id = 0
+    return pop_id
 
 
 # ######################################################################
@@ -958,74 +1016,41 @@ class SynapseRuleManager(ConnectionManagerBase):
     E.g.: A column->column connection should come before
     layer 4 -> layer 2 which should come before L4PC -> L2PC.
 
-    Once all synapses are preped with final weights, the netcons can be
+    Once all synapses are prepared with final weights, the Netcons can be
     created.
     """
 
-    CIRCUIT_FILENAMES = ('edges.sonata',
-                         'edges.h5',
-                         'circuit.syn2',
-                         'nrn.h5')
     CONNECTIONS_TYPE = SynapseReader.SYNAPSES
 
-    def __init__(self, circuit_conf, target_manager, cell_dist, load_offsets=False, **kw):
-        """Initializes SynapseRuleManager, reading the circuit file.
+    def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
+        """Initializes a Connection/Edge manager for standard METype synapses
 
         Args:
-            circuit_conf: A circuit configuration, to get nrnPath, SynapseMode..
-            target_manager: The TargetManager which will be used to
-                query targets and translate locations to points
-                placed (AmpaOnly vs DualSyns). Default: DualSyns
-            cell_dist: The cell distributor to query the local gids
-            load_offsets: Whether to load synapse offsets.
-                Note: Under nrn format, this can be significantly slow
+            circuit_conf: The configuration object/dict
+            target_manager: The (hoc-level) target manager
+            cell_manager: The destination cell population manager
+            src_cell_manager: The source cell population manager [Default: same as destination]
         """
-        super().__init__(circuit_conf, target_manager, cell_dist, **kw)
-        if circuit_conf.nrnPath:
-            self.init_synapse_location(circuit_conf.nrnPath, circuit_conf, load_offsets)
-        else:
-            logging.info(" * Circuit connections have been DISABLED")
-
-        synapse_mode = circuit_conf.get("SynapseMode")
-        self._synapse_mode = SynapseMode.from_str(synapse_mode) \
-            if synapse_mode is not None else SynapseMode.default
+        super().__init__(circuit_conf, target_manager, cell_manager, src_cell_manager, **kw)
+        # SynapseRuleManager opens synapse file and init populations
+        syn_source = circuit_conf.get("nrnPath")
+        if syn_source:
+            logging.info("Init %s. Options: %s", type(self).__name__, kw)
+            self.open_synapse_location(syn_source, circuit_conf, **kw)
 
     # -
     def finalize(self, base_seed=0, sim_corenrn=False, **kwargs):
-        """Create the actual synapses and netcons.
-
-        Note: All weight scalars should have their final values.
-
-        Args:
-            base_seed: optional argument to adjust synapse RNGs (default=0)
-            sim_corenrn: Finalize accordingly in case we target CoreNeuron
-            replay_mode: How shall we instantiate replay? Default: Auto-Detect
-                Use DISABLED to skip replay and COMPLETE to instantiate VecStims
-                in all synapses
-            kwargs: Additional finalize parameters for the specific _finalize_conns
+        """Create the actual synapses and netcons. See super() docstring
         """
         # CoreNeuron will handle replays automatically with its own PatternStim
-        replay_mode = ReplayMode.NONE if sim_corenrn else ReplayMode.AS_REQUIRED
-        kwargs.setdefault("replay_mode", replay_mode)
+        kwargs.setdefault("replay_mode", ReplayMode.NONE if sim_corenrn else ReplayMode.AS_REQUIRED)
         super().finalize(base_seed, sim_corenrn, **kwargs)
 
-    def _finalize_conns(self, tgid, conns, base_seed, sim_corenrn, **kwargs):
-        """ Low-level handling of finalizing connections belonging to a target gid.
-        By default it calls finalize on each cell.
-        Note: *args normally contains the REPLAY mode but may differ for other types
-        """
-        cell_distributor = self._cell_manager
-        metype = cell_distributor.getMEType(tgid)
-        spgid = cell_distributor.getSpGid(tgid)
-        n_created_conns = 0
+    def _finalize_conns(self, tgid, conns, base_seed, sim_corenrn, **kw):
+        # Note: (Compat) neurodamus hoc finalizes connections in reversed order.
+        return super()._finalize_conns(tgid, conns, base_seed, sim_corenrn, reverse=True, **kw)
 
-        # Note: (Compat) neurodamus hoc keeps connections in reversed order.
-        for conn in reversed(conns):  # type: Connection
-            # Skip disabled if we are running with core-neuron
-            if conn.finalize(metype, base_seed, spgid, sim_corenrn, **kwargs):
-                n_created_conns += 1
-        return n_created_conns
-
+    # -
     def setup_delayed_connection(self, conn_config):
         """Setup delayed connection weights for synapse initialization.
 
@@ -1088,10 +1113,10 @@ class GapJunctionManager(ConnectionManagerBase):
     The user will have the capacity to scale the conductance weights.
     """
 
-    CIRCUIT_FILENAMES = ("gj.sonata", "gj.syn2", "nrn_gj.h5")
     CONNECTIONS_TYPE = SynapseReader.GAP_JUNCTIONS
+    _gj_offsets = None
 
-    def __init__(self, gj_conf, target_manager, cell_dist, circuit_target, **kw):
+    def __init__(self, gj_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
         """Initialize GapJunctionManager, opening the specified GJ
         connectivity file.
 
@@ -1099,30 +1124,30 @@ class GapJunctionManager(ConnectionManagerBase):
             gj_conf: The gaps junctions configuration block / dict
             target_manager: The TargetManager which will be used to query
                 targets and translate locations to points
-            cell_dist: The cell distributor to query the local gids
-            circuit_target: The name of the circuit target. GapJunctions src and
-                target cells must all belong to the target
+            cell_manager: The cell manager of the target population
+            src_cell_manager: The cell manager of the source population
         """
-        if circuit_target is None:
+        if cell_manager.circuit_target is None:
             raise ConfigurationError(
                 "No circuit target. Required when initializing GapJunctionManager")
         if "Path" not in gj_conf:
             raise ConfigurationError("Missing GapJunction 'Path' configuration")
 
-        super().__init__(gj_conf, target_manager, cell_dist, **kw)
-        gj_file = self.init_synapse_location(gj_conf["Path"], gj_conf, False)
+        super().__init__(gj_conf, target_manager, cell_manager, src_cell_manager, **kw)
+        self._src_target_filter = target_manager.getTarget(cell_manager.circuit_target)
 
-        self._circuit_target = target_manager.getTarget(circuit_target)
-        self._gj_offsets = None
+    def open_synapse_file(self, synapse_file, *args, **kw):
+        super().open_synapse_file(synapse_file, *args, **kw)
+        src_is_dir = ospath.isdir(synapse_file)
+        if src_is_dir or synapse_file.endswith("nrn_gj.h5"):
+            gj_dir = synapse_file if src_is_dir else ospath.dirname(synapse_file)
+            self._gj_offsets = self._compute_gj_offsets(gj_dir)
 
-        # nrn_gj were relative to gid. From syn2 onwards we use absolute offsets
-        if gj_file.endswith("nrn_gj.h5"):
-            self._gj_offsets = self._compute_gj_offsets(gj_conf)
-
-    def _compute_gj_offsets(self, gj_conf):
+    def _compute_gj_offsets(self, gj_dir):
         log_verbose("Computing gap-junction offsets from gjinfo.txt")
+        gjfname = ospath.join(gj_dir, "gjinfo.txt")
+        assert ospath.isfile(gjfname), "Nrn-format GapJunctions require gjinfo.txt: %s" % gj_dir
         gj_offsets = compat.Vector("I")
-        gjfname = ospath.join(gj_conf["Path"], "gjinfo.txt")
         gj_sum = 0
 
         for line in open(gjfname):
@@ -1131,6 +1156,14 @@ class GapJunctionManager(ConnectionManagerBase):
             gj_sum += 2 * offset
 
         return gj_offsets
+
+    def create_connections(self, *_, **_kw):
+        """Gap Junctions dont use connection blocks, connect all belonging to target"""
+        self.connect_all()
+
+    def configure_connections(self, conn_conf):
+        """Gap Junctions dont configure_connections"""
+        pass
 
     def finalize(self, *_, **_kw):
         super().finalize(conn_type="Gap-Junctions")

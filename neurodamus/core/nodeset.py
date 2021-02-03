@@ -125,7 +125,7 @@ class NodeSet:
         self._max_gid = 0  # maximum raw gid (without offset)
         self._offset = 0
         self._metadata = metadata
-        self._population_group = None  # regiter in a population so gids can be unique
+        self._population_group = None  # register in a population so gids can be unique
         if gids is not None:
             self.add_gids(gids, gid_info)
 
