@@ -352,7 +352,7 @@ class Connection(ConnectionBase):
         self._configure_synapses()
         return 1
 
-    def _init_artificial_stims(self, cell, replay_mode):
+    def _init_artificial_stims(self, cell, replay_mode=ReplayMode.AS_REQUIRED):
         shall_create_replay = (
             replay_mode == ReplayMode.COMPLETE or
             replay_mode == ReplayMode.AS_REQUIRED and self._replay.has_data())

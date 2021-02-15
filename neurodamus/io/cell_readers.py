@@ -148,7 +148,7 @@ def _load_mvd3_h5py(circuit_conf, all_gids, stride=1, stride_offset=0):
     return gidvec, me_manager, total_mvd_cells
 
 
-def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0):
+def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *, has_extra_data=False):
     """Load cells from SONATA or MVD3 file
     """
     import mvdtool
@@ -194,7 +194,7 @@ def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0):
         if node_reader.hasCurrents() else None
     # For Sonata and new emodel hoc template, we may need additional attributes for building metype
     add_params_list = _getNeededAttributes(node_reader, circuit_conf.METypePath, emodels, indexes) \
-        if not is_mvd else None
+        if not is_mvd and has_extra_data else None
 
     meinfo = METypeManager()
     meinfo.load_infoNP(gidvec, morpho_names, emodels, threshold_currents, holding_currents,

@@ -25,6 +25,8 @@ from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.timeit import TimerManager, timeit, timeit_rank0
+# Internal Plugins
+from . import ngv as _ngv  # NOQA
 
 
 class METypeEngine(EngineBase):

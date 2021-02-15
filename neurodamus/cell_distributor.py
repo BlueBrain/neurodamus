@@ -396,6 +396,8 @@ class CellDistributor(CellManagerBase):
         NodeFormat.SONATA: cell_readers.load_nodes
     }
 
+    _sonata_with_extra_attrs = True  # Enable search extra node attributes
+
     def _init_config(self, circuit_conf, _pop):
         if not circuit_conf.CellLibraryFile:
             logging.warning("CellLibraryFile not set. Assuming legacy 'start.ncs'")
@@ -407,7 +409,11 @@ class CellDistributor(CellManagerBase):
     def load_nodes(self, load_balancer=None, **kw):
         """gets gids from target, splits and returns a GidSet with all metadata
         """
-        kw["_loader"] = self._cell_loaders[self._node_format]
+        if self._node_format == NodeFormat.SONATA and self._sonata_with_extra_attrs:
+            loader = lambda *args, **kw: cell_readers.load_nodes(*args, **kw, has_extra_data=True)
+        else:
+            loader = self._cell_loaders[self._node_format]
+        kw["_loader"] = loader
         return super().load_nodes(load_balancer, **kw)
 
     def _instantiate_cells(self, *_):

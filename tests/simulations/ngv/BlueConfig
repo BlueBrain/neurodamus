@@ -1,0 +1,131 @@
+Run Default
+{
+    Date 18:06:2020
+
+        CircuitPath /gpfs/bbp.cscs.ch/data/scratch/proj16/king/NGV-132/data
+         METypePath /gpfs/bbp.cscs.ch/project/proj1/entities/CCells/24.09.2014
+     MorphologyPath /gpfs/bbp.cscs.ch/release/l2/data/morphologies/31.05.12
+            nrnPath /gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1/merged_circuit/ncsFunctionalAllRecipePathways
+    TargetFile user.target
+
+    OutputRoot .
+    CircuitTarget select
+    RNGMode UpdatedMCell
+    RunMode RR
+    Duration 100
+    Dt 0.025
+}
+
+Circuit GLIA
+{
+    Engine NGV
+    # circuit has both cells and glia??
+    CircuitPath /gpfs/bbp.cscs.ch/data/scratch/proj16/king/NGV-132/data
+    METypePath /gpfs/bbp.cscs.ch/project/proj1/entities/CCells/24.09.2014
+    CellLibraryFile circuit.mvd3
+
+    CircuitTarget Astrocytes
+    MorphologyPath /gpfs/bbp.cscs.ch/project/proj67/tmp/NGV-132/asc
+    MorphologyType asc
+    EdgeGidOffset 219422
+}
+
+Projection GLIA
+{
+    Type NeuroGlial
+    Destination GLIA:Astrocytes
+    Path /gpfs/bbp.cscs.ch/project/proj67/tmp/NGV-132/glia-sonata/edges.sonata
+}
+
+Connection All-to-All_spont
+{
+    Source srcs_used_glia
+    Destination select
+    SpontMinis 10
+    Weight 1
+}
+
+Connection All-to-all_Glia
+{
+    Source select
+    Destination Astrocytes
+}
+
+
+#original frequency of 50, then changed to 100
+#original amp of 20, then changed to 40
+Stimulus pulse1
+{
+        Mode                    Current
+        Pattern                 Pulse
+        AmpStart                20.000000
+        AmpEnd                  20.000000
+        Frequency               10
+        Width                   5
+        Delay                   1.000000
+        Duration                3000
+}
+
+
+Stimulus ThresholdExc
+{
+
+              Mode Current
+           Pattern Noise
+       MeanPercent 100
+          Variance 0.001
+             Delay 0.000000
+          Duration 30000.000000
+}
+
+
+StimulusInject ThresholdIntoExc
+{
+        Stimulus ThresholdExc
+        Target  a762
+}
+
+#restore this
+StimulusInject pInj
+{
+  Stimulus   pulse1
+    Target   pre
+}
+
+Report voltage
+{
+        Target AllCells
+          Type compartment
+      ReportOn v
+          Unit mV
+        Format Bin
+            Dt 0.1
+     StartTime 0
+       EndTime 1000
+}
+
+#Report rcai_soma
+{
+        Target Astrocytes
+          Type Summation
+       Scaling None
+      ReportOn reportcai_mcd
+          Unit nA
+        Format Bin
+            Dt 0.1
+     StartTime 0
+       EndTime 1000
+}
+
+#Report rcai
+{
+        Target AllCmpAstrocytes
+          Type Summation
+       Scaling None
+      ReportOn reportcai_mcd
+          Unit nA
+        Format Bin
+            Dt 0.025
+     StartTime 0
+       EndTime 1000
+}
