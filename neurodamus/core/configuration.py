@@ -270,6 +270,36 @@ def find_input_file(filepath, search_paths=(), alt_filename=None):
     return file_found
 
 
+def _check_params(section_name, data, required_fields, numeric_fields):
+    """Generic function to check a dict-like data set conforms to the field prescription"""
+    for param in required_fields:
+        if param not in data:
+            raise ConfigurationError("BlueConfig mandatory param not present: %s> %s"
+                                     % (section_name, param))
+    for param in numeric_fields:
+        val = data.get(param)
+        try:
+            val and float(val)
+        except ValueError:
+            raise ConfigurationError("BlueConfig param must be numeric: %s> %s"
+                                     % (section_name, param))
+
+
+@SimConfig.validator
+def _run_params(config: _SimConfig, run_conf):
+    required_fields = ("Duration",)
+    numeric_fields = ("BaseSeed", "Duration", "Dt", "ModelBuildingSteps", "Celsius", "V_Init")
+    _check_params("Run default", run_conf, required_fields, numeric_fields,)
+
+
+@SimConfig.validator
+def _projection_params(config: _SimConfig, run_conf):
+    required_fields = ("Path",)
+    numeric_fields = ("PopulationID",)
+    for name, proj in config.projections.items():
+        _check_params("Projection " + name, compat.Map(proj), required_fields, numeric_fields)
+
+
 def _make_circuit_config(config_dict, req_morphology=True):
     if config_dict["CircuitPath"] == "<NONE>":
         config_dict["CircuitPath"] = False
