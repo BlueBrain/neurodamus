@@ -11,6 +11,7 @@ from os import path as ospath
 
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
+from .core import run_only_rank0
 from .core.configuration import GlobalConfig, SimConfig, ConfigurationError
 from .connection import Connection, ReplayMode
 from .io.cell_readers import TargetSpec
@@ -25,6 +26,7 @@ class ConnectionSet(object):
     A dataset of connections.
     Several populations may exist with different seeds
     """
+
     def __init__(self, src_id, dst_id, conn_factory=Connection):
         # Connections indexed by post-gid, then ordered by pre-gid
         self.src_id = src_id
@@ -949,35 +951,57 @@ class ConnectionManagerBase(object):
 # Helper methods
 # ##############
 
-def edge_node_pop_names(_edge_file, edge_pop_name, src_pop_name=None, dst_pop_name=None):
+def edge_node_pop_names(edge_file, edge_pop_name, src_pop_name=None, dst_pop_name=None):
     """Find/decides the node populations names from several edge configurations
 
     Args:
-        _edge_file: (future) To edge file to extract the population names from
+        edge_file: The edge file to extract the population names from
         edge_pop_name: The name of the edge population
         src_pop_name: Overriding source pop name
         dst_pop_name: Overriding target population name
+
+    Returns: tuple of the src-dst population names. Any can be None if not available
     """
-    if src_pop_name is None or dst_pop_name is None:
-        logging.debug("Try edge population name to know intervening nodes")
-        edge_src_pop, edge_dst_pop = _edge_to_node_population_names(edge_pop_name)
+    if src_pop_name and dst_pop_name or not edge_file.endswith(".h5"):
+        return src_pop_name, dst_pop_name
+    # Get src-dst pop names, allowing current ones to override
+    src_dst_pop_names = _edge_meta_get_node_populations(edge_file, edge_pop_name) \
+                        or _edge_to_node_population_names(edge_pop_name)
+    if src_dst_pop_names:
         if src_pop_name is None:
-            src_pop_name = edge_src_pop
+            src_pop_name = src_dst_pop_names[0]
         if dst_pop_name is None:
-            dst_pop_name = edge_dst_pop
+            dst_pop_name = src_dst_pop_names[1]
     return src_pop_name, dst_pop_name
+
+
+@run_only_rank0
+def _edge_meta_get_node_populations(edge_file, edge_pop_name) -> [None, tuple]:
+    import h5py
+    f = h5py.File(edge_file)
+    if "edges" not in f:
+        return None
+    edge_group = f["edges"]
+    if not edge_pop_name:
+        assert len(edge_group) == 1, "multi-population edges require manual selection"
+        edge_pop_name = next(iter(edge_group.keys()))
+    edge_pop = edge_group[edge_pop_name]
+
+    try:
+        return (edge_pop["source_node_id"].attrs["node_population"],
+                edge_pop["target_node_id"].attrs["node_population"])
+    except KeyError:
+        logging.warning("Edges don't have 'node_population' attribute")
+    return None
 
 
 def _edge_to_node_population_names(edge_pop_name):
     """Obtain the node source and destination population names from an edge population name
     """
-    if edge_pop_name is None:
-        return None, None
+    if edge_pop_name is None or "__" not in edge_pop_name:
+        return None
+    logging.info("(Compat) Using edge population name to know intervening nodes")
     pop_infos = edge_pop_name.split("__")
-    if len(pop_infos) == 1:
-        # Dont raise exception yet since this is a new feature and we can keep on
-        logging.error("Bad format of edge populaton name. "
-                      "Requires two or three groups separated by '__'")
     src_pop = pop_infos[0]
     dst_pop = pop_infos[1] if len(pop_infos) > 2 else src_pop
     return src_pop, dst_pop
