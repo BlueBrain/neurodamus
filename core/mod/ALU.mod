@@ -96,7 +96,7 @@ VERBATIM {
 #endif
 }
 ENDVERBATIM
-    net_send(Dt, 1)
+    net_send(Dt - 1e-5, 1)
 }
 
 CONSTRUCTOR {

@@ -319,7 +319,7 @@ proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
             ALUhelper.setop( "constant" )
             sprint( tstr, "{ALUhelper.addvar( &v(%lf), %lf )}", x, area(x)  )
             result = execute(tstr, this)
-            addSummationVarAndCommitALU( sectionNo($o1), rpt )
+            addSummationVarAndCommitALU( sectionNo($o1), rpt, $o1.gid )
             bbss = new BBSaveState()
             bbss.ignore(ALUhelper)
         } else {
@@ -390,8 +390,8 @@ obfunc get_memory_report() {
 proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, useElectrode, secType, secNum \
     localobj intrinsicList, ptProcessList, mechtype, internalVar, nil, bbss
     strdef tstr
-    if( numarg() >= 5 && $5 ) {  // Exit when in CoreNeuron mode
-        terminate( "Summation report not supported in CoreNeuron\n" )
+    if( numarg() >= 5 && $5 ) {  // Coreneuron takes care of summation reports
+        return
     }
 
     evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
@@ -439,10 +439,9 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
         //intrinsic currents
         for intrinsicIndex=0, intrinsicList.count()-1 {
 
-            // Insert extracellular mechanism if reporting on i_membrane
-            if (0 == strcmp(intrinsicList.o(intrinsicIndex).s, "i_membrane")) {
-                sprint(tstr,"{%s insert extracellular}",secname())
-                execute1(tstr,0)
+            // Enable fast_imem calculation in Neuron
+            if (0 == strcmp(intrinsicList.o(intrinsicIndex).s, "i_membrane_")) {
+                execute("cvode.use_fast_imem(1)", this)
             }
 
             //test if we can even access the desired current variable in this compartment
@@ -469,7 +468,11 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
                             //TODO: Make this an actual error??
                         }
                     }
-                    sprint(tstr,"{ALUhelper.addvar(&%s(%1.2f), %f)}", intrinsicList.o(intrinsicIndex).s, x, scalar)
+                    // Convertion of units is not needed with fast_imem since they are in nA
+                    if (0 == strcmp(intrinsicList.o(intrinsicIndex).s, "i_membrane_")) {
+                        scalar = 1
+                    }
+                    sprint(tstr,"{ALUhelper.addvar(&%s(%lf), %f)}", intrinsicList.o(intrinsicIndex).s, x, scalar)
                     execute(tstr, this)
                 } else {
                     print "Warning (Error?) intrinsic property exists, but located where area = 0?"
@@ -508,12 +511,12 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
         }
 
         if( !(collapsed) ) {  //we commit one new ALU object per point
-            addSummationVarAndCommitALU( sectionNo($o1), rpt )
+            addSummationVarAndCommitALU( sectionNo($o1), rpt, $o1.gid )
         }
     }
 
     if( collapsed ) {  //otherwise, we commit one new ALU object per cell
-        addSummationVarAndCommitALU( 0, rpt )
+        addSummationVarAndCommitALU( 0, rpt, $o1.gid )
     }
 }
 
@@ -589,11 +592,16 @@ proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProce
  *
  * @param mapping index, i.e. the absolute index used to find this section in the morphology
  * @param rpt A handle to a report object, only used by HDF5/ASCII reports.  Ignored with Bin reports
+ * @param gid
  */
 proc addSummationVarAndCommitALU() { local rpt
     //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
-    if( 0 == strcmp(format, "Bin") ) {
-        sprint(tstr, "rec.AddVar( &ALUhelper.output, %d )", $1 )  //note that when we force report on soma, index=0
+    if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
+        if( 0 != strcmp(population_name, "")) {
+            sprint(tstr, "rec.AddVar( &ALUhelper.output, %d, %d, population_name)", $1, $3 )
+        } else {
+            sprint(tstr, "rec.AddVar( &ALUhelper.output, %d, %d)", $1, $3 )  //note that when we force report on soma, index=0
+        }
         execute(tstr, this)
     } else {
         rpt = $2
@@ -816,7 +824,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
             }
             if ( matched == 0 && strcmp(token,"i_membrane") == 0 ) {
                 matched = 1
-                intrinsicList.append( new String( "i_membrane" ) )
+                intrinsicList.append( new String( "i_membrane_" ) )
 		// forall insert extracellular
             }
             if( matched == 0 ) {
