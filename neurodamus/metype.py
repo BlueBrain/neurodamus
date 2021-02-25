@@ -7,6 +7,8 @@ from abc import abstractmethod
 from os import path as ospath
 from .core.configuration import SimConfig
 from .core import NeurodamusCore as Nd
+import numpy as np
+from scipy.spatial.transform import Rotation
 
 
 class BaseCell:
@@ -245,11 +247,13 @@ class METypeItem(object):
     """
     __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
                  "threshold_current", "holding_current",
-                 "exc_mini_frequency", "inh_mini_frequency", "add_params")
+                 "exc_mini_frequency", "inh_mini_frequency", "add_params",
+                 "local_to_global_coord_mapping")
 
     def __init__(self, morph_name, layer=None, fullmtype=None, etype=None, emodel=None,
                  combo_name=None, threshold_current=0, holding_current=0,
-                 exc_mini_frequency=0, inh_mini_frequency=0, add_params=None):
+                 exc_mini_frequency=0, inh_mini_frequency=0, add_params=None, position=None,
+                 rotation=None, scale=None):
         self.morph_name = morph_name
         self.layer = layer
         self.fullmtype = fullmtype
@@ -261,6 +265,29 @@ class METypeItem(object):
         self.exc_mini_frequency = float(exc_mini_frequency)
         self.inh_mini_frequency = float(inh_mini_frequency)
         self.add_params = add_params
+        self.local_to_global_coord_mapping = \
+            METypeItem._make_local_to_global_tsf(position, rotation, scale) \
+                if rotation is not None else None
+
+    def _make_local_to_global_tsf(position, rotation, scale):
+        def _mul(m, x):
+            if x.shape[0] == 0:
+                return np.array([])
+            if len(x.shape) != 2 and x.shape[1] != 3:
+                raise ValueError("Matrix of input coordinates needs 3 columns.")
+            z = np.zeros((4, x.shape[0]), dtype=float)
+            z[:3, :] = np.array(x).T
+            z[3, :] = np.ones((1, x.shape[0]), dtype=float)
+            res = np.matmul(m, z)
+            return res.T
+        if abs(np.linalg.norm(rotation) - 1.0) > 1.0e-9:
+            raise ValueError("Rotation quaternion is not normal.")
+        r = Rotation.from_quat(rotation)
+        m = np.zeros((3, 4), np.float)
+        m[:3, :3] = r.as_dcm()
+        m[:3, 3] = position
+        m[:3, 3] *= scale
+        return lambda x: METypeItem._mul(m, x)
 
 
 class METypeManager(dict):
