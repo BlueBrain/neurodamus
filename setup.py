@@ -67,8 +67,7 @@ def setup_package():
         install_requires=[
             'NEURON',
             'h5py',
-            'docopt',
-            'scipy'
+            'docopt'
         ],
         setup_requires=maybe_docs_reqs + maybe_test_runner,
         tests_require=["pytest"],
