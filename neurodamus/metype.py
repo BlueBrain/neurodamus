@@ -7,6 +7,8 @@ from abc import abstractmethod
 from os import path as ospath
 from .core.configuration import SimConfig
 from .core import NeurodamusCore as Nd
+import numpy as np
+from scipy.spatial.transform import Rotation
 
 
 class BaseCell:
@@ -247,11 +249,13 @@ class METypeItem(object):
     """
     __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
                  "threshold_current", "holding_current",
-                 "exc_mini_frequency", "inh_mini_frequency", "add_params")
+                 "exc_mini_frequency", "inh_mini_frequency", "add_params",
+                 "local_to_global_matrix")
 
     def __init__(self, morph_name, layer=None, fullmtype=None, etype=None, emodel=None,
                  combo_name=None, threshold_current=0, holding_current=0,
-                 exc_mini_frequency=0, inh_mini_frequency=0, add_params=None):
+                 exc_mini_frequency=0, inh_mini_frequency=0, add_params=None,
+                 position=None, rotation=None, scale=1.0):
         self.morph_name = morph_name
         self.layer = layer
         self.fullmtype = fullmtype
@@ -263,6 +267,30 @@ class METypeItem(object):
         self.exc_mini_frequency = float(exc_mini_frequency)
         self.inh_mini_frequency = float(inh_mini_frequency)
         self.add_params = add_params
+        self.local_to_global_matrix = self._make_local_to_global_matrix(position, rotation, scale)
+
+    @staticmethod
+    def _make_local_to_global_matrix(position, rotation, scale):
+        """Build the transformation matrix from local to global"""
+        if not rotation:
+            return None
+        m = np.empty((3, 4), np.float32)
+        r = Rotation.from_quat(rotation)  # scipy auto-normalizes
+        m[:, :3] = r.as_matrix()
+        m[:, 3] = position
+        m[:, 3] *= scale
+        return m
+
+    def local_to_global_coord_mapping(self, points):
+        if self.local_to_global_matrix is None:
+            raise Exception("Nodes don't provide all 3d position/rotation info")
+        if points.shape[0] == 0:
+            return np.array([])
+        if len(points.shape) != 2 or points.shape[1] != 3:
+            raise ValueError("Matrix of input coordinates needs 3 columns.")
+        rot_matrix = self.local_to_global_matrix[None, :, :3]
+        translation = self.local_to_global_matrix[:, 3]
+        return np.einsum('ijk,ik->ij', rot_matrix, points) + translation
 
 
 class METypeManager(dict):
