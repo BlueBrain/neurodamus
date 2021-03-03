@@ -430,7 +430,7 @@ class Connection(ConnectionBase):
             syn_helper.synapse.conductance = params_obj.weight
 
         # set the default value of synapse NMDA_ratio/GABAB_ratio from circuit
-        if params_obj.conductance_ratio >= 0:
+        if params_obj.conductance_ratio >= 0 and self._mod_override is None:
             self._update_conductance_ratio(syn_helper.synapse, is_inh, params_obj.conductance_ratio)
 
         cell.CellRef.synHelperList.append(syn_helper)

@@ -473,7 +473,10 @@ class ConnectionManagerBase(object):
             conn_src = conn_conf["Source"]
             conn_dst = conn_conf["Destination"]
             synapse_id = conn_conf.get("SynapseID")
-            self.connect_group(conn_src, conn_dst, synapse_id)
+            mod_override = None
+            if "ModOverride" in conn_conf:
+                mod_override = conn_conf["ModOverride"]
+            self.connect_group(conn_src, conn_dst, synapse_id, mod_override)
 
     # -
     def configure_connections(self, conn_conf):
@@ -520,13 +523,15 @@ class ConnectionManagerBase(object):
             self._add_synapses(cur_conn, syns_params, None, offset)
 
     # -
-    def connect_group(self, conn_source, conn_destination, synapse_type_restrict=None):
+    def connect_group(self, conn_source, conn_destination, synapse_type_restrict=None,
+                      mod_override=None):
         """Instantiates pathway connections & synapses given src-dst
 
         Args:
             conn_source (str): The target name of the source cells
             conn_destination (str): The target of the destination cells
             synapse_type_restrict(int): Create only given synType synapses
+            mod_override (str): ModOverride given for this connection group
         """
         conn_kwargs = {}
         pop = self._cur_population
@@ -537,7 +542,7 @@ class ConnectionManagerBase(object):
         dst_target = dst_tname and self._target_manager.getTarget(dst_tname)
 
         for sgid, tgid, syns_params, extra_params, offset in \
-                self._iterate_conn_params(src_target, dst_target):
+                self._iterate_conn_params(src_target, dst_target, mod_override=mod_override):
             if sgid == tgid:
                 logging.warning("Making connection within same Gid: %d", sgid)
             if self._load_offsets:
@@ -572,7 +577,8 @@ class ConnectionManagerBase(object):
         return sgid_offset, tgid_offset
 
     # -
-    def _iterate_conn_params(self, src_target, dst_target, gids=None, show_progress=False):
+    def _iterate_conn_params(self, src_target, dst_target, gids=None, show_progress=False,
+                             mod_override=None):
         """A generator which loads synapse data and yields tuples(sgid, tgid, synapses)
 
         Args:
@@ -594,7 +600,7 @@ class ConnectionManagerBase(object):
                 continue
 
             # Retrieve all synapses for tgid
-            syns_params = self._synapse_reader.get_synapse_parameters(base_tgid)
+            syns_params = self._synapse_reader.get_synapse_parameters(base_tgid, mod_override)
             logging.debug("GID %d Syn count: %d", tgid, len(syns_params))
             cur_i = 0
             syn_count = len(syns_params)

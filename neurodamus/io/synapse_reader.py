@@ -39,6 +39,12 @@ class SynapseParameters(metaclass=_SynParametersMeta):
         npa.location = 0.5
         return npa
 
+    @classmethod
+    def concatenate(cls, syn_params, extra_syn_params):
+        from numpy.lib.recfunctions import merge_arrays
+        new_params = merge_arrays((syn_params, extra_syn_params), asrecarray=True, flatten=True)
+        return new_params
+
 
 class SynapseReader(object):
     """ Synapse Readers base class.
@@ -54,14 +60,18 @@ class SynapseReader(object):
         self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
         self._open_file(src, population, kw.get("verbose", False))
 
-    def get_synapse_parameters(self, gid):
+    def get_synapse_parameters(self, gid, mod_override=None):
         """Obtains the synapse parameters record for a given gid.
         """
         syn_params = self._syn_params.get(gid)
         if syn_params is None:
             syn_params = self._syn_params[gid] = self._load_synapse_parameters(gid)
+            if mod_override:
+                mod_override_params = self._read_extra_fields_from_mod_override(mod_override, gid)
+                if mod_override_params is not None:
+                    syn_params = SynapseParameters.concatenate(syn_params, mod_override_params)
             self._patch_delay_fp_inaccuracies(syn_params)
-            self._scale_U_param(syn_params, self._ca_concentration)
+            self._scale_U_param(syn_params, self._ca_concentration, mod_override)
         return syn_params
 
     @abstractmethod
@@ -77,7 +87,7 @@ class SynapseReader(object):
         records.delay = (records.delay / dt + 1e-5).astype('i4') * dt
 
     @staticmethod
-    def _scale_U_param(syn_params, extra_cellular_calcium):
+    def _scale_U_param(syn_params, extra_cellular_calcium, mod_override):
         if len(syn_params) == 0:
             return
         if extra_cellular_calcium is None:
@@ -96,6 +106,20 @@ class SynapseReader(object):
         scale_factors = np.vectorize(f_scale)(syn_params.u_hill_coefficient,
                                               extra_cellular_calcium)
         syn_params.U *= scale_factors
+
+        if mod_override is not None:
+            override_helper = mod_override + "Helper"
+            Nd.load_hoc(override_helper)
+
+            # Read attribute names with format "attr1;attr2;attr3"
+            attr_names = getattr(Nd, override_helper + "_UHillScaleVariables", None)
+            if attr_names is not None:
+                scale_vars = attr_names.split(";")
+            else:
+                return
+
+            for scale_var in scale_vars:
+                syn_params[scale_var] *= scale_factors
 
     @abstractmethod
     def _open_file(self, src, population, verbose=False):
@@ -203,6 +227,39 @@ class SynReaderSynTool(SynapseReader):
         field_data = Nd.Vector()
         self._syn_reader.getPropertyData(0, field_data)
         return field_data  # Returns the vector to avoid copies to numpy
+
+    def _read_extra_fields_from_mod_override(self, mod_override, tgid):
+        if mod_override is None:
+            return None
+
+        override_helper = mod_override + "Helper"
+        Nd.load_hoc(override_helper)
+
+        # Read attribute names with format "attr1;attr2;attr3"
+        attr_names = getattr(Nd, override_helper + "_NeededAttributes", None)
+        if attr_names is None:
+            return None
+        log_verbose('Reading parameters "{}" for mod override: {}'.format(
+            ", ".join(attr_names.split(";")), mod_override))
+
+        class CustomSynapseParameters(SynapseParameters):
+            _synapse_fields = tuple(attr_names.split(";"))
+
+        reader = self._syn_reader
+        req_fields_str = ", ".join(CustomSynapseParameters._synapse_fields)
+        nrow = int(reader.loadSynapseCustom(tgid, req_fields_str))
+        if nrow < 1:
+            return CustomSynapseParameters.empty
+
+        conn_syn_params = CustomSynapseParameters.create_array(nrow)
+        syn_params_mtx = conn_syn_params.view(('f8', len(conn_syn_params.dtype)))
+        tmpParams = Nd.Vector(len(conn_syn_params.dtype))
+
+        for syn_i in range(nrow):
+            reader.getSynapse(syn_i, tmpParams)
+            syn_params_mtx[syn_i] = tmpParams.as_numpy()
+
+        return conn_syn_params
 
 
 class SynReaderNRN(SynapseReader):

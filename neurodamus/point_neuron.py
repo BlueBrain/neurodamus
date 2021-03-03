@@ -422,20 +422,22 @@ class PointNeuronSynapseManager(SynapseRuleManager):
             cur_conn.add_point_synapses(syns_params)
         return pop.count() - created_conns_0
 
-    def connect_group(self, src_target_name, dst_target_name, synapse_type_restrict=None):
+    def connect_group(self, conn_source, conn_destination, synapse_type_restrict=None,
+                      mod_override=None):
         """Instantiates pathway connections & synapses given src-dst
 
                 Args:
-                    src_target_name (str): The target name of the source cells
-                    dst_target_name (str): The target of the destination cells
-                    synapse_type_restrict(int): Create only given synType synapses
+                   conn_source (str): The target name of the source cells
+                   conn_destination (str): The target of the destination cells
+                   synapse_type_restrict(int): Create only given synType synapses
+                   mod_override (str): ModOverride given for this connection group
                 """
         pop = self._cur_population
-        src_tname = TargetSpec(src_target_name).name
-        dst_tname = TargetSpec(dst_target_name).name
+        logging.debug("Connecting group %s -> %s", conn_source, conn_destination)
+        src_tname = TargetSpec(conn_source).name
+        dst_tname = TargetSpec(conn_destination).name
         src_target = src_tname and self._target_manager.getTarget(src_tname)
         dst_target = dst_tname and self._target_manager.getTarget(dst_tname)
-        log_verbose("Connecting group %s -> %s", src_tname, dst_tname)
 
         for sgids, tgid, syns_params in self._iterate_conn_params(src_target, dst_target):
             cur_conn = pop.get_or_create_point_connection(sgids, tgid)
