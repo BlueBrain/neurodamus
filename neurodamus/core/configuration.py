@@ -137,7 +137,8 @@ class _SimConfig(object):
     def init(cls, config_file, cli_options):
         # Import these objects scope-level to avoid cross module dependency
         from ._neurodamus import NeurodamusCore as Nd
-        assert os.path.isfile(config_file)
+        if not os.path.isfile(config_file):
+            raise ConfigurationError("Config file not found: " + config_file)
         logging.info("Initializing Simulation Configuration and Validation")
         log_verbose("ConfigFile: %s", config_file)
         log_verbose("CLI Options: %s", cli_options)

@@ -117,7 +117,7 @@ class CellManagerBase(object):
     _node_format = NodeFormat.SONATA  # NCS, Mvd, Sonata...
     """Default Node file format"""
 
-    def __init__(self, circuit_conf, target_parser, *_):
+    def __init__(self, circuit_conf, target_manager, *_):
         """Initializes CellDistributor
 
         Args:
@@ -128,7 +128,7 @@ class CellManagerBase(object):
         """
         self._circuit_conf = circuit_conf
         self._circuit_name = circuit_conf._name
-        self._target_parser = target_parser
+        self._target_manager = target_manager
         self._target_spec = TargetSpec(circuit_conf.CircuitTarget)
         self._population_name = None
         self._local_nodes = None
@@ -147,7 +147,7 @@ class CellManagerBase(object):
             logging.info(" => %s Circuit has been disabled", self.circuit_name or "(default)")
 
     # read-only properties
-    target_parser = property(lambda self: self._target_parser)
+    target_manager = property(lambda self: self._target_manager)
     local_nodes = property(lambda self: self._local_nodes or NodeSet())
     total_cells = property(lambda self: self._total_cells)
     cells = property(lambda self: self._gid2cell.values())
@@ -212,8 +212,8 @@ class CellManagerBase(object):
 
         if target_spec.name:
             logging.info(" -> Distributing '%s' target cells Round-Robin", target_spec)
-            target = self._target_parser.getTarget(target_spec.name)
-            target_gids = target.completegids().as_numpy().astype("uint32")
+
+            target_gids = self._target_manager.get_target_gids(target_spec.name, conf._name)
             gidvec, me_infos, full_size = loader_f(conf, target_gids, MPI.size, MPI.rank)
             total_cells = len(target_gids)
         else:
@@ -269,12 +269,12 @@ class CellManagerBase(object):
         logging.info(" > Updating targets")
         cell_offset = self._local_nodes.offset
         if cell_offset and self._target_spec.name:
-            target = self._target_parser.getTarget(self._target_spec.name)
+            target = self._target_manager.get_target(self._target_spec.name)
             if not hasattr(target, "set_offset"):
                 raise NotImplementedError("No gid offsetting supported by neurodamus Target.hoc")
             target.set_offset(cell_offset)
         # Add local gids to matching targets
-        self._target_parser.updateTargets(self._local_nodes.final_gids(), 1)
+        self._target_manager.parser.updateTargets(self._local_nodes.final_gids(), 1)
 
     def _init_cell_network(self):
         """Init global gids for cell networking
@@ -435,6 +435,10 @@ class CellDistributor(CellManagerBase):
             self._node_format = NodeFormat.NCS
         elif circuit_conf.CellLibraryFile.endswith(".mvd3"):
             self._node_format = NodeFormat.MVD3
+        self._is_v5_circuit = circuit_conf.CellLibraryFile == "start.ncs" or (
+            ospath.isfile(ospath.join(circuit_conf.nrnPath, "start.ncs"))
+            and not ospath.isfile(ospath.join(circuit_conf.CircuitPath, "circuit.mvd3"))
+        )
         super()._init_config(circuit_conf, _pop)
 
     def load_nodes(self, load_balancer=None, **kw):
@@ -451,8 +455,8 @@ class CellDistributor(CellManagerBase):
     def _instantiate_cells(self, *_):
         if self.CellType is not NotImplemented:
             return super()._instantiate_cells(self.CellType)
-        CellType = Cell_V5 if self._node_format == NodeFormat.NCS else Cell_V6
         conf = self._circuit_conf
+        CellType = Cell_V5 if self._is_v5_circuit else Cell_V6
         CellType.morpho_extension = conf.MorphologyType
         log_verbose("Loading metypes from: %s", conf.METypePath)
         log_verbose("Loading '%s' morphologies from: %s",

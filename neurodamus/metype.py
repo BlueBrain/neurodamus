@@ -161,6 +161,8 @@ class Cell_V5(METype):
         # In NCS, meinfo is simply the metype filename (string)
         mepath = circuit_conf.METypePath
         morpho_path = circuit_conf.MorphologyPath
+        if isinstance(meinfo, METypeItem):
+            meinfo = meinfo.emodel  # Compat with loading V5 cells from Sonata Nodes
         melabel = self._load_template(meinfo, mepath)
         super().__init__(gid, mepath, melabel, morpho_path)
 

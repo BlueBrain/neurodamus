@@ -299,8 +299,7 @@ class Node:
             return load_balancer
 
         logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
-        target_parser = self._target_manager.parser
-        cell_dist = self._circuits.new_node_manager(self._base_circuit, target_parser)
+        cell_dist = self._circuits.new_node_manager(self._base_circuit, self._target_manager)
         with load_balancer.generate_load_balance(target.simple_name, cell_dist):
             # Instantiate a basic circuit to evaluate complexities
             cell_dist.finalize()
@@ -334,15 +333,14 @@ class Node:
 
         # Always create a cell_distributor even if engine is disabled.
         # Extra circuits may use it and not None is a sign of initialization done
-        target_parser = self._target_manager.parser
-        cell_distributor = CellDistributor(self._base_circuit, target_parser, self._run_conf)
+        cell_distributor = CellDistributor(self._base_circuit, self._target_manager, self._run_conf)
         self._circuits.register_node_manager(cell_distributor)
         cell_distributor.load_nodes(load_balance)
 
         # SUPPORT for extra/custom Circuits
         for name, circuit in self._extra_circuits.items():
             log_stage("Circuit %s", name)
-            self._circuits.new_node_manager(circuit, target_parser, self._run_conf)
+            self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
 
         # Let the cell managers have any final say in the cell objects
         log_stage("FINALIZING CIRCUIT CELLS")
