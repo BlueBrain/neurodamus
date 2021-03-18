@@ -663,13 +663,13 @@ class Node:
                     logging.error("Invalid report dt %f < %f simulation dt", rep_dt, Nd.dt)
                 n_errors += 1
                 continue
-
+            report_on = rep_conf["ReportOn"]
             rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
                                     "start, end, output_dir, electrode, scaling, isc, "
                                     "population_name")(
                 rep_name,
                 rep_type,  # rep type is case sensitive !!
-                rep_conf["ReportOn"],
+                report_on,
                 rep_conf["Unit"],
                 rep_conf["Format"],
                 rep_dt,
@@ -732,8 +732,8 @@ class Node:
                         target_type = 0
 
                 core_report_params = (
-                    (rep_name, rep_target.name) + rep_params[1:5]
-                    + (target_type,) + rep_params[5:8]
+                    (rep_name, rep_target.name, rep_type, report_on.replace(" ", ","))
+                    + rep_params[3:5] + (target_type,) + rep_params[5:8]
                     + (target.completegids(), SimConfig.corenrn_buff_size, population_name)
                 )
                 SimConfig.coreneuron.write_report_config(*core_report_params)
