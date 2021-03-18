@@ -329,6 +329,9 @@ class CellManagerBase(object):
     def _store_cell(self, gid, cell):
         self._gid2cell[gid] = cell
 
+    def getMEType(self, gid):
+        return self._gid2cell[gid]
+
     def record_spikes(self, gids=None, append_spike_vecs=None):
         """Setup recording of spike events (crossing of threshold) for cells on this node
         """
@@ -340,9 +343,7 @@ class CellManagerBase(object):
 
         for gid in gids:
             # only want to collect spikes of cell pieces with the soma (i.e. the real gid)
-            if self.getSpGid(gid) == gid:
-                if gids:
-                    logging.debug("Collecting spikes for gid %d", gid)
+            if not self._binfo or self._binfo.thishost_gid(gid) == gid:
                 self._pc.spike_record(gid, spikevec, idvec)
         return spikevec, idvec
 
@@ -353,11 +354,40 @@ class CellManagerBase(object):
         else:
             self._conn_managers_per_src_pop[src_population] = conn_manager
 
+
+class GlobalCellManager:
+    """
+    GlobalCellManager is a wrapper over all Cell Managers so that we can query
+    any cell from its global gid
+    """
+
+    def __init__(self):
+        self._cell_managers = []  # [(offset, manager)}
+        self._binfo = None
+        self._pc = Nd.pc
+
+    def register_manager(self, cell_manager):
+        self._cell_managers.append(cell_manager)
+
+    def finalize(self):
+        self._cell_managers.sort(key=lambda x: x.local_nodes.offset)
+        self._binfo = self._cell_managers[0]._binfo
+
     # Accessor methods (Keep CamelCase API for compatibility with existing hoc)
     # ----------------
+    def getGidListForProcessor(self):
+        from operator import add
+        from functools import reduce
+        return reduce(add, (man.getGidListForProcessor() for man in self._cell_managers))
 
     def getMEType(self, gid):
-        return self._gid2cell[gid]
+        cell_managers_iter = iter(self._cell_managers)
+        prev_manager = next(cell_managers_iter)  # base cell manager
+        for manager in cell_managers_iter:
+            if manager.local_nodes.offset > gid:
+                break
+            prev_manager = manager
+        return prev_manager._gid2cell[gid]
 
     def getCell(self, gid):
         """Retrieve a cell object given its gid.
@@ -368,7 +398,7 @@ class CellManagerBase(object):
         if self._binfo:
             # are we in load balance mode? must replace gid with spgid
             gid = self._binfo.thishost_gid(gid)
-        return self.pc.gid2obj(gid)
+        return self._pc.gid2obj(gid)
 
     def getSpGid(self, gid):
         """Retrieve the spgid from a gid (provided we are using loadbalancing)

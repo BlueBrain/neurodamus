@@ -18,7 +18,8 @@ from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, SimConfig
 from .core._engine import EngineBase
 from .core.configuration import ConfigurationError, find_input_file
-from .cell_distributor import CellDistributor, LoadBalance, LoadBalanceMode, VirtualCellPopulation
+from .cell_distributor import CellDistributor, VirtualCellPopulation, GlobalCellManager
+from .cell_distributor import LoadBalance, LoadBalanceMode
 from .connection_manager import SynapseRuleManager, GapJunctionManager, edge_node_pop_names
 from .replay import SpikeManager
 from .target_manager import TargetSpec, TargetManager
@@ -53,6 +54,7 @@ class CircuitManager:
         self.virtual_node_managers = {}   # same, but for virtual ones (no cells)
         self.edge_managers = defaultdict(list)  # dict {(src_pop, dst_pop) -> list[synapse_manager]}
         self.alias = {}          # dict {name -> pop_name}
+        self.global_manager = GlobalCellManager()
 
     def initialized(self):
         return bool(self.node_managers)
@@ -63,6 +65,7 @@ class CircuitManager:
             raise ConfigurationError("Already existing node manager for population %s" % pop)
         self.node_managers[pop] = cell_manager
         self.alias[cell_manager.circuit_name] = pop
+        self.global_manager.register_manager(cell_manager)
 
     def new_node_manager(self, circuit, *args, **kwargs):
         engine = circuit.Engine or METypeEngine
@@ -334,8 +337,8 @@ class Node:
         """Create synapses among the cells, handling connections that appear in the config file
         """
         log_stage("LOADING CIRCUIT CONNECTIVITY")
-        cell_manager = self._circuits.base_cell_manager or next(self._circuits.all_node_managers())
-        self._target_manager.init_hoc_manager(cell_manager)
+        self._circuits.global_manager.finalize()
+        self._target_manager.init_hoc_manager(self._circuits.global_manager)
         target_manager = self._target_manager.hoc
         SimConfig.update_connection_blocks(self._circuits.alias)
 
@@ -470,7 +473,8 @@ class Node:
         logging.info("Instantiating Stimulus Injects:")
 
         for name, inject in SimConfig.injects.items():
-            target_name = inject.get("Target").s
+            target_info = TargetSpec(inject.get("Target").s)
+            target_name = target_info.name
             stim_name = inject.get("Stimulus").s
             stim = stim_dict.get(stim_name)
             if stim is None:
@@ -715,17 +719,18 @@ class Node:
                 continue  # we dont even need to initialize reports
 
             report = Nd.Report(*rep_params)
+            global_manager = self._circuits.global_manager
 
             # Go through the target members, one cell at a time. We give a cell reference
             # For summation targets - check if we were given a Cell target because we really want
             # all points of the cell which will ultimately be collapsed to a single value
             # on the soma. Otherwise, get target points as normal.
-            points = self._target_manager.get_target_points(target, cell_manager,
+            points = self._target_manager.get_target_points(target, global_manager,
                                                             rep_type.lower() == "summation")
             for point in points:
                 gid = point.gid
-                cell = cell_manager.getCell(gid)
-                spgid = cell_manager.getSpGid(gid)
+                cell = global_manager.getCell(gid)
+                spgid = global_manager.getSpGid(gid)
 
                 # may need to take different actions based on report type
                 if rep_type.lower() == "compartment":
@@ -913,8 +918,7 @@ class Node:
         fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
         if not corenrn_restore:
-            cell_manager = self._circuits.base_cell_manager
-            Nd.registerMapping(cell_manager)
+            Nd.registerMapping(self._circuits.global_manager)
             local_gid_count = sum(len(manager.local_nodes)
                                   for manager in self._circuits.all_node_managers())
             fake_gid = None
@@ -922,7 +926,8 @@ class Node:
                 # load the ARTIFICIAL_CELL CoreConfig with a fake_gid in this empty rank
                 # to avoid errors during coreneuron model building
                 fake_gid = int(self._bbcore_fakegid_offset + self._pc.id())
-                cell_manager.load_artificial_cell(fake_gid, SimConfig.coreneuron)
+                base_manager = self._circuits.base_cell_manager
+                base_manager.load_artificial_cell(fake_gid, SimConfig.coreneuron)
             self._pc.nrnbbcore_write(corenrn_data)
             if self._bbcore_fakegid_offset is not None:
                 self._bbcore_fakegid_offset += MPI.size

@@ -2,9 +2,9 @@ import itertools
 import logging
 import os.path
 from functools import lru_cache
+
 from .core.configuration import GlobalConfig, find_input_file
 from .core import MPI, NeurodamusCore as Nd
-from .utils.logging import log_verbose
 
 
 class TargetSpec:
@@ -154,7 +154,6 @@ class TargetManager:
             target = self.get_target(target)
         if target.isCellTarget() and cell_use_compartment_cast:
             target = self.hoc.compartmentCast(target, "")
-        log_verbose("Using cell manager with cells offset by %d", cell_manager.local_nodes.offset)
         return target.getPointList(cell_manager)
 
     @lru_cache
