@@ -226,8 +226,8 @@ class ConnectionManagerBase(object):
     An abstract base class common to Synapse and GapJunction connections
 
     Connection Managers hold and manage connectivity among cell populations.
-    To simplify, and stay backwards compatible, projections coming from virtual
-    populations stay in the same manager of the internal connectivity.
+    For every src-dst pop pairs a new ConnectionManahger is created. The only case
+    it holds several ConnectionSets is for old-style projections (no population names)
    """
 
     CONNECTIONS_TYPE = None
@@ -260,7 +260,6 @@ class ConnectionManagerBase(object):
         self._src_cell_manager = src_cell_manager or cell_manager
 
         self._populations = {}  # Multiple edge populations support. key is a tuple (src, dst)
-        self._populations_by_src_nodes = defaultdict(list)  # find edge populations by src nodes
         self._cur_population = None
         self._disabled_conns = defaultdict(list)
 
@@ -336,8 +335,6 @@ class ConnectionManagerBase(object):
         cur_pop.dst_name = dst_pop_name
         cur_pop.virtual_source = self._src_cell_manager.is_virtual \
                                  or src_pop_name != self._src_cell_manager.population_name
-        if cur_pop not in self._populations_by_src_nodes[src_pop_name]:
-            self._populations_by_src_nodes[src_pop_name].append(cur_pop)
         logging.info("Loading connections to population: %s", cur_pop)
 
     def _compute_pop_ids(self, src_pop, dst_pop, src_pop_id=None):
@@ -352,15 +349,6 @@ class ConnectionManagerBase(object):
         if src_pop_id is None:
             src_pop_id = 0 if self._src_cell_manager.is_default else make_id(src_pop)
         return src_pop_id, dst_pop_id
-
-    def _find_conn_populations_nodesets(self, src_pop, dst_pop=None):
-        if dst_pop != self._cell_manager.population_name:
-            logging.warning("%s doesnt handle target population %s", self, dst_pop)
-            return []
-        if src_pop not in self._populations_by_src_nodes:
-            logging.warning("%s doesnt handle source population %s", self, src_pop)
-            return []
-        return self._populations_by_src_nodes[src_pop]
 
     # -
     def select_connection_set(self, src_pop_id, dst_pop_id):
@@ -667,15 +655,8 @@ class ConnectionManagerBase(object):
         tgid_offset = self._cell_manager.local_nodes.offset
         sgid_offset = self._src_cell_manager.local_nodes.offset
 
-        if conn_population is not None:
-            populations = (conn_population,)
-        else:
-            population_path = (src_target_spec.population, dst_target_spec.population)
-            populations = self._find_conn_populations_nodesets(*population_path)
-            if not populations:
-                logging.warning("No connections found between node populations %s",
-                                population_path)
-                return
+        populations = (conn_population,) if conn_population is not None \
+            else self._populations.values()
 
         for population in populations:
             logging.debug("Connections from population %s", population)

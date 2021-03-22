@@ -79,6 +79,9 @@ class CircuitManager:
         name = self.alias.get(name, name)
         return self.node_managers.get(name)
 
+    def has_population(self, pop_name):
+        return pop_name in self.node_managers
+
     def unalias_pop_keys(self, source, destination):
         """Un-alias population names"""
         return self.alias.get(source, source), self.alias.get(destination, destination)
@@ -92,21 +95,38 @@ class CircuitManager:
                     if type(manager) == conn_type]
         return managers[0] if managers else None
 
-    def get_create_edge_manager(self, conn_type, source, destination, *args, **kw):
-        edge_pop_keys = self.unalias_pop_keys(source, destination)
+    def get_create_edge_manager(self, conn_type, source, destination, *args,
+                                _orig_target_pop=None, **kw):
+        source, destination = self.unalias_pop_keys(source, destination)
         manager = self.get_edge_manager(source, destination, conn_type)
         if manager:
             return manager
-        src_manager = self.node_managers.get(edge_pop_keys[0])
+
+        if not self.has_population(destination):
+            # This is likely an error, except...
+            if _orig_target_pop is None and self.has_population(''):
+                logging.warning("Sonata Edges target population %s was not found. "
+                                "Since base population is unknown, assuming that's the target.\n"
+                                "To silence this warning please switch to Sonata nodes or specify "
+                                "the base population by prefixing CircuitTarget with pop_name:",
+                                destination)
+                self.alias[destination] = ''
+                destination = ''
+                source = self.alias.get(source)  # refresh unaliasing
+            else:
+                raise ConfigurationError("Can't find projection Node population: %s", destination)
+
+        src_manager = self.node_managers.get(source)
         if src_manager is None:  # src manager may not exist -> virtual
+            logging.info(" * No known population %s. Creating Virtual src for projection", source)
             if conn_type != SynapseRuleManager:
                 raise ConfigurationError("Custom connections require instantiated source nodes")
-            src_manager = VirtualCellPopulation(edge_pop_keys[0])
+            src_manager = VirtualCellPopulation(source)
 
-        target_cell_manager = kw["cell_manager"] = self.node_managers[edge_pop_keys[1]]
+        target_cell_manager = kw["cell_manager"] = self.node_managers[destination]
         kw["src_cell_manager"] = src_manager
         manager = conn_type(*args, **kw)
-        self.edge_managers[edge_pop_keys].append(manager)
+        self.edge_managers[(source, destination)].append(manager)
         target_cell_manager.register_connection_manager(manager)
         return manager
 
@@ -351,6 +371,7 @@ class Node:
             if not population:
                 edge_file, *pop = conf.get("nrnPath").split(":")
                 src, dst = edge_node_pop_names(edge_file, pop[0] if pop else None)
+            kwargs["_orig_target_pop"] = population
             manager = self._circuits.get_create_edge_manager(ctype, src, dst, conf, *args, **kwargs)
             self._load_connections(conf, manager)  # load internal connections right away
 
@@ -412,7 +433,9 @@ class Node:
         logging.info(" * %s (Type: %s, Src: %s, Dst: %s)", pname, ptype, src_pop, dst_pop)
 
         conn_manager = self._circuits.get_create_edge_manager(
-            ptype_cls, src_pop, dst_pop, projection, target_manager)
+            ptype_cls, src_pop, dst_pop, projection, target_manager,
+            _orig_target_pop=dest_t.population
+        )
         logging.debug("Using connection manager: %s", conn_manager)
         proj_source = ":".join([ppath] + pop_name)
         conn_manager.open_synapse_location(proj_source, projection, src_name=src_pop)
