@@ -450,7 +450,7 @@ static void bbcore_write(double* dArray, int* iArray, int* doffset, int* ioffset
                 nrnran123_getids3(*pv, ia, ia+1, ia+2);
 
                 // for stream sequence
-                unsigned char which;
+                char which;
 
                 nrnran123_getseq(*pv, ia+3, &which);
                 ia[4] = (int)which;
