@@ -421,9 +421,8 @@ class CellDistributor(CellManagerBase):
     """
 
     _cell_loaders = {
-        NodeFormat.NCS: cell_readers.load_ncs,
-        NodeFormat.MVD3: cell_readers.load_mvd3,
-        NodeFormat.SONATA: cell_readers.load_nodes
+        "start.ncs": cell_readers.load_ncs,
+        "circuit.mvd3": cell_readers.load_mvd3,
     }
 
     _sonata_with_extra_attrs = True  # Enable search extra node attributes
@@ -432,8 +431,10 @@ class CellDistributor(CellManagerBase):
         if not circuit_conf.CellLibraryFile:
             logging.warning("CellLibraryFile not set. Assuming legacy 'start.ncs'")
             circuit_conf.CellLibraryFile = "start.ncs"
-        file2format = {"start.ncs": NodeFormat.NCS, "circuit.mvd3": NodeFormat.MVD3}
-        self._node_format = file2format.get(circuit_conf.CellLibraryFile, NodeFormat.SONATA)
+        if circuit_conf.CellLibraryFile.endswith(".ncs"):
+            self._node_format = NodeFormat.NCS
+        elif circuit_conf.CellLibraryFile.endswith(".mvd3"):
+            self._node_format = NodeFormat.MVD3
         super()._init_config(circuit_conf, _pop)
 
     def load_nodes(self, load_balancer=None, **kw):
@@ -442,9 +443,10 @@ class CellDistributor(CellManagerBase):
         if self._node_format == NodeFormat.SONATA and self._sonata_with_extra_attrs:
             loader = lambda *args, **kw: cell_readers.load_nodes(*args, **kw, has_extra_data=True)
         else:
-            loader = self._cell_loaders[self._node_format]
-        kw["_loader"] = loader
-        return super().load_nodes(load_balancer, **kw)
+            loader = self._cell_loaders.get(self._circuit_conf.CellLibraryFile,
+                                            cell_readers.load_nodes)
+        log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader.__name__)
+        return super().load_nodes(load_balancer, _loader=loader, **kw)
 
     def _instantiate_cells(self, *_):
         if self.CellType is not NotImplemented:
