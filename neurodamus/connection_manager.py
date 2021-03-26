@@ -274,7 +274,7 @@ class ConnectionManagerBase(object):
         return "<{:s} | {:s} -> {:s}>".format(
             self.__class__.__name__, str(self._src_cell_manager), str(self._cell_manager))
 
-    def open_synapse_location(self, syn_source, circuit_conf, **kw):
+    def open_edge_location(self, syn_source, circuit_conf, **kw):
         edge_file, *pop = syn_source.split(":")
         pop_name = pop[0] if pop else None
         n_files = circuit_conf.get("NumSynapseFiles")
@@ -1046,7 +1046,7 @@ class SynapseRuleManager(ConnectionManagerBase):
         syn_source = circuit_conf.get("nrnPath")
         if syn_source:
             logging.info("Init %s. Options: %s", type(self).__name__, kw)
-            self.open_synapse_location(syn_source, circuit_conf, **kw)
+            self.open_edge_location(syn_source, circuit_conf, **kw)
 
     # -
     def finalize(self, base_seed=0, sim_corenrn=False, **kwargs):

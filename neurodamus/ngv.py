@@ -19,7 +19,7 @@ from .morphio_wrapper import MorphIOWrapper
 
 
 class Astrocyte(BaseCell):
-    __slots__ = ('_glut_list',)
+    __slots__ = ('_glut_list', '_secidx2names')
 
     def __init__(self, gid, meinfos, circuit_conf):
         """Instantiate a new Cell from mvd/node info."""
@@ -27,11 +27,22 @@ class Astrocyte(BaseCell):
         morpho_path = circuit_conf.MorphologyPath
         morph_filename = meinfos.morph_name + "." + circuit_conf.MorphologyType
         morph_file = os.path.join(morpho_path, morph_filename)
-        self._cellref, self._glut_list = self._init_cell(gid, morph_file)
+        self._cellref, self._glut_list, self._secidx2names = self._init_cell(gid, morph_file)
         self._cellref.gid = gid
 
     gid = property(lambda self: int(self._cellref.gid),
                    lambda self, val: setattr(self._cellref, 'gid', val))
+
+    endfeet = property(lambda self: self._cellref.endfeet)
+
+    def create_endfeet(self, size):
+        """
+            Create endfeet sections in the cell's context.
+            :param size: number of sections to create
+        """
+        self._cellref.execute_commands(['create endfoot[{}]'.format(size),
+                                        'endfeet = new SectionList()',
+                                        'forsec "endfoot" endfeet.append'])
 
     @staticmethod
     def _er_as_hoc(morph_wrap):
@@ -135,22 +146,23 @@ class Astrocyte(BaseCell):
         # Section parameters (perimeters & cross-sectional area)
         c.execute_commands(Astrocyte._secparams_as_hoc(m))
 
-        # # Print out mcd section parameters
+        # Print out mcd section parameters
         # for sec in c.all:
         #     if hasattr(sec(0.5), 'mcd'):
-        #         print("{}: \tP={:.4g}\tX-Area={:.4g}\tER[area={:.4g}\tvolume={:.4g}]".format(
+        #         logging.info("{}: \tP={:.4g}\tX-Area={:.4g}\tER[area={:.4g}\tvol={:.4g}]".format(
         #             sec,
         #             sec(0.5).mcd.perimeter,
         #             sec(0.5).mcd.cross_sectional_area,
         #             sec(0.5).mcd.er_area,
         #             sec(0.5).mcd.er_volume))
 
+        # Soma receiver must be last element in the glut_list
         soma = c.soma[0]
         soma.insert("glia_2013")
         glut = Nd.GlutReceiveSoma(soma(0.5), sec=soma)
         Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).glia_2013)
         glut_list.append(glut)
-        return c, glut_list
+        return c, glut_list, m.section_index2name_dict
 
     @property
     def glut_list(self) -> list:
@@ -339,8 +351,83 @@ class NeuroGliaConnManager(ConnectionManagerBase):
                             len(NeuroGlialConnection.neurons_not_found))
 
 
+class GlioVascularManager(ConnectionManagerBase):
+    CONNECTIONS_TYPE = "GlioVascular"
+    InnerConnectivityCls = None  # No synapses
+
+    def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
+        if cell_manager.circuit_target is None:
+            raise Exception(
+                "Circuit target is required for GlioVascular projections")
+        if "Path" not in circuit_conf:
+            raise Exception("Missing GlioVascular Sonata file via 'Path' configuration")
+        super().__init__(circuit_conf, target_manager, cell_manager, src_cell_manager, **kw)
+        self._astro_ids = self._cell_manager.local_nodes.raw_gids()
+        self._gid_offset = self._cell_manager.local_nodes.offset
+
+    def open_edge_location(self, sonata_source, circuit_conf, **__):
+        logging.info("GlioVascular sonata file %s", sonata_source)
+        import libsonata
+
+        # sonata files can have multiple populations. In building we only use one
+        # per file, hence this two lines below to access the first and only pop in
+        # the file
+        storage = libsonata.EdgeStorage(circuit_conf["Path"])
+        self._gliovascular = storage.open_population(list(storage.population_names)[0])
+
+    def create_connections(self, *_, **__):
+        logging.info("Creating GlioVascular virtual connections")
+        # Retrieve endfeet selections for GLIA gids on the current processor
+        for astro_id in self._astro_ids:
+            self._connect_endfeet(astro_id)
+
+    def _connect_endfeet(self, astro_id):
+        endfeet = self._gliovascular.afferent_edges(astro_id)
+        if endfeet.flat_size > 0:
+            # Get endfeet input
+            parent_section_ids = self._gliovascular.get_attribute('astrocyte_section_id', endfeet)
+            lengths = self._gliovascular.get_attribute('endfoot_compartment_length', endfeet)
+            diameters = self._gliovascular.get_attribute('endfoot_compartment_diameter', endfeet)
+            perimeters = self._gliovascular.get_attribute('endfoot_compartment_perimeter', endfeet)
+
+            # Retrieve instantiated astrocyte
+            astrocyte = self._cell_manager.gid2cell[astro_id + self._gid_offset]
+
+            # Create endfeet SectionList
+            astrocyte.create_endfeet(parent_section_ids.size)
+
+            # Iterate through endfeet: insert mechanisms, set values and connect to parent section
+            for sec, parent_section_id, l, d, p in zip(astrocyte.endfeet,
+                                                       parent_section_ids,
+                                                       lengths,
+                                                       diameters,
+                                                       perimeters):
+                sec.L = l
+                sec.diam = d
+                sec.insert('vascouplingB')
+                sec.insert('mcd')
+                sec(0.5).mcd.perimeter = p
+                glut = Nd.GlutReceive(sec(0.5), sec=sec)
+                Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).mcd)
+                # because soma glut must be the last
+                astrocyte._glut_list.insert(len(astrocyte._glut_list)-1, glut)
+                exec('parent_sec = astrocyte.CellRef.{}; sec.connect(parent_sec)'.format(
+                    astrocyte._secidx2names[parent_section_id + 1]))
+                # astrocyte.CellRef.all.append(sec)
+            # Some useful debug lines:
+            # cell = astrocyte.CellRef
+            # logging.warn(str(cell.endfeet.printnames()))  # print endfeet section list names
+            # logging.warn(str(cell.all.printnames())) #  print astrocyte names for "all" sections
+            # logging.warn(str(Nd.h.topology()))  # print astrocyte topology
+            # Nd.h('forall psection()')
+
+    def finalize(self, *_, **__):
+        pass  # No synpases/netcons
+
+
 class NGVEngine(EngineBase):
     CellManagerCls = AstrocyteManager
     ConnectionTypes = {
-        "NeuroGlial": NeuroGliaConnManager
+        "NeuroGlial": NeuroGliaConnManager,
+        "GlioVascular": GlioVascularManager
     }

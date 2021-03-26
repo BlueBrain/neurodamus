@@ -122,7 +122,7 @@ class CircuitManager:
         src_manager = self.node_managers.get(source)
         if src_manager is None:  # src manager may not exist -> virtual
             logging.info(" * No known population %s. Creating Virtual src for projection", source)
-            if conn_type != SynapseRuleManager:
+            if conn_type not in (SynapseRuleManager, _ngv.GlioVascularManager):
                 raise ConfigurationError("Custom connections require instantiated source nodes")
             src_manager = VirtualCellPopulation(source)
 
@@ -439,7 +439,7 @@ class Node:
         )
         logging.debug("Using connection manager: %s", conn_manager)
         proj_source = ":".join([ppath] + pop_name)
-        conn_manager.open_synapse_location(proj_source, projection, src_name=src_pop)
+        conn_manager.open_edge_location(proj_source, projection, src_name=src_pop)
         conn_manager.create_connections(source_t.name, dest_t.name)
 
     # -
