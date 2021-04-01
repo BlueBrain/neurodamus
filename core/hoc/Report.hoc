@@ -328,30 +328,35 @@ proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
                 execute("cvode.use_fast_imem(1)", this)
                 reportOn = "i_membrane_"
             }
-            //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
-            if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
-                if( 0 != strcmp(population_name, "")) {
-                    sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d, population_name)", reportOn, x, sectionNo( $o1 ), $o1.gid)
+            //test if we can even access the desired current variable in this compartment
+            sprint(tstr,"{%s.%s(%1.2f)}", secname(), reportOn, x )
+            result = execute1(tstr, 0)
+            if( result != 0 ) {
+                //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
+                if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
+                    if( 0 != strcmp(population_name, "")) {
+                        sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d, population_name)", reportOn, x, sectionNo( $o1 ), $o1.gid)
+                    } else {
+                        sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d)", reportOn, x, sectionNo( $o1 ), $o1.gid)
+                    }
+                    execute(tstr, this)
+                } else if( 0 == strcmp(format, "Memory") ) {
+                    // in-memory report
+                    yvec = new Vector()
+                    cvode = new CVode()
+                    //cvode_active(0)
+                    cvode.active(1)
+                    sprint(tstr, "cvode.record(&%s(%1.2f), yvec, tvec)", reportOn, x)
+                    execute(tstr, this)
+                    memory_report.append(yvec)
                 } else {
-                    sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d)", reportOn, x, sectionNo( $o1 ), $o1.gid)
+                    sprint(tstr,"retVal = rec.addvar(%d, &%s(%1.2f))", rpt, reportOn, x )
+                    execute(tstr, this)
+                    if(retVal ==0){
+                        break
+                    }
+                    rec.addmapping( rpt, sectionNo( $o1 ) )
                 }
-                execute(tstr, this)
-            } else if( 0 == strcmp(format, "Memory") ) {
-                // in-memory report
-                yvec = new Vector()
-                cvode = new CVode()
-                //cvode_active(0)
-                cvode.active(1)
-                sprint(tstr, "cvode.record(&%s(%1.2f), yvec, tvec)", reportOn, x)
-                execute(tstr, this)
-                memory_report.append(yvec)
-            } else {
-                sprint(tstr,"retVal = rec.addvar(%d, &%s(%1.2f))", rpt, reportOn, x )
-                execute(tstr, this)
-                if(retVal ==0){
-                    break
-                }
-                rec.addmapping( rpt, sectionNo( $o1 ) )
             }
         }
     }
