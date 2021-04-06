@@ -3,6 +3,7 @@ Loggeers init & Formatters
 """
 from __future__ import absolute_import
 import logging as _logging
+import os
 import sys
 from .pyutils import ConsoleColors
 
@@ -110,11 +111,15 @@ def setup_logging(loglevel, logfile=None, rank=None):
 
     # Stdout
     hdlr = _logging.StreamHandler(sys.stdout)
-    try:
-        sys.stdout.tell()   # works only if it's file
+    use_color = True
+    if os.environ.get("ENVIRONMENT") == "BATCH":
         use_color = False
-    except IOError:
-        use_color = True
+    else:
+        try:
+            sys.stdout.tell()   # works only if it's file
+            use_color = False
+        except IOError:
+            pass
     hdlr.setFormatter(_LevelColorFormatter(False, rank, use_color))
     if rank == 0:
         _logging.root.setLevel(verbosity_levels[loglevel])
