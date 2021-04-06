@@ -22,6 +22,7 @@ from .cell_distributor import CellDistributor, VirtualCellPopulation, GlobalCell
 from .cell_distributor import LoadBalance, LoadBalanceMode
 from .connection_manager import SynapseRuleManager, GapJunctionManager, edge_node_pop_names
 from .replay import SpikeManager
+from .stimulus_manager import StimulusManager
 from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
@@ -96,7 +97,8 @@ class CircuitManager:
         return managers[0] if managers else None
 
     def get_create_edge_manager(self, conn_type, source, destination, *args,
-                                _orig_target_pop=None, **kw):
+                                _orig_target_pop=None,
+                                **kw):
         source, destination = self.unalias_pop_keys(source, destination)
         manager = self.get_edge_manager(source, destination, conn_type)
         if manager:
@@ -469,46 +471,45 @@ class Node:
         self._enable_electrodes()
 
         # for each stimulus defined in the config file, request the stimmanager to instantiate
-        extra_params = []
+        add_args = []
         if "BaseSeed" in self._run_conf:
-            extra_params.append(self._run_conf["BaseSeed"])
-        self._stim_manager = Nd.StimulusManager(
-            self._target_manager.hoc, self._elec_manager, *extra_params)
+            add_args.append(self._run_conf["BaseSeed"])
+        self._stim_manager = StimulusManager(self._target_manager, self._elec_manager, *add_args)
+        # Nd.StimulusManager(
+        #     self._target_manager.hoc, self._elec_manager, *extra_params)
 
         # build a dictionary of stims for faster lookup : useful when applying 10k+ stims
         # while we are at it, check if any stims are using extracellular
         has_extra_cellular = False
         stim_dict = {}
         for stim_name, stim in SimConfig.stimuli.items():
+            stim = compat.Map(stim)
             if stim_name in stim_dict:
                 raise ConfigurationError("Stimulus declared more than once: %s", stim_name)
-            stim_dict[stim_name] = stim  # keep as hoc obj for stim_manager
-            if stim.get("Mode").s == "Extracellular":
+            stim_dict[stim_name] = stim
+            if stim.get("Mode") == "Extracellular":
                 has_extra_cellular = True
 
         # Treat extracellular stimuli
         if has_extra_cellular:
-            self._stim_manager.interpretExtracellulars(SimConfig.injects.hoc_map,
-                                                       SimConfig.stimuli.hoc_map)
+            self._stim_manager.interpret_extracellulars(SimConfig.injects, SimConfig.stimuli)
 
         logging.info("Instantiating Stimulus Injects:")
 
         for name, inject in SimConfig.injects.items():
-            target_info = TargetSpec(inject.get("Target").s)
-            target_name = target_info.name
+            target_spec = TargetSpec(inject.get("Target").s)
             stim_name = inject.get("Stimulus").s
             stim = stim_dict.get(stim_name)
             if stim is None:
-                logging.error("Stimulus Inject %s uses non-existing Stim %s",
-                              name, stim_name)
+                logging.error("Stimulus Inject %s uses non-existing Stim %s", name, stim_name)
 
-            stim_pattern = stim.get("Pattern").s
+            stim_pattern = stim["Pattern"]
             if stim_pattern == "SynapseReplay":
                 continue  # Handled by enable_replay
 
             logging.info(" * [STIM] %s: %s (%s) -> %s",
-                         name, stim_name, stim_pattern, target_name)
-            self._stim_manager.interpret(target_name, stim)
+                         name, stim_name, stim_pattern, target_spec)
+            self._stim_manager.interpret(target_spec, stim)
 
     # -
     def _enable_electrodes(self):
