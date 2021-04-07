@@ -4,11 +4,13 @@ Test suite for the new-gen Stimuli source (replacing TStim.hoc and parts of Stim
 """
 import pytest
 from neurodamus.core import CurrentSource
+from neurodamus.core.random import Random123
 
 
 class TestStimuli(object):
     def setup_method(self):
-        self.stim = CurrentSource()
+        rng = Random123(1, 2, 3)
+        self.stim = CurrentSource(rng=rng)
 
     def test_flat_segment(self):
         self.stim.add_segment(1.2, 10)
@@ -60,3 +62,10 @@ class TestStimuli(object):
         self.stim.add_pulses(0.5, 1, 2, 3, 4, base_amp=0.1)
         assert list(self.stim.time_vec) == [0, 0, 0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2]
         assert list(self.stim.stim_vec) == [0.1, 1, 1, 2, 2, 3, 3, 4, 4, 0.1]
+
+    def test_shot_noise(self):
+        self.stim.add_shot_noise(4.0, 0.4, 2E3, 40E-3, 16E-4, 2)
+        assert list(self.stim.time_vec) == pytest.approx([0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5,
+                                                          1.75, 2.0, 2.0])
+        assert list(self.stim.stim_vec) == pytest.approx([0.0, 0.0, 0.0, 0.0, 0.0, 0.0700357,
+                                                          0.1032799, 0.1170881, 0.1207344, 0.0])

@@ -4,7 +4,7 @@ Stimuli sources. inc current sources which can be attached to cells
 
 from __future__ import absolute_import
 from . import Neuron
-from .random import RNG
+from .random import RNG, gamma
 import logging
 
 
@@ -189,6 +189,98 @@ class CurrentSource(object):
         self._add_point(.0)
         return self
 
+    def add_shot_noise(self, tau_D, tau_R, rate, amp_mean, amp_var, duration, dt=0.25):
+        """
+        Adds a Poisson shot noise signal with gamma-distributed amplitudes and
+        bi-exponential impulse response.
+
+        tau_D: bi-exponential decay time [ms]
+        tau_R: bi-exponential rise time [ms]
+        rate: Poisson event rate [Hz]
+        amp_mean: mean of gamma-distributed amplitudes [nA]
+        amp_var: variance of gamma-distributed amplitudes [nA^2]
+        duration: duration of signal [ms]
+        dt: timestep [ms]
+        """
+        from math import sqrt, exp, log
+
+        rng = self._rng or RNG()  # Creates a default RNG
+        if not self._rng:
+            logging.warning("Using a default RNG for shot noise generation")
+
+        tvec = Neuron.h.Vector()
+        tvec.indgen(self._cur_t, self._cur_t + duration, dt)  # time vector
+        ntstep = len(tvec)  # total number of timesteps
+
+        rate_ms = rate / 1000  # rate in 1 / ms [mHz]
+        napprox = 1 + int(duration * rate_ms)       # approximate number of events, at least one
+        napprox = int(napprox + 3 * sqrt(napprox))  # better bound, as in elephant
+
+        exp_scale = 1 / rate  # scale parameter of exponential distribution of time intervals
+        rng.negexp(exp_scale)
+        iei = Neuron.h.Vector(napprox)
+        iei.setrand(rng)  # generate inter-event intervals
+
+        ev = Neuron.h.Vector()
+        ev.integral(iei, 1).mul(1000)  # generate events in ms
+        # add events if last event falls short of duration
+        while ev[-1] < duration:
+            iei_new = Neuron.h.Vector(100)  # generate 100 new inter-event intervals
+            iei_new.setrand(rng)            # here rng is still negexp
+            ev_new = Neuron.h.Vector()
+            ev_new.integral(iei_new, 1).mul(1000).add(ev[-1])  # generate new shifted events in ms
+            ev.append(ev_new)  # append new events
+        ev.where("<", duration)  # remove events exceeding duration
+        ev.div(dt)  # divide events by timestep
+
+        nev = Neuron.h.Vector([round(x) for x in ev])  # round to integer timestep index
+        nev.where("<", ntstep)  # remove events exceeding number of timesteps
+
+        sign = 1
+        # if amplitude mean is negative, invert sign of current
+        if amp_mean < 0:
+            amp_mean = -amp_mean
+            sign = -1
+
+        gamma_scale = amp_var / amp_mean      # scale parameter of gamma distribution
+        gamma_shape = amp_mean / gamma_scale  # shape parameter of gamma distribution
+        # sample gamma-distributed amplitudes
+        amp = gamma(rng, gamma_shape, gamma_scale, len(nev))
+
+        E = Neuron.h.Vector(ntstep, 0)  # full signal
+        for n, A in zip(nev, amp):
+            E.x[int(n)] += sign * A  # add impulses, may overlap due to rounding to timestep
+
+        # perform equivalent of convolution with bi-exponential impulse response
+        # through a composite autoregressive process with impulse train as innovations
+
+        # unitless quantities (time measured in timesteps)
+        a = exp(-dt / tau_D)
+        b = exp(-dt / tau_R)
+        D = -log(a)
+        R = -log(b)
+        t_peak = log(R / D) / (R - D)
+        A = (a / b - 1) / (a ** t_peak - b ** t_peak)
+
+        P = Neuron.h.Vector(ntstep, 0)
+        B = Neuron.h.Vector(ntstep, 0)
+
+        # composite autoregressive process with exact solution
+        # P[n] = b * (a ^ n - b ^ n) / (a - b)
+        # for unit response B[0] = P[0] = 0, E[0] = 1
+        for n in range(1, ntstep):
+            P.x[n] = a * P[n - 1] + b * B[n - 1]
+            B.x[n] = b * B[n - 1] + E[n - 1]
+
+        P.mul(A)  # normalize to peak amplitude
+
+        self.time_vec.append(tvec)
+        self.stim_vec.append(P)
+        self._cur_t += duration
+        self._add_point(.0)
+
+        return self
+
     # PLOTTING
     def plot(self, ylims=None):
         from matplotlib import pyplot
@@ -216,6 +308,12 @@ class CurrentSource(object):
     @classmethod
     def sin(cls, amp, total_duration, freq, step=0.025, delay=0, base_amp=.0):
         return cls(base_amp).delay(delay).add_sin(amp, total_duration, freq, step)
+
+    @classmethod
+    def shot_noise(cls, tau_D, tau_R, rate, amp_mean, amp_var, duration,
+                   dt=0.25, delay=0, base_amp=.0, rng=None):
+        return cls(base_amp, rng).delay(delay).add_shot_noise(tau_D, tau_R, rate, amp_mean, amp_var,
+                                                              duration, dt)
 
     # Operations
     def __add__(self, other):
