@@ -193,9 +193,9 @@ class NeuroGliaConnParameters(SynapseParameters):
     _synapse_fields = [
         "connected_neurons_post",
         "synapse_id",
-        "morpho_section_id_pre",
-        "morpho_segment_id_pre",
-        "morpho_offset_segment_pre"
+        "astrocyte_section_id",
+        "astrocyte_segment_id",
+        "astrocyte_segment_offset"
     ]
 
 
@@ -278,7 +278,7 @@ class NeuroGlialConnection(Connection):
             log_verbose("[GLIA ATTACH] id %d to syn Gid %d (conn %d-%d, SynID %d, syn offset %d)",
                         self.tgid, syn_gid, conn.sgid, conn.tgid, syn_id, syn_offset)
 
-            glut_obj = glut_list[int(syn_params.morpho_section_id_pre)]
+            glut_obj = glut_list[int(syn_params.astrocyte_section_id)]
             netcon = pc.gid_connect(syn_gid, glut_obj)
             netcon.delay = 0.05
             self._netcons.append(netcon)
