@@ -24,9 +24,9 @@ pyobj = new PythonObject()
 begintemplate Cell
 public init, printInfo, execute_commands, AddHocMorph, AddMorph, getCCell, setCCell, geom_nsec, geom_nseg_lambda, geom_nseg_fixed, SetCellProperties, connect2target, delete_axon, insertChannel
 public locateBAPSite, getLongestBranch, locateSites2, enable_ttx, disable_ttx
-public soma, dend, apic, axon, myelin, nSecAxonal, nSecAxonalOrig, segCounts, rnglist, synHelperList
-public synlist, all, apical, basal, somatic, axonal, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
-objref synlist, all, apical, basal, somatic, axonal, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts, rnglist, synHelperList
+public soma, dend, apic, axon, endfoot, myelin, nSecAxonal, nSecAxonalOrig, segCounts, rnglist, synHelperList
+public synlist, all, apical, basal, somatic, axonal, endfeet, gid, nSecAll, nSecSoma, nSecApical, nSecBasal, clear, ASCIIrpt, HDF5rpt, APC
+objref synlist, all, apical, basal, somatic, axonal, endfeet, this, CCellRef, ASCIIrpt, HDF5rpt, APC, segCounts, rnglist, synHelperList
 
 //! Used when computing nseg per section
 external lambda_f
@@ -58,7 +58,7 @@ proc init() {
     rnglist = new List()
     synHelperList = new List()
 }
-create soma[1], dend[1], apic[1], axon[1], myelin[1]
+create soma[1], dend[1], apic[1], axon[1], myelin[1], endfoot[1]
 
 /**
  *  Execute hoc commands in the cell's context.
