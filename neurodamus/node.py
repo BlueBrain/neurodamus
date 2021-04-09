@@ -12,8 +12,9 @@ import os
 import subprocess
 from os import path as ospath
 from collections import namedtuple, defaultdict
+from shutil import copyfileobj, move
 
-from .core import MPI, mpi_no_errors, return_neuron_timings
+from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, SimConfig
 from .core._engine import EngineBase
@@ -990,6 +991,7 @@ class Node:
         if SimConfig.use_coreneuron:
             self.clear_model()
             self._run_coreneuron()
+            self.adapt_spikes("out.dat")
         return timings
 
     # -
@@ -1140,6 +1142,19 @@ class Node:
     # -------------------------------------------------------------------------
     #  output
     # -------------------------------------------------------------------------
+
+    @run_only_rank0
+    def adapt_spikes(self, outfile):
+        """Prepend /scatter to spikes file after coreneuron sim finishes.
+        """
+        output_root = SimConfig.output_root
+        outfile = ospath.join(output_root, outfile)
+        tmpfile = ospath.join(output_root, 'tmp.out')
+        with open(outfile, 'r') as f_src:
+            with open(tmpfile, 'w') as f_dest:
+                f_dest.write("/scatter\n")
+                copyfileobj(f_src, f_dest)
+        move(tmpfile, outfile)
 
     @mpi_no_errors
     def spike2file(self, outfile):
