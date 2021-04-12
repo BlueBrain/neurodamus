@@ -127,3 +127,24 @@ Example 2 - Neuron Tutorial synapses
 
 .. literalinclude:: ../examples/neuron_tut2.py
    :pyobject: test_tut2
+
+
+Neurodamus advanced simulation example
+--------------------------------------
+
+This is a more advanced example that instantiates a Neurodamus simulation step by step for a simple
+circuit.
+It creates a Node object and it takes care of doing the following:
+ - Loads targets
+ - Computes Load Balancing
+ - Instantiates cells
+ - Instantiates synapses and gap junctions
+ - Enables stimulus
+ - Enables modifications
+ - Enables reports
+ - Runs simulation
+ - Dumps spikes to files
+ - Cleans up the simulated model
+
+.. literalinclude:: ../examples/test_neurodamus.py
+   :pyobject: test_node_run
