@@ -849,7 +849,10 @@ class Node:
         if SimConfig.use_neuron:
             self._sim_init_neuron()
 
-        self.dump_cell_config()
+        if ospath.isfile("debug_gids.txt"):
+            self.dump_circuit_config()
+        if self._pr_cell_gid:
+            self.dump_cell_config()
 
         self._sim_ready = True
         return self._pc
@@ -1317,10 +1320,6 @@ class Neurodamus(Node):
 
         self.enable_stimulus()
         self.enable_modifications()
-
-        if ospath.isfile("debug_gids.txt"):
-            Nd.stdinit()
-            self.dump_circuit_config()
 
         if self._run_conf["EnableReports"]:
             self.enable_reports()
