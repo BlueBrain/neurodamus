@@ -39,6 +39,7 @@ class StimulusManager:
         self._hoc = Nd.StimulusManager(target_manager.hoc, elec_manager, *args)
         self._target_manager = target_manager
         self._stimulus = []
+        self.reset_helpers()  # reset helpers for multi-cycle builds
 
     def interpret(self, target_spec, stim_info):
         stim_t = self._stim_types.get(stim_info["Pattern"])
@@ -60,6 +61,9 @@ class StimulusManager:
         logging.debug("Pass unknown method request to Hoc")
         return getattr(self._hoc, item)
 
+    def reset_helpers(self):
+        ShotNoise.stimCount = 0
+
     @classmethod
     def register_type(cls, stim_class):
         """ Registers a new class as a handler for a new stim type """
@@ -73,7 +77,7 @@ class ShotNoise:
     ShotNoise stimulus handler implementing Poisson shot noise
     with bi-exponential response and gamma-distributed amplitudes
     """
-    shotNoiseStimCount = 0  # global count for seeding
+    stimCount = 0  # global count for seeding
 
     def __init__(self, target, stim_info: dict, cell_manager):
         self.stimList = []  # CurrentSource's go here
@@ -82,7 +86,7 @@ class ShotNoise:
             return None  # nothing to do, stim is a no-op
 
         # setup random seeds
-        seed1 = ShotNoise.shotNoiseStimCount + 2997  # stimulus block seed
+        seed1 = ShotNoise.stimCount + 2997  # stimulus block seed
         seed2 = SimConfig.rng_info.getStimulusSeed() + 19216  # stimulus type seed
         seed3 = (lambda x: x + 123) if self.seed is None else (lambda x: self.seed)  # GID seed
 
@@ -108,7 +112,7 @@ class ShotNoise:
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
                 self.stimList.append(cs)  # save CurrentSource
 
-        ShotNoise.shotNoiseStimCount += 1  # increment global count
+        ShotNoise.stimCount += 1  # increment global count
 
     def parse_check_all_parameters(self, stim_info: dict):
         # time parameters
