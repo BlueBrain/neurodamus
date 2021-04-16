@@ -493,7 +493,7 @@ proc noise() { local x  localobj pts, rand, tstim, rngInfo
 proc subthreshold() { local cellIndex, x  localobj pts, cellList, tstim
 
     pts = targetManager.getPointList($s1)
-    cellList = targetManager.getMETpes($s1)
+    cellList = targetManager.getMETypes($s1)
     //cellList = targetManager.getCells($s1)
 
     for cellIndex=0, pts.count()-1 {
