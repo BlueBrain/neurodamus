@@ -112,23 +112,25 @@ class CurrentSource(object):
             base_amp: The base amplitude
         """
         base_amp = kw.get("base_amp", self._base_amp)
-        tau = 1000 // frequency
+        tau = 1000 / frequency
         delay = tau - pulse_duration
-        number_pulses = total_duration // tau
+        number_pulses = int(total_duration / tau)
         for _ in range(number_pulses):
             self.add_pulse(amp, pulse_duration, base_amp=base_amp)
             self.delay(delay)
 
-        # Add extra pulse if fits
-        remaining_time = total_duration % tau
+        # Add final pulse, possibly partial
+        remaining_time = total_duration - number_pulses * tau
         if pulse_duration <= remaining_time:
             self.add_pulse(amp, pulse_duration, base_amp=base_amp)
             self.delay(min(delay, remaining_time - pulse_duration))
+        else:
+            self.add_pulse(amp, remaining_time, base_amp=base_amp)
         # Last point
         self._add_point(base_amp)
         return self
 
-    def add_sin(self, amp, total_duration, freq, step=0.025):
+    def add_sin(self, amp, total_duration, freq, step=0.025, **kw):
         """ Builds a sinusoidal signal.
         Args:
             amp: The max amplitude of the wave
@@ -136,16 +138,20 @@ class CurrentSource(object):
             freq: The wave frequency, in Hz
             step: The step, in ms (default: 0.025)
         """
-        n_steps = total_duration // step + 1
+        base_amp = kw.get("base_amp", self._base_amp)
 
-        t_vec = Neuron.h.Vector(n_steps)
-        t_vec.indgen(step)
-        self.time_vec.append(t_vec)
+        tvec = Neuron.h.Vector()
+        tvec.indgen(self._cur_t, self._cur_t + total_duration, step)
+        self.time_vec.append(tvec)
+        self.delay(total_duration)
 
-        v_vec = Neuron.h.Vector(n_steps)
-        v_vec.sin(freq, .0, step)
-        v_vec.mul(amp)
-        self.stim_vec.append(v_vec)
+        stim = Neuron.h.Vector(len(tvec))
+        stim.sin(freq, .0, step)
+        stim.mul(amp)
+        self.stim_vec.append(stim)
+
+        # Last point
+        self._add_point(base_amp)
         return self
 
     def add_sinspec(self, start, dur):
@@ -171,7 +177,7 @@ class CurrentSource(object):
         self._add_point(base_amp)
         return self
 
-    def add_noise(self, mean, variance, duration, dt=0.5):
+    def add_noise(self, mean, variance, duration, dt=0.5, init_zero=False, final_zero=False):
         """Adds a noise component to the signal.
         """
         rng = self._rng or RNG()  # Creates a default RNG
@@ -182,7 +188,10 @@ class CurrentSource(object):
         tvec.indgen(self._cur_t, self._cur_t + duration, dt)
         svec = Neuron.h.Vector(len(tvec))
         svec.setrand(rng)
-        svec.x[0] = 0
+        if init_zero:
+            svec.x[0] = 0
+        if final_zero:
+            svec.x[-1] = 0
         self.time_vec.append(tvec)
         self.stim_vec.append(svec)
         self._cur_t += duration
@@ -308,6 +317,12 @@ class CurrentSource(object):
     @classmethod
     def sin(cls, amp, total_duration, freq, step=0.025, delay=0, base_amp=.0):
         return cls(base_amp).delay(delay).add_sin(amp, total_duration, freq, step)
+
+    @classmethod
+    def noise(cls, mean, variance, duration, dt=0.5, delay=0, base_amp=.0, rng=None,
+              init_zero=False, final_zero=False):
+        return cls(base_amp, rng).delay(delay).add_noise(mean, variance, duration, dt,
+                                                         init_zero, final_zero)
 
     @classmethod
     def shot_noise(cls, tau_D, tau_R, rate, amp_mean, amp_var, duration,

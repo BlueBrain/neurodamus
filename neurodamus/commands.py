@@ -37,6 +37,7 @@ def neurodamus(args=None):
         --output-path=PATH      Alternative output directory, overriding BlueConfigs
         --keep-build            Keep coreneuron intermediate data. Otherwise deleted at the end
         --modelbuilding-steps=<number> Set the number of ModelBuildingSteps for the CoreNeuron sim
+        --experimental-stims=[ON, OFF] Shall use only Python stimuli? [default: OFF]
 
     """
     options = docopt_sanitize(docopt(neurodamus.__doc__, args))

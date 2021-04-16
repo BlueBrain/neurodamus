@@ -50,18 +50,28 @@ class TestStimuli(object):
 
     def test_sin(self):
         self.stim.add_sin(1, 0.1, 10000)
-        assert list(self.stim.time_vec) == pytest.approx([0, 0.025, 0.05, 0.075, 0.1])
-        assert list(self.stim.stim_vec) == pytest.approx([0, 1, 0, -1, 0])
+        assert list(self.stim.time_vec) == pytest.approx([0, 0.025, 0.05, 0.075, 0.1, 0.1])
+        assert list(self.stim.stim_vec) == pytest.approx([0, 1, 0, -1, 0, 0])
 
     def test_sin_long(self):
         self.stim.add_sin(1, 200, 10, 25)
-        assert list(self.stim.time_vec) == pytest.approx([0, 25, 50, 75, 100, 125, 150, 175, 200])
-        assert list(self.stim.stim_vec) == pytest.approx([0, 1, 0, -1] * 2 + [0])
+        assert list(self.stim.time_vec) == pytest.approx([0, 25, 50, 75, 100, 125, 150,
+                                                          175, 200, 200])
+        assert list(self.stim.stim_vec) == pytest.approx([0, 1, 0, -1] * 2 + [0, 0])
 
     def test_add_pulses(self):
         self.stim.add_pulses(0.5, 1, 2, 3, 4, base_amp=0.1)
         assert list(self.stim.time_vec) == [0, 0, 0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2]
         assert list(self.stim.stim_vec) == [0.1, 1, 1, 2, 2, 3, 3, 4, 4, 0.1]
+
+    def test_noise(self):
+        self.stim.add_noise(0.5, 0.1, 5, init_zero=True, final_zero=True)
+        assert list(self.stim.time_vec) == pytest.approx([0, 0.5, 1, 1.5, 2, 2.5,
+                                                          3, 3.5, 4, 4.5, 5, 5])
+        assert list(self.stim.stim_vec) == pytest.approx([0, 0.56316322, 0.5539058, 0.6810689,
+                                                          0.20896532, 1.00691217, 0.78783759,
+                                                          0.68817496, -6.4286609e-05, 0.21165959,
+                                                          0, 0])
 
     def test_shot_noise(self):
         self.stim.add_shot_noise(4.0, 0.4, 2E3, 40E-3, 16E-4, 2)

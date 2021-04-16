@@ -46,6 +46,7 @@ class RunOptions(ConfigT):
     output_path = None
     keep_build = False
     modelbuilding_steps = None
+    experimental_stims = False
 
 
 class CircuitConfig(ConfigT):
@@ -280,7 +281,8 @@ def find_input_file(filepath, search_paths=(), alt_filename=None):
     return file_found
 
 
-def _check_params(section_name, data, required_fields, numeric_fields, non_negatives=()):
+def _check_params(section_name, data, required_fields, numeric_fields, non_negatives=(),
+                  valid_values={}, deprecated_values={}):
     """Generic function to check a dict-like data set conforms to the field prescription"""
     for param in required_fields:
         if param not in data:
@@ -299,11 +301,23 @@ def _check_params(section_name, data, required_fields, numeric_fields, non_negat
             raise ConfigurationError("BlueConfig param must be positive: [%s] %s"
                                      % (section_name, param))
 
+    for param, valid in valid_values.items():
+        val = data.get(param)
+        if val and val not in valid:
+            raise ConfigurationError("BlueConfig param value is invalid: [%s] %s = %s"
+                                     % (section_name, param, val))
+
+    for param, deprecated in deprecated_values.items():
+        val = data.get(param)
+        if val and val in deprecated:
+            logging.warning("BlueConfig param value is deprecated: [%s] %s = %s"
+                            % (section_name, param, val))
+
 
 @SimConfig.validator
 def _run_params(config: _SimConfig, run_conf):
     required_fields = ("Duration",)
-    numeric_fields = ("BaseSeed", "Celsius", "V_Init")
+    numeric_fields = ("BaseSeed", "StimulusSeed", "Celsius", "V_Init")
     non_negatives = ("Duration", "Dt", "ModelBuildingSteps", "ForwardSkip")
     _check_params("Run default", run_conf, required_fields, numeric_fields, non_negatives)
 
@@ -314,6 +328,26 @@ def _projection_params(config: _SimConfig, run_conf):
     non_negatives = ("PopulationID",)
     for name, proj in config.projections.items():
         _check_params("Projection " + name, compat.Map(proj), required_fields, (), non_negatives)
+
+
+@SimConfig.validator
+def _stimulus_params(config: _SimConfig, run_conf):
+    required_fields = ("Mode", "Pattern", "Duration", "Delay",)
+    numeric_fields = ("Dt", "RiseTime", "DecayTime", "AmpMean", "AmpVar", "MeanPercent",
+                      "SDPercent", "AmpCV", "AmpStart", "AmpEnd", "PercentStart",
+                      "PercentEnd", "PercentLess", "Mean", "Variance", "Voltage", "RS",)
+    non_negatives = ("Duration", "Delay", "Rate", "Frequency", "Width", "Lambda", "Weight",
+                     "NumOfSynapses", "Seed",)
+    valid_values = {}
+    valid_values["Pattern"] = ("Hyperpolarizing", "Linear", "Noise", "Pulse", "RelativeLinear",
+                               "RelativeShotNoise", "SEClamp", "ShotNoise", "Sinusoidal",
+                               "SubThreshold", "SynapseReplay",
+                               "NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace")
+    deprecated_values = {}
+    deprecated_values["Pattern"] = ("NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace")
+    for name, stim in config.stimuli.items():
+        _check_params("Stimulus " + name, compat.Map(stim), required_fields, numeric_fields,
+                      non_negatives, valid_values, deprecated_values)
 
 
 @SimConfig.validator

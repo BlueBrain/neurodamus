@@ -503,7 +503,8 @@ class Node:
             stim_name = inject.get("Stimulus").s
             stim = stim_dict.get(stim_name)
             if stim is None:
-                logging.error("Stimulus Inject %s uses non-existing Stim %s", name, stim_name)
+                raise ConfigurationError("Stimulus Inject %s uses non-existing Stim %s",
+                                         name, stim_name)
 
             stim_pattern = stim["Pattern"]
             if stim_pattern == "SynapseReplay":
@@ -511,6 +512,11 @@ class Node:
 
             logging.info(" * [STIM] %s: %s (%s) -> %s",
                          name, stim_name, stim_pattern, target_spec)
+            if stim_pattern in ["Noise", "ShotNoise", "RelativeShotNoise"] and \
+                    SimConfig.run_conf.get("StimulusSeed") is None:
+                logging.warning("StimulusSeed unset (default %d), "
+                                "set explicitly to vary noisy stimuli across runs",
+                                SimConfig.rng_info.getStimulusSeed())
             self._stim_manager.interpret(target_spec, stim)
 
     # -

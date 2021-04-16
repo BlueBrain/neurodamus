@@ -34,7 +34,7 @@ class RNG(object):
 class ACG(RNG):
     def __new__(cls, size=None, seed=None):
         rng = RNG(seed=seed)
-        rng.ACG(seed=seed, size=size)
+        rng.ACG(seed, size)
         return rng
 
 
@@ -48,9 +48,9 @@ class Random123(RNG):
 
 
 class MCellRan4(RNG):
-    def __new__(cls, high_i, seed=None):
-        rng = RNG()
-        rng.MCellRan4(high_i)
+    def __new__(cls, high_i, seed=None, low_i=0):
+        rng = RNG(seed=seed)
+        rng.MCellRan4(high_i, low_i)
         return rng
 
 
