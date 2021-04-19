@@ -108,7 +108,9 @@ class TargetManager:
                 logging.warning("Retrieved gids from Sonata nodeset. Targets are Cell only")
                 self.parser.updateTargetList(target)
             return target
-        # Fallback to old style targets
+        # Fallback to old style targets. Prefer hoc manager since it supports cells as targets
+        if self.hoc is not None:
+            return self.hoc.getTarget(target_name)
         return self.parser.getTarget(target_name)
 
     def get_target_gids(self, target_name, circuit=None):
