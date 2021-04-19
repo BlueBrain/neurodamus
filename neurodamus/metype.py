@@ -8,7 +8,6 @@ from os import path as ospath
 from .core.configuration import SimConfig
 from .core import NeurodamusCore as Nd
 import numpy as np
-from scipy.spatial.transform import Rotation
 
 
 class BaseCell:
@@ -274,6 +273,7 @@ class METypeItem(object):
         """Build the transformation matrix from local to global"""
         if not rotation:
             return None
+        from scipy.spatial.transform import Rotation
         m = np.empty((3, 4), np.float32)
         r = Rotation.from_quat(rotation)  # scipy auto-normalizes
         m[:, :3] = r.as_matrix()
