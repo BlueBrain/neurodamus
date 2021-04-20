@@ -2,6 +2,40 @@
 Change Log
 ==========
 
+Version 2.5.2
+=============
+**Apr. 20, 2021**
+
+*Fixes*
+  * Reset ShotNoise.stimCount for multi-cycle builds
+  * Enable getting target from hoc via TargetManager
+  * Initialization improvements. Always NEURON_INIT_MPI
+
+
+Version 2.5.1
+=============
+
+*Improvements*
+  * Summation reports support for CoreNeuron
+  * Prepend /scatter to out.dat after CoreNEURON simulation
+  * Local to global transformation in METype
+  * ShotNoise and RelativeShotNoise stimuli
+
+
+Version 2.5.0
+=============
+**Mar. 26, 2021**
+
+*New Features*
+  * Support for Multi-Circuit
+  * Connection configurations override checks
+  * NGV Engine
+
+*Improvements*
+  * reading src/dst population from edges meta
+  * Support for Sonata Edges with mvd3 nodes
+  * Detection of node file type: support for arbitrary mvd3
+
 
 Version 2.4.0
 =============
