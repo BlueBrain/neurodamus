@@ -320,11 +320,11 @@ class ConnectionManagerBase(object):
             extracellular_calcium=SimConfig.extracellular_calcium
         )
 
-    def _init_conn_population(self, src_pop_name, src_pop_id):
+    def _init_conn_population(self, src_pop_name, pop_id_override):
         if not src_pop_name:
             src_pop_name = self._src_cell_manager.population_name
         dst_pop_name = self._cell_manager.population_name
-        src_pop_id, dst_pop_id = self._compute_pop_ids(src_pop_name, dst_pop_name, src_pop_id)
+        src_pop_id, dst_pop_id = self._compute_pop_ids(src_pop_name, dst_pop_name, pop_id_override)
 
         if self._cur_population and src_pop_id == 0 and not src_pop_name:
             logging.warning("Neither Sonata population nor populationID set. "
@@ -333,8 +333,9 @@ class ConnectionManagerBase(object):
         cur_pop = self.select_connection_set(src_pop_id, dst_pop_id)  # type: ConnectionSet
         cur_pop.src_name = src_pop_name
         cur_pop.dst_name = dst_pop_name
-        cur_pop.virtual_source = self._src_cell_manager.is_virtual \
-                                 or src_pop_name != self._src_cell_manager.population_name
+        cur_pop.virtual_source = (self._src_cell_manager.is_virtual
+                                  or src_pop_name != self._src_cell_manager.population_name
+                                  or pop_id_override and not src_pop_name)
         logging.info("Loading connections to population: %s", cur_pop)
 
     def _compute_pop_ids(self, src_pop, dst_pop, src_pop_id=None):
@@ -900,8 +901,12 @@ class ConnectionManagerBase(object):
         n_created_conns = 0
 
         for popid, pop in self._populations.items():
-            conn_params["attach_src_cell"] = (pop.src_id == 0
-                                              or (pop.src_name is None and sim_corenrn))
+            attach_src = (pop.src_id == 0 or not pop.virtual_source  # real populations
+                          or pop.virtual_source and bool(sim_corenrn))  # Req'd for replay
+            conn_params["attach_src_cell"] = attach_src
+            logging.info("Finalizing connections from pop %s, attach src: %s",
+                         pop.src_name or "(default)", attach_src)
+
             for tgid, conns in ProgressBar.iter(pop.items(), name="Pop:" + str(popid)):
                 n_created_conns += self._finalize_conns(
                     tgid, conns, base_seed, sim_corenrn, **conn_params)
