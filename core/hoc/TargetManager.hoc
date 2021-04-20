@@ -572,6 +572,12 @@ obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localo
     } else if (ipt == -1) {
         // SYN2/Sonata spec have the a pre-calculated distance field.
         // In such cases segment (ipt) is -1 and offset is that distance.
+        if( offset == 0.0 ) {
+            offset = 0.0000001
+        }
+        if( offset >= 1.0 ) {
+            offset = 0.9999999
+        }
         resultPoint.append( tmpSection, offset )
     } else {
         tmpSection.sec {
