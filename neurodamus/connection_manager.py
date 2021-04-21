@@ -967,7 +967,7 @@ def edge_node_pop_names(edge_file, edge_pop_name, src_pop_name=None, dst_pop_nam
 @run_only_rank0
 def _edge_meta_get_node_populations(edge_file, edge_pop_name) -> [None, tuple]:
     import h5py
-    f = h5py.File(edge_file)
+    f = h5py.File(edge_file, 'r')
     if "edges" not in f:
         return None
     edge_group = f["edges"]

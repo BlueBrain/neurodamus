@@ -31,6 +31,7 @@ from .utils.logging import log_stage, log_verbose, log_all
 from .utils.timeit import TimerManager, timeit, timeit_rank0
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
+from . import point_neuron as _point # NOQA
 
 
 class METypeEngine(EngineBase):
@@ -646,7 +647,7 @@ class Node:
             end_time = rep_conf.get("EndTime", sim_end)
             logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
 
-            if rep_type.lower() not in ("compartment", "summation", "synapse"):
+            if rep_type.lower() not in ("compartment", "summation", "synapse", "pointtype"):
                 if MPI.rank == 0:
                     logging.error("Unsupported report type: %s.", rep_type)
                 n_errors += 1
@@ -763,25 +764,26 @@ class Node:
             report = Nd.Report(*rep_params)
             global_manager = self._circuits.global_manager
 
-            # Go through the target members, one cell at a time. We give a cell reference
-            # For summation targets - check if we were given a Cell target because we really want
-            # all points of the cell which will ultimately be collapsed to a single value
-            # on the soma. Otherwise, get target points as normal.
-            points = self._target_manager.get_target_points(target, global_manager,
-                                                            rep_type.lower() == "summation")
-            for point in points:
-                gid = point.gid
-                cell = global_manager.getCell(gid)
-                spgid = global_manager.getSpGid(gid)
+            if rep_type.lower() in ("compartment", "summation", "synapse"):
+                # Go through the target members, one cell at a time. We give a cell reference
+                # For summation targets - check if we were given a Cell target because we really
+                # want all points of the cell which will ultimately be collapsed to a single value
+                # on the soma. Otherwise, get target points as normal.
+                points = self._target_manager.get_target_points(target, global_manager,
+                                                                rep_type.lower() == "summation")
+                for point in points:
+                    gid = point.gid
+                    cell = global_manager.getCell(gid)
+                    spgid = global_manager.getSpGid(gid)
 
-                # may need to take different actions based on report type
-                if rep_type.lower() == "compartment":
-                    report.addCompartmentReport(cell, point, spgid, SimConfig.use_coreneuron)
-                elif rep_type.lower() == "summation":
-                    report.addSummationReport(
-                        cell, point, target.isCellTarget(), spgid, SimConfig.use_coreneuron)
-                elif rep_type.lower() == "synapse":
-                    report.addSynapseReport(cell, point, spgid, SimConfig.use_coreneuron)
+                    # may need to take different actions based on report type
+                    if rep_type.lower() == "compartment":
+                        report.addCompartmentReport(cell, point, spgid, SimConfig.use_coreneuron)
+                    elif rep_type.lower() == "summation":
+                        report.addSummationReport(
+                            cell, point, target.isCellTarget(), spgid, SimConfig.use_coreneuron)
+                    elif rep_type.lower() == "synapse":
+                        report.addSynapseReport(cell, point, spgid, SimConfig.use_coreneuron)
 
             # Custom reporting. TODO: Move above processing to SynRuleManager.enable_report
             cell_manager.enable_report(report, rep_target.name, SimConfig.use_coreneuron)
