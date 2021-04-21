@@ -904,8 +904,8 @@ class ConnectionManagerBase(object):
             attach_src = (pop.src_id == 0 or not pop.virtual_source  # real populations
                           or pop.virtual_source and bool(sim_corenrn))  # Req'd for replay
             conn_params["attach_src_cell"] = attach_src
-            logging.info("Finalizing connections from pop %s, attach src: %s",
-                         pop.src_name or "(default)", attach_src)
+            logging.info(" * Connections among %s -> %s, attach src: %s",
+                         pop.src_name or "(base)", pop.dst_name or "(base)", attach_src)
 
             for tgid, conns in ProgressBar.iter(pop.items(), name="Pop:" + str(popid)):
                 n_created_conns += self._finalize_conns(

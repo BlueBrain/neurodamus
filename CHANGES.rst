@@ -2,6 +2,13 @@
 Change Log
 ==========
 
+Version 2.5.3
+=============
+
+*Fixes*
+ * Attach source netconns in additional populations and CoreNeuron [critical c/53194]
+ * Type field in StimulusInject to select the proper cell manager
+
 Version 2.5.2
 =============
 **Apr. 20, 2021**
