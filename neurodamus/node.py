@@ -549,6 +549,7 @@ class Node:
             target = inject["Target"]
             source = inject.get("Source")
             stim_name = inject["Stimulus"]
+            connectivity_type = inject.get("Type")
             stim = replay_dict.get(stim_name)
             if stim is None:  # It's a non-replay inject. Injects are checked in enable_stimulus
                 continue
@@ -560,10 +561,11 @@ class Node:
             delay = stim.get("Delay", .0)
             logging.info(" * [SYN REPLAY] %s (%s -> %s, time shift: %d, delay: %d)",
                          name, stim_name, target, tshift, delay)
-            self._enable_replay(source, target, stim, tshift, delay)
+            self._enable_replay(source, target, stim, tshift, delay, connectivity_type)
 
     # -
-    def _enable_replay(self, source, target, stim_conf, tshift=.0, delay=.0):
+    def _enable_replay(self, source, target, stim_conf, tshift=.0, delay=.0,
+                       connectivity_type=None):
         spike_filepath = find_input_file(stim_conf["SpikeFile"])
         spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
 
@@ -581,10 +583,12 @@ class Node:
                     with open(self._core_replay_file, "a") as f:
                         spike_manager.dump_ascii(f)
         else:
+            ptype_cls = EngineBase.connection_types.get(connectivity_type)
             src_target = TargetSpec(source)
             dst_target = TargetSpec(target)
             conn_manager = self._circuits.get_edge_manager(src_target.population,
-                                                           dst_target.population)
+                                                           dst_target.population,
+                                                           ptype_cls)
             conn_manager.replay(spike_manager, src_target.name, dst_target.name, delay)
 
     # -
