@@ -436,7 +436,7 @@ class CellDistributor(CellManagerBase):
         elif circuit_conf.CellLibraryFile.endswith(".mvd3"):
             self._node_format = NodeFormat.MVD3
         self._is_v5_circuit = circuit_conf.CellLibraryFile == "start.ncs" or (
-            ospath.isfile(ospath.join(circuit_conf.nrnPath, "start.ncs"))
+            circuit_conf.nrnPath and ospath.isfile(ospath.join(circuit_conf.nrnPath, "start.ncs"))
             and not ospath.isfile(ospath.join(circuit_conf.CircuitPath, "circuit.mvd3"))
         )
         super()._init_config(circuit_conf, _pop)
