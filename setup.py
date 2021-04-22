@@ -73,7 +73,7 @@ def setup_package():
         tests_require=["pytest"],
         extras_require=dict(
             plotting=['matplotlib'],
-            full=['matplotlib', 'scipy', 'py-libsonata'],
+            full=['matplotlib', 'scipy', 'libsonata', 'morphio'],
         ),
         cmdclass=dict(
             docs=Docs

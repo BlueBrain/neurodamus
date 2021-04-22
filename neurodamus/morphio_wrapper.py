@@ -4,10 +4,15 @@ features on top of MorphIO basic morphology handling.
 """
 import logging
 import numpy as np
-from morphio import SomaType, Option
-from morphio import Morphology
-from morphio.mut import Morphology as MutMorphology
 from numpy.linalg import eig, norm
+try:
+    from morphio import SomaType, Option
+    from morphio import Morphology
+    from morphio.mut import Morphology as MutMorphology
+except ImportError:
+    class Option: nrn_order = NotImplemented  # abuse nrn_order for flagging
+    logging.warning("MorphIO is not available. No support for Hdf5 morphologies")
+
 
 '''
     [START] Implementations retrieved from nse/morph-tool (!= hpc/morpho-tool !!!)
@@ -165,6 +170,8 @@ class MorphIOWrapper:
     section_typeid_distrib = property(lambda self: self._sec_typeid_distrib)
 
     def __init__(self, input_file, options=Option.nrn_order):
+        if Option.nrn_order is NotImplemented:
+            raise RuntimeError("MorphIO is not available")
         self._morph_file = input_file
         self._options = options
         self._build_morph()
