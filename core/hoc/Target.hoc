@@ -160,7 +160,7 @@ public cellExtraValues, targetExtraValues
 public evalType, isCellTarget, isSectionTarget, isCompartmentTarget, isSynapseTarget
 public update, getgid, gids, completegids, getCellExtraValues, getCellSubset, evaluateSynapses, getPointList, getCompletePointList
 public isDefined, isEmpty, isUpToDate, completeContains, contains, localCount, getCellCount
-public set_offset
+public set_offset, get_offset
 
 //------------------------------------------------------------------------------------------------------------
 // Member functions
@@ -231,6 +231,12 @@ proc set_offset() {
     }
 }
 
+/*!
+ * Gets gid offset of the target
+ */
+func get_offset() {
+    return gid_offset
+}
 
 //------------------------------------------------------------------------------------------------------------
 

@@ -47,6 +47,7 @@ public restartALUs
  * @param $o11 Scaling option to apply to Summation reports: 'None' disables all scaling, 'Area' (or nil) converts density to area, electrodeName - TBD
  * @param $s12 ISC parameter string
  * @param $s13 Population name of the SONATA report
+ * @param $14 Offset of the report node ids for the population
  */
 proc init() { localobj nil
     reportName = $s1
@@ -112,6 +113,10 @@ proc init() { localobj nil
     population_name = ""
     if( numarg() >= 13 ) {
         population_name = $s13
+    }
+    population_offset = 0
+    if( numarg() >= 14 ) {
+        population_offset = $14
     }
 }
 
@@ -225,7 +230,7 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
         if (0 == strcmp( format, "SONATA")) {
             rec = new SonataReport( 0.5, reportName, outputDir, startTime, endTime, reportDt, "compartment")
             if( 0 != strcmp(population_name, "")) {
-                rec.AddNode($o1.gid, population_name)
+                rec.AddNode($o1.gid, population_name, population_offset)
             } else {
                 rec.AddNode($o1.gid)
             }

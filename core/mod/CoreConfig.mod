@@ -127,6 +127,12 @@ VERBATIM
         sprintf(population_name,"%s", hoc_gargstr(13));
     }
 
+    // Default population offset
+    int population_offset = 0;
+    if (ifarg(14) && !hoc_is_str_arg(14)) {
+        population_offset = (int)*getarg(14);
+    }
+
     // copy doible gids to int array
     int *gids = (int*) calloc(num_gids, sizeof(int));
     int i;
@@ -140,7 +146,7 @@ VERBATIM
 
     // write report information
     FILE *fp = open_file(reportConf, "a");
-    fprintf(fp, "%s %s %s %s %s %s %d %lf %lf %lf %d %d %s\n",
+    fprintf(fp, "%s %s %s %s %s %s %d %lf %lf %lf %d %d %s %d\n",
             hoc_gargstr(1),
             hoc_gargstr(2),
             hoc_gargstr(3),
@@ -153,7 +159,8 @@ VERBATIM
             *getarg(10),
             num_gids,
             buffer_size,
-            population_name);
+            population_name,
+            population_offset);
     fwrite(gids, sizeof(int), num_gids, fp);
     fprintf(fp, "%s", "\n");
     fclose(fp);

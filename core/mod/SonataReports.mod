@@ -127,11 +127,15 @@ VERBATIM {
     if(ifarg(1))
     {
         char population_name[256] = "All";
+        unsigned long population_offset = 0;
         if (ifarg(2)) {
             sprintf(population_name,"%s", gargstr(2));
         }
+        if (ifarg(3)) {
+            population_offset = (unsigned long) *getarg(3);
+        }
         unsigned long node_id = (unsigned long) *getarg(1);
-        sonata_add_node(data->rptName_, population_name, node_id);
+        sonata_add_node(data->rptName_, population_name, population_offset, node_id);
     }
 #endif
 #endif
