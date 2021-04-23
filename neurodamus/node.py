@@ -667,10 +667,18 @@ class Node:
                     logging.error("Invalid report dt %f < %f simulation dt", rep_dt, Nd.dt)
                 n_errors += 1
                 continue
+
+            target_population = rep_target.population or self._target_spec.population
+            population_offset = 0
+            cell_manager = self._circuits.get_node_manager(target_population)
+            if pop_offsets[target_population] > 0:  # dont reset if not needed (recent hoc API)
+                target.set_offset(pop_offsets[target_population])
+                population_offset = pop_offsets[target_population]
+
             report_on = rep_conf["ReportOn"]
             rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
                                     "start, end, output_dir, electrode, scaling, isc, "
-                                    "population_name")(
+                                    "population_name, population_offset")(
                 rep_name,
                 rep_type,  # rep type is case sensitive !!
                 report_on,
@@ -683,13 +691,9 @@ class Node:
                 electrode,
                 Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
                 rep_conf.get("ISC", ""),
-                population_name
+                population_name,
+                population_offset
             )
-
-            target_population = rep_target.population or self._target_spec.population
-            cell_manager = self._circuits.get_node_manager(target_population)
-            if pop_offsets[target_population] > 0:  # dont reset if not needed (recent hoc API)
-                target.set_offset(pop_offsets[target_population])
 
             if SimConfig.use_coreneuron and MPI.rank == 0:
                 corenrn_target = target
@@ -739,6 +743,7 @@ class Node:
                     (rep_name, rep_target.name, rep_type, report_on.replace(" ", ","))
                     + rep_params[3:5] + (target_type,) + rep_params[5:8]
                     + (target.completegids(), SimConfig.corenrn_buff_size, population_name)
+                    + (population_offset,)
                 )
                 SimConfig.coreneuron.write_report_config(*core_report_params)
 
