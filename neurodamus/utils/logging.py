@@ -130,7 +130,7 @@ def setup_logging(loglevel, logfile=None, rank=None):
     _logging.root.addHandler(hdlr)
 
     if logfile:
-        fileh = _logging.FileHandler(logfile)
+        fileh = _logging.FileHandler(logfile, encoding="utf-8")
         fileh.setFormatter(_LevelColorFormatter(rank=rank, use_color=False))
         _logging.root.addHandler(fileh)
 
