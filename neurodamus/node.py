@@ -24,6 +24,7 @@ from .cell_distributor import LoadBalance, LoadBalanceMode
 from .connection_manager import SynapseRuleManager, GapJunctionManager, edge_node_pop_names
 from .replay import SpikeManager
 from .stimulus_manager import StimulusManager
+from .modification_manager import ModificationManager
 from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
@@ -600,11 +601,15 @@ class Node:
         expected to write the hoc directly, but rather access a library of already available mods.
         """
         # mod_mananger gets destroyed when function returns (not required)
-        mod_manager = Nd.ModificationManager(self._target_manager.hoc)
+        # mod_manager = Nd.ModificationManager(self._target_manager.hoc)
         log_stage("Enabling modifications...")
-        modifications = SimConfig.get_blueconfig_hoc_section("parsedModifications")
-        for mod in compat.Map(modifications).values():
-            mod_manager.interpret(mod)
+
+        mod_manager = ModificationManager(self._target_manager)
+        for name, mod in SimConfig.modifications.items():
+            mod_info = compat.Map(mod)
+            target_spec = TargetSpec(mod_info["Target"])
+            logging.info(" * [MOD] %s: %s -> %s", name, mod_info["Type"], target_spec)
+            mod_manager.interpret(target_spec, mod_info)
 
     # -
     # @mpi_no_errors - not required since theres a call inside before _binreport_helper.make_comm

@@ -102,6 +102,7 @@ class _SimConfig(object):
     injects = None
     reports = None
     configures = None
+    modifications = None
 
     # Hoc objects used
     _config_parser = None
@@ -155,6 +156,7 @@ class _SimConfig(object):
         cls.injects = compat.Map(cls._config_parser.parsedInjects)
         cls.reports = compat.Map(cls._config_parser.parsedReports)
         cls.configures = compat.Map(cls._config_parser.parsedConfigures)
+        cls.modifications = compat.Map(cls._config_parser.parsedModifications)
         cls.cli_options = RunOptions(**(cli_options or {}))
 
         for validator in cls._validators:
@@ -312,6 +314,13 @@ def _projection_params(config: _SimConfig, run_conf):
     non_negatives = ("PopulationID",)
     for name, proj in config.projections.items():
         _check_params("Projection " + name, compat.Map(proj), required_fields, (), non_negatives)
+
+
+@SimConfig.validator
+def _modification_params(config: _SimConfig, run_conf):
+    required_fields = ("Target", "Type",)
+    for name, mod_block in config.modifications.items():
+        _check_params("Modification " + name, compat.Map(mod_block), required_fields, ())
 
 
 def _make_circuit_config(config_dict, req_morphology=True):

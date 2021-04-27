@@ -71,6 +71,7 @@ class Map(collections_abc.Mapping):
             self._hoc_map.get(key).s = str(value)
         else:
             self._hoc_map.put(key, self.String(str(value)))
+            self._size = int(self._hoc_map.count())  # update size
 
     def update(self, other_map):
         for key, val in other_map.items():
