@@ -66,7 +66,6 @@ class SpikeManager(object):
             log_verbose("Loaded %d spikes", len(spikes))
         else:
             logging.warning("No spike/gid found in spike file %s", filename)
-            raise Exception("Invalid spike file")
 
         return spikes["time"], spikes["gid"]
 
