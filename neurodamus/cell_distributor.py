@@ -354,6 +354,10 @@ class CellManagerBase(object):
         else:
             self._conn_managers_per_src_pop[src_population] = conn_manager
 
+    def post_stdinit(self):
+        """Post stdinit actions, sublasses may override if needed"""
+        pass
+
 
 class GlobalCellManager:
     """

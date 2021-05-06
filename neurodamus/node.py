@@ -46,8 +46,8 @@ class CircuitManager:
     """
     Holds and manages populations and associated nodes and edges
 
-    For backward compat, base population doesnt have a population name (it is None)
-    All other nodes must have a name, which last-resort will be read from the nods.h5 file.
+    For backward compat, base population doesnt have a population name (it is '')
+    All other nodes must have a name, read from sonata pop name, or the BlueConfig circuit
     As so, Sonata is preferred when using multiple node files
     """
 
@@ -889,6 +889,10 @@ class Node:
         self._pc.set_maxstep(4)
         with timeit(name="stdinit"):
             Nd.stdinit()
+
+        logging.info("Executing actions after stdinit...")
+        for mgr in self._circuits.all_node_managers():
+            mgr.post_stdinit()
 
     # -
     def _sim_init_neuron(self):

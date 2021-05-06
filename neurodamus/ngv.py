@@ -19,7 +19,7 @@ from .morphio_wrapper import MorphIOWrapper
 
 
 class Astrocyte(BaseCell):
-    __slots__ = ('_glut_list', '_secidx2names')
+    __slots__ = ('_glut_list', '_secidx2names', '_nseg_warning')
 
     def __init__(self, gid, meinfos, circuit_conf):
         """Instantiate a new Cell from mvd/node info."""
@@ -27,7 +27,8 @@ class Astrocyte(BaseCell):
         morpho_path = circuit_conf.MorphologyPath
         morph_filename = meinfos.morph_name + "." + circuit_conf.MorphologyType
         morph_file = os.path.join(morpho_path, morph_filename)
-        self._cellref, self._glut_list, self._secidx2names = self._init_cell(gid, morph_file)
+        self._cellref, self._glut_list, self._secidx2names, self._nseg_warning \
+            = self._init_cell(gid, morph_file)
         self._cellref.gid = gid
 
     gid = property(lambda self: int(self._cellref.gid),
@@ -106,13 +107,10 @@ class Astrocyte(BaseCell):
         """
             Create hoc commands for section parameters (perimeters & cross-sectional area)
             :param morph_wrap: MorphIOWrapper object holding MorphIO morphology object
-        """
 
-        '''
             For example:
                 dend[0] { perimeter_mcd = 32 cross_sectional_area_mcd = 33}
-                ....
-        '''
+        """
         cmds = []
         cmds.extend(("{} {{ perimeter_mcd = {:g} cross_sectional_area_mcd = {:g} }}".format(
             morph_wrap.section_index2name_dict[morph_sec_index + 1],
@@ -134,7 +132,12 @@ class Astrocyte(BaseCell):
 
         # Insert mechanisms and populate holder lists
         logging.debug("Instantiating NGV cell gid=%d", gid)
+        nseg_reduce_instance = 0  # temporary field until proper handling of nseg > 1 implemented
+
         for sec in c.all:
+            if sec.nseg > 1:
+                nseg_reduce_instance = 1
+                sec.nseg = 1
             sec.insert("mcd")
             glut = Nd.GlutReceive(sec(0.5), sec=sec)
             Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).mcd)
@@ -148,13 +151,7 @@ class Astrocyte(BaseCell):
 
         # Print out mcd section parameters
         # for sec in c.all:
-        #     if hasattr(sec(0.5), 'mcd'):
-        #         logging.info("{}: \tP={:.4g}\tX-Area={:.4g}\tER[area={:.4g}\tvol={:.4g}]".format(
-        #             sec,
-        #             sec(0.5).mcd.perimeter,
-        #             sec(0.5).mcd.cross_sectional_area,
-        #             sec(0.5).mcd.er_area,
-        #             sec(0.5).mcd.er_volume))
+        #     self._show_mcd()
 
         # Soma receiver must be last element in the glut_list
         soma = c.soma[0]
@@ -162,7 +159,32 @@ class Astrocyte(BaseCell):
         glut = Nd.GlutReceiveSoma(soma(0.5), sec=soma)
         Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).glia_2013)
         glut_list.append(glut)
-        return c, glut_list, m.section_index2name_dict
+        return c, glut_list, m.section_index2name_dict, nseg_reduce_instance
+
+    def _show_mcd(sec):
+        if not hasattr(sec(0.5), 'mcd'):
+            logging.info("No mcd mechanism found")
+            return
+        logging.info("{}: \tP={:.4g}\tX-Area={:.4g}\tER[area={:.4g}\tvol={:.4g}]".format(
+            sec,
+            sec(0.5).mcd.perimeter,
+            sec(0.5).mcd.cross_sectional_area,
+            sec(0.5).mcd.er_area,
+            sec(0.5).mcd.er_volume)
+        )
+
+    def set_pointers(self):
+        glut_list = self._glut_list
+        c = self._cellref
+        index = 0
+
+        for sec in c.all:
+            glut = glut_list[index]
+            index += 1
+            Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).mcd)
+        soma = c.soma[0]
+        glut = glut_list[index]
+        Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).glia_2013)
 
     @property
     def glut_list(self) -> list:
@@ -187,6 +209,17 @@ class AstrocyteManager(CellDistributor):
     # The difference lies only in the Cell Type
     CellType = Astrocyte
     _sonata_with_extra_attrs = False
+
+    def post_stdinit(self):
+        gidvec = self.getGidListForProcessor()
+        nseg_warning = 0
+        for gid in gidvec:
+            self._gid2cell[gid].set_pointers()
+            nseg_warning += self._gid2cell[gid]._nseg_warning
+        MPI.allreduce(nseg_warning, MPI.SUM)
+        if nseg_warning:
+            logging.warning("Astrocyte sections with multiple compartments not yet supported."
+                            "Reducing %d to 1", nseg_warning)
 
 
 class NeuroGliaConnParameters(SynapseParameters):
