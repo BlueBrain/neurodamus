@@ -190,7 +190,7 @@ class TargetManager:
             target = self.hoc.compartmentCast(target, "")
         return target.getPointList(cell_manager)
 
-    @lru_cache
+    @lru_cache()
     def intersecting(self, target1, target2):
         """Checks whether two targets intersect"""
         target1_spec = TargetSpec(target1)
