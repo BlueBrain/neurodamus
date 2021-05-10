@@ -2,6 +2,25 @@
 Change Log
 ==========
 
+Version 2.6.0
+=============
+**May 11, 2021**
+
+*New Features*
+ * NGV
+
+   * [NGVDISS-1] Astrocyte Endoplasmic Reticulum
+   * [NGVDISS-73] Astrocyte perimeters & cross-sectional areas
+   * [NGVDISS-74] Endfeet handling
+   * [NGVDISS-229] Spec update for neuroglial synapse parameters
+
+ * SONATA reports node_ids offsetting
+ * post-stdinit callback support in Node
+
+*Improvements*
+ * Checks for non-negative config params
+ * Don't raise exception if replay file is empty
+
 Version 2.5.3
 =============
 
