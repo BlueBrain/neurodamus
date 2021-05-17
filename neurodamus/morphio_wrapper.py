@@ -5,13 +5,6 @@ features on top of MorphIO basic morphology handling.
 import logging
 import numpy as np
 from numpy.linalg import eig, norm
-try:
-    from morphio import SomaType, Option
-    from morphio import Morphology
-    from morphio.mut import Morphology as MutMorphology
-except ImportError:
-    class Option: nrn_order = NotImplemented  # abuse nrn_order for flagging
-    logging.warning("MorphIO is not available. No support for Hdf5 morphologies")
 
 
 '''
@@ -169,9 +162,7 @@ class MorphIOWrapper:
     section_index2name_dict = property(lambda self: self._sec_idx2names)
     section_typeid_distrib = property(lambda self: self._sec_typeid_distrib)
 
-    def __init__(self, input_file, options=Option.nrn_order):
-        if Option.nrn_order is NotImplemented:
-            raise RuntimeError("MorphIO is not available")
+    def __init__(self, input_file, options=0):
         self._morph_file = input_file
         self._options = options
         self._build_morph()
@@ -181,9 +172,16 @@ class MorphIOWrapper:
 
     def _build_morph(self):
         """ Build immutable morphology, going trough mutable and applying neuron adjustemnts """
+        try:
+            # Lazy import morphio since it has an issue with execl
+            from morphio import SomaType, Option
+            from morphio import Morphology
+            from morphio.mut import Morphology as MutMorphology
+        except ImportError as e:
+            raise RuntimeError("MorphIO is not available") from e
 
         # We start out with a mutable morphology since we compute soma points
-        self._morph = MutMorphology(self._morph_file, self._options)
+        self._morph = MutMorphology(self._morph_file, self._options | Option.nrn_order)
 
         # Re-compute the soma points as they are computed in import3d_gui.hoc
         if self._morph.soma_type not in {SomaType.SOMA_SINGLE_POINT, SomaType.SOMA_SIMPLE_CONTOUR}:
