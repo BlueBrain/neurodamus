@@ -281,7 +281,7 @@ def find_input_file(filepath, search_paths=(), alt_filename=None):
     return file_found
 
 
-def _check_params(section_name, data, required_fields, numeric_fields, non_negatives=(),
+def _check_params(section_name, data, required_fields, numeric_fields=(), non_negatives=(),
                   valid_values={}, deprecated_values={}):
     """Generic function to check a dict-like data set conforms to the field prescription"""
     for param in required_fields:
@@ -699,6 +699,23 @@ def _model_building_steps(config: _SimConfig, run_conf):
     logging.info("Splitting Target for multi-iteration CoreNeuron data generation")
     logging.info(" -> Cycles: %d. [src: %s]", ncycles, "CLI" if src_is_cli else "BlueConfig")
     config.modelbuilding_steps = ncycles
+
+
+@SimConfig.validator
+def _report_type(config: _SimConfig, run_conf):
+    """Compartment reports read voltages or i_membrane only. Other types must be summation"""
+    mandatory_fields = ("Type", "StartTime", "Target", "Dt", "ReportOn", "Unit", "Format")
+    report_types = {"compartment", "Summation", "Synapse"}
+    for rep_name, rep_config in config.reports.items():
+        rep_config = compat.Map(rep_config)
+        _check_params(
+            "Report " + rep_name, rep_config, mandatory_fields,
+            valid_values={'Type': report_types}
+        )
+        if config.use_coreneuron and rep_config["Type"] == "compartment":
+            if rep_config["ReportOn"] not in ("v", "i_membrane"):
+                logging.warning("Compartment reports on vars other than v and i_membrane "
+                                " are still not fully supported (CoreNeuron)")
 
 
 def check_connections_configure(SimConfig, target_manager):
