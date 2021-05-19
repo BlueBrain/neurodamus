@@ -80,6 +80,7 @@ def hocify(args=None):
     morph_dir = abspath(options.pop("MorphologyPath"))
     log_level = _pop_log_level(options)
     neuron_nframe = options.pop("nframe")
+    options.pop("help")  # never pass to the library
 
     try:
         Hocify(morph_dir, neuron_nframe, log_level, **options).convert()

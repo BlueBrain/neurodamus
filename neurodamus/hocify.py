@@ -27,7 +27,7 @@ def process_file(file_tuple):
 class Hocify(object):
     fasthoclogfile = "hocify-{}.log".format(strftime("%Y-%m-%d_%Hh%M"))
 
-    def __init__(self, morpho_path, neuron_nframe, log_level, output_dir):
+    def __init__(self, morpho_path, neuron_nframe, log_level, output_dir, **_user_opts):
         Hocify.fasthocdir = output_dir or os.path.join(morpho_path, FASTHOC_DIRNAME)
         try:
             os.mkdir(Hocify.fasthocdir)
