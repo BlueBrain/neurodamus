@@ -4,22 +4,25 @@ import subprocess
 
 from neurodamus.node import Node
 from neurodamus.core import NeurodamusCore as Nd
-from neurodamus.core.configuration import SimConfig
+from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
 from neurodamus.utils import compat
+from neurodamus.utils.logging import log_verbose
 
 requires_mpi = pytest.mark.skipif(
     os.environ.get("SLURM_JOB_ID") is None and os.environ.get("RUN_MPI") is None,
     reason="Modification tests require MPI"
 )
 
+alltests = ['test_TTX_modification', 'test_ConfigureAllSections_modification']
+
 # BlueConfig string
 BC_str = """
 Run Default
-{
+{{
     CellLibraryFile /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3
     nrnPath <NONE>
     CircuitPath .
-    TargetFile /tmp/test_modification_tgt.tmp
+    TargetFile {target_file}
 
     BioName /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/bioname
     Atlas /gpfs/bbp.cscs.ch/project/proj83/data/atlas/S1/MEAN/P14-MEAN
@@ -34,7 +37,7 @@ mecombo_emodel.tsv
     OutputRoot .
 
     CircuitTarget single
-    Duration 100
+    Duration 200
     Dt 0.025
 
     RNGMode Random123
@@ -48,36 +51,36 @@ mecombo_emodel.tsv
     MinisSingleVesicle 1
     SpikeLocation AIS
     V_Init -80
-}
+}}
 
 Stimulus stimTest
-{
+{{
     Mode Current
     Pattern RelativeLinear
     Delay 0
-    Duration 500
+    Duration 200
     PercentStart 120
-}
+}}
 
 StimulusInject stimTestInject
-{
+{{
     Stimulus stimTest
     Target single
-}
+}}
 
 Stimulus hypamp
-{
+{{
         Mode Current
      Pattern Hyperpolarizing
        Delay 0.0
-    Duration 500
-}
+    Duration 200
+}}
 
 StimulusInject hypampInject
-{
+{{
     Stimulus hypamp
       Target single
-}
+}}
 """
 
 # Target file string
@@ -92,28 +95,33 @@ Target Cell single
 @pytest.mark.slow
 @requires_mpi
 def test_modifications():
-    ps = subprocess.run(["mpiexec", "-np", "1",
-                         "python", os.path.abspath(__file__), "run"])
-    assert ps.returncode == 0
+    for test in alltests:
+        ps = subprocess.run(["mpiexec", "-np", "1",
+                             "python", os.path.abspath(__file__), test])
+        assert ps.returncode == 0
 
 
-def exec_test_ttx_modification():
+def exec_test_TTX_modification():
     """
     A test of enabling TTX with a short simulation.
     Expected outcome is non-zero spike count without TTX, zero with TTX.
 
     We require launching with mpiexec (numprocs=1).
     """
+    bc_file = '/tmp/test_ttx_modification_bc.tmp'
+    target_file = '/tmp/test_ttx_modification_tgt.tmp'
+
     # dump config to file
-    with open('/tmp/test_modification_bc.tmp', 'w') as f:
-        print(BC_str, file=f)
+    with open(bc_file, 'w') as f:
+        print(BC_str.format(target_file=target_file), file=f)
 
     # dump target to file
-    with open('/tmp/test_modification_tgt.tmp', 'w') as f:
+    with open(target_file, 'w') as f:
         print(TGT_str, file=f)
 
     # create Node from config
-    n = Node('/tmp/test_modification_bc.tmp')
+    GlobalConfig.verbosity = LogLevel.VERBOSE
+    n = Node(bc_file)
 
     # setup sim
     n.load_targets()
@@ -142,13 +150,67 @@ def exec_test_ttx_modification():
     n.solve()
     nspike_TTX = sum(len(spikes) for spikes, _ in n._spike_vecs)
 
+    log_verbose("spikes without TTX = %s, with TTX = %s", nspike_noTTX, nspike_TTX)
     assert(nspike_noTTX > 0 and nspike_TTX == 0)
+
+
+def exec_test_ConfigureAllSections_modification():
+    """
+    A test of performing ConfigureAllSections with a short simulation.
+    Expected outcome is higher spike count when enabled.
+
+    We require launching with mpiexec (numprocs=1).
+    """
+    bc_file = '/tmp/test_configureAllSections_modification_bc.tmp'
+    target_file = '/tmp/test_configureAllSections_modification_tgt.tmp'
+
+    # dump config to file
+    with open(bc_file, 'w') as f:
+        print(BC_str.format(target_file=target_file), file=f)
+
+    # dump target to file
+    with open(target_file, 'w') as f:
+        print(TGT_str, file=f)
+
+    # create Node from config
+    GlobalConfig.verbosity = LogLevel.VERBOSE
+    n = Node(bc_file)
+
+    # setup sim
+    n.load_targets()
+    n.create_cells()
+    n.create_synapses()
+    n.enable_stimulus()
+    n.sim_init()
+    n.solve()
+    nspike_noConfigureAllSections = sum(len(spikes) for spikes, _ in n._spike_vecs)
+
+    # append modification to config directly
+    ConfigureAllSections_mod = compat.Map(Nd.Map())
+    ConfigureAllSections_mod["Type"] = "ConfigureAllSections"
+    ConfigureAllSections_mod["Target"] = "single"
+    ConfigureAllSections_mod["SectionConfigure"] = "%s.gSK_E2bar_SK_E2 = 0"
+    # set HOC map as value of key "no_SK_E2"
+    SimConfig.modifications.hoc_map.put("no_SK_E2", ConfigureAllSections_mod.hoc_map)
+    # manually update item count in compat.Map
+    SimConfig.modifications._size = int(SimConfig.modifications.hoc_map.count())
+
+    # setup sim again
+    Nd.t = 0.0
+    n._sim_ready = False
+    n.enable_modifications()
+    n.sim_init()
+    n.solve()
+    nspike_ConfigureAllSections = sum(len(spikes) for spikes, _ in n._spike_vecs)
+
+    log_verbose("spikes without ConfigureAllSections = %s, with ConfigureAllSections = %s",
+                nspike_ConfigureAllSections, nspike_noConfigureAllSections)
+    assert(nspike_ConfigureAllSections > nspike_noConfigureAllSections)
 
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) > 1 and sys.argv[1] == 'run':
-        exec_test_ttx_modification()
-        # tests for other Modifications go here
+    if len(sys.argv) > 1:
+        exec('exec_{}()'.format(sys.argv[1]))
     else:
         test_modifications()

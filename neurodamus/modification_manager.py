@@ -20,8 +20,11 @@
 
 """
 
+import ast
+import logging
 from .core import NeurodamusCore as Nd
 from .core.configuration import ConfigurationError
+from .utils.logging import log_verbose
 
 
 class ModificationManager:
@@ -86,3 +89,79 @@ class TTX:
         wrapper.targetSubsets.append(Nd.String(subset))
         wrapper.targetExtraValues.append(Nd.Vector())
         return wrapper
+
+
+@ModificationManager.register_type
+class ConfigureAllSections:
+    """
+    Perform one or more assignments involving section attributes,
+    for all sections that have all the referenced attributes.
+
+    Use case is modifying mechanism variables from config.
+    """
+    def __init__(self, target, mod_info: dict, cell_manager):
+        config, config_attrs = self.parse_section_config(mod_info['SectionConfigure'])
+
+        if target.isCellTarget():  # get all compartments for each cell
+            tpoints = self.compartment_cast(target, "").getPointList(cell_manager)
+        else:  # use compartments present in target
+            tpoints = target.getPointList(cell_manager)
+
+        napply = 0  # number of sections where config applies
+        # change mechanism variable in all sections that have it
+        for tpoint_list in tpoints:
+            for _, sc in enumerate(tpoint_list.sclst):
+                if not sc.exists():  # skip sections not on this split
+                    continue
+                sec = sc.sec
+                if all(hasattr(sec, x) for x in config_attrs):  # if has all attributes
+                    exec(config, {'__builtins__': None}, {'sec': sec})  # unsafe but sanitized
+                    napply += 1
+
+        log_verbose("Applied to {} sections".format(napply))
+
+        if napply == 0:
+            logging.warning("ConfigureAllSections applied to zero sections, "
+                            "please check its SectionConfigure for possible mistakes")
+
+    def compartment_cast(self, target, subset):
+        if subset not in ("soma", "apic", "dend", ""):
+            raise Exception("Unknown subset {} in compartment_cast".format(subset))
+
+        wrapper = Nd.Target("temp", "Compartment")
+        wrapper.subtargets.append(target)
+        wrapper.targetSubsets.append(Nd.String(subset))
+        wrapper.targetExtraValues.append(Nd.Vector())
+        return wrapper
+
+    def parse_section_config(self, config):
+        config = config.replace('%s.', '__sec_wildcard__.')  # wildcard to placeholder
+        all_attrs = self.AttributeCollector()
+        tree = ast.parse(config)
+        for elem in tree.body:  # for each semicolon-separated statement
+            # check assignment targets
+            for tgt in self.assignment_targets(elem):
+                # must be single assignment of a __sec_wildcard__ attribute
+                if not isinstance(tgt, ast.Attribute) or tgt.value.id != '__sec_wildcard__':
+                    raise ConfigurationError("SectionConfigure only supports single assignments "
+                                             "of attributes of the section wildcard %s")
+            all_attrs.visit(elem)  # collect attributes in assignment
+        config = config.replace('__sec_wildcard__.', 'sec.')  # placeholder to section variable
+
+        return config, all_attrs.attrs
+
+    class AttributeCollector(ast.NodeVisitor):
+        """Node visitor collecting all attribute names in a set"""
+        attrs = set()
+
+        def visit_Attribute(self, node):
+            self.attrs.add(node.attr)
+
+    def assignment_targets(self, node):
+        if isinstance(node, ast.Assign):
+            return node.targets
+        elif isinstance(node, ast.AugAssign):
+            return [node.target]
+        else:
+            raise ConfigurationError("SectionConfigure must consist of one or more "
+                                     "semicolon-separated assignments")
