@@ -148,7 +148,9 @@ class CellManagerBase(object):
 
     # read-only properties
     target_manager = property(lambda self: self._target_manager)
-    local_nodes = property(lambda self: self._local_nodes or NodeSet())
+    local_nodes = property(
+        lambda self: self._local_nodes if self._local_nodes is not None else NodeSet()
+    )
     total_cells = property(lambda self: self._total_cells)
     cells = property(lambda self: self._gid2cell.values())
     gid2cell = property(lambda self: self._gid2cell)
