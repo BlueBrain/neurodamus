@@ -236,7 +236,7 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
     if( 0 == strcmp( format, "Bin") || 0 == strcmp( format, "SONATA")) {
         rpt = -1
         if (0 == strcmp( format, "SONATA")) {
-            rec = new SonataReport( 0.5, reportName, outputDir, startTime, endTime, reportDt, "compartment")
+            rec = new SonataReport( 0.5, reportName, outputDir, startTime, endTime, reportDt, unit, "compartment")
             if( 0 != strcmp(population_name, "")) {
                 rec.AddNode(gid, population_name, population_offset)
             } else {

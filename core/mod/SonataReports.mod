@@ -82,7 +82,7 @@ VERBATIM {
         tstop = *getarg(5);
         Dt = *getarg(6);
 
-        sonata_create_report(data->rptName_, tstart, tstop, Dt, gargstr(7));
+        sonata_create_report(data->rptName_, tstart, tstop, Dt, gargstr(7), gargstr(8));
 
         *tempdata = data; //makes to data available to other procedures through ptr
     }
