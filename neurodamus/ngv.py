@@ -155,9 +155,9 @@ class Astrocyte(BaseCell):
 
         # Soma receiver must be last element in the glut_list
         soma = c.soma[0]
-        soma.insert("glia_2013")
+        soma.insert("mcd")
         glut = Nd.GlutReceiveSoma(soma(0.5), sec=soma)
-        Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).glia_2013)
+        Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).mcd)
         glut_list.append(glut)
         return c, glut_list, m.section_index2name_dict, nseg_reduce_instance
 
@@ -184,7 +184,7 @@ class Astrocyte(BaseCell):
             Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).mcd)
         soma = c.soma[0]
         glut = glut_list[index]
-        Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).glia_2013)
+        Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).mcd)
 
     @property
     def glut_list(self) -> list:
