@@ -709,7 +709,7 @@ class Node:
             if SimConfig.use_coreneuron and MPI.rank == 0:
                 corenrn_target = target
 
-                # 0=Compartment, 1=Cell, Section { 2=Axon, 3=Dendrite, 4=Apical }
+                # 0=Compartment, 1=Cell, Section { 2=Soma, 3=Axon, 4=Dendrite, 5=Apical }
                 target_type = target.isCellTarget()
                 compartment_offset = 0
 
@@ -726,7 +726,7 @@ class Node:
 
                             # If we reach this point, update original target and offset
                             corenrn_target = activeTarget
-                            compartment_offset = 3
+                            compartment_offset = 4
 
                 if corenrn_target.isSectionTarget():
                     if (corenrn_target.subtargets.count() != 1
@@ -739,14 +739,13 @@ class Node:
                     section_type = corenrn_target.targetSubsets[0].s
 
                     if section_type == "soma":
-                        # Force it to be a Cell target type
-                        target_type = 1
-                    elif section_type == "axon":
                         target_type = 2 + compartment_offset
-                    elif section_type == "dend":
+                    elif section_type == "axon":
                         target_type = 3 + compartment_offset
-                    elif section_type == "apic":
+                    elif section_type == "dend":
                         target_type = 4 + compartment_offset
+                    elif section_type == "apic":
+                        target_type = 5 + compartment_offset
                     else:
                         target_type = 0
 
