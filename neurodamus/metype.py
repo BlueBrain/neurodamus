@@ -131,7 +131,7 @@ class METype(BaseCell):
 
 
 class Cell_V6(METype):
-    __slots__ = ()
+    __slots__ = ("local_to_global_matrix",)
 
     def __init__(self, gid, meinfo, circuit_conf):
         mepath = circuit_conf.METypePath
@@ -153,6 +153,12 @@ class Cell_V6(METype):
         self._hypAmp_current = meinfos_v6.holding_current
         self.exc_mini_frequency = meinfos_v6.exc_mini_frequency
         self.inh_mini_frequency = meinfos_v6.inh_mini_frequency
+        self.local_to_global_matrix = meinfos_v6.local_to_global_matrix
+
+    def local_to_global_coord_mapping(self, points):
+        if self.local_to_global_matrix is None:
+            raise Exception("Nodes don't provide all 3d position/rotation info")
+        return vector_rotate_translate(points, self.local_to_global_matrix)
 
 
 class Cell_V5(METype):
@@ -271,7 +277,7 @@ class METypeItem(object):
     @staticmethod
     def _make_local_to_global_matrix(position, rotation, scale):
         """Build the transformation matrix from local to global"""
-        if not rotation:
+        if rotation is None:
             return None
         from scipy.spatial.transform import Rotation
         m = np.empty((3, 4), np.float32)
@@ -282,15 +288,22 @@ class METypeItem(object):
         return m
 
     def local_to_global_coord_mapping(self, points):
-        if self.local_to_global_matrix is None:
-            raise Exception("Nodes don't provide all 3d position/rotation info")
-        if points.shape[0] == 0:
-            return np.array([])
-        if len(points.shape) != 2 or points.shape[1] != 3:
-            raise ValueError("Matrix of input coordinates needs 3 columns.")
-        rot_matrix = self.local_to_global_matrix[None, :, :3]
-        translation = self.local_to_global_matrix[:, 3]
-        return np.einsum('ijk,ik->ij', rot_matrix, points) + translation
+        return vector_rotate_translate(points, self.local_to_global_matrix)
+
+
+def vector_rotate_translate(points, transform_matrix):
+    """Rotate/translate a vector of 3D points according to a transformation matrix.
+
+    Note: Rotation is done directly using the Einstein Sum method, similarly to scipy,
+        avoiding intermediate states.
+    """
+    if points.shape[0] == 0:
+        return np.array([])
+    if len(points.shape) != 2 or points.shape[1] != 3:
+        raise ValueError("Matrix of input coordinates needs 3 columns.")
+    rot_matrix = transform_matrix[None, :, :3]
+    translation = transform_matrix[:, 3]
+    return np.einsum('ijk,ik->ij', rot_matrix, points) + translation
 
 
 class METypeManager(dict):
@@ -304,7 +317,9 @@ class METypeManager(dict):
 
     def load_infoNP(self, gidvec, morph_list, emodels,
                     threshold_currents=None, holding_currents=None,
-                    exc_mini_freqs=None, inh_mini_freqs=None, add_params_list=None):
+                    exc_mini_freqs=None, inh_mini_freqs=None,
+                    positions=None, rotations=None,
+                    add_params_list=None):
         """Loads METype information in bulk from Numpy arrays
         """
         for idx, gid in enumerate(gidvec):
@@ -312,13 +327,20 @@ class METypeManager(dict):
             hd_current = holding_currents[idx] if holding_currents is not None else .0
             exc_mini_freq = exc_mini_freqs[idx] if exc_mini_freqs is not None else .0
             inh_mini_freq = inh_mini_freqs[idx] if inh_mini_freqs is not None else .0
+            position = positions[idx] if positions is not None else None
+            rotation = rotations[idx] if rotations is not None else None
             add_params = add_params_list[idx] if add_params_list is not None else None
-            self[int(gid)] = METypeItem(morph_list[idx], emodel=emodels and emodels[idx],
-                                        threshold_current=th_current,
-                                        holding_current=hd_current,
-                                        exc_mini_frequency=exc_mini_freq,
-                                        inh_mini_frequency=inh_mini_freq,
-                                        add_params=add_params)
+            self[int(gid)] = METypeItem(
+                morph_list[idx],
+                emodel=emodels and emodels[idx],
+                threshold_current=th_current,
+                holding_current=hd_current,
+                exc_mini_frequency=exc_mini_freq,
+                inh_mini_frequency=inh_mini_freq,
+                position=position,
+                rotation=rotation,
+                add_params=add_params
+            )
 
     def retrieve_info(self, gid):
         return self.get(gid) \

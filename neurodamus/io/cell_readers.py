@@ -192,13 +192,16 @@ def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *, has_extra_d
         if node_reader.hasCurrents() else None
     holding_currents = node_reader.holding_currents(indexes) \
         if node_reader.hasCurrents() else None
+    positions = np.array([node_reader.positions(i)[0] for i in indexes])
+    rotations = np.array([node_reader.rotations(i)[0] for i in indexes]) \
+        if node_reader.rotated else None
     # For Sonata and new emodel hoc template, we may need additional attributes for building metype
     add_params_list = _getNeededAttributes(node_reader, circuit_conf.METypePath, emodels, indexes) \
         if not is_mvd and has_extra_data else None
 
     meinfo = METypeManager()
     meinfo.load_infoNP(gidvec, morpho_names, emodels, threshold_currents, holding_currents,
-                       exc_mini_freqs, inh_mini_freqs, add_params_list)
+                       exc_mini_freqs, inh_mini_freqs, positions, rotations, add_params_list)
 
     return gidvec, meinfo, total_cells
 
