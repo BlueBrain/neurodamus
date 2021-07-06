@@ -2,6 +2,26 @@
 Change Log
 ==========
 
+
+Version 2.7.0
+=============
+**July 7, 2021**
+
+*New Features*
+ * Initial Framework for Python modifications + TTX
+ * Implement python helpers for common stim
+ * V6 cells provide API (local_to_global_coord_mapping) to move cell points to absolute position
+
+*Improvements*
+ * BBPBGLIB-675 Neurodamus to re-launch using special
+ * MorphIO lazy loading to avoid issue #316
+ * Validation of report configuration
+ * [NGVDISS-89] glia_2013 superseded by mcd
+
+*Bug fixes*
+ * local_nodes to handle case of 0 count
+
+
 Version 2.6.0
 =============
 **May 11, 2021**
@@ -21,12 +41,14 @@ Version 2.6.0
  * Checks for non-negative config params
  * Don't raise exception if replay file is empty
 
+
 Version 2.5.3
 =============
 
 *Fixes*
  * Attach source netconns in additional populations and CoreNeuron [critical c/53194]
  * Type field in StimulusInject to select the proper cell manager
+
 
 Version 2.5.2
 =============
