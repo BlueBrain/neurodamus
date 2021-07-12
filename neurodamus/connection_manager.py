@@ -554,7 +554,11 @@ class ConnectionManagerBase(object):
                 continue
             point = self._target_manager.locationToPoint(
                 cur_conn.tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
-            cur_conn.add_synapse(point, syn_params, base_id + i)
+            if not point.sclst[0].exists():
+                logging.warning("SKIPPED Synapse %s on gid %d. Non-existing target point.",
+                                base_id + i, cur_conn.tgid)
+            else:
+                cur_conn.add_synapse(point, syn_params, base_id + i)
 
     # -
     def _iterate_conn_params(self, src_target, dst_target, gids=None, show_progress=False):
