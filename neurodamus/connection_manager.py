@@ -647,8 +647,9 @@ class ConnectionManagerBase(object):
                                      conn_population=None):
         """Retrives the connections between src-dst cell targets
 
-        Optional gidvec (post) / conn_population restrict the set of
-        connections to be returned
+        Args:
+             gidvec: (optional) post gids to select (original, w/o offsetting)
+             conn_population: restrict the set of connections to be returned
         """
         src_target_spec = TargetSpec(src_target_name)
         dst_target_spec = TargetSpec(dst_target_name)
@@ -658,7 +659,6 @@ class ConnectionManagerBase(object):
         dst_target = self._target_manager.getTarget(dst_target_spec.name)
         gidvec = self._raw_gids if gidvec is None else gidvec
         tgid_offset = self._cell_manager.local_nodes.offset
-        sgid_offset = self._src_cell_manager.local_nodes.offset
 
         populations = (conn_population,) if conn_population is not None \
             else self._populations.values()
@@ -667,11 +667,10 @@ class ConnectionManagerBase(object):
             logging.debug("Connections from population %s", population)
             for raw_tgid in gidvec:
                 tgid = raw_tgid + tgid_offset
-                if not dst_target.contains(raw_tgid) or tgid not in population:
+                if not dst_target.contains(tgid) or tgid not in population:
                     continue
                 for conn in population[tgid]:
-                    raw_sgid = conn.sgid - sgid_offset
-                    if src_target is None or src_target.completeContains(raw_sgid):
+                    if src_target is None or src_target.completeContains(conn.sgid):
                         yield conn
 
     # -
@@ -680,7 +679,7 @@ class ConnectionManagerBase(object):
 
         Args:
             conn_config: The connection configuration dict
-            gidvec: A restricted set of gids to configure
+            gidvec: A restricted set of gids to configure (original, w/o offsetting)
         """
         src_target = conn_config["Source"]
         dst_target = conn_config["Destination"]

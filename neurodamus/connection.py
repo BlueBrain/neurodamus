@@ -317,8 +317,9 @@ class Connection(ConnectionBase):
             with Nd.section_in_stack(sec):
                 syn_obj = self._create_synapse(cell, syn_params, x,
                                                self._synapse_ids[syn_i], base_seed)
+
             self._synapses.append(syn_obj)
-            # syn_obj.verboseLevel = 1  # debugging purposes
+            # syn_obj.verboseLevel = self.tgid  # debugging purposes
 
             if attach_src_cell:
                 self._attach_source_cell(syn_obj, syn_params)
