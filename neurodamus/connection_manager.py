@@ -241,6 +241,8 @@ class ConnectionManagerBase(object):
     cell_manager = property(lambda self: self._cell_manager)
     src_cell_manager = property(lambda self: self._src_cell_manager)
     is_file_open = property(lambda self: bool(self._synapse_reader))
+    src_pop_offset = property(lambda self: self._src_cell_manager.local_nodes.offset)
+    target_pop_offset = property(lambda self: self._cell_manager.local_nodes.offset)
 
     # -
     def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
@@ -560,6 +562,15 @@ class ConnectionManagerBase(object):
             else:
                 cur_conn.add_synapse(point, syn_params, base_id + i)
 
+    def get_updated_population_offsets(self, src_target, dst_target):
+        sgid_offset = self._src_cell_manager.local_nodes.offset
+        tgid_offset = self._cell_manager.local_nodes.offset
+        if src_target:
+            src_target.set_offset(sgid_offset)
+        if dst_target:
+            dst_target.set_offset(tgid_offset)
+        return sgid_offset, tgid_offset
+
     # -
     def _iterate_conn_params(self, src_target, dst_target, gids=None, show_progress=False):
         """A generator which loads synapse data and yields tuples(sgid, tgid, synapses)
@@ -575,13 +586,7 @@ class ConnectionManagerBase(object):
         if show_progress:
             gids = ProgressBar.iter(gids)
         created_conns_0 = self._cur_population.count()
-        sgid_offset = self._src_cell_manager.local_nodes.offset
-        tgid_offset = self._cell_manager.local_nodes.offset
-        # Ensure targets that are used are up to date with the offsets
-        if src_target:
-            src_target.set_offset(sgid_offset)
-        if dst_target:
-            dst_target.set_offset(tgid_offset)
+        sgid_offset, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
 
         for base_tgid in gids:
             tgid = base_tgid + tgid_offset
@@ -658,7 +663,7 @@ class ConnectionManagerBase(object):
         assert dst_target_spec.name, "No target specified for `get_target_connections`"
         dst_target = self._target_manager.getTarget(dst_target_spec.name)
         gidvec = self._raw_gids if gidvec is None else gidvec
-        tgid_offset = self._cell_manager.local_nodes.offset
+        _, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
 
         populations = (conn_population,) if conn_population is not None \
             else self._populations.values()
@@ -1100,10 +1105,13 @@ class SynapseRuleManager(ConnectionManagerBase):
             start_delay = Nd.t
             log_verbose("Restore: Delivering events only after t=%.4f", start_delay)
 
+        src_pop_offset = self.src_pop_offset
+
         for conn in self.get_target_connections(src_target_name, dst_target_name):
-            if conn.sgid not in spike_manager:
+            raw_sgid = conn.sgid - src_pop_offset
+            if raw_sgid not in spike_manager:
                 continue
-            conn.replay(spike_manager[conn.sgid], start_delay)
+            conn.replay(spike_manager[raw_sgid], start_delay)
             replayed_count += 1
 
         total_replays = MPI.allreduce(replayed_count, MPI.SUM)
@@ -1181,14 +1189,15 @@ class GapJunctionManager(ConnectionManagerBase):
     def finalize(self, *_, **_kw):
         super().finalize(conn_type="Gap-Junctions")
 
-    def _finalize_conns(self, tgid, conns, *_, **_kw):
-        metype = self._cell_manager.getMEType(tgid)
+    def _finalize_conns(self, final_tgid, conns, *_, **_kw):
+        metype = self._cell_manager.getMEType(final_tgid)
 
         if self._gj_offsets is None:
             for conn in reversed(conns):
                 conn.finalize_gap_junctions(metype, 0, 0)
         else:
-            t_gj_offset = self._gj_offsets[tgid - 1]   # Old nrn_gj uses offsets
+            raw_tgid_0base = final_tgid - self.target_pop_offset - 1
+            t_gj_offset = self._gj_offsets[raw_tgid_0base]   # Old nrn_gj uses offsets
             for conn in reversed(conns):
-                conn.finalize_gap_junctions(metype, t_gj_offset, self._gj_offsets[conn.sgid - 1])
+                conn.finalize_gap_junctions(metype, t_gj_offset, self._gj_offsets[raw_tgid_0base])
         return len(conns)

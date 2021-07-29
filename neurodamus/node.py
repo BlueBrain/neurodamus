@@ -597,6 +597,10 @@ class Node:
             conn_manager = self._circuits.get_edge_manager(src_target.population,
                                                            dst_target.population,
                                                            ptype_cls)
+            if not conn_manager:
+                logging.error("No edge manager found among populations %s -> %s",
+                              src_target.population, dst_target.population)
+                raise ConfigurationError("Unknown replay pathway. Check Source / Target")
             conn_manager.replay(spike_manager, src_target.name, dst_target.name, delay)
 
     # -
