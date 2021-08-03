@@ -210,7 +210,7 @@ ENDVERBATIM
 
 
 : Write report count as first line
-PROCEDURE write_report_count() {  : int reportcount
+PROCEDURE write_report_count() {
 VERBATIM
 #ifndef CORENEURON_BUILD
     if(nrnmpi_myid > 0) {
@@ -225,8 +225,8 @@ VERBATIM
 ENDVERBATIM
 }
 
-: Write report count as first line
-PROCEDURE write_spike_population() {  : str population_name
+: Write population count as first line
+PROCEDURE write_population_count() {
 VERBATIM
 #ifndef CORENEURON_BUILD
     if(nrnmpi_myid > 0) {
@@ -235,7 +235,27 @@ VERBATIM
     char* filename = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(filename, "%s/%s", outputdir, REPORT_CONFIG_FILE);
     FILE *fp = open_file(filename, "a");
-    fprintf(fp, "%s\n", hoc_gargstr(1));
+    fprintf(fp, "%d\n", (int)*getarg(1));
+    fclose(fp);
+#endif
+ENDVERBATIM
+}
+
+: Write spike population name and gid offset
+PROCEDURE write_spike_population() {
+VERBATIM
+#ifndef CORENEURON_BUILD
+    if(nrnmpi_myid > 0) {
+        return 0;
+    }
+    char* filename = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
+    sprintf(filename, "%s/%s", outputdir, REPORT_CONFIG_FILE);
+    FILE *fp = open_file(filename, "a");
+    fprintf(fp, "%s", hoc_gargstr(1));
+    if (ifarg(2)) {
+        fprintf(fp, " %d", (int)*getarg(2));
+    }
+    fprintf(fp, "\n");
     fclose(fp);
 #endif
 ENDVERBATIM

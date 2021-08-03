@@ -162,6 +162,41 @@ VERBATIM
 ENDVERBATIM
 }
 
+PROCEDURE create_spikefile() {
+VERBATIM
+#ifndef CORENEURON_BUILD
+#ifndef DISABLE_REPORTINGLIB
+    char output_dir[256] = ".";
+    // output dir
+    if (ifarg(1)) {
+        sprintf(output_dir,"%s", gargstr(1));
+    }
+    sonata_create_spikefile(output_dir);
+#endif
+#endif
+ENDVERBATIM
+}
+
+PROCEDURE write_spike_populations() {
+VERBATIM
+#ifndef CORENEURON_BUILD
+#ifndef DISABLE_REPORTINGLIB
+    sonata_write_spike_populations();
+#endif
+#endif
+ENDVERBATIM
+}
+
+PROCEDURE close_spikefile() {
+VERBATIM
+#ifndef CORENEURON_BUILD
+#ifndef DISABLE_REPORTINGLIB
+    sonata_close_spikefile();
+#endif
+#endif
+ENDVERBATIM
+}
+
 PROCEDURE write_spikes() {
 VERBATIM
 #ifndef CORENEURON_BUILD
@@ -203,7 +238,57 @@ VERBATIM
     for(i=0; i<num_spikes; ++i) {
         int_gid[i] = (int)gid[i];
     }
-    sonata_write_spikes(population_name, time, num_spikes, int_gid, num_gids, output_dir);
+    sonata_create_spikefile(output_dir);
+    sonata_add_spikes_population(population_name, 0, time, num_spikes, int_gid, num_gids);
+    sonata_write_spike_populations();
+    sonata_close_spikefile();
+    free(int_gid);
+#endif
+#endif
+ENDVERBATIM
+}
+
+PROCEDURE add_spikes_population() {
+VERBATIM
+#ifndef CORENEURON_BUILD
+#ifndef DISABLE_REPORTINGLIB
+
+    char population_name[256] = "All";
+    int population_offset = 0;
+    double *time = NULL, *gid = NULL;
+    int num_spikes = 0;
+    int num_gids = 0;
+    void* v1;
+    void* v2;
+
+    // first vector is time of spikes
+    if (ifarg(1)) {
+        v1 = vector_arg(1);
+        time = vector_vec(v1);
+        num_spikes = vector_capacity(v1);
+    }
+
+    // second vector is associated gids
+    if (ifarg(2)) {
+        v2 = vector_arg(2);
+        gid = vector_vec(v2);
+        num_gids = vector_capacity(v2);
+    }
+
+    if (ifarg(3)) {
+        sprintf(population_name,"%s", gargstr(3));
+    }
+
+    if (ifarg(4)) {
+        population_offset = (int) *getarg(4);
+    }
+
+    int* int_gid = malloc(num_gids * sizeof(int));
+    int i;
+    for(i=0; i<num_spikes; ++i) {
+        int_gid[i] = (int)gid[i];
+    }
+    sonata_add_spikes_population(population_name, population_offset, time, num_spikes, int_gid, num_gids);
     free(int_gid);
 #endif
 #endif
