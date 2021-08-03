@@ -21,6 +21,10 @@ class Vector(array):
     def x(self):
         return self
 
+    def __add__(self, other):
+        array.extend(self, other)
+        return self
+
 
 class List(list):
     """Behavior similar to Hoc List

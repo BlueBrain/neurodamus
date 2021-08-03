@@ -122,7 +122,8 @@ def exec_test_ttx_modification():
     n.enable_stimulus()
     n.sim_init()
     n.solve()
-    nspike_noTTX = len(n._spike_vecs[0])
+    # _spike_vecs is a list of (spikes, ids)
+    nspike_noTTX = sum(len(spikes) for spikes, _ in n._spike_vecs)
 
     # append modification to config directly
     TTX_mod = compat.Map(Nd.Map())
@@ -139,7 +140,7 @@ def exec_test_ttx_modification():
     n.enable_modifications()
     n.sim_init()
     n.solve()
-    nspike_TTX = len(n._spike_vecs[0])
+    nspike_TTX = sum(len(spikes) for spikes, _ in n._spike_vecs)
 
     assert(nspike_noTTX > 0 and nspike_TTX == 0)
 

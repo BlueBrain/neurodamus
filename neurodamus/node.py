@@ -145,23 +145,31 @@ class CircuitManager:
     def base_cell_manager(self):
         return self.get_node_manager(None)
 
+    """ Write infor in sim_conf/populations_offset.dat
+        format population name::gid offset::population alias
+    """
     def write_population_offsets(self):
         with open(self._pop_offset_file(create=True), "w") as f:
-            for pop, offset in self.get_population_offsets().items():
-                f.write("{}::{}".format(pop or '', offset))
+            pop_offsets, alias_pop = self.get_population_offsets()
+            for alias, pop in alias_pop.items():
+                f.write("{}::{}::{}\n".format(pop or ' ', pop_offsets[pop], alias or ' '))
 
     def get_population_offsets(self):
-        offsets = {pop_name: node_manager.local_nodes.offset
-                   for pop_name, node_manager in self.node_managers.items()}
-        for alias, pop in self.alias.items():
-            offsets[alias] = self.node_managers[pop].local_nodes.offset
-        return offsets
+        pop_offsets = {pop_name: node_manager.local_nodes.offset
+                       for pop_name, node_manager in self.node_managers.items()}
+        alias_pop = {alias: pop_name for alias, pop_name in self.alias.items()}
+        return pop_offsets, alias_pop
 
     @classmethod
     def read_population_offsets(cls):
+        pop_offsets = {}
+        alias_pop = {}
         with open(cls._pop_offset_file(), "r") as f:
-            offsets = [line.split("::") for line in f]
-        return {entry[0] or None: int(entry[1]) for entry in offsets}
+            offsets = [line.strip().split("::") for line in f]
+            for entry in offsets:
+                pop_offsets[entry[0] or None] = int(entry[1])
+                alias_pop[entry[2] or None] = entry[0] or None
+        return pop_offsets, alias_pop
 
     @classmethod
     def _pop_offset_file(self, create=False):
@@ -203,7 +211,8 @@ class Node:
             # This is global initialization, happening once, regardless of number of cycles
             log_stage("Setting up Neurodamus configuration")
             self._pc = Nd.pc
-            self._spike_vecs = None
+            self._spike_vecs = []
+            self._spike_populations = []
             Nd.execute("cvode = new CVode()")
             SimConfig.init(config_file, options)
             self._run_conf = SimConfig.run_conf
@@ -637,10 +646,9 @@ class Node:
         # Create a map of offsets so that it can be used even on coreneuron save-restore
         if self._circuits.initialized():
             self._circuits.write_population_offsets()
-            pop_offsets = self._circuits.get_population_offsets()
+            pop_offsets, alias_pop = self._circuits.get_population_offsets()
         else:
-            pop_offsets = CircuitManager.read_population_offsets()
-
+            pop_offsets, alias_pop = CircuitManager.read_population_offsets()
         if SimConfig.use_coreneuron:
             SimConfig.coreneuron.write_report_count(len(reports_conf))
 
@@ -687,9 +695,11 @@ class Node:
             target_population = rep_target.population or self._target_spec.population
             population_offset = 0
             cell_manager = self._circuits.get_node_manager(target_population)
-            if pop_offsets[target_population] > 0:  # dont reset if not needed (recent hoc API)
-                target.set_offset(pop_offsets[target_population])
-                population_offset = pop_offsets[target_population]
+            offset = pop_offsets[target_population] if target_population in pop_offsets \
+                     else pop_offsets[alias_pop[target_population]]
+            if offset > 0:  # dont reset if not needed (recent hoc API)
+                target.set_offset(offset)
+                population_offset = offset
 
             report_on = rep_conf["ReportOn"]
             rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
@@ -802,8 +812,13 @@ class Node:
         MPI.check_no_errors()
 
         if SimConfig.use_coreneuron:
-            SimConfig.coreneuron.write_spike_population(self._target_spec.population or
-                                                        self._default_population)
+            # write spike populations
+            if hasattr(SimConfig.coreneuron, "write_population_count"):
+                SimConfig.coreneuron.write_population_count(len(pop_offsets))
+            for key, value in pop_offsets.items():
+                population_name = key or "All"
+                population_offset = value
+                SimConfig.coreneuron.write_spike_population(population_name, population_offset)
 
         if not SimConfig.use_coreneuron:
             # Report Buffer Size hint in MB.
@@ -934,9 +949,11 @@ class Node:
 
         # create a spike_id vector which stores the pairs for spikes and timings for
         # every engine
-        self._spike_vecs = (Nd.Vector(), Nd.Vector())
         for cell_manager in self._circuits.all_node_managers():
-            cell_manager.record_spikes(append_spike_vecs=self._spike_vecs)
+            self._spike_populations.append(
+                (cell_manager.population_name, cell_manager.local_nodes.offset))
+            self._spike_vecs.append(cell_manager.record_spikes() if cell_manager.record_spikes()
+                                    else (Nd.Vector(), Nd.Vector()))
 
         self._pc.timeout(200)  # increase by 10x
 
@@ -1196,14 +1213,37 @@ class Node:
         logging.info("Writing spikes to %s", outfile)
         output_root = SimConfig.output_root
         outfile = ospath.join(output_root, outfile)
-        spikevec, idvec = self._spike_vecs
-
+        spikevec = Nd.Vector()
+        idvec = Nd.Vector()
+        # merge spike_vecs and id_vecs for SpikeWriter
+        for spikes, ids in self._spike_vecs:
+            spikevec.append(spikes)
+            idvec.append(ids)
         spikewriter = Nd.SpikeWriter()
         spikewriter.write(spikevec, idvec, outfile)
+
         # SONATA SPIKES
-        population = self._target_spec.population
-        extra_args = (population,) if population else ()
-        self._sonatareport_helper.write_spikes(spikevec, idvec, output_root, *extra_args)
+        if hasattr(self._sonatareport_helper, "create_spikefile"):
+            # Write spike report for multiple populations if exist
+            # create a sonata spike file
+            self._sonatareport_helper.create_spikefile(output_root)
+            # write spikes per population
+            for (population, population_offset), (spikevec, idvec) in zip(self._spike_populations,
+                                                                          self._spike_vecs):
+                extra_args = (population, population_offset) if population \
+                    else ("All", population_offset)
+                self._sonatareport_helper.add_spikes_population(spikevec, idvec, *extra_args)
+            # write all spike populations
+            self._sonatareport_helper.write_spike_populations()
+            # close the spike file
+            self._sonatareport_helper.close_spikefile()
+        else:
+            # fallback: write spike report with one single population "ALL"
+            logging.warning("Writing spike reports with multiple populations is not supported. "
+                            "If needed, please update to a newer version of neurodamus.")
+            population = self._target_spec.population or "All"
+            extra_args = (population,)
+            self._sonatareport_helper.write_spikes(spikevec, idvec, output_root, *extra_args)
 
     def dump_cell_config(self):
         if not self._pr_cell_gid:
