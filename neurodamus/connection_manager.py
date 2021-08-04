@@ -1197,7 +1197,9 @@ class GapJunctionManager(ConnectionManagerBase):
                 conn.finalize_gap_junctions(metype, 0, 0)
         else:
             raw_tgid_0base = final_tgid - self.target_pop_offset - 1
+            src_pop_offset = self.src_pop_offset
             t_gj_offset = self._gj_offsets[raw_tgid_0base]   # Old nrn_gj uses offsets
             for conn in reversed(conns):
-                conn.finalize_gap_junctions(metype, t_gj_offset, self._gj_offsets[raw_tgid_0base])
+                raw_sgid_0base = conn.sgid - src_pop_offset - 1
+                conn.finalize_gap_junctions(metype, t_gj_offset, self._gj_offsets[raw_sgid_0base])
         return len(conns)
