@@ -223,16 +223,18 @@ class PointNeuronConnection(ConnectionBase):
         target_cell = target_neuron.CCell
         id_syn = target_cell.initSynapse(nb_synapses_)
         netconns_numbers = 0
+        gid_offset = cell_distributor.local_nodes.offset
         for i in range(nb_synapses_):
-            source_gid = syn_params.sgid[i]
+            base_sgid = syn_params.sgid[i]
+            source_gid = base_sgid + gid_offset
             if source_gid in self.sgids:
                 weight = syn_params.weight[i] if syn_params.weight[i] > 1e-9 else 0.
                 target_cell.addSynapse(id_syn + i, weight, syn_params.tau_rec[i],
                                        syn_params.tau_fac[i], syn_params.U[i],
                                        syn_params.delay[i],  # used for last_spike to match Nest
                                        syn_params.x[i], syn_params.u[i])
-                if source_gid in self._vecstims:
-                    connection = Nd.NetCon(self._vecstims[source_gid], target_cell)
+                if base_sgid in self._vecstims:
+                    connection = Nd.NetCon(self._vecstims[base_sgid], target_cell)
                 else:
                     connection = cell_distributor.pc.gid_connect(source_gid, target_cell)
                 connection.weight[0] = id_syn + i
@@ -416,11 +418,9 @@ class PointNeuronSynapseManager(SynapseRuleManager):
     def connect_all(self, weight_factor=1, only_gids=None, **kwargs):
         pop = self._cur_population
         created_conns_0 = pop.count()
-        gids = self._raw_gids if only_gids is None else only_gids
-        for tgid in ProgressBar.iter(gids):
-            synapses_params = self._synapse_reader.get_synapse_parameters(tgid)
-            cur_conn = pop.get_or_create_point_connection(synapses_params.sgid, tgid)
-            cur_conn.add_point_synapses(synapses_params)
+        for sgids, tgid, syns_params in self._iterate_conn_params(None, None, only_gids, True):
+            cur_conn = pop.get_or_create_point_connection(sgids, tgid)
+            cur_conn.add_point_synapses(syns_params)
         return pop.count() - created_conns_0
 
     def connect_group(self, src_target_name, dst_target_name, synapse_type_restrict=None):
@@ -431,7 +431,6 @@ class PointNeuronSynapseManager(SynapseRuleManager):
                     dst_target_name (str): The target of the destination cells
                     synapse_type_restrict(int): Create only given synType synapses
                 """
-        conn_kwargs = {'synapse_mode': self._synapse_mode}
         pop = self._cur_population
         src_tname = TargetSpec(src_target_name).name
         dst_tname = TargetSpec(dst_target_name).name
@@ -440,7 +439,7 @@ class PointNeuronSynapseManager(SynapseRuleManager):
         log_verbose("Connecting group %s -> %s", src_tname, dst_tname)
 
         for sgids, tgid, syns_params in self._iterate_conn_params(src_target, dst_target):
-            cur_conn = pop.get_or_create_connection(sgids, tgid, **conn_kwargs)
+            cur_conn = pop.get_or_create_point_connection(sgids, tgid)
             cur_conn.add_point_synapses(syns_params)
 
     def _iterate_conn_params(self, src_target, dst_target, gids=None, show_progress=False):
@@ -453,32 +452,39 @@ class PointNeuronSynapseManager(SynapseRuleManager):
             show_progress: Display a progress bar as tgids are processed
         """
         if gids is None:
-            gids = self._local_gids
+            gids = self._raw_gids
         if show_progress:
             gids = ProgressBar.iter(gids)
         created_conns = 0
 
-        for tgid in gids:
+        sgid_offset, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
+        for base_tgid in gids:
+            tgid = base_tgid + tgid_offset
             if dst_target is not None and not dst_target.contains(tgid):
                 continue
 
-            # Retrieve all synapses for tgid
-            syns_params = self._synapse_reader.get_synapse_parameters(tgid)
+            # Retrieve all synapses for base_tgid
+            syns_params = self._synapse_reader.get_synapse_parameters(base_tgid)
+            base_sgids = []
             sgids = []
             yielded_src_gids = compat.Vector("i")
 
-            for sgid in syns_params.sgid:
-                if src_target.completeContains(sgid):
+            for base_sgid in syns_params.sgid:
+                sgid = base_sgid + sgid_offset
+                if src_target is None or src_target.completeContains(sgid):
                     sgids.append(sgid)
-            syns_params.filter_sgids(sgids)
+                    base_sgids.append(base_sgid)
+            syns_params.filter_sgids(base_sgids)
+            if not sgids:
+                continue
             yield sgids, tgid, syns_params
             yielded_conns = len(sgids)
 
-            for sgid in sgids:
-                if GlobalConfig.debug_conn == [tgid]:
-                    yielded_src_gids.append(sgid)
-                elif GlobalConfig.debug_conn == [sgid, tgid]:
-                    log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s", sgid, tgid,
+            for base_sgid in base_sgids:
+                if GlobalConfig.debug_conn == [base_tgid]:
+                    yielded_src_gids.append(base_sgid)
+                elif GlobalConfig.debug_conn == [base_sgid, base_tgid]:
+                    log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s", base_sgid, base_tgid,
                             syns_params)
 
             created_conns += yielded_conns
@@ -508,16 +514,20 @@ class PointNeuronSynapseManager(SynapseRuleManager):
         Optional gidvec (post) / conn_population restrict the set of
         connections to be returned
         """
+        src_target_spec = TargetSpec(src_target_name)
         dst_target_spec = TargetSpec(dst_target_name)
+        src_target = self._target_manager.getTarget(src_target_spec.name)
         dst_target = self._target_manager.getTarget(dst_target_spec.name)
         gidvec = self._raw_gids if gidvec is None else gidvec
+        _, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
 
         populations = (conn_population,) if conn_population is not None \
             else self._populations.values()
 
         for population in populations:
             log_verbose("Connections from population %s", population)
-            for tgid in gidvec:
+            for base_tgid in gidvec:
+                tgid = base_tgid + tgid_offset
                 if not dst_target.contains(tgid) or tgid not in population:
                     continue
                 for conn in population[tgid]:
@@ -540,14 +550,17 @@ class PointNeuronSynapseManager(SynapseRuleManager):
             start_delay = Nd.t
             log_verbose("Restore: Delivering events only after t=%.4f", start_delay)
 
+        src_pop_offset = self.src_pop_offset
         for conn in self.get_target_connections(src_target_name, dst_target_name):
             for sgid in conn.sgids:
-                if sgid in spike_manager:
-                    if sgid not in self.vecstims:
-                        self.vecstims[sgid] = conn.replay(sgid, spike_manager[sgid], None,
-                                                          start_delay)
+                base_sgid = sgid - src_pop_offset
+                if base_sgid in spike_manager:
+                    if base_sgid not in self.vecstims:
+                        self.vecstims[base_sgid] = conn.replay(base_sgid, spike_manager[base_sgid],
+                                                               None, start_delay)
                     else:
-                        conn.replay(sgid, spike_manager[sgid], self.vecstims[sgid], start_delay)
+                        conn.replay(base_sgid, spike_manager[base_sgid], self.vecstims[base_sgid],
+                                    start_delay)
 
         replayed_count = len(self.vecstims)
         logging.info("total unique sgids replayed: {}".format(len(self.vecstims)))
