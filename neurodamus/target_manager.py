@@ -1,12 +1,19 @@
 import itertools
 import logging
 import os.path
+from abc import abstractmethod
 from functools import lru_cache
+from typing import List
 
 import numpy
 
-from .core.configuration import GlobalConfig, find_input_file, ConfigurationError
 from .core import MPI, NeurodamusCore as Nd
+from .core.configuration import GlobalConfig, find_input_file
+from .core.nodeset import NodeSet
+
+
+class TargetError(Exception):
+    """A Exception class specific to data error with targets and nodesets"""
 
 
 class TargetSpec:
@@ -56,11 +63,16 @@ class TargetSpec:
 
 
 class TargetManager:
+
     def __init__(self, run_conf):
         self._run_conf = run_conf
         self.parser = Nd.TargetParser()
         self.hoc = None  # The hoc level target manager
-        self.circuit_nodeset_readers = {}  # circuit_id to nodeset reader
+        self._targets = {}
+        nodesets_file = run_conf.get("node_sets_file")
+        self._nodeset_reader = nodesets_file and NodeSetReader(nodesets_file)
+        if MPI.rank == 0:
+            self.parser.isVerbose = 1
 
     def load_targets(self, circuit):
         """Provided that the circuit location is known and whether a user.target file has been
@@ -68,56 +80,53 @@ class TargetManager:
         Note that these will be moved into a TargetManager after the cells have been distributed,
         instantiated, and potentially split.
         """
-        if MPI.rank == 0:
-            self.parser.isVerbose = 1
-
         if circuit.CircuitPath:
-            start_target_file = os.path.join(circuit.CircuitPath, "start.target")
-            if not os.path.isfile(start_target_file):
-                logging.warning("start.target not available! Check circuit.")
-            else:
-                self._open_target_file(circuit, start_target_file)
+            self._try_open_start_target(circuit.CircuitPath)
 
-        if "TargetFile" in circuit:
-            user_target = find_input_file(circuit["TargetFile"])
-            self._open_target_file(circuit, user_target, True)
+        target_file = circuit.get("TargetFile")
+        if target_file and not target_file.endswith(".json"):
+            self.load_user_target(target_file)
 
+        nodes_file = circuit.get("CellLibraryFile")
+        if nodes_file and nodes_file.endswith(".h5") and self._nodeset_reader:
+            self._nodeset_reader.register_node_file(nodes_file)
+
+    def _try_open_start_target(self, circuit_path):
+        start_target_file = os.path.join(circuit_path, "start.target")
+        if not os.path.isfile(start_target_file):
+            logging.warning("start.target not available! Check circuit.")
+        else:
+            self.parser.open(start_target_file, False)
+
+    def load_user_target(self, target_file):
+        # Old target files. Notice new targets with same should not happen
+        user_target = find_input_file(target_file)
+        self.parser.open(user_target, True)
         if MPI.rank == 0:
             logging.info(" => Loaded %d targets", self.parser.targetList.count())
             if GlobalConfig.verbosity >= 3:
                 self.parser.printCellCounts()
 
-    def _open_target_file(self, circuit, target_file, print_counts=False):
-        if target_file.endswith(".json"):
-            if not circuit.CellLibraryFile or not circuit.CellLibraryFile.endswith(".h5"):
-                raise ConfigurationError("NodeSets require Sonata Nodes")
-            self.circuit_nodeset_readers[circuit._name] = NodeSetReader(
-                target_file,
-                circuit.CellLibraryFile,
-                TargetSpec(circuit.CircuitTarget).population,
-            )
+    def register_target(self, target):
+        self._targets[target.name] = target
+
+    def get_target(self, target_spec: TargetSpec):
+        target_name = target_spec.name
+        simplename = target_spec.simple_name
+        if simplename in self._targets:
+            return self._targets[simplename]
+
+        target = self._nodeset_reader and self._nodeset_reader.get_target(target_spec)
+        if target is not None:
+            logging.info("Retrieved gids from Sonata nodeset. Targets are Cell only")
         else:
-            self.parser.open(target_file, print_counts)
-
-    @lru_cache(maxsize=None)
-    def get_target(self, target_name, circuit=None):
-        sonata_nodeset_reader = self.circuit_nodeset_readers.get(circuit)
-        if sonata_nodeset_reader:
-            target = sonata_nodeset_reader.get_target(target_name)
-            if target:
-                logging.warning("Retrieved gids from Sonata nodeset. Targets are Cell only")
-                self.parser.updateTargetList(target)
-            return target
-        # Fallback to old style targets. Prefer hoc manager since it supports cells as targets
-        if self.hoc is not None:
-            return self.hoc.getTarget(target_name)
-        return self.parser.getTarget(target_name)
-
-    def get_target_gids(self, target_name, circuit=None):
-        gids = self.get_target(target_name, circuit).completegids()
-        if not isinstance(gids, numpy.ndarray):
-            gids = gids.as_numpy().astype("uint32")
-        return gids
+            if self.hoc is not None:
+                hoc_target = self.hoc.getTarget(target_name)
+            else:
+                hoc_target = self.parser.getTarget(target_name)
+            target = _HocTarget(target_name, target_spec.population, hoc_target)
+        self._targets[simplename] = target
+        return target
 
     def init_hoc_manager(self, cell_manager):
         # give a TargetManager the TargetParser's completed targetList
@@ -150,26 +159,6 @@ class TargetManager:
             target.gidMembers.append(gid)
 
         return new_targets
-
-    def get_target_info(self, target_spec, verbose=False):
-        """Count the total number of the target cells, and get the max gid
-        if CircuitTarget is not specified in the configuration, use Mosaic target
-        """
-        target_name = target_spec.name
-        if target_name is None:
-            logging.warning("No circuit target was set. Assuming Mosaic")
-            target_name = "Mosaic"
-        target_obj = self.get_target(target_name)
-        cell_count = target_obj.getCellCount()
-        all_gids = target_obj.completegids()
-        if verbose:
-            logging.info(
-                "CIRCUIT: Population: %s, Target: %s (%d Cells)",
-                target_spec.population or "(default)",
-                target_spec.name or "(Mosaic)",
-                cell_count,
-            )
-        return cell_count, max(all_gids) if all_gids is not None and len(all_gids) else 0
 
     def get_target_points(self, target, cell_manager, cell_use_compartment_cast=True):
         """Helper to retrieve the points of a target.
@@ -204,8 +193,8 @@ class TargetManager:
         ):
             return True
         # From this point, both are sub targets (and not the same)
-        cells1 = self.get_target(target1_spec.name).completegids()
-        cells2 = self.get_target(target2_spec.name).completegids()
+        cells1 = self.get_target(target1_spec).get_gids()
+        cells2 = self.get_target(target2_spec).get_gids()
         return not set(cells1).isdisjoint(cells2)
 
     def pathways_overlap(self, conn1, conn2, equal_only=False):
@@ -221,21 +210,128 @@ class NodeSetReader:
     Implements reading Sonata Nodesets
     """
 
-    def __init__(self, nodeset_file, node_file, population_name="All"):
+    def __init__(self, nodeset_file):
         import libsonata
         self.nodesets = libsonata.NodeSets.from_file(nodeset_file)
-        self._population = libsonata.NodeStorage(node_file).open_population(population_name)
+        self._population_stores = {}
 
-    def get_target(self, nodeset_name):
+    def register_node_file(self, node_file):
+        import libsonata
+        storage = libsonata.NodeStorage(node_file)
+        for pop_name in storage.population_names:
+            self._population_stores[pop_name] = storage
+
+    def __contains__(self, nodeset_name):
+        return nodeset_name in self.nodesets.names
+
+    @property
+    def names(self):
+        return self.nodesets.names
+
+    def get_target(self, target_spec: TargetSpec):
+        """Build node sets capable of offsetting.
+        The empty population has a special meaning in Sonata, it matches
+        all populations in simulation
+        """
+        nodeset_name = target_spec.name
+        pop_name = target_spec.population
         if nodeset_name not in self.nodesets.names:
-            logging.warning("File doesn't contain nodeset %s", nodeset_name)
             return None
-        try:
-            gids = self.nodesets.materialize(nodeset_name, self._population).flatten()
-        except Exception as e:
-            raise ConfigurationError(
-                "Cant apply nodeset to nodes file. Possible mismatch"
-            ) from e
-        target = Nd.Target(nodeset_name)
+        if pop_name and pop_name not in self._population_stores:
+            raise TargetError("No loaded node file contains population " + pop_name)
+
+        def _get_nodeset(pop_name):
+            storage = self._population_stores.get(pop_name)
+            population = storage.open_population(pop_name)
+            ns = NodeSet(self.nodesets.materialize(nodeset_name, population).flatten())
+            ns.register_global(pop_name)
+            return ns
+
+        nodesets = [_get_nodeset(pop_name) for pop_name in self._population_stores]
+        return NodesetTarget(target_spec.simple_name, nodesets)
+
+
+class _TargetInterface:
+    """
+    Methods that target/target wrappers should implement
+    """
+
+    def __len__(self):
+        return self.gid_count()
+
+    @abstractmethod
+    def gid_count(self):
+        return NotImplemented
+
+    @abstractmethod
+    def get_gids(self):
+        return NotImplemented
+
+    @abstractmethod
+    def get_hoc_target(self):
+        return NotImplemented
+
+
+class NodesetTarget(_TargetInterface):
+    def __init__(self, name, nodesets: List[NodeSet]):
+        self.name = name
+        self.nodesets = nodesets
+
+    def gid_count(self):
+        return sum(len(ns) for ns in self.nodesets)
+
+    def get_gids(self):
+        if not self.nodesets:
+            logging.warning("Nodeset '%s' can't be materialized. No node populations", self.name)
+            return []
+        gids = self.nodesets[0].final_gids()
+        for extra_nodes in self.nodesets[1:]:
+            gids.extend(extra_nodes.final_gids())
+        return numpy.array(gids)
+
+    @lru_cache()
+    def get_hoc_target(self):
+        gids = self.get_gids()
+        target = Nd.Target(self.name)
         target.gidMembers.append(Nd.Vector(gids))
         return target
+
+    # compat w Hoc
+
+    def getCellCount(self):
+        return self.gid_count()
+
+    def completegids(self):
+        return self.get_gids()
+
+    def isCellTarget(self):
+        return True
+
+    def __getattr__(self, item):
+        return getattr(self.get_hoc_target(), item)
+
+
+class _HocTarget(_TargetInterface):
+    """
+    A wrapper around Hoc targets to match interface
+    """
+
+    def __init__(self, name, default_population, hoc_target):
+        self.name = name
+        self.default_population = default_population
+        self.hoc_target = hoc_target
+
+    def __len__(self):
+        return self.gid_count()
+
+    def gid_count(self):
+        return self.hoc_target.getCellCount()
+
+    def get_gids(self):
+        return self.hoc_target.completegids().as_numpy().astype("uint32")
+
+    def get_hoc_target(self):
+        return self.hoc_target
+
+    def __getattr__(self, item):
+        return getattr(self.hoc_target, item)

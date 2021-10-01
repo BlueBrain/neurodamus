@@ -68,12 +68,13 @@ def setup_package():
             'NEURON',
             'h5py',
             'docopt',
+            'libsonata',
         ],
         setup_requires=maybe_docs_reqs + maybe_test_runner,
         tests_require=["pytest"],
         extras_require=dict(
             plotting=['matplotlib'],
-            full=['matplotlib', 'scipy', 'libsonata', 'morphio'],
+            full=['matplotlib', 'scipy', 'morphio'],
         ),
         cmdclass=dict(
             docs=Docs

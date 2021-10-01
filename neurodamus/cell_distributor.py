@@ -214,8 +214,7 @@ class CellManagerBase(object):
 
         if target_spec.name:
             logging.info(" -> Distributing '%s' target cells Round-Robin", target_spec)
-
-            target_gids = self._target_manager.get_target_gids(target_spec.name, conf._name)
+            target_gids = self._target_manager.get_target(target_spec).get_gids()
             gidvec, me_infos, full_size = loader_f(conf, target_gids, MPI.size, MPI.rank)
             total_cells = len(target_gids)
         else:

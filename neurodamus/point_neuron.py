@@ -152,7 +152,7 @@ class PointNeuronManager(CellManagerBase):
         pointinfo = dict(zip(target_gidvec, np.transpose(properties)))
         return target_gidvec, pointinfo, total_point_cells
 
-    def enable_report(self, report_conf, target_name, use_coreneuron):
+    def enable_report(self, report_conf, target_spec, use_coreneuron):
         """Add custom PointReport for the PointNeuron Engine
 
         Args:
@@ -160,8 +160,7 @@ class PointNeuronManager(CellManagerBase):
             target_name: The target of the report
             use_coreneuron: Whether the simulator is CoreNeuron
         """
-        gids = self.target_manager.get_target(target_name).completegids() \
-            .as_numpy().astype(int)
+        gids = self.target_manager.get_target(target_spec).get_gids()
         for gid in gids:
             if gid in self.gid2cell:
                 report_conf.addPointReport(self.gid2cell[gid].section_ref, gid, use_coreneuron)

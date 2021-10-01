@@ -25,6 +25,13 @@ class Vector(array):
         array.extend(self, other)
         return self
 
+    def as_hoc(self):
+        """When API compat is not enough, convert to a true hov Vector"""
+        from neuron import h
+        vec = h.Vector(self.size())
+        vec.as_numpy()[:] = self
+        return vec
+
 
 class List(list):
     """Behavior similar to Hoc List

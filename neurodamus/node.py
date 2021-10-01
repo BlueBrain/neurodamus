@@ -25,7 +25,7 @@ from .connection_manager import SynapseRuleManager, GapJunctionManager, edge_nod
 from .replay import SpikeManager
 from .stimulus_manager import StimulusManager
 from .modification_manager import ModificationManager
-from .target_manager import TargetSpec, TargetManager
+from .target_manager import NodesetTarget, TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.timeit import TimerManager, timeit, timeit_rank0
@@ -59,6 +59,7 @@ class CircuitManager:
         self.edge_managers = defaultdict(list)  # dict {(src_pop, dst_pop) -> list[synapse_manager]}
         self.alias = {}          # dict {name -> pop_name}
         self.global_manager = GlobalCellManager()
+        self.global_target = NodesetTarget("_ALL_", [])
 
     def initialized(self):
         return bool(self.node_managers)
@@ -70,6 +71,7 @@ class CircuitManager:
         self.node_managers[pop] = cell_manager
         self.alias[cell_manager.circuit_name] = pop
         self.global_manager.register_manager(cell_manager)
+        self.global_target.nodesets.append(cell_manager.local_nodes)
 
     def new_node_manager(self, circuit, *args, **kwargs):
         engine = circuit.Engine or METypeEngine
@@ -257,6 +259,7 @@ class Node:
     # -
     def load_targets(self):
         self._target_manager.load_targets(self._base_circuit)
+        self._target_manager.register_target(self._circuits.global_target)
 
     # -
     @mpi_no_errors
@@ -271,8 +274,9 @@ class Node:
             return None
 
         # Info about the cells to be distributed
-        target = self._target_spec
-        cell_count, _ = self._target_manager.get_target_info(target, verbose=True)
+        target_spec = self._target_spec
+        target = self.target_manager.get_target(target_spec)
+        cell_count = target.gid_count()
         if cell_count > 100 * MPI.size:
             logging.warning("Your simulation has a very high count of cells per CPU. "
                             "Please consider launching it in a larger MPI cluster")
@@ -308,13 +312,13 @@ class Node:
             prosp_hosts
         )
 
-        if load_balancer.valid_load_distribution(target):
+        if load_balancer.valid_load_distribution(target_spec):
             logging.info("Load Balancing done.")
             return load_balancer
 
         logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
         cell_dist = self._circuits.new_node_manager(self._base_circuit, self._target_manager)
-        with load_balancer.generate_load_balance(target.simple_name, cell_dist):
+        with load_balancer.generate_load_balance(target_spec.simple_name, cell_dist):
             # Instantiate a basic circuit to evaluate complexities
             cell_dist.finalize()
             self.create_synapses()
@@ -680,7 +684,7 @@ class Node:
             electrode = self._elec_manager.getElectrode(rep_conf["Electrode"]) \
                 if SimConfig.use_neuron and "Electrode" in rep_conf else None
             rep_target = TargetSpec(rep_conf["Target"])
-            target = self._target_manager.get_target(rep_target.name)
+            target = self._target_manager.get_target(rep_target)
             population_name = (rep_target.population or self._target_spec.population
                                or self._default_population)
             log_verbose("Report on Population: %s, Target: %s", population_name, rep_target.name)
@@ -800,7 +804,7 @@ class Node:
                         report.addSynapseReport(cell, point, spgid, SimConfig.use_coreneuron)
 
             # Custom reporting. TODO: Move above processing to SynRuleManager.enable_report
-            cell_manager.enable_report(report, rep_target.name, SimConfig.use_coreneuron)
+            cell_manager.enable_report(report, rep_target, SimConfig.use_coreneuron)
 
             # keep report object? Who has the ascii/hdf5 object? (1 per cell)
             # the bin object? (1 per report)
@@ -1430,7 +1434,10 @@ class Neurodamus(Node):
     # -
     def _instantiate_simulation(self):
         self.load_targets()
-        cell_count, max_gid = self._target_manager.get_target_info(self._target_spec, verbose=True)
+        target: NodesetTarget = self._target_manager.get_target(self._target_spec)
+        cell_count = target.gid_count()
+        logging.info("Simulation target: %s, Cell count: %d", target.name, cell_count)
+        max_gid = max(target.get_gids()) if cell_count > 0 else None
 
         # Check if user wants to build the model in several steps (only for CoreNeuron)
         target = TargetSpec(self._run_conf.get("CircuitTarget", "Mosaic")).name
