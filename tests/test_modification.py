@@ -1,6 +1,7 @@
 import os
 import pytest
 import subprocess
+from tempfile import NamedTemporaryFile
 
 from neurodamus.node import Node
 from neurodamus.core import NeurodamusCore as Nd
@@ -8,10 +9,6 @@ from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
 from neurodamus.utils import compat
 from neurodamus.utils.logging import log_verbose
 
-requires_mpi = pytest.mark.skipif(
-    os.environ.get("SLURM_JOB_ID") is None and os.environ.get("RUN_MPI") is None,
-    reason="Modification tests require MPI"
-)
 
 alltests = ['test_TTX_modification', 'test_ConfigureAllSections_modification']
 
@@ -93,12 +90,12 @@ Target Cell single
 
 
 @pytest.mark.slow
-@requires_mpi
 def test_modifications():
     for test in alltests:
-        ps = subprocess.run(["mpiexec", "-np", "1",
-                             "python", os.path.abspath(__file__), test])
-        assert ps.returncode == 0
+        subprocess.run(
+            ["python", os.path.abspath(__file__), test],
+            check=True
+        )
 
 
 def exec_test_TTX_modification():
@@ -108,20 +105,15 @@ def exec_test_TTX_modification():
 
     We require launching with mpiexec (numprocs=1).
     """
-    bc_file = '/tmp/test_ttx_modification_bc.tmp'
-    target_file = '/tmp/test_ttx_modification_tgt.tmp'
-
-    # dump config to file
-    with open(bc_file, 'w') as f:
-        print(BC_str.format(target_file=target_file), file=f)
-
-    # dump target to file
-    with open(target_file, 'w') as f:
-        print(TGT_str, file=f)
+    # dump config to files
+    with NamedTemporaryFile("w", prefix='test_ttx_mod_tgt', delete=False) as tgt_file:
+        tgt_file.write(TGT_str)
+    with NamedTemporaryFile("w", prefix="test_ttx_mod_bc", delete=False) as bc_file:
+        bc_file.write(BC_str.format(target_file=tgt_file.name))
 
     # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(bc_file)
+    n = Node(bc_file.name)
 
     # setup sim
     n.load_targets()
@@ -152,6 +144,8 @@ def exec_test_TTX_modification():
 
     log_verbose("spikes without TTX = %s, with TTX = %s", nspike_noTTX, nspike_TTX)
     assert(nspike_noTTX > 0 and nspike_TTX == 0)
+    os.unlink(bc_file.name)
+    os.unlink(tgt_file.name)
 
 
 def exec_test_ConfigureAllSections_modification():
@@ -161,20 +155,14 @@ def exec_test_ConfigureAllSections_modification():
 
     We require launching with mpiexec (numprocs=1).
     """
-    bc_file = '/tmp/test_configureAllSections_modification_bc.tmp'
-    target_file = '/tmp/test_configureAllSections_modification_tgt.tmp'
-
-    # dump config to file
-    with open(bc_file, 'w') as f:
-        print(BC_str.format(target_file=target_file), file=f)
-
-    # dump target to file
-    with open(target_file, 'w') as f:
-        print(TGT_str, file=f)
+    with NamedTemporaryFile("w", prefix='test_allsec_mod_tgt', delete=False) as tgt_file:
+        tgt_file.write(TGT_str)
+    with NamedTemporaryFile("w", prefix="test_allsec_mod_bc", delete=False) as bc_file:
+        bc_file.write(BC_str.format(target_file=tgt_file.name))
 
     # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(bc_file)
+    n = Node(bc_file.name)
 
     # setup sim
     n.load_targets()
@@ -206,6 +194,8 @@ def exec_test_ConfigureAllSections_modification():
     log_verbose("spikes without ConfigureAllSections = %s, with ConfigureAllSections = %s",
                 nspike_ConfigureAllSections, nspike_noConfigureAllSections)
     assert(nspike_ConfigureAllSections > nspike_noConfigureAllSections)
+    os.unlink(bc_file.name)
+    os.unlink(tgt_file.name)
 
 
 if __name__ == "__main__":

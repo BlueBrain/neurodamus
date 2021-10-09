@@ -50,6 +50,14 @@ class Map(collections_abc.Mapping):
     """
     __slots__ = ('_hoc_map', '_size', 'String')
 
+    def __new__(cls, wrapped_obj, *args, **kwargs):
+        """ If the wrapped entity is not an hoc map, but a Python dict
+            then also wrap it using PyMap for a similar API
+        """
+        if isinstance(wrapped_obj, dict):
+            return PyMap(wrapped_obj)
+        return object.__new__(cls)
+
     def __init__(self, hoc_map):
         self._hoc_map = hoc_map
         self._size = int(hoc_map.count())
@@ -118,3 +126,35 @@ class Map(collections_abc.Mapping):
             new_map = dict(self)
         new_map["_hoc"] = self.hoc_map
         return new_map
+
+
+class PyMap(dict):
+    """
+    PyMap does basically the reverse of compat.Map: it's a true dict but capable of
+    getting a hoc map, built on the fly
+    """
+    __slots__ = ()
+
+    @property
+    def hoc_map(self):
+        """Returns the raw hoc map
+        """
+        return self._dict_as_hoc(self)
+
+    @classmethod
+    def _value_as_hoc(cls, value):
+        from neuron import h
+        if isinstance(value, dict):
+            return cls._dict_as_hoc(value)
+        return h.String(str(value))
+
+    @classmethod
+    def _dict_as_hoc(cls, d):
+        from neuron import h
+        m = h.Map()
+        for key, val in d.items():
+            m.put(h.String(key), cls._value_as_hoc(val))
+        return m
+
+    def as_dict(self, *_, **_kw):
+        return self

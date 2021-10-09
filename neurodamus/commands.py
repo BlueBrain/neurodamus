@@ -113,9 +113,14 @@ def _attempt_launch_special(config_file):
         logging.warning("special not found. Running neurodamus from Python with libnrnmech. "
                         "-> DO NOT USE WITH PRODUCTION RUNS")
         return
+    neurodamus_py_root = os.environ.get("NEURODAMUS_PYTHON")
+    if not neurodamus_py_root:
+        logging.warning("No NEURODAMUS_PYTHON set. Running neurodamus from Python with libnrnmech. "
+                        "-> DO NOT USE WITH PRODUCTION RUNS")
+        return
     print("::INIT:: Special available. Replacing binary...")
     os.environ["neurodamus_special"] = "1"
-    init_script = os.path.join(os.environ["NEURODAMUS_PYTHON"], "init.py")
+    init_script = os.path.join(neurodamus_py_root, "init.py")
     os.execl(special,
              "-mpi",
              "-python", init_script,

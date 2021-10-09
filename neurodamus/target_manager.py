@@ -19,6 +19,8 @@ class TargetError(Exception):
 class TargetSpec:
     """Definition of a new-style target, accounting for multipopulation"""
 
+    GLOBAL_TARGET_NAME = "_ALL_"
+
     def __init__(self, target_name):
         """Initialize a target specification
 
@@ -44,7 +46,7 @@ class TargetSpec:
     @property
     def simple_name(self):
         if self.name is None:
-            return "_ALL_"
+            return self.GLOBAL_TARGET_NAME
         return self.__str__().replace(":", "_")
 
     @property
@@ -98,7 +100,7 @@ class TargetManager:
 
         nodes_file = circuit.get("CellLibraryFile")
         if nodes_file and nodes_file.endswith(".h5") and self._nodeset_reader:
-            self._nodeset_reader.register_node_file(nodes_file)
+            self._nodeset_reader.register_node_file(find_input_file(nodes_file))
 
     def _try_open_start_target(self, circuit_path):
         start_target_file = os.path.join(circuit_path, "start.target")
@@ -190,7 +192,7 @@ class TargetManager:
 
         Returns: The target list of points
         """
-        if isinstance(target, str):
+        if isinstance(target, TargetSpec):
             target = self.get_target(target)
         if target.isCellTarget() and cell_use_compartment_cast:
             target = self.hoc.compartmentCast(target, "")
@@ -294,6 +296,10 @@ class NodesetTarget(_TargetInterface):
         self.name = name
         self.nodesets = nodesets
 
+    @classmethod
+    def create_global_target(cls):
+        return cls(TargetSpec.GLOBAL_TARGET_NAME, [])
+
     def gid_count(self):
         return sum(len(ns) for ns in self.nodesets)
 
@@ -325,6 +331,7 @@ class NodesetTarget(_TargetInterface):
         return True
 
     def __getattr__(self, item):
+        logging.info("Compat interface to hoc target. Calling " + item)
         return getattr(self.get_hoc_target(), item)
 
 

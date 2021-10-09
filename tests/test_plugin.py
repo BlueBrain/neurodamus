@@ -133,15 +133,17 @@ requires_mpi = pytest.mark.skipif(
     reason="Simulation tests require MPI")
 
 
-@requires_mpi
 def test_run_acell_circuit():
     simdir = os.path.join(sims, "acell_engine")
     env = os.environ.copy()
     env['NEURODAMUS_PYTHON'] = "."
     env['PYTHONPATH'] += ":" + os.path.dirname(__file__)
     env['NEURODAMUS_PLUGIN'] = os.path.splitext(os.path.basename(__file__))[0]
-    ps = subprocess.run(["bash", "tests/test_simulation.bash", simdir], env=env)
-    assert ps.returncode == 0
+    subprocess.run(
+        ["bash", "tests/test_simulation.bash", simdir, "BlueConfig", ""],
+        env=env,
+        check=True,
+    )
 
 
 if __name__ == "__main__":

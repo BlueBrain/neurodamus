@@ -16,6 +16,7 @@ from .connection_manager import ConnectionManagerBase
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
+from .core.configuration import find_input_file
 from .core.nodeset import NodeSet
 from .io import cell_readers
 from .metype import Cell_V5, Cell_V6, EmptyCell
@@ -140,7 +141,6 @@ class CellManagerBase(object):
         self._binfo = None
         self._pc = Nd.pc
         self._conn_managers_per_src_pop = weakref.WeakValueDictionary()
-
         if circuit_conf.CircuitPath:
             self._init_config(circuit_conf, self._target_spec.population or '')
         else:
@@ -170,9 +170,12 @@ class CellManagerBase(object):
         return self._local_nodes.final_gids()
 
     def _init_config(self, circuit_conf, pop):
-        if not pop and self._node_format == NodeFormat.SONATA:  # Last attempt to get pop name
-            pop = self._get_sonata_population_name(circuit_conf.CellLibraryFile)
-            logging.info(" -> Discovered node population name: %s", pop)
+        if self._node_format == NodeFormat.SONATA:
+            if not ospath.isabs(circuit_conf.CellLibraryFile):
+                circuit_conf.CellLibraryFile = find_input_file(circuit_conf.CellLibraryFile)
+            if not pop:   # Last attempt to get pop name
+                pop = self._get_sonata_population_name(circuit_conf.CellLibraryFile)
+                logging.info(" -> Discovered node population name: %s", pop)
         if not pop and circuit_conf._name:
             pop = circuit_conf._name
             logging.warning("(Compat) Assuming population name from Circuit: %s", pop)
@@ -440,6 +443,7 @@ class CellDistributor(CellManagerBase):
             self._node_format = NodeFormat.NCS
         elif circuit_conf.CellLibraryFile.endswith(".mvd3"):
             self._node_format = NodeFormat.MVD3
+
         self._is_v5_circuit = circuit_conf.CellLibraryFile == "start.ncs" or (
             circuit_conf.nrnPath and ospath.isfile(ospath.join(circuit_conf.nrnPath, "start.ncs"))
             and not ospath.isfile(ospath.join(circuit_conf.CircuitPath, "circuit.mvd3"))

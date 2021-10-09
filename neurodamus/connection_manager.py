@@ -12,7 +12,7 @@ from os import path as ospath
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core import run_only_rank0
-from .core.configuration import GlobalConfig, SimConfig, ConfigurationError
+from .core.configuration import GlobalConfig, SimConfig, ConfigurationError, find_input_file
 from .connection import Connection, ReplayMode
 from .io.cell_readers import TargetSpec
 from .io.synapse_reader import SynapseReader
@@ -295,6 +295,9 @@ class ConnectionManagerBase(object):
             src_pop_id: (compat) Allow overriding the src population ID
             src_name: The source pop name, normally matching that of the source cell manager
         """
+        if not ospath.isabs(synapse_file):
+            synapse_file = find_input_file(synapse_file)
+            log_verbose("Relative path for edge file resolved to: %s", synapse_file)
         if not ospath.exists(synapse_file):
             raise ConfigurationError("Connectivity (Edge) file not found: {}".format(synapse_file))
         if ospath.isdir(synapse_file):

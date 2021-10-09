@@ -62,7 +62,7 @@ class CircuitManager:
         self.edge_managers = defaultdict(list)  # dict {(src_pop, dst_pop) -> list[synapse_manager]}
         self.alias = {}          # dict {name -> pop_name}
         self.global_manager = GlobalCellManager()
-        self.global_target = NodesetTarget("_ALL_", [])
+        self.global_target = NodesetTarget.create_global_target()
 
     def initialized(self):
         return bool(self.node_managers)
@@ -259,6 +259,8 @@ class Node:
     # -
     def load_targets(self):
         self._target_manager.load_targets(self._base_circuit)
+        for xcircuit in self._extra_circuits.values():
+            self._target_manager.load_targets(xcircuit)
         self._target_manager.register_target(self._circuits.global_target)
 
     # -
@@ -468,7 +470,7 @@ class Node:
     def _find_config_file(self, filepath, path_conf_entries=(), alt_filename=None):
         search_paths = [self._run_conf[path_key]
                         for path_key in path_conf_entries
-                        if path_key in self._run_conf]
+                        if self._run_conf.get(path_key)]
         return find_input_file(filepath, search_paths, alt_filename)
 
     # -

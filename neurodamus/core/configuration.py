@@ -10,6 +10,7 @@ from collections import defaultdict
 from enum import Enum
 
 from ..io.config_parser import BlueConfig
+from ..io.sonata_config import SonataConfig
 from ..utils import compat
 from ..utils.logging import log_verbose
 from ..utils.pyutils import ConfigT
@@ -97,6 +98,7 @@ class _SimConfig(object):
     output_root = None
     base_circuit = None
     extra_circuits = None
+    sonata_circuits = None
     projections = None
     connections = None
     stimuli = None
@@ -138,16 +140,23 @@ class _SimConfig(object):
     @classmethod
     def init(cls, config_file, cli_options):
         # Import these objects scope-level to avoid cross module dependency
-        from ._neurodamus import NeurodamusCore as Nd
+        from . import NeurodamusCore as Nd
+        Nd.init()
         if not os.path.isfile(config_file):
             raise ConfigurationError("Config file not found: " + config_file)
         logging.info("Initializing Simulation Configuration and Validation")
+        is_sonata_config = config_file.endswith(".json")
+
         log_verbose("ConfigFile: %s", config_file)
         log_verbose("CLI Options: %s", cli_options)
         cls.config_file = config_file
-        cls._config_parser = cls._init_config_parser(config_file, Nd)
+        cls._config_parser = cls._init_config_parser(config_file)
         cls._parsed_run = compat.Map(cls._config_parser.parsedRun)  # easy access to hoc Map
-        cls._blueconfig = BlueConfig(config_file)
+        if not is_sonata_config:
+            cls._blueconfig = BlueConfig(config_file)
+        else:
+            cls._blueconfig = cls._config_parser   # Please refactor me
+            cls.sonata_circuits = cls._config_parser.circuits
         cls.blueconfig_dir = os.path.dirname(os.path.abspath(config_file))
 
         cls.run_conf = run_conf = cls._parsed_run.as_dict(parse_strings=True)
@@ -156,35 +165,49 @@ class _SimConfig(object):
         cls.stimuli = compat.Map(cls._config_parser.parsedStimuli)
         cls.injects = compat.Map(cls._config_parser.parsedInjects)
         cls.reports = compat.Map(cls._config_parser.parsedReports)
-        cls.configures = compat.Map(cls._config_parser.parsedConfigures)
-        cls.modifications = compat.Map(cls._config_parser.parsedModifications)
+        cls.configures = compat.Map(cls._config_parser.parsedConfigures or {})
+        cls.modifications = compat.Map(cls._config_parser.parsedModifications or {})
         cls.cli_options = RunOptions(**(cli_options or {}))
 
         for validator in cls._validators:
             validator(cls, run_conf)
 
         logging.info("Initializing hoc config objects")
-        cls._parsed_run.update(run_conf)  # sync hoc config
-        cls._init_hoc_config_objs(Nd)
+        if not is_sonata_config:
+            cls._parsed_run.update(run_conf)  # sync hoc config
+        cls._init_hoc_config_objs()
 
     @classmethod
     def get_blueconfig_hoc_section(cls, section_name):
+        # Sonata config sections are stored as PyMap, so we need to convert first
+        if isinstance(cls._config_parser, SonataConfig):
+            section = getattr(cls._config_parser, section_name)
+            return section and section.hoc_map
         return getattr(cls._config_parser, section_name)
 
     @classmethod
-    def _init_config_parser(cls, config_file, Nd):
-        config_parser = Nd.ConfigParser()
-        config_parser.open(config_file)
-        if Nd.pc.id() == 0:
-            config_parser.toggleVerbose()
+    def _init_config_parser(cls, config_file):
+        if not config_file.endswith(".json"):
+            config_parser = cls._init_hoc_config_parser(config_file)  # legacy reader
+        else:
+            config_parser = SonataConfig(config_file)
         if config_parser.parsedRun is None:
             raise ConfigurationError("No 'Run' block found in BlueConfig %s", config_file)
         return config_parser
 
     @classmethod
-    def _init_hoc_config_objs(cls, Nd):
+    def _init_hoc_config_parser(cls, config_file):
+        from . import NeurodamusCore as Nd
+        config_parser = Nd.ConfigParser()
+        config_parser.open(config_file)
+        if Nd.pc.id == 0:
+            config_parser.toggleVerbose()
+        return config_parser
+
+    @classmethod
+    def _init_hoc_config_objs(cls):
         """Init objects which parse/check configs in the hoc world"""
-        h = Nd.h
+        from neuron import h
         parsed_run = cls._parsed_run.hoc_map
         cls._simconf = h.simConfig
         cls._simconf.interpret(parsed_run)
@@ -258,11 +281,14 @@ def find_input_file(filepath, search_paths=(), alt_filename=None):
     def try_find_in(fullpath):
         if os.path.isfile(fullpath):
             return fullpath
+        if not os.path.exists(fullpath):
+            return None
         if alt_filename is not None:
             alt_file_path = os.path.join(fullpath, alt_filename)
             if os.path.isfile(alt_file_path):
                 return alt_file_path
-        return None
+        logging.warning("Deprecated: Data source found is not a file")
+        return fullpath
 
     if os.path.isabs(filepath):
         # if it's absolute path then can be used immediately
@@ -358,11 +384,11 @@ def _modification_params(config: _SimConfig, run_conf):
 
 
 def _make_circuit_config(config_dict, req_morphology=True):
-    if config_dict["CircuitPath"] == "<NONE>":
+    if config_dict.get("CircuitPath") == "<NONE>":
         config_dict["CircuitPath"] = False
         config_dict["nrnPath"] = False
         config_dict["MorphologyPath"] = False
-    elif config_dict["nrnPath"] == "<NONE>":
+    elif config_dict.get("nrnPath") == "<NONE>":
         config_dict["nrnPath"] = False
     _validate_circuit_morphology(config_dict, req_morphology)
     return CircuitConfig(config_dict)
@@ -425,7 +451,7 @@ def _global_parameters(config: _SimConfig, run_conf):
     config.buffer_time = 25 * run_conf.get("FlushBufferScalar", 1)
     config.tstop = run_conf["Duration"]
     h.celsius = config.celsius
-    h.v_init = config.v_init
+    h.set_v_init(config.v_init)
     h.tstop = config.tstop
     h.dt = run_conf.get("Dt", 0.025)
     h.steps_per_ms = 1.0 / h.dt
