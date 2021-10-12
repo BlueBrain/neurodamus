@@ -8,7 +8,7 @@ from typing import List
 import numpy
 
 from .core import MPI, NeurodamusCore as Nd
-from .core.configuration import GlobalConfig, find_input_file
+from .core.configuration import ConfigurationError, GlobalConfig, find_input_file
 from .core.nodeset import NodeSet
 
 
@@ -67,12 +67,21 @@ class TargetManager:
     def __init__(self, run_conf):
         self._run_conf = run_conf
         self.parser = Nd.TargetParser()
+        self._has_hoc_targets = False
         self.hoc = None  # The hoc level target manager
         self._targets = {}
-        nodesets_file = run_conf.get("node_sets_file")
-        self._nodeset_reader = nodesets_file and NodeSetReader(nodesets_file)
+        self._nodeset_reader = self._init_nodesets(run_conf)
         if MPI.rank == 0:
             self.parser.isVerbose = 1
+
+    @classmethod
+    def _init_nodesets(cls, run_conf):
+        nodesets_file = run_conf.get("node_sets_file")
+        if not nodesets_file and "TargetFile" in run_conf:
+            target_file = run_conf["TargetFile"]
+            if target_file.endswith(".json"):
+                nodesets_file = target_file
+        return nodesets_file and NodeSetReader(nodesets_file)
 
     def load_targets(self, circuit):
         """Provided that the circuit location is known and whether a user.target file has been
@@ -97,11 +106,13 @@ class TargetManager:
             logging.warning("start.target not available! Check circuit.")
         else:
             self.parser.open(start_target_file, False)
+            self._has_hoc_targets = True
 
     def load_user_target(self, target_file):
         # Old target files. Notice new targets with same should not happen
         user_target = find_input_file(target_file)
         self.parser.open(user_target, True)
+        self._has_hoc_targets = True
         if MPI.rank == 0:
             logging.info(" => Loaded %d targets", self.parser.targetList.count())
             if GlobalConfig.verbosity >= 3:
@@ -119,12 +130,16 @@ class TargetManager:
         target = self._nodeset_reader and self._nodeset_reader.get_target(target_spec)
         if target is not None:
             logging.info("Retrieved gids from Sonata nodeset. Targets are Cell only")
-        else:
+        elif self._has_hoc_targets:
             if self.hoc is not None:
                 hoc_target = self.hoc.getTarget(target_name)
             else:
                 hoc_target = self.parser.getTarget(target_name)
             target = _HocTarget(target_name, target_spec.population, hoc_target)
+        else:
+            raise ConfigurationError(
+                "Target {} can't be loaded. Check target sources".format(target_name)
+            )
         self._targets[simplename] = target
         return target
 
