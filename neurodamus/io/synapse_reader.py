@@ -81,14 +81,14 @@ class SynapseReader(object):
 
     @staticmethod
     def _patch_delay_fp_inaccuracies(records):
-        if len(records) == 0:
+        if len(records) == 0 or 'delay' not in records.dtype.names:
             return
         dt = Nd.dt
         records.delay = (records.delay / dt + 1e-5).astype('i4') * dt
 
     @staticmethod
     def _scale_U_param(syn_params, extra_cellular_calcium, mod_override):
-        if len(syn_params) == 0:
+        if len(syn_params) == 0 or 'u_hill_coefficient' not in syn_params.dtype.names:
             return
         if extra_cellular_calcium is None:
             return
@@ -186,8 +186,7 @@ class SynReaderSynTool(SynapseReader):
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader
-        nrow = int(reader.loadSynapses(gid) if self._conn_type == self.SYNAPSES
-                   else reader.loadGapJunctions(gid))
+        nrow = int(reader.loadSynapses(gid))
         if nrow < 1:
             return SynapseParameters.empty
 

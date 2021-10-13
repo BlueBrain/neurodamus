@@ -23,7 +23,8 @@ from .core.configuration import ConfigurationError, find_input_file
 from .core.nodeset import PopulationNodes
 from .cell_distributor import CellDistributor, VirtualCellPopulation, GlobalCellManager
 from .cell_distributor import LoadBalance, LoadBalanceMode
-from .connection_manager import SynapseRuleManager, GapJunctionManager, edge_node_pop_names
+from .connection_manager import SynapseRuleManager, edge_node_pop_names
+from .gap_junction import GapJunctionManager
 from .replay import SpikeManager
 from .stimulus_manager import StimulusManager
 from .modification_manager import ModificationManager
