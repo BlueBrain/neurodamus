@@ -47,7 +47,7 @@ class StimulusManager:
                 (stim_t and stim_t.__name__ in ['ShotNoise', 'RelativeShotNoise']):
             # New style Stim, in Python
             log_verbose("Using new-gen stimulus")
-            target = self._target_manager.get_target(target_spec.name)
+            target = self._target_manager.get_target(target_spec)
             cell_manager = self._target_manager.hoc.cellDistributor
             stim = stim_t(target, stim_info, cell_manager)
             self._stimulus.append(stim)

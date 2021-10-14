@@ -122,6 +122,8 @@ class TargetManager:
         self._targets[target.name] = target
 
     def get_target(self, target_spec: TargetSpec):
+        if not isinstance(target_spec, TargetSpec):
+            target_spec = TargetSpec(target_spec)
         target_name = target_spec.name
         simplename = target_spec.simple_name
         if simplename in self._targets:
