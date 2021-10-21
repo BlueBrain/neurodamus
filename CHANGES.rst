@@ -2,6 +2,28 @@
 Change Log
 ==========
 
+Version 2.8.0
+=============
+**October 21, 2021**
+
+*New Features*
+ * Addition of PointNeuron Engine for supporting Point neuron simulations
+ * Reading extra parameters for GluSynapses ffrom SONATA edges file
+ * Allow ConfigureAllSections modifications
+
+*Improvements*
+ * Handle reports for multiple populations adapting new features of libsonata-report
+ * Add warning when synapse targets invalid point
+ * Refactoring Targets for Nodeset compat
+ * Differenciate between cell target and section soma
+ * NGV endpoint id: Fallback to global synapse id
+
+*Bug fixes*
+ * Fix stims for new target API. Make API compat old usage\
+ * Fix regression: pass nodesets file as BC TargetFile
+ * Offset fixes for replay with multiple circuits
+ * Fix bug with SynConfigure and multipopulation
+
 
 Version 2.7.0
 =============
