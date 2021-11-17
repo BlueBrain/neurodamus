@@ -90,6 +90,12 @@ Target Cell single
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(
+    not os.path.isfile("/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3"),
+    reason="Circuit file not available")
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
 def test_modifications():
     for test in alltests:
         subprocess.run(

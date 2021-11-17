@@ -1,4 +1,5 @@
 import os
+import pytest
 from neurodamus.io.sonata_config import SonataConfig
 from neurodamus.core.configuration import SimConfig
 
@@ -17,6 +18,9 @@ def _test_SimConfig_from_sonata():
     assert SimConfig.rng_info.getGlobalSeed() == 1122
 
 
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
 def test_simulation_sonata_config():
     import subprocess
     os.environ['NEURODAMUS_PYTHON'] = "."

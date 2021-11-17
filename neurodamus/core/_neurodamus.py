@@ -33,8 +33,8 @@ class _NeurodamusCore(_Neuron):
     def _init(cls, *args):
         if cls._pc is not None:
             return
-        # Neurodamus requires MPI. It's likely a long road to make it run without
-        _Neuron._init(mpi=True)  # if needed, sets cls._h
+        # Neurodamus requires MPI. We still respect NEURON_INIT_MPI though
+        _Neuron._init(int(os.environ.get("NEURON_INIT_MPI", 1)))  # if needed, sets cls._h
 
         # Init logging
         if MPI.rank == 0:

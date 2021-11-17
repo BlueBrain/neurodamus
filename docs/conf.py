@@ -44,6 +44,9 @@ project = u'PyNeurodamus '
 author = u'BlueBrain HPC'
 # copyright = u'2019, Blue Brain Project, EPFL'  # Theme has fixed copyright
 
+# Find root, from under 'docs' folder
+# sys.path.insert(0, os.path.abspath(".."))
+
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.

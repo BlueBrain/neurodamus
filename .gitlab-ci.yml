@@ -1,0 +1,65 @@
+include:
+  - project: nse/ci
+    file:
+      - /ci/lib/tox-bb5.yml
+      - /ci/jobs/build-package.yml
+      - /ci/jobs/publish-package.yml
+      - /ci/jobs/docs.yml
+      - /ci/jobs/publish-docs.yml
+
+workflow:
+  rules:
+    # Rules taken from official docs to avoid duplicated pipelines
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+
+python3-base:
+  extends: .tox-template
+  variables:
+    TOXENV: flake8, py3
+
+
+py38-full-spack:
+  extends: .tox-template
+  variables:
+    TOXENV: bb5
+    EXTRA_MODULES:
+      unstable:neurodamus-neocortex
+      unstable:py-neurodamus  # needed for dependencies
+
+
+# The following stages are overrides. Dont rename
+# Always add the manual option to create sdist/wheel or upload
+build-package:
+  rules:
+    - when: always
+
+publish-package:
+  rules:
+    - if: $CI_COMMIT_TAG
+    - when: manual
+      allow_failure: true
+
+docs:
+  variables:
+    TOXENV: docs
+  artifacts:
+    paths:
+      - docs/_build/"
+
+publish-docs:
+  variables:
+    SYS_PACKAGES: openssh-clients
+    PIP_PACKAGES: docs_internal_upload
+  script:
+    - docs-internal-upload --docs-path docs/_build
+  rules:
+    - if: $CI_COMMIT_TAG
+    - when: manual
+      allow_failure: true
