@@ -22,7 +22,7 @@ import logging
 from .core import NeurodamusCore as Nd
 from .utils.logging import log_verbose
 from .core.configuration import SimConfig
-from .core.stimuli import CurrentSource
+from .core.stimuli import CurrentSource, ConductanceSource
 from .core import random
 
 
@@ -46,8 +46,10 @@ class StimulusManager:
         # Get either hoc target or sonata node_set, needed for python and hoc interpret
         # If sonata node_set, internally register the target and add to hoc TargetList
         target = self._target_manager.get_target(target_spec)
+        python_only_stims = ('ShotNoise', 'RelativeShotNoise',
+                             'StochasticConductance')
         if SimConfig.cli_options.experimental_stims or \
-                (stim_t and stim_t.__name__ in ['ShotNoise', 'RelativeShotNoise']):
+                (stim_t and stim_t.__name__ in python_only_stims):
             # New style Stim, in Python
             log_verbose("Using new-gen stimulus")
             cell_manager = self._target_manager.hoc.cellDistributor
@@ -68,6 +70,7 @@ class StimulusManager:
     def reset_helpers(self):
         ShotNoise.stimCount = 0
         Noise.stimCount = 0
+        StochasticConductance.stimCount = 0
 
     @classmethod
     def register_type(cls, stim_class):
@@ -81,8 +84,80 @@ class BaseStim:
     Barebones stimulus class
     """
     def __init__(self, target, stim_info: dict, cell_manager):
-        self.duration = float(stim_info.get("Duration", 0))  # duration [ms]
-        self.delay = float(stim_info.get("Delay", 0))  # start time [ms]
+        self.duration = float(stim_info["Duration"])  # duration [ms]
+        self.delay = float(stim_info["Delay"])        # start time [ms]
+
+
+@StimulusManager.register_type
+class StochasticConductance(BaseStim):
+    """
+    Stochastic conductance modeled by an Ornstein-Uhlenbeck process,
+    injected under dynamic clamp (using a SEClamp).
+    """
+    stimCount = 0  # global count for seeding
+
+    def __init__(self, target, stim_info: dict, cell_manager):
+        super().__init__(target, stim_info, cell_manager)
+
+        self.stimList = []  # ConductanceSource's go here
+
+        if not self.parse_check_all_parameters(stim_info):
+            return None  # nothing to do, stim is a no-op
+
+        # setup random seeds
+        seed1 = StochasticConductance.stimCount + 2997  # stimulus block seed
+        seed2 = SimConfig.rng_info.getStimulusSeed() + 291204  # stimulus type seed
+        seed3 = (lambda x: x + 123) if self.seed is None else (lambda x: self.seed)  # GID seed
+
+        # apply stim to each point in target
+        tpoints = target.getPointList(cell_manager)
+        for tpoint_list in tpoints:
+            gid = tpoint_list.gid
+
+            for sec_id, sc in enumerate(tpoint_list.sclst):
+                # skip sections not in this split
+                if not sc.exists():
+                    continue
+
+                rng = random.Random123(seed1, seed2, seed3(gid))  # setup RNG
+                # generate stochastic conductance signal
+                cs = ConductanceSource.ornstein_uhlenbeck(self.tau, self.sigma, self.mean,
+                                                          self.duration, dt=self.dt,
+                                                          delay=self.delay, rng=rng,
+                                                          base_amp=self.reversal)
+                # attach conductance source to section
+                cs.attach_to(sc.sec, tpoint_list.x[sec_id])
+                self.stimList.append(cs)  # save ConductanceSource
+
+        StochasticConductance.stimCount += 1  # increment global count
+
+    def parse_check_all_parameters(self, stim_info: dict):
+        self.dt = float(stim_info.get("Dt", 0.25))  # stimulus timestep [ms]
+        if self.dt <= 0:
+            raise Exception("Stochastic conductance time-step must be positive")
+
+        self.reversal = float(stim_info.get("Reversal", 0.0))  # reversal potential [mV]
+
+        self.tau = float(stim_info["Tau"])  # relaxation time [ms]
+        if self.tau < 0:
+            raise Exception("Stochastic conductance relaxation time must be non-negative")
+
+        self.sigma = float(stim_info["Sigma"])  # standard deviation [uS]
+        if self.sigma <= 0:
+            raise Exception("Stochastic conductance standard deviation must be positive")
+
+        self.mean = float(stim_info.get("Mean", 0.0))  # signal mean [uS]
+        if self.mean < 0 and abs(self.mean) > 2 * self.sigma:
+            logging.warning("Stochastic conductance signal is mostly zero")
+
+        self.seed = stim_info.get("Seed")  # random seed override
+        if self.seed is not None:
+            self.seed = int(self.seed)
+
+        if self.delay > 0:
+            logging.warning("Stochastic conductance ignores delay")
+
+        return True
 
 
 @StimulusManager.register_type

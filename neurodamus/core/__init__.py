@@ -15,4 +15,4 @@ from ._mpi import MPI
 from ._neurodamus import NeurodamusCore
 from ._utils import *
 from .cell import Cell
-from .stimuli import CurrentSource
+from .stimuli import CurrentSource, ConductanceSource
