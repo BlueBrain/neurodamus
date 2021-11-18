@@ -1,5 +1,5 @@
 """
-Stimuli sources. inc current sources which can be attached to cells
+Stimuli sources. inc current and conductance sources which can be attached to cells
 """
 
 from __future__ import absolute_import
@@ -8,8 +8,7 @@ from .random import RNG, gamma
 import logging
 
 
-class CurrentSource(object):
-    _all_sources = []
+class SignalSource:
 
     def __init__(self, base_amp=0.0, rng=None):
         """
@@ -22,42 +21,15 @@ class CurrentSource(object):
         self.stim_vec = h.Vector()
         self.time_vec = h.Vector()
         self._cur_t = 0
-        self._clamps = set()
-        self._all_sources.append(self)
         self._base_amp = base_amp
         self._rng = rng
-
-    class _Clamp:
-        def __init__(self, cell_section, position=0.5, clamp_container=None,
-                     stim_vec_mode=True, time_vec=None, stim_vec=None,
-                     **clamp_params):
-            self.clamp = Neuron.h.IClamp(position, sec=cell_section)
-            if stim_vec_mode:
-                assert time_vec is not None and stim_vec is not None
-                self.clamp.dur = time_vec[-1]
-                stim_vec.play(self.clamp._ref_amp, time_vec, 1)
-            else:
-                for param, val in clamp_params.items():
-                    setattr(self.clamp, param, val)
-            # Clamps must be kept otherwise they are garbage-collected
-            self._all_clamps = clamp_container
-            clamp_container.add(self)
-
-        def detach(self):
-            """Detaches a clamp from a cell, destroying it"""
-            self._all_clamps.discard(self)
-            del self.clamp  # Force del on the clamp (there might be references to self)
-
-    def attach_to(self, section, position=0.5):
-        return CurrentSource._Clamp(section, position, self._clamps, True,
-                                    self.time_vec, self.stim_vec)
 
     def reset(self):
         self.stim_vec.resize(0)
         self.time_vec.resize(0)
 
     def _add_point(self, amp):
-        """Appends a single point to the time-voltage source.
+        """Appends a single point to the time-signal source.
         Note: It doesnt advance time, not supposed to be called directly
         """
         self.time_vec.append(self._cur_t)
@@ -70,9 +42,9 @@ class CurrentSource(object):
         return self
 
     def add_segment(self, amp, duration, amp2=None):
-        """Sets a linear voltage for a certain duration.
+        """Sets a linear signal for a certain duration.
 
-        If amp2 is None (default) then we have constant voltage
+        If amp2 is None (default) then we have constant signal
         """
         self._add_point(amp)
         self.delay(duration)
@@ -82,7 +54,7 @@ class CurrentSource(object):
     def add_pulse(self, max_amp, duration, **kw):
         """Adds a pulse.
 
-        A pulse is characterized by raising from a base voltage, default 0, for a certain duration.
+        A pulse is characterized by raising from a base amplitude, for a certain duration.
         """
         base_amp = kw.get("base_amp", self._base_amp)
         self._add_point(base_amp)
@@ -158,8 +130,8 @@ class CurrentSource(object):
         raise NotImplementedError()
 
     def add_pulses(self, pulse_duration, amp, *more_amps, **kw):
-        """Appends a set of voltages without returning to zero
-           Each voltage is applied 'dur' time.
+        """Appends a set of pulsed signals without returning to zero
+           Each pulse is applied 'dur' time.
 
         Args:
           pulse_duration: The duration of each pulse
@@ -290,12 +262,59 @@ class CurrentSource(object):
 
         return self
 
+    def add_ornstein_uhlenbeck(self, tau, sigma, mean, duration, dt=0.25):
+        """
+        Adds an Ornstein-Uhlenbeck process with given correlation time,
+        standard deviation and mean value.
+
+        tau: correlation time [ms], white noise if zero
+        sigma: standard deviation [uS]
+        mean: mean value [uS]
+        duration: duration of signal [ms]
+        dt: timestep [ms]
+        """
+        from math import sqrt, exp
+
+        rng = self._rng or RNG()  # Creates a default RNG
+        if not self._rng:
+            logging.warning("Using a default RNG for shot noise generation")
+
+        tvec = Neuron.h.Vector()
+        tvec.indgen(self._cur_t, self._cur_t + duration, dt)  # time vector
+        ntstep = len(tvec)  # total number of timesteps
+
+        svec = Neuron.h.Vector(ntstep, 0)  # stim vector
+
+        noise = Neuron.h.Vector(ntstep)  # Gaussian noise
+        rng.normal(0.0, 1.0)
+        noise.setrand(rng)  # generate Gaussian noise
+
+        if tau < 1e-9:
+            svec = noise.mul(sigma)  # white noise
+        else:
+            mu = exp(-dt / tau)  # auxiliar factor [unitless]
+            A = sigma * sqrt(1 - mu * mu)  # amplitude [uS]
+            noise.mul(A)  # scale noise by amplitude [uS]
+
+            # Exact update formula (independent of dt) from Gillespie 1996
+            for n in range(1, ntstep):
+                svec.x[n] = svec[n - 1] * mu + noise[n]  # signal [uS]
+
+        svec.add(mean)  # shift signal by mean value [uS]
+
+        self.time_vec.append(tvec)
+        self.stim_vec.append(svec)
+        self._cur_t += duration
+        self._add_point(.0)
+
+        return self
+
     # PLOTTING
     def plot(self, ylims=None):
         from matplotlib import pyplot
         fig = pyplot.figure()
         ax = fig.add_subplot(1, 1, 1)  # (nrows, ncols, axnum)
-        ax.plot(self.time_vec, self.stim_vec, label="Stimulous amplitude")
+        ax.plot(self.time_vec, self.stim_vec, label="Signal amplitude")
         ax.legend()
         if ylims:
             ax.set_ylim(*ylims)
@@ -330,10 +349,53 @@ class CurrentSource(object):
         return cls(base_amp, rng).delay(delay).add_shot_noise(tau_D, tau_R, rate, amp_mean, amp_var,
                                                               duration, dt)
 
+    @classmethod
+    def ornstein_uhlenbeck(cls, tau, sigma, mean, duration,
+                           dt=0.25, delay=0, base_amp=.0, rng=None):
+        return cls(base_amp, rng).delay(delay).add_ornstein_uhlenbeck(tau, sigma, mean,
+                                                                      duration, dt)
+
     # Operations
     def __add__(self, other):
         """# Adds signals. Two added signals sum amplitudes"""
         raise NotImplementedError("Adding signals is not available yet")
+
+
+class CurrentSource(SignalSource):
+    _all_sources = []
+
+    def __init__(self, base_amp=0.0, rng=None):
+        """
+        Creates a new current source that injects a signal under IClamp
+        """
+        super().__init__(base_amp, rng)
+        self._clamps = set()
+        self._all_sources.append(self)
+
+    class _Clamp:
+        def __init__(self, cell_section, position=0.5, clamp_container=None,
+                     stim_vec_mode=True, time_vec=None, stim_vec=None,
+                     **clamp_params):
+            self.clamp = Neuron.h.IClamp(position, sec=cell_section)
+            if stim_vec_mode:
+                assert time_vec is not None and stim_vec is not None
+                self.clamp.dur = time_vec[-1]
+                stim_vec.play(self.clamp._ref_amp, time_vec, 1)
+            else:
+                for param, val in clamp_params.items():
+                    setattr(self.clamp, param, val)
+            # Clamps must be kept otherwise they are garbage-collected
+            self._all_clamps = clamp_container
+            clamp_container.add(self)
+
+        def detach(self):
+            """Detaches a clamp from a cell, destroying it"""
+            self._all_clamps.discard(self)
+            del self.clamp  # Force del on the clamp (there might be references to self)
+
+    def attach_to(self, section, position=0.5):
+        return CurrentSource._Clamp(section, position, self._clamps, True,
+                                    self.time_vec, self.stim_vec)
 
     # Constant has a special attach_to and doesnt share any composing method
     class Constant:
@@ -348,6 +410,52 @@ class CurrentSource(object):
         def attach_to(self, section, position=0.5):
             return CurrentSource._Clamp(section, position, self._clamps, False,
                                         amp=self._amp, delay=self._delay, dur=self._dur)
+
+
+class ConductanceSource(SignalSource):
+    _all_sources = []
+
+    def __init__(self, reversal=0.0, rng=None):
+        """
+        Creates a new conductance source that injects a conductance by driving
+        the rs of an SEClamp at a given reversal potential.
+
+        reversal: reversal potential of conductance (mV)
+        """
+        super().__init__(0.0, rng)  # set SignalSource's base_amp to zero
+        self._reversal = reversal   # set reversal from base_amp parameter in classmethods
+        self._clamps = set()
+        self._all_sources.append(self)
+
+    class _DynamicClamp:
+        def __init__(self, cell_section, position=0.5, clamp_container=None,
+                     stim_vec_mode=True, time_vec=None, stim_vec=None,
+                     reversal=0.0, **clamp_params):
+            self.clamp = Neuron.h.SEClamp(position, sec=cell_section)
+            if stim_vec_mode:
+                assert time_vec is not None and stim_vec is not None
+                self.clamp.dur1 = time_vec[-1]
+                self.clamp.amp1 = reversal
+                # replace self.stim_vec with inverted and clamped signal
+                # rs is in MOhm, so conductance is in uS (micro Siemens)
+                self.stim_vec = Neuron.h.Vector(
+                    [1 / x if x > 1E-9 and x < 1E9 else 1E9 for x in stim_vec])
+                self.stim_vec.play(self.clamp._ref_rs, time_vec, 1)
+            else:
+                for param, val in clamp_params.items():
+                    setattr(self.clamp, param, val)
+            # Clamps must be kept otherwise they are garbage-collected
+            self._all_clamps = clamp_container
+            clamp_container.add(self)
+
+        def detach(self):
+            """Detaches a clamp from a cell, destroying it"""
+            self._all_clamps.discard(self)
+            del self.clamp  # Force del on the clamp (there might be references to self)
+
+    def attach_to(self, section, position=0.5):
+        return ConductanceSource._DynamicClamp(section, position, self._clamps, True,
+                                               self.time_vec, self.stim_vec, self._reversal)
 
 
 # EStim class is a derivative of TStim for stimuli with an extracelular electrode. The main
