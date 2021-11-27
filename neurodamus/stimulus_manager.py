@@ -47,7 +47,7 @@ class StimulusManager:
         # If sonata node_set, internally register the target and add to hoc TargetList
         target = self._target_manager.get_target(target_spec)
         python_only_stims = ('ShotNoise', 'RelativeShotNoise',
-                             'StochasticConductance')
+                             'OrnsteinUhlenbeck', 'AbsoluteShotNoise')
         if SimConfig.cli_options.experimental_stims or \
                 (stim_t and stim_t.__name__ in python_only_stims):
             # New style Stim, in Python
@@ -70,7 +70,7 @@ class StimulusManager:
     def reset_helpers(self):
         ShotNoise.stimCount = 0
         Noise.stimCount = 0
-        StochasticConductance.stimCount = 0
+        OrnsteinUhlenbeck.stimCount = 0
 
     @classmethod
     def register_type(cls, stim_class):
@@ -89,10 +89,9 @@ class BaseStim:
 
 
 @StimulusManager.register_type
-class StochasticConductance(BaseStim):
+class OrnsteinUhlenbeck(BaseStim):
     """
-    Stochastic conductance modeled by an Ornstein-Uhlenbeck process,
-    injected under dynamic clamp (using a SEClamp).
+    Ornstein-Uhlenbeck process, injected as current or conductance
     """
     stimCount = 0  # global count for seeding
 
@@ -105,7 +104,7 @@ class StochasticConductance(BaseStim):
             return None  # nothing to do, stim is a no-op
 
         # setup random seeds
-        seed1 = StochasticConductance.stimCount + 2997  # stimulus block seed
+        seed1 = OrnsteinUhlenbeck.stimCount + 2997  # stimulus block seed
         seed2 = SimConfig.rng_info.getStimulusSeed() + 291204  # stimulus type seed
         seed3 = (lambda x: x + 123) if self.seed is None else (lambda x: self.seed)  # GID seed
 
@@ -120,42 +119,51 @@ class StochasticConductance(BaseStim):
                     continue
 
                 rng = random.Random123(seed1, seed2, seed3(gid))  # setup RNG
-                # generate stochastic conductance signal
-                cs = ConductanceSource.ornstein_uhlenbeck(self.tau, self.sigma, self.mean,
+                # inject Ornstein-Uhlenbeck signal
+                if stim_info["Mode"] == "Conductance":
+                    cs = ConductanceSource.ornstein_uhlenbeck(self.tau, self.sigma, self.mean,
+                                                              self.duration, dt=self.dt,
+                                                              delay=self.delay, rng=rng,
+                                                              base_amp=self.reversal)
+                else:
+                    cs = CurrentSource.ornstein_uhlenbeck(self.tau, self.sigma, self.mean,
                                                           self.duration, dt=self.dt,
-                                                          delay=self.delay, rng=rng,
-                                                          base_amp=self.reversal)
-                # attach conductance source to section
+                                                          delay=self.delay, rng=rng)
+                # attach source to section
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
-                self.stimList.append(cs)  # save ConductanceSource
+                self.stimList.append(cs)  # save source
 
-        StochasticConductance.stimCount += 1  # increment global count
+        OrnsteinUhlenbeck.stimCount += 1  # increment global count
 
     def parse_check_all_parameters(self, stim_info: dict):
         self.dt = float(stim_info.get("Dt", 0.25))  # stimulus timestep [ms]
         if self.dt <= 0:
-            raise Exception("Stochastic conductance time-step must be positive")
+            raise Exception("Ornstein-Uhlenbeck time-step must be positive")
 
         self.reversal = float(stim_info.get("Reversal", 0.0))  # reversal potential [mV]
 
+        if stim_info["Mode"] not in ["Current", "Conductance"]:
+            raise Exception("Ornstein-Uhlenbeck must be used with mode Current or Conductance")
+
         self.tau = float(stim_info["Tau"])  # relaxation time [ms]
         if self.tau < 0:
-            raise Exception("Stochastic conductance relaxation time must be non-negative")
+            raise Exception("Ornstein-Uhlenbeck relaxation time must be non-negative")
 
         self.sigma = float(stim_info["Sigma"])  # standard deviation [uS]
         if self.sigma <= 0:
-            raise Exception("Stochastic conductance standard deviation must be positive")
+            raise Exception("Ornstein-Uhlenbeck standard deviation must be positive")
 
         self.mean = float(stim_info.get("Mean", 0.0))  # signal mean [uS]
         if self.mean < 0 and abs(self.mean) > 2 * self.sigma:
-            logging.warning("Stochastic conductance signal is mostly zero")
+            logging.warning("Ornstein-Uhlenbeck signal is mostly zero")
 
         self.seed = stim_info.get("Seed")  # random seed override
         if self.seed is not None:
             self.seed = int(self.seed)
 
-        if self.delay > 0:
-            logging.warning("Stochastic conductance ignores delay")
+        # delay
+        if stim_info["Mode"] == "Conductance" and self.delay > 0:
+            logging.warning("Mode Conductance ignores delay")
 
         return True
 
@@ -196,9 +204,15 @@ class ShotNoise(BaseStim):
 
                 rng = random.Random123(seed1, seed2, seed3(gid))  # setup RNG
                 # generate shot noise current source
-                cs = CurrentSource.shot_noise(self.tau_D, self.tau_R, self.rate,
-                                              self.amp_mean, self.amp_var, self.duration,
-                                              dt=self.dt, delay=self.delay, rng=rng)
+                if stim_info["Mode"] == "Conductance":
+                    cs = ConductanceSource.shot_noise(self.tau_D, self.tau_R, self.rate,
+                                                      self.amp_mean, self.amp_var, self.duration,
+                                                      dt=self.dt, delay=self.delay, rng=rng,
+                                                      base_amp=self.reversal)
+                else:
+                    cs = CurrentSource.shot_noise(self.tau_D, self.tau_R, self.rate,
+                                                  self.amp_mean, self.amp_var, self.duration,
+                                                  dt=self.dt, delay=self.delay, rng=rng)
                 # attach current source to section
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
                 self.stimList.append(cs)  # save CurrentSource
@@ -206,6 +220,11 @@ class ShotNoise(BaseStim):
         ShotNoise.stimCount += 1  # increment global count
 
     def parse_check_all_parameters(self, stim_info: dict):
+        if stim_info["Mode"] not in ["Current", "Conductance"]:
+            raise Exception("Shot noise must be used with mode Current or Conductance")
+
+        self.reversal = float(stim_info.get("Reversal", 0.0))  # reversal potential [mV]
+
         # time parameters
         self.dt = float(stim_info.get("Dt", 0.25))    # stimulus timestep [ms]
         if self.dt <= 0:
@@ -230,6 +249,10 @@ class ShotNoise(BaseStim):
         if self.seed is not None:
             self.seed = int(self.seed)
 
+        # delay
+        if stim_info["Mode"] == "Conductance" and self.delay > 0:
+            logging.warning("Mode Conductance ignores delay")
+
         return True
 
     def parse_check_stim_parameters(self, stim_info: dict):
@@ -250,11 +273,30 @@ class ShotNoise(BaseStim):
         if self.amp_var <= 0:
             raise Exception("Shot noise amplitude variance must be positive")
 
-        return self.rate == 0  # no-op if rate == 0
+        return self.rate > 0  # no-op if rate == 0
 
     def compute_parameters(self, cell):
         # nothing to do
         pass
+
+    def params_from_mean_var(self, mean, var):
+        """
+        Compute bi-exponential shot noise parameters from desired mean and variance of signal.
+
+        Analytical result derived from a generalization of Campbell's theorem present in
+        Rice, S.O., "Mathematical Analysis of Random Noise", BSTJ 23, 3 Jul 1944.
+        """
+        from math import exp, log
+
+        # bi-exponential time to peak [ms]
+        t_peak = log(self.tau_D / self.tau_R) / (1 / self.tau_R - 1 / self.tau_D)
+        # bi-exponential peak height [1]
+        x_peak = exp(-t_peak / self.tau_D) - exp(-t_peak / self.tau_R)
+
+        rate_ms = (1 + self.cv_square) / 2 * (mean ** 2 / var) / (self.tau_D + self.tau_R)
+        self.rate = rate_ms * 1000  # rate in 1 / s [Hz]
+        self.amp_mean = mean * x_peak / rate_ms / (self.tau_D - self.tau_R)
+        self.amp_var = self.cv_square * self.amp_mean ** 2
 
 
 @StimulusManager.register_type
@@ -288,31 +330,51 @@ class RelativeShotNoise(ShotNoise):
             raise Exception("Shot noise amplitude CV must be positive")
         self.cv_square = cv * cv
 
+        if stim_info["Mode"] == "Conductance":
+            raise Exception("RelativeShotNoise only supported as Current injection")
+
         return self.mean_perc != 0  # no-op if mean_perc == 0
 
     def compute_parameters(self, cell):
-        """
-        Compute bi-exponential shot noise parameters from desired mean and variance of signal.
-
-        Analytical result derived from a generalization of Campbell's theorem present in
-        Rice, S.O., "Mathematical Analysis of Random Noise", BSTJ 23, 3 Jul 1944.
-        """
-        from math import exp, log
-
         threshold = cell.getThreshold()          # cell threshold current [nA]
         mean = self.mean_perc / 100 * threshold  # desired mean [nA]
         sd = self.sd_perc / 100 * threshold      # desired standard deviation [nA]
         var = sd * sd                            # variance [nA^2]
+        super().params_from_mean_var(mean, var)
 
-        # bi-exponential time to peak [ms]
-        t_peak = log(self.tau_D / self.tau_R) / (1 / self.tau_R - 1 / self.tau_D)
-        # bi-exponential peak height [1]
-        x_peak = exp(-t_peak / self.tau_D) - exp(-t_peak / self.tau_R)
 
-        rate_ms = (1 + self.cv_square) / 2 * (mean ** 2 / var) / (self.tau_D + self.tau_R)
-        self.rate = rate_ms * 1000  # rate in 1 / s [Hz]
-        self.amp_mean = mean * x_peak / rate_ms / (self.tau_D - self.tau_R)
-        self.amp_var = self.cv_square * self.amp_mean ** 2
+@StimulusManager.register_type
+class AbsoluteShotNoise(ShotNoise):
+    """
+    AbsoluteShotNoise stimulus handler, same as shotNoise
+    but parameters from given mean and std. dev.
+    """
+
+    def __init__(self, target, stim_info: dict, cell_manager):
+        super().__init__(target, stim_info, cell_manager)
+
+    def parse_check_stim_parameters(self, stim_info: dict):
+        """
+        Parse parameters for AbsoluteShotNoise stimulus
+        """
+        # signal mean [nA]
+        self.mean = float(stim_info["Mean"])
+
+        # signal standard deviation [nA]
+        self.sd = float(stim_info["Sigma"])
+        if self.sd <= 0:
+            raise Exception("Shot noise stdev must be positive")
+
+        # coefficient of variation of shot amplitudes [1]
+        cv = float(stim_info["AmpCV"])
+        if cv <= 0:
+            raise Exception("Shot noise amplitude CV must be positive")
+        self.cv_square = cv * cv
+
+        return True
+
+    def compute_parameters(self, cell):
+        super().params_from_mean_var(self.mean, self.sd * self.sd)
 
 
 @StimulusManager.register_type

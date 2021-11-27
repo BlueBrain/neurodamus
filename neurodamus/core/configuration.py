@@ -372,8 +372,9 @@ def _stimulus_params(config: _SimConfig, run_conf):
         "Pattern": {
             "Hyperpolarizing", "Linear", "Noise", "Pulse", "RelativeLinear",
             "RelativeShotNoise", "SEClamp", "ShotNoise", "Sinusoidal",
-            "SubThreshold", "SynapseReplay", "StochasticConductance",
-            "NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace"
+            "SubThreshold", "SynapseReplay", "OrnsteinUhlenbeck",
+            "NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace",
+            "AbsoluteShotNoise"
         }
     }
     deprecated_values = {
