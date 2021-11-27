@@ -98,7 +98,7 @@ class OrnsteinUhlenbeck(BaseStim):
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
 
-        self.stimList = []  # ConductanceSource's go here
+        self.stimList = []  # sources go here
 
         if not self.parse_check_all_parameters(stim_info):
             return None  # nothing to do, stim is a no-op
@@ -138,24 +138,25 @@ class OrnsteinUhlenbeck(BaseStim):
     def parse_check_all_parameters(self, stim_info: dict):
         self.dt = float(stim_info.get("Dt", 0.25))  # stimulus timestep [ms]
         if self.dt <= 0:
-            raise Exception("Ornstein-Uhlenbeck time-step must be positive")
+            raise Exception("%s time-step must be positive" % self.__class__.__name__)
 
         self.reversal = float(stim_info.get("Reversal", 0.0))  # reversal potential [mV]
 
         if stim_info["Mode"] not in ["Current", "Conductance"]:
-            raise Exception("Ornstein-Uhlenbeck must be used with mode Current or Conductance")
+            raise Exception("%s must be used with mode Current or Conductance"
+                            % self.__class__.__name__)
 
         self.tau = float(stim_info["Tau"])  # relaxation time [ms]
         if self.tau < 0:
-            raise Exception("Ornstein-Uhlenbeck relaxation time must be non-negative")
+            raise Exception("%s relaxation time must be non-negative" % self.__class__.__name__)
 
         self.sigma = float(stim_info["Sigma"])  # standard deviation [uS]
         if self.sigma <= 0:
-            raise Exception("Ornstein-Uhlenbeck standard deviation must be positive")
+            raise Exception("%s standard deviation must be positive" % self.__class__.__name__)
 
         self.mean = float(stim_info.get("Mean", 0.0))  # signal mean [uS]
         if self.mean < 0 and abs(self.mean) > 2 * self.sigma:
-            logging.warning("Ornstein-Uhlenbeck signal is mostly zero")
+            logging.warning("%s signal is mostly zero" % self.__class__.__name__)
 
         self.seed = stim_info.get("Seed")  # random seed override
         if self.seed is not None:
@@ -163,7 +164,7 @@ class OrnsteinUhlenbeck(BaseStim):
 
         # delay
         if stim_info["Mode"] == "Conductance" and self.delay > 0:
-            logging.warning("Mode Conductance ignores delay")
+            logging.warning("%s ignores delay in Conductance mode" % self.__class__.__name__)
 
         return True
 
@@ -221,14 +222,15 @@ class ShotNoise(BaseStim):
 
     def parse_check_all_parameters(self, stim_info: dict):
         if stim_info["Mode"] not in ["Current", "Conductance"]:
-            raise Exception("Shot noise must be used with mode Current or Conductance")
+            raise Exception("%s must be used with mode Current or Conductance"
+                            % self.__class__.__name__)
 
         self.reversal = float(stim_info.get("Reversal", 0.0))  # reversal potential [mV]
 
         # time parameters
         self.dt = float(stim_info.get("Dt", 0.25))    # stimulus timestep [ms]
         if self.dt <= 0:
-            raise Exception("Shot noise time-step must be positive")
+            raise Exception("%s time-step must be positive" % self.__class__.__name__)
 
         ntstep = int(self.duration / self.dt)  # number of timesteps [1]
         if ntstep == 0:
@@ -238,7 +240,8 @@ class ShotNoise(BaseStim):
         self.tau_R = float(stim_info["RiseTime"])     # rise time [ms]
         self.tau_D = float(stim_info["DecayTime"])    # decay time [ms]
         if self.tau_R >= self.tau_D:
-            raise Exception("Shot noise bi-exponential rise time must be smaller than decay time")
+            raise Exception("%s bi-exponential rise time must be smaller than decay time"
+                            % self.__class__.__name__)
 
         # parse and check stimulus-specific parameters
         if not self.parse_check_stim_parameters(stim_info):
@@ -251,7 +254,7 @@ class ShotNoise(BaseStim):
 
         # delay
         if stim_info["Mode"] == "Conductance" and self.delay > 0:
-            logging.warning("Mode Conductance ignores delay")
+            logging.warning("%s ignores delay in Conductance mode" % self.__class__.__name__)
 
         return True
 
@@ -266,12 +269,12 @@ class ShotNoise(BaseStim):
         # when negative we invert the sign of the current
         self.amp_mean = float(stim_info["AmpMean"])
         if self.amp_mean == 0:
-            raise Exception("Shot noise amplitude mean must be non-zero")
+            raise Exception("%s amplitude mean must be non-zero" % self.__class__.__name__)
 
         # variance of amplitude of shots [nA^2]
         self.amp_var = float(stim_info["AmpVar"])
         if self.amp_var <= 0:
-            raise Exception("Shot noise amplitude variance must be positive")
+            raise Exception("%s amplitude variance must be positive" % self.__class__.__name__)
 
         return self.rate > 0  # no-op if rate == 0
 
@@ -320,18 +323,19 @@ class RelativeShotNoise(ShotNoise):
         # signal standard deviation as percent of cell's threshold [1]
         self.sd_perc = float(stim_info["SDPercent"])
         if self.sd_perc <= 0:
-            raise Exception("Shot noise stdev percent must be positive")
+            raise Exception("%s stdev percent must be positive" % self.__class__.__name__)
         if self.sd_perc < 1:
-            logging.warning("Shot noise stdev percent too small gives a very high event rate")
+            logging.warning("%s stdev percent too small gives a very high event rate"
+                            % self.__class__.__name__)
 
         # coefficient of variation of shot amplitudes [1]
         cv = float(stim_info["AmpCV"])
         if cv <= 0:
-            raise Exception("Shot noise amplitude CV must be positive")
+            raise Exception("%s amplitude CV must be positive" % self.__class__.__name__)
         self.cv_square = cv * cv
 
         if stim_info["Mode"] == "Conductance":
-            raise Exception("RelativeShotNoise only supported as Current injection")
+            raise Exception("%s only supported as Current injection" % self.__class__.__name__)
 
         return self.mean_perc != 0  # no-op if mean_perc == 0
 
@@ -363,12 +367,12 @@ class AbsoluteShotNoise(ShotNoise):
         # signal standard deviation [nA]
         self.sd = float(stim_info["Sigma"])
         if self.sd <= 0:
-            raise Exception("Shot noise stdev must be positive")
+            raise Exception("%s stdev must be positive" % self.__class__.__name__)
 
         # coefficient of variation of shot amplitudes [1]
         cv = float(stim_info["AmpCV"])
         if cv <= 0:
-            raise Exception("Shot noise amplitude CV must be positive")
+            raise Exception("%s amplitude CV must be positive" % self.__class__.__name__)
         self.cv_square = cv * cv
 
         return True
@@ -557,7 +561,7 @@ class Noise(BaseStim):
     def parse_check_all_parameters(self, stim_info: dict):
         self.dt = float(stim_info.get("Dt", 0.5))  # stimulus timestep [ms]
         if self.dt <= 0:
-            raise Exception("Noise time-step must be positive")
+            raise Exception("%s time-step must be positive" % self.__class__.__name__)
 
         if "Mean" in stim_info:
             self.is_relative = False
@@ -565,7 +569,7 @@ class Noise(BaseStim):
 
             self.var = float(stim_info["Variance"])  # noise current variance [nA]
             if self.var <= 0:
-                raise Exception("Noise variance must be positive")
+                raise Exception("%s variance must be positive" % self.__class__.__name__)
         else:
             self.is_relative = True
             # noise current mean as percent of threshold
@@ -574,7 +578,7 @@ class Noise(BaseStim):
             # noise current variance as percent of threshold
             self.var_perc = float(stim_info["Variance"])
             if self.var_perc <= 0:
-                raise Exception("Noise variance percent must be positive")
+                raise Exception("%s variance percent must be positive" % self.__class__.__name__)
 
         return True
 
@@ -671,7 +675,7 @@ class Sinusoidal(BaseStim):
     def parse_check_all_parameters(self, stim_info: dict):
         self.dt = float(stim_info.get("Dt", 0.025))  # stimulus timestep [ms]
         if self.dt <= 0:
-            raise Exception("Sinusoid time-step must be positive")
+            raise Exception("%s time-step must be positive" % self.__class__.__name__)
 
         self.amp = float(stim_info["AmpStart"])  # amplitude [nA]
         self.freq = float(stim_info["Frequency"])  # frequency [Hz]
@@ -710,4 +714,4 @@ class SEClamp(BaseStim):
         self.vhold = float(stim_info["Voltage"])  # holding voltage [mV]
         self.rs = float(stim_info.get("RS", 0.01))  # series resistance [MOhm]
         if self.delay > 0:
-            logging.warning("SEClamp ignores delay")
+            logging.warning("%s ignores delay" % self.__class__.__name__)
