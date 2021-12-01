@@ -118,7 +118,7 @@ html_css_files = ['custom.css']
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-# html_theme_options = {}
+html_theme_options = {"metadata_distribution": "neurodamus-py"}
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'python_doc'
