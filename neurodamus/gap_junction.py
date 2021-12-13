@@ -68,7 +68,7 @@ class GapJunctionSynToolReader(SynReaderSynTool):
         else:
             return GapJunctionConnParameters._gj_v1_fields
 
-    def _load_synapse_parameters(self, gid):
+    def _load_synapse_parameters(self, gid, _mod=None):
         reader = self._syn_reader
         requested_fields = self._get_gapjunction_fields()
         nrow = int(reader.loadSynapseCustom(gid, ",".join(requested_fields)))

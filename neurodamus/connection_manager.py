@@ -476,9 +476,7 @@ class ConnectionManagerBase(object):
             conn_src = conn_conf["Source"]
             conn_dst = conn_conf["Destination"]
             synapse_id = conn_conf.get("SynapseID")
-            mod_override = None
-            if "ModOverride" in conn_conf:
-                mod_override = conn_conf["ModOverride"]
+            mod_override = conn_conf.get("ModOverride")
             self.connect_group(conn_src, conn_dst, synapse_id, mod_override)
 
     # -

@@ -94,7 +94,7 @@ class ASynParameters(SynapseParameters):
 
 
 class ACellSynReader(object):
-    def get_synapse_parameters(self, tgid):
+    def get_synapse_parameters(self, tgid, _mod=None):
         # for testing, each cell connects to src gids tgid+1 and tgid+2
         params = ASynParameters.create_array(2)
         params.sgid = [tgid+1, tgid+2]

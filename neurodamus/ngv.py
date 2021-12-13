@@ -252,7 +252,7 @@ class NeuroGlialSynapseReader(SynReaderSynTool):
 
         return conn_syn_params
 
-    def get_synapse_parameters(self, glia_gid):
+    def get_synapse_parameters(self, glia_gid, _mod=None):
         """Returns NeuroGlia synapses parameters for a given astrocyte
         """
         # Direct load and return. Cache is not worth being used

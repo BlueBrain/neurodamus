@@ -390,7 +390,7 @@ class PointSynReader(object):
         self.syn_source = syn_source
         self._syn_reader = CustomPointSynFileReader(syn_source)
 
-    def get_synapse_parameters(self, gid):
+    def get_synapse_parameters(self, gid, _mod=None):
         """Obtains the synapse parameters record for a given gid.
         """
         syn_params = self._load_synapse_parameters(gid)
