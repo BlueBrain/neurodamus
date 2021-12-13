@@ -99,8 +99,8 @@ class SonataConfig:
         "Projection": None,
         "StimulusInject": None,
         "Connection": "connection_overrides",
-        "parsedConfigures": None,
-        "parsedModifications": None,
+        "parsedConfigures": False,
+        "parsedModifications": False,
 
         # Section fields
         # --------------
@@ -165,11 +165,11 @@ class SonataConfig:
             logging.warning("Simulating all populations from all node files...")
         network = self._circuit_networks
 
-        def make_circuit(nodes_file, population_name, population_info):
+        def make_circuit(nodes_file, node_pop_name, population_info):
             circuit_conf = dict(
-                CircuitPath=os.path.dirname(nodes_file) or ".",
+                CircuitPath=os.path.dirname(nodes_file) or "",
                 CellLibraryFile=nodes_file,
-                CircuitTarget=population_name + ":" + (self._entries.get("node_set") or ""),
+                CircuitTarget=node_pop_name + ":" + (self._entries.get("node_set") or ""),
                 MorphologyType="swc",
                 **{
                     node_info_to_circuit.get(key, key): value
@@ -178,11 +178,11 @@ class SonataConfig:
             )
 
             # find inner connectivity
-            edge_population_prefix = "{0}__{0}__".format(population_name)
             for edge_config in network["edges"]:
-                populations = edge_config["populations"].keys()
-                if any(pop_name.startswith(edge_population_prefix) for pop_name in populations):
-                    circuit_conf["nrnPath"] = edge_config["edges_file"]
+                for edge_pop_name in edge_config["populations"].keys():
+                    edge_storage = self.circuits.edge_population(edge_pop_name)
+                    if edge_storage.source == edge_storage.target == node_pop_name:
+                        circuit_conf["nrnPath"] = edge_config["edges_file"] + ":" + edge_pop_name
             return circuit_conf
 
         return {
@@ -193,26 +193,25 @@ class SonataConfig:
 
     @property
     def parsedProjections(self):
-        # Non inner connectivity
-        # find inner connectivity
         projection_type_convert = dict(
             chemical="Synaptic",
             electrical="GapJunction",
         )
         projections = {}
+
         for edge_config in self._circuit_networks["edges"]:
-            populations = edge_config["populations"].keys()
-            for population_name in populations:
-                pop_parts = population_name.split("__")
-                if pop_parts[0] == pop_parts[1]:  # Inner connectivity
+            for population_name, edge_pop_config in edge_config["populations"].items():
+                edge_pop = self.circuits.edge_population(population_name)
+                if edge_pop.source == edge_pop.target:  # Inner connectivity
                     continue
                 # projection
-                projections["{0[0]}-{0[1]}".format(pop_parts)] = dict(
+                pop_type = edge_pop_config.get("type", "chemical")
+                projections["{0.source}-{0.target}".format(edge_pop)] = dict(
                     Path=edge_config["edges_file"] + ":" + population_name,
-                    Source=pop_parts[0] + ":",
-                    Destination=pop_parts[1] + ":",
-                    Type=projection_type_convert[pop_parts[2]] or logging.warning(
-                        "Unhandled synapse type: " + pop_parts[2]
+                    Source=edge_pop.source + ":",
+                    Destination=edge_pop.target + ":",
+                    Type=projection_type_convert.get(pop_type) or logging.warning(
+                        "Unhandled synapse type: " + pop_type
                     )
                 )
         return projections
@@ -242,7 +241,7 @@ class SonataConfig:
             # Some entries now have defaults. Introduce them here
             rep.setdefault("Type", "compartment")
             rep.setdefault("Format", "SONATA")
-            rep.setdefault("Dt", self.run["dt"])
+            rep.setdefault("Dt", self.run.get("dt"))
             rep.setdefault("StartTime", 0)
             rep.setdefault("Unit", "mV")
             rep.setdefault("Target", "_ALL_")
@@ -263,7 +262,7 @@ class SonataConfig:
         # Otherwise attempt translation
         item_tr = self._translation.get(item)
         if item_tr is None:
-            logging.warning("Non-native Property needs conversion")
+            logging.warning("Non-native Property needs conversion: " + item)
             return {}
         return self._entries.get(item_tr) or self._sections.get(item_tr) or {}
 

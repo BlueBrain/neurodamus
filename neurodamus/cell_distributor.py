@@ -141,7 +141,7 @@ class CellManagerBase(object):
         self._binfo = None
         self._pc = Nd.pc
         self._conn_managers_per_src_pop = weakref.WeakValueDictionary()
-        if circuit_conf.CircuitPath:
+        if type(circuit_conf.CircuitPath) is str:
             self._init_config(circuit_conf, self._target_spec.population or '')
         else:
             logging.info(" => %s Circuit has been disabled", self.circuit_name or "(default)")
