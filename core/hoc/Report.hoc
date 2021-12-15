@@ -343,7 +343,7 @@ proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
             }
             //test if we can even access the desired current variable in this compartment
             sprint(tstr,"{%s.%s(%1.2f)}", secname(), reportOn, x )
-            result = execute1(tstr, 0)
+            result = execute1(tstr, 1)
             if( result != 0 ) {
                 //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
                 if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
@@ -459,7 +459,7 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
 
             //test if we can even access the desired current variable in this compartment
             sprint(tstr,"{%s.%s(%1.2f)}", secname(), intrinsicList.o(intrinsicIndex).s, x )
-            result = execute1(tstr, 0)
+            result = execute1(tstr, 1)
             if( result != 0 ) { //success, the var exists so we can add it
                 if( area(x) != 0 ) {
 
