@@ -1,7 +1,7 @@
 """
 Collection of generic Python utilities.
 """
-from __future__ import absolute_import
+import weakref
 from bisect import bisect_left
 from enum import EnumMeta
 
@@ -40,6 +40,11 @@ def docopt_sanitize(docopt_opts):
                 val = True
         opts[key] = val
     return opts
+
+
+class WeakList(list):
+    def append(self, item):
+        list.append(self, weakref.ref(item, self.remove))
 
 
 class ConfigT(object):

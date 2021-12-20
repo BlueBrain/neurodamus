@@ -3,7 +3,7 @@ Implementation of Gid Sets with the ability of self offsetting and avoid
 global overlapping
 """
 import weakref
-from ..utils import compat
+from ..utils import compat, WeakList
 from . import MPI
 
 
@@ -29,13 +29,12 @@ class PopulationNodes:
         It wont probably be used publicly given `get()` is also a factory.
         """
         self.name = name
-        self.nodesets = []  # each population might contain several NodeSet's
+        self.nodesets = WeakList()  # each population might contain several NodeSet's
         self.max_gid = 0  # maximum raw gid (without offset)
         self.offset = 0
 
     def _append(self, nodeset):
-        on_obj_deleted = lambda ref: self.nodesets.remove(ref)
-        self.nodesets.append(weakref.proxy(nodeset, on_obj_deleted))
+        self.nodesets.append(nodeset)
         self._update(nodeset)
         return self
 
@@ -88,8 +87,8 @@ class PopulationNodes:
             offset = ((cur_max - 1) // 1000 + 1) * 1000
         self.offset = offset
         # Update individual nodesets
-        for nodeset in self.nodesets:
-            nodeset._offset = offset
+        for nodeset in self.nodesets:  # nodeset is a weakref
+            nodeset()._offset = offset
 
     def _update_offsets(self):
         """Update all global offsets after adding gids"""
