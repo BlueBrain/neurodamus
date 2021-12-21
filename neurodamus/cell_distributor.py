@@ -162,12 +162,15 @@ class CellManagerBase(object):
     is_virtual = property(lambda self: False)
     connection_managers = property(lambda self: self._conn_managers_per_src_pop)
 
+    def is_initialized(self):
+        return self._local_nodes is not None
+
     def __str__(self):
         return "({}: {})".format(self.__class__.__name__, str(self._population_name))
 
     # Compatibility with neurodamus-core (used by TargetManager, CompMapping)
     def getGidListForProcessor(self):
-        return self._local_nodes.final_gids()
+        return self.local_nodes.final_gids()
 
     def _init_config(self, circuit_conf, pop):
         if self._node_format == NodeFormat.SONATA:

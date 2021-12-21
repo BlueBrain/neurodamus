@@ -8,7 +8,7 @@
     "node_set": "l4mc",
     "run": {
         "tstart": 0,
-        "tstop": 1.0,
+        "tstop": 50.0,
         "dt": 0.1,
         "seed": 1122
     },

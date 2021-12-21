@@ -325,7 +325,10 @@ class NodesetTarget(_TargetInterface):
         return self.gid_count()
 
     def completegids(self):
-        return self.get_gids()
+        final_gids = self.get_gids()
+        hoc_vec = Nd.Vector(final_gids.size)
+        hoc_vec.as_numpy()[:] = final_gids
+        return hoc_vec
 
     def isCellTarget(self):
         return True
