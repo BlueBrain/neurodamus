@@ -56,6 +56,28 @@ Two options exist to control this behavior:
  - ``--simulate-model=[ON, OFF]`` Controls whether neurodamus will launch the
    simulation automatically. Default: ON
 
+Resource estimation for Users
+-----------------------------
+When running a simulation on bb5, the number of computing nodes needed depends on the number of
+cells being simulated. A rough(1) estimation is:
+
+ - Each neuron can take ~ 20 - 25 MB memory for simulation.
+ - Each node has ~ 360 GB x 1024 MB/GB = 368640 MB of memory
+
+Hence each node can accommodate ~ 368640 / 25 = 14745 neurons.
+
+In order to simulate faster, users can increase the number of nodes provided. HPC recommends
+~ 15 neurons/core x 40 cores/node = 600 neurons/node.
+For example, for a circuit of 6000 cells, users can simulate it on a single node or 10 nodes.
+
+The choice depends on the availability of nodes and how fast the results are expected,
+taking into consideration that the maximum number of nodes to request for each job is 720.
+
+[1] Basic connectivity being considered. Depending on the connectivity and cells
+configurations (e.g. featuring heavier mechanisms) these figures can change significantly.
+This issue is being followed in https://bbpteam.epfl.ch/project/issues/browse/BBPBGLIB-556
+For now we advise users to test jobs on a small scale before submitting a full-scale one.
+
 
 Neurodamus for Developers
 -------------------------

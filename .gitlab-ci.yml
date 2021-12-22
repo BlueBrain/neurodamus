@@ -17,7 +17,6 @@ workflow:
       when: never
     - when: always
 
-
 variables:
   BLUECONFIGS_BRANCH:
     value: $BLUECONFIGS_BRANCH
@@ -27,7 +26,6 @@ python3-base:
   extends: .tox-template
   variables:
     TOXENV: flake8, py3
-
 
 py38-full-spack:
   extends: .tox-template
@@ -47,6 +45,8 @@ blueconfig_tests:
     strategy: depend
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - neurodamus/**
     - when: manual
       allow_failure: true
 
@@ -54,11 +54,10 @@ blueconfig_tests:
 # Always add the manual option to create sdist/wheel or upload
 build-package:
   rules:
-    - when: always
+    - when: on_success
 
 publish-package:
   rules:
-    - if: $CI_COMMIT_TAG
     - when: manual
       allow_failure: true
 
@@ -76,6 +75,5 @@ publish-docs:
   script:
     - docs-internal-upload --docs-path docs/_build
   rules:
-    - if: $CI_COMMIT_TAG
     - when: manual
       allow_failure: true
