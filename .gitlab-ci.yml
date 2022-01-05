@@ -46,11 +46,11 @@ blueconfig_tests:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
-        - neurodamus/**
+        - neurodamus/**/*
     - when: manual
       allow_failure: true
 
-# The following stages are overrides. Dont rename
+# The following stages are overrides. Don't rename
 # Always add the manual option to create sdist/wheel or upload
 build-package:
   rules:

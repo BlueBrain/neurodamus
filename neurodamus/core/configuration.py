@@ -307,9 +307,11 @@ def find_input_file(filepath, search_paths=(), alt_filename=None):
     return file_found
 
 
-def _check_params(section_name, data, required_fields, numeric_fields=(), non_negatives=(),
-                  valid_values={}, deprecated_values={}):
-    """Generic function to check a dict-like data set conforms to the field prescription"""
+def _check_params(section_name, data, required_fields,
+                  numeric_fields=(), non_negatives=(),
+                  valid_values=None, deprecated_values=None):
+    """Generic function to check a dict-like data set conforms to the field prescription
+    """
     for param in required_fields:
         if param not in data:
             raise ConfigurationError("BlueConfig mandatory param not present: [%s] %s"
@@ -327,13 +329,13 @@ def _check_params(section_name, data, required_fields, numeric_fields=(), non_ne
             raise ConfigurationError("BlueConfig param must be positive: [%s] %s"
                                      % (section_name, param))
 
-    for param, valid in valid_values.items():
+    for param, valid in (valid_values or {}).items():
         val = data.get(param)
         if val and val not in valid:
             raise ConfigurationError("BlueConfig param value is invalid: [%s] %s = %s"
                                      % (section_name, param, val))
 
-    for param, deprecated in deprecated_values.items():
+    for param, deprecated in (deprecated_values or {}).items():
         val = data.get(param)
         if val and val in deprecated:
             logging.warning("BlueConfig param value is deprecated: [%s] %s = %s"
@@ -364,13 +366,17 @@ def _stimulus_params(config: _SimConfig, run_conf):
                       "PercentEnd", "PercentLess", "Mean", "Variance", "Voltage", "RS",)
     non_negatives = ("Duration", "Delay", "Rate", "Frequency", "Width", "Lambda", "Weight",
                      "NumOfSynapses", "Seed",)
-    valid_values = {}
-    valid_values["Pattern"] = ("Hyperpolarizing", "Linear", "Noise", "Pulse", "RelativeLinear",
-                               "RelativeShotNoise", "SEClamp", "ShotNoise", "Sinusoidal",
-                               "SubThreshold", "SynapseReplay",
-                               "NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace")
-    deprecated_values = {}
-    deprecated_values["Pattern"] = ("NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace")
+    valid_values = {
+        "Pattern": {
+            "Hyperpolarizing", "Linear", "Noise", "Pulse", "RelativeLinear",
+            "RelativeShotNoise", "SEClamp", "ShotNoise", "Sinusoidal",
+            "SubThreshold", "SynapseReplay",
+            "NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace"
+        }
+    }
+    deprecated_values = {
+        "Pattern": ("NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace")
+    }
     for name, stim in config.stimuli.items():
         _check_params("Stimulus " + name, compat.Map(stim), required_fields, numeric_fields,
                       non_negatives, valid_values, deprecated_values)
@@ -728,16 +734,18 @@ def _model_building_steps(config: _SimConfig, run_conf):
 
 
 @SimConfig.validator
-def _report_type(config: _SimConfig, run_conf):
+def _report_vars(config: _SimConfig, run_conf):
     """Compartment reports read voltages or i_membrane only. Other types must be summation"""
     mandatory_fields = ("Type", "StartTime", "Target", "Dt", "ReportOn", "Unit", "Format")
     report_types = {"compartment", "Summation", "Synapse", "PointType"}
+    non_negatives = ("StartTime", "EndTime", "Dt")
+
     for rep_name, rep_config in config.reports.items():
         rep_config = compat.Map(rep_config)
-        _check_params(
-            "Report " + rep_name, rep_config, mandatory_fields,
-            valid_values={'Type': report_types}
-        )
+        _check_params("Report " + rep_name, rep_config, mandatory_fields,
+                      non_negatives=non_negatives,
+                      valid_values={'Type': report_types})
+
         if config.use_coreneuron and rep_config["Type"] == "compartment":
             if rep_config["ReportOn"] not in ("v", "i_membrane"):
                 logging.warning("Compartment reports on vars other than v and i_membrane "
