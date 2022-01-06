@@ -6,4 +6,5 @@ neurodamus
 
   neurodamus
   neurodamus.core
+  neurodamus.io
   neurodamus.utils

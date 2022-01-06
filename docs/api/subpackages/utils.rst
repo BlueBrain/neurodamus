@@ -81,5 +81,7 @@ neurodamus.utils.pyutils
    .. autosummary::
       ConfigT
       ConsoleColors
-      OrderedDefaultDict
       classproperty
+      WeakList
+      dict_filter
+      dict_filter_map

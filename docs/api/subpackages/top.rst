@@ -17,27 +17,6 @@ neurodamus.cell\_distributor
       LoadBalanceMode
 
 
-neurodamus.cell\_readers
-========================
-
-.. automodule:: neurodamus.cell_readers
-   :members:
-   :undoc-members:
-
-   .. rubric:: Functions
-
-   .. autosummary::
-
-      load_mvd3
-      load_ncs
-      load_nodes
-
-   .. rubric:: Exceptions
-
-   .. autosummary::
-      CellReaderError
-
-
 neurodamus.connection
 =====================
 
@@ -48,12 +27,13 @@ neurodamus.connection
    .. rubric:: Classes
 
    .. autosummary::
-      SynapseMode
+      NetConType
       ReplayMode
-      SynapseParameters
+      ConnectionBase
       Connection
       ArtificialStim
       SpontMinis
+      InhExcSpontMinis
       ReplayStim
 
 
@@ -68,8 +48,9 @@ neurodamus.connection\_manager
 
    .. autosummary::
       ConnectionSet
+      ConnectionManagerBase
       SynapseRuleManager
-      GapJunctionManager
+      edge_node_pop_names
 
    .. autoclass:: SynapseRuleManager
       :members:
@@ -89,7 +70,6 @@ neurodamus.managers
       ElectrodeManager
 
 
-
 neurodamus.metype
 =================
 
@@ -104,7 +84,6 @@ neurodamus.metype
       METypeManager
 
 
-
 neurodamus.replay
 =================
 
@@ -116,23 +95,3 @@ neurodamus.replay
 
    .. autosummary::
       SpikeManager
-
-
-neurodamus.synapse\_reader
-==========================
-
-.. automodule:: neurodamus.synapse_reader
-   :members:
-   :undoc-members:
-
-   .. rubric:: Classes
-
-   .. autosummary::
-      SynReaderNRN
-      SynReaderSynTool
-      SynapseReader
-
-   .. rubric:: Exceptions
-
-   .. autosummary::
-      SynToolNotAvail

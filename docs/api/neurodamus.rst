@@ -18,13 +18,17 @@ Sub-Modules
 
 .. autosummary::
    neurodamus.cell_distributor
-   neurodamus.cell_readers
    neurodamus.connection_manager
    neurodamus.connection
+   neurodamus.gap_junction
    neurodamus.managers
    neurodamus.metype
+   neurodamus.modification_manager
+   neurodamus.ngv
+   neurodamus.point_neuron
    neurodamus.replay
-   neurodamus.synapse_reader
+   neurodamus.stimulus_manager
+   neurodamus.target_manager
 
 
 Module API
