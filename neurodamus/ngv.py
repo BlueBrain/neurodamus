@@ -233,24 +233,19 @@ class NeuroGliaConnParameters(SynapseParameters):
 
 
 class NeuroGlialSynapseReader(SynReaderSynTool):
-
-    def _load_synapse_parameters(self, glia_gid):
-        reader = self._syn_reader
+    def _load_reader(self, glia_gid, reader):
+        """ Override the function from base case.
+            Call loadSynapseCustom to read customized fields rather than the default fields
+            in SynapseReader.mod
+        """
         req_fields_str = ", ".join(NeuroGliaConnParameters._synapse_fields)
         nrow = int(reader.loadSynapseCustom(glia_gid, req_fields_str, True))
-        log_verbose("Edges for glia gid %d: %d", glia_gid, nrow)
         if nrow < 1:
-            return NeuroGliaConnParameters.empty
+            return nrow, 0, 0, NeuroGliaConnParameters.empty
 
         conn_syn_params = NeuroGliaConnParameters.create_array(nrow)
-        syn_params_mtx = conn_syn_params.view(('f8', len(conn_syn_params.dtype)))
-        tmpParams = Nd.Vector(len(conn_syn_params.dtype))
-
-        for syn_i in range(nrow):
-            reader.getSynapse(syn_i, tmpParams)
-            syn_params_mtx[syn_i] = tmpParams.as_numpy()
-
-        return conn_syn_params
+        record_size = len(conn_syn_params.dtype)
+        return nrow, record_size, record_size, conn_syn_params
 
     def get_synapse_parameters(self, glia_gid, _mod=None):
         """Returns NeuroGlia synapses parameters for a given astrocyte

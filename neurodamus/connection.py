@@ -33,6 +33,7 @@ class NetConType(Enum):
     NC_PRESYN = 0
     NC_SPONTMINI = 1
     NC_REPLAY = 2
+    NC_NEUROMODULATOR = 10
 
     def __int__(self):
         return self.value
@@ -70,12 +71,14 @@ class ConnectionBase:
         self.locked = False
         self._disabled = False
         self._conn_params = np.recarray(1, dtype=dict(
-            names=['weight_factor', 'syndelay_override', 'syn_offset', 'src_pop_id', 'dst_pop_id'],
-            formats=['f8', 'f8', 'u8', 'i4', 'i4']
+            names=['weight_factor', 'syndelay_override', 'syn_offset', 'src_pop_id', 'dst_pop_id',
+                   'neuromod_strength', 'neuromod_dtc'],
+            formats=['f8', 'f8', 'u8', 'i4', 'i4', 'f8', 'f8']
         ))[0]
         self._conn_params.put(
             0,
-            (weight_factor, syndelay_override, synapses_offset, src_pop_id, dst_pop_id)
+            (weight_factor, syndelay_override, synapses_offset, src_pop_id, dst_pop_id,
+             None, None)  # neuromod_strength and neuromod_dtc default None -> numpy.nan
         )
         self._synapse_params = []
         # Initialized in specific routines
@@ -97,6 +100,14 @@ class ConnectionBase:
         lambda self: self._conn_params.syndelay_override,
         lambda self, syndelay_override: self._conn_params.__setattr__('syndelay_override',
                                                                       syndelay_override)
+    )
+    neuromod_strength = property(
+        lambda self: self._conn_params.neuromod_strength,
+        lambda self, val: self._conn_params.__setattr__('neuromod_strength', val)
+    )
+    neuromod_dtc = property(
+        lambda self: self._conn_params.neuromod_dtc,
+        lambda self, val: self._conn_params.__setattr__('neuromod_dtc', val)
     )
 
     # Subclasses must implement instantiation of their connections in the simulator
@@ -733,6 +744,7 @@ class ReplayStim(ArtificialStim):
         nc.weight[0] = syn_params.weight * conn.weight_factor
         conn.netcon_set_type(nc, syn_obj, NetConType.NC_REPLAY)
         self._store(vecstim, nc)
+        return nc
 
     def add_spikes(self, hoc_tvec):
         """Appends replay spikes from a time vector to the main replay vector

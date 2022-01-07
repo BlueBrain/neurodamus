@@ -487,17 +487,24 @@ class ConnectionManagerBase(object):
             conn_conf: The BlueConfig configuration block (dict)
         """
         log_msg = " * Pathway {:s} -> {:s}".format(conn_conf["Source"], conn_conf["Destination"])
-        is_delayed_connection = "Delay" in conn_conf
-        if is_delayed_connection:
-            log_msg += ":\t[DELAYED] t={0[Delay]:g}, weight={0[Weight]:g}".format(conn_conf)
-        if "SynapseConfigure" in conn_conf:
-            log_msg += ":\tconfigure with '{:s}'".format(conn_conf["SynapseConfigure"])
-        logging.info(log_msg)
 
-        if is_delayed_connection:
-            self.setup_delayed_connection(conn_conf)
+        if "Delay" in conn_conf:
+            log_msg += ":\t[DELAYED] t={0[Delay]:g}, weight={0[Weight]:g}".format(conn_conf)
+            configured_conns = self.setup_delayed_connection(conn_conf)
         else:
-            self.configure_group(conn_conf)
+            if "SynapseConfigure" in conn_conf:
+                log_msg += ":\tconfigure with '{:s}'".format(conn_conf["SynapseConfigure"])
+            if "NeuromodStrength" in conn_conf:
+                log_msg += "\toverwrite NeuromodStrength = {:g}" \
+                    .format(conn_conf["NeuromodStrength"])
+            if "NeuromodDtc" in conn_conf:
+                log_msg += "\toverwrite NeuromodDtc = {:g}".format(conn_conf["NeuromodDtc"])
+            configured_conns = self.configure_group(conn_conf)
+
+        all_ranks_total = MPI.allreduce(configured_conns, MPI.SUM)
+        if all_ranks_total > 0:
+            logging.info(log_msg)
+            logging.info(" => Configured {:g} connections".format(all_ranks_total))
 
     def setup_delayed_connection(self, conn_config):
         raise NotImplementedError("Manager %s doesn't implement delayed connections"
@@ -698,7 +705,9 @@ class ConnectionManagerBase(object):
         _properties = {
             "Weight": "weight_factor",
             "SpontMinis": "minis_spont_rate",
-            "SynDelayOverride": "syndelay_override"
+            "SynDelayOverride": "syndelay_override",
+            "NeuromodStrength": "neuromod_strength",
+            "NeuromodDtc": "neuromod_dtc"
         }
         syn_params = dict_filter_map(conn_config, _properties)
 
@@ -710,6 +719,7 @@ class ConnectionManagerBase(object):
             assert hasattr(Nd.h, override_helper), \
                 "ModOverride helper doesn't define hoc template: " + override_helper
 
+        configured_conns = 0
         for conn in self.get_target_connections(src_target, dst_target, gidvec):
             for key, val in syn_params.items():
                 setattr(conn, key, val)
@@ -717,6 +727,8 @@ class ConnectionManagerBase(object):
                 conn.override_mod(conn_config['_hoc'])
             if "SynapseConfigure" in conn_config:
                 conn.add_synapse_configuration(conn_config["SynapseConfigure"])
+            configured_conns += 1
+        return configured_conns
 
     # -
     def configure_group_delayed(self, conn_config, gidvec=None):
@@ -1090,8 +1102,11 @@ class SynapseRuleManager(ConnectionManagerBase):
         delay = conn_config["Delay"]
         new_weight = conn_config.get("Weight", .0)
 
+        configured_conns = 0
         for conn in self.get_target_connections(src_target_name, dst_target_name):
             conn.add_delayed_weight(delay, new_weight)
+            configured_conns += 1
+        return configured_conns
 
     # -
     @timeit(name="Replay inject")

@@ -503,7 +503,7 @@ class PointNeuronSynapseManager(SynapseRuleManager):
     # -
     def configure_group(self, conn_config, gidvec=None):
         logging.info("Avoid configuring group for point neurons")
-        return
+        return 0
 
     # -
     def get_target_connections(self, src_target_name,

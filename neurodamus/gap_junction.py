@@ -7,7 +7,6 @@ import numpy as np
 from os import path as ospath
 
 from .connection_manager import ConnectionManagerBase
-from .core import NeurodamusCore as Nd
 from .core.configuration import ConfigurationError
 from .io.synapse_reader import SynapseReader, SynReaderSynTool, SynReaderNRN, SynapseParameters,\
     SynToolNotAvail
@@ -60,7 +59,7 @@ class GapJunctionConnParameters(SynapseParameters):
 class GapJunctionSynToolReader(SynReaderSynTool):
 
     def _get_gapjunction_fields(self):
-        """ use """
+        """ Determine data fields to adapt to different versions of edges files """
         if self.has_property("afferent_junction_id") and self.has_property("efferent_junction_id"):
             return GapJunctionConnParameters._gj_sonata_fields
         elif self.has_property("morpho_section_fraction_post"):
@@ -68,24 +67,20 @@ class GapJunctionSynToolReader(SynReaderSynTool):
         else:
             return GapJunctionConnParameters._gj_v1_fields
 
-    def _load_synapse_parameters(self, gid, _mod=None):
-        reader = self._syn_reader
+    def _load_reader(self, gid, reader):
+        """ Override the function from base case.
+            Call loadSynapseCustom to read customized fields rather than the default fields
+            in SynapseReader.mod
+        """
         requested_fields = self._get_gapjunction_fields()
         nrow = int(reader.loadSynapseCustom(gid, ",".join(requested_fields)))
-        n_fields = len(requested_fields)
         if nrow < 1:
-            return SynapseParameters.empty
+            return nrow, 0, 0, GapJunctionConnParameters.empty
 
+        record_size = len(requested_fields)
         conn_syn_params = GapJunctionConnParameters.create_array(nrow)
-        syn_params_mtx = conn_syn_params.view(('f8', len(conn_syn_params.dtype)))
-        tmpParams = Nd.Vector(n_fields)
-
-        for syn_i in range(nrow):
-            reader.getSynapse(syn_i, tmpParams)
-            # as_numpy() shares memory to ndarray[double] -> can be copied (assigned) to the view
-            syn_params_mtx[syn_i, :n_fields] = tmpParams.as_numpy()
-
-        return conn_syn_params
+        supported_nfields = len(conn_syn_params.dtype) - 1  # location is not read from data
+        return nrow, record_size, supported_nfields, conn_syn_params
 
 
 class GapJunctionSynapseReader(SynapseReader):

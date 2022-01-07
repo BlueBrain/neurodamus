@@ -186,18 +186,16 @@ class SynReaderSynTool(SynapseReader):
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader
-        nrow = int(reader.loadSynapses(gid))
+        nrow, record_size, supported_nfields, conn_syn_params = self._load_reader(gid, reader)
         if nrow < 1:
             return SynapseParameters.empty
 
-        conn_syn_params = SynapseParameters.create_array(nrow)
         syn_params_mtx = conn_syn_params.view(('f8', len(conn_syn_params.dtype)))
-        tmpParams = Nd.Vector(self.SYNREADER_MOD_NFIELDS_DEFAULT)
+        tmpParams = Nd.Vector(record_size)
 
         # Do checks for the matching of the record size
         reader.getSynapse(0, tmpParams)
         record_size = tmpParams.size()
-        supported_nfields = len(conn_syn_params.dtype) - 2  # non-mod fields: mask and location
         n_fields = min(record_size, supported_nfields)
         if supported_nfields < record_size and not self._has_warned_field_count_mismatch:
             logging.warning("SynapseReader records are %d fields long while neurodamus-py "
@@ -211,6 +209,18 @@ class SynReaderSynTool(SynapseReader):
             syn_params_mtx[syn_i, :n_fields] = tmpParams.as_numpy()[:n_fields]
 
         return conn_syn_params
+
+    def _load_reader(self, gid, reader):
+        """ Load synapse data from reader,
+            to be overridden in derived class for different SynapseParameters and data fields.
+        """
+        nrow = int(reader.loadSynapses(gid))
+        if nrow < 1:
+            return nrow, 0, 0, SynapseParameters.empty
+
+        conn_syn_params = SynapseParameters.create_array(nrow)
+        supported_nfields = len(conn_syn_params.dtype) - 2  # non-mod fields: mask and location
+        return nrow, self.SYNREADER_MOD_NFIELDS_DEFAULT, supported_nfields, conn_syn_params
 
     def has_nrrp(self):
         return self._syn_reader.hasNrrpField()

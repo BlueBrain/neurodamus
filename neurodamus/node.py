@@ -28,6 +28,7 @@ from .gap_junction import GapJunctionManager
 from .replay import SpikeManager
 from .stimulus_manager import StimulusManager
 from .modification_manager import ModificationManager
+from .neuromodulation_manager import NeuroModulationManager
 from .target_manager import NodesetTarget, TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
@@ -43,7 +44,8 @@ class METypeEngine(EngineBase):
     ConnectionTypes = {
         None: SynapseRuleManager,
         "Synaptic": SynapseRuleManager,
-        "GapJunction": GapJunctionManager
+        "GapJunction": GapJunctionManager,
+        "NeuroModulation": NeuroModulationManager
     }
 
 
@@ -432,7 +434,7 @@ class Node:
         """
         target_manager = self._target_manager.hoc
         projection = compat.Map(projection).as_dict(True)
-        ptype = projection.get("Type")  # None, GapJunctions, NeuroGlial...
+        ptype = projection.get("Type")  # None, GapJunctions, NeuroGlial, NeuroModulation...
         ptype_cls = EngineBase.connection_types.get(ptype)
         if not ptype_cls:
             raise RuntimeError("No Engine to handle connectivity of type '%s'" % ptype)
