@@ -514,7 +514,9 @@ _condition_checks = {
         ConfigurationError("randomize_Gaba_risetime must be True or False")
     ),
     "SYNAPSES__minis_single_vesicle": ((0, 1), None),
+    "synapses__minis_single_vesicle": ((0, 1), None),
     "SYNAPSES__init_depleted": ((0, 1), None),
+    "synapses__init_depleted": ((0, 1), None),
 }
 
 
@@ -535,8 +537,9 @@ def _simulator_globals(config: _SimConfig, run_conf):
                 )
                 if value not in validator[0]:
                     raise config_exception
-            if key.startswith("SYNAPSES__"):
-                key = key[len("SYNAPSES__"):]
+            synvar_prefix = "SYNAPSES__"
+            if key.startswith(synvar_prefix) or key.startswith(synvar_prefix.lower()):
+                key = key[len(synvar_prefix):]
                 config.synapse_options[key] = value
                 log_verbose("SYNAPSES %s = %s", key, value)
                 for synapse_name in ("ProbAMPANMDA_EMS", "ProbGABAAB_EMS", "GluSynapse"):

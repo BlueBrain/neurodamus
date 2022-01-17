@@ -1,0 +1,43 @@
+{
+  "manifest": {
+    "$BASE_DIR": "/gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1-sonata/sonata",
+    "$NETWORK_NODES_DIR": "$BASE_DIR/networks/nodes",
+    "$NETWORK_EDGES_DIR": "$BASE_DIR/networks/edges/",
+    "$MORPHOLOGIES": "$BASE_DIR/components/morphologies"
+  },
+  "components": {
+    "morphologies_dir": "$MORPHOLOGIES",
+    "biophysical_neuron_models_dir": "$BASE_DIR/components/biophysical_neuron_models"
+  },
+  "node_sets_file": "$BASE_DIR/node_sets.json",
+  "networks": {
+    "nodes": [
+      {
+        "nodes_file": "$NETWORK_NODES_DIR/default/nodes.h5",
+        "node_types_file": null,
+        "populations": {
+           "default": {
+              "morphologies_dir": "$MORPHOLOGIES",
+              "biophysical_neuron_models_dir": "$BASE_DIR/components/biophysical_model_templates",
+              "alternate_morphologies": {
+                 "neurolucida-asc": "$MORPHOLOGIES/ascii",
+                 "h5v1": "$MORPHOLOGIES/h5v1"
+              },
+              "type": "biophysical"
+           }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edges_file": "$NETWORK_EDGES_DIR/default/edges.h5",
+        "edge_types_file": null,
+        "populations": {
+           "default": {
+              "type": "chemical"
+           }
+        }
+      }
+    ]
+  }
+}

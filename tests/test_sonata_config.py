@@ -5,6 +5,7 @@ from neurodamus.core.configuration import SimConfig
 
 USECASE3 = os.path.abspath(os.path.join(os.path.dirname(__file__), "simulations", "usecase3"))
 SONATA_CONF_FILE = os.path.join(USECASE3, "simulation_sonata.json")
+V5 = os.path.abspath(os.path.join(os.path.dirname(__file__), "simulations", "v5_sonata"))
 
 
 def _test_parse_base():
@@ -30,7 +31,20 @@ def test_simulation_sonata_config():
     )
 
 
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
+def test_v5_sonata_config():
+    import subprocess
+    os.environ['NEURODAMUS_PYTHON'] = "."
+    subprocess.run(
+        ["bash", "tests/test_simulation.bash", V5, "simulation_config.json"],
+        check=True
+    )
+
+
 if __name__ == "__main__":
     _test_parse_base()
     _test_SimConfig_from_sonata()
     test_simulation_sonata_config()
+    test_v5_sonata_config()

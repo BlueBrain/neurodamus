@@ -120,8 +120,11 @@ class TargetManager:
             if GlobalConfig.verbosity >= 3:
                 self.parser.printCellCounts()
 
-    def register_target(self, target):
+    def register_target(self, target, global_target=False):
         self._targets[target.name] = target
+        # no need to register hoc global target
+        if not global_target:
+            self.parser.updateTargetList(target.get_hoc_target())
 
     def get_target(self, target_spec: TargetSpec):
         if not isinstance(target_spec, TargetSpec):
@@ -134,6 +137,8 @@ class TargetManager:
         target = self._nodeset_reader and self._nodeset_reader.get_target(target_spec)
         if target is not None:
             logging.info("Retrieved gids from Sonata nodeset. Targets are Cell only")
+            # for sonata nodeset target, register and add into the hoc targetList
+            self.register_target(target)
         elif self._has_hoc_targets:
             if self.hoc is not None:
                 hoc_target = self.hoc.getTarget(target_name)
@@ -223,6 +228,10 @@ class TargetManager:
             return TargetSpec(src1) == TargetSpec(src2) and TargetSpec(dst1) == TargetSpec(dst2)
         return self.intersecting(src1, src2) and self.intersecting(dst1, dst2)
 
+    def __getattr__(self, item):
+        logging.info("Compat interface to hoc target. Calling " + item)
+        return getattr(self.hoc, item)
+
 
 class NodeSetReader:
     """
@@ -267,7 +276,7 @@ class NodeSetReader:
             return ns
 
         nodesets = [_get_nodeset(pop_name) for pop_name in self._population_stores]
-        return NodesetTarget(target_spec.simple_name, nodesets)
+        return NodesetTarget(target_spec.simple_name, nodesets, hoc_name=target_spec.name)
 
 
 class _TargetInterface:
@@ -292,9 +301,11 @@ class _TargetInterface:
 
 
 class NodesetTarget(_TargetInterface):
-    def __init__(self, name, nodesets: List[NodeSet]):
+    def __init__(self, name, nodesets: List[NodeSet], **kw):
         self.name = name
+        self.hoc_name = kw.get("hoc_name", name)
         self.nodesets = nodesets
+        self._gid_offset = 0
 
     @classmethod
     def create_global_target(cls):
@@ -309,13 +320,13 @@ class NodesetTarget(_TargetInterface):
             return []
         gids = self.nodesets[0].final_gids()
         for extra_nodes in self.nodesets[1:]:
-            gids.extend(extra_nodes.final_gids())
-        return numpy.array(gids)
+            gids = numpy.append(gids, extra_nodes.final_gids())
+        return gids
 
     @lru_cache()
     def get_hoc_target(self):
         gids = self.get_gids()
-        target = Nd.Target(self.name)
+        target = Nd.Target(self.hoc_name)
         target.gidMembers.append(Nd.Vector(gids))
         return target
 
@@ -332,6 +343,15 @@ class NodesetTarget(_TargetInterface):
 
     def isCellTarget(self):
         return True
+
+    def contains(self, gid):
+        return gid in self.get_gids()
+
+    def completeContains(self, gid):
+        return gid - self._gid_offset in self.get_gids()
+
+    def set_offset(self, offset):
+        self._gid_offset = offset
 
     def __getattr__(self, item):
         logging.info("Compat interface to hoc target. Calling " + item)
@@ -352,7 +372,7 @@ class _HocTarget(_TargetInterface):
         return self.gid_count()
 
     def gid_count(self):
-        return self.hoc_target.getCellCount()
+        return int(self.hoc_target.getCellCount())
 
     def get_gids(self):
         return self.hoc_target.completegids().as_numpy().astype("uint32")

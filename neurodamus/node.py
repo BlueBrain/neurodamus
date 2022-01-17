@@ -263,7 +263,7 @@ class Node:
         self._target_manager.load_targets(self._base_circuit)
         for xcircuit in self._extra_circuits.values():
             self._target_manager.load_targets(xcircuit)
-        self._target_manager.register_target(self._circuits.global_target)
+        self._target_manager.register_target(self._circuits.global_target, global_target=True)
 
     # -
     @mpi_no_errors
@@ -379,7 +379,7 @@ class Node:
         log_stage("LOADING CIRCUIT CONNECTIVITY")
         self._circuits.global_manager.finalize()
         self._target_manager.init_hoc_manager(self._circuits.global_manager)
-        target_manager = self._target_manager.hoc
+        target_manager = self._target_manager
         SimConfig.update_connection_blocks(self._circuits.alias)
 
         def create_synapase_manager(ctype, conf, *args, population=None, **kwargs):
@@ -432,7 +432,7 @@ class Node:
     def _load_projections(self, pname, projection):
         """Check for Projection blocks
         """
-        target_manager = self._target_manager.hoc
+        target_manager = self._target_manager
         projection = compat.Map(projection).as_dict(True)
         ptype = projection.get("Type")  # None, GapJunctions, NeuroGlial, NeuroModulation...
         ptype_cls = EngineBase.connection_types.get(ptype)
@@ -517,8 +517,10 @@ class Node:
         logging.info("Instantiating Stimulus Injects:")
 
         for name, inject in SimConfig.injects.items():
-            target_spec = TargetSpec(inject.get("Target").s)
-            stim_name = inject.get("Stimulus").s
+            target_spec = TargetSpec(inject.get("Target")) if isinstance(inject.get("Target"), str)\
+                else TargetSpec(inject.get("Target").s)
+            stim_name = inject.get("Stimulus") if isinstance(inject.get("Stimulus"), str) \
+                else inject.get("Stimulus").s
             stim = stim_dict.get(stim_name)
             if stim is None:
                 raise ConfigurationError("Stimulus Inject %s uses non-existing Stim %s",
@@ -566,7 +568,9 @@ class Node:
 
         replay_dict = {}
         for stim_name, stim in SimConfig.stimuli.items():
-            if stim.get("Pattern").s == "SynapseReplay":
+            pattern = stim.get("Pattern") if isinstance(stim.get("Pattern"), str) \
+                else stim.get("Pattern").s
+            if pattern == "SynapseReplay":
                 replay_dict[stim_name] = compat.Map(stim).as_dict(parse_strings=True)
 
         for name, inject in SimConfig.injects.items():

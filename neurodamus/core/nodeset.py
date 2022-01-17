@@ -2,7 +2,7 @@
 Implementation of Gid Sets with the ability of self offsetting and avoid
 global overlapping
 """
-import weakref
+import numpy
 from ..utils import compat, WeakList
 from . import MPI
 
@@ -161,7 +161,7 @@ class NodeSet:
         return self._gidvec
 
     def final_gids(self):
-        return compat.Vector("I", (gid + self._offset for gid in self._gidvec))
+        return numpy.array(self._gidvec) + self._offset
 
     def items(self, final_gid=False):
         offset_add = self._offset if final_gid else 0

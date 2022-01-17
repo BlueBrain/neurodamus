@@ -36,18 +36,20 @@ class StimulusManager:
     _stim_types = {}  # stimulus handled in Python
 
     def __init__(self, target_manager, elec_manager=None, *args):
-        self._hoc = Nd.StimulusManager(target_manager.hoc, elec_manager, *args)
+        self._hoc = Nd.StimulusManager(target_manager, elec_manager, *args)
         self._target_manager = target_manager
         self._stimulus = []
         self.reset_helpers()  # reset helpers for multi-cycle builds
 
     def interpret(self, target_spec, stim_info):
         stim_t = self._stim_types.get(stim_info["Pattern"])
+        # Get either hoc target or sonata node_set, needed for python and hoc interpret
+        # If sonata node_set, internally register the target and add to hoc TargetList
+        target = self._target_manager.get_target(target_spec)
         if SimConfig.cli_options.experimental_stims or \
                 (stim_t and stim_t.__name__ in ['ShotNoise', 'RelativeShotNoise']):
             # New style Stim, in Python
             log_verbose("Using new-gen stimulus")
-            target = self._target_manager.get_target(target_spec)
             cell_manager = self._target_manager.hoc.cellDistributor
             stim = stim_t(target, stim_info, cell_manager)
             self._stimulus.append(stim)

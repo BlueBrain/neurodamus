@@ -97,7 +97,7 @@ class SonataConfig:
         "Run": "run",
         "Conditions": "conditions",
         "Projection": None,
-        "StimulusInject": None,
+        "StimulusInject": "inputs",
         "Connection": "connection_overrides",
         "parsedConfigures": False,
         "parsedModifications": False,
@@ -121,8 +121,14 @@ class SonataConfig:
         "projection": {
         },
         "connection_overrides": {
+            "target": "Destination"
         },
         "inputs": {
+            "module": "Pattern",
+            "input_type": "Mode",
+            "random_seed": "Seed",
+            "node_set": "Target",  # for StimulusInject
+            "type": "Type"
         },
         "reports": {
             "type": "Type",
@@ -146,11 +152,21 @@ class SonataConfig:
         copy_config_if_valid(self._entries.get("target_simulator"), parsed_run, "Simulator")
         copy_config_if_valid(self._entries.get("node_sets_file"), parsed_run, "TargetFile")
         copy_config_if_valid(self._entries.get("node_set"), parsed_run, "CircuitTarget")
+        conditions = self._sections.get("conditions")
+        if conditions:
+            copy_config_if_valid(conditions.get("celsius"), parsed_run, "Celsius")
+            copy_config_if_valid(conditions.get("v_init"), parsed_run, "V_Init")
+            copy_config_if_valid(conditions.get("extracellular_calcium"), parsed_run,
+                                 "ExtracellularCalcium")
         return parsed_run
 
     @property
     def Conditions(self):
-        return dict_change_keys_case(self._sections.get("conditions", {}))
+        conditions = {}
+        for k, v in self._sections["conditions"].items():
+            if k not in ("celsius", "v_init", "extracellular_calcium"):
+                conditions[k] = v
+        return {"Conditions": conditions}
 
     @property
     def Circuit(self):
@@ -176,6 +192,11 @@ class SonataConfig:
                     for key, value in population_info.items()
                 }
             )
+            if "alternate_morphologies" in population_info and \
+                    "neurolucida-asc" in population_info["alternate_morphologies"]:
+                circuit_conf["MorphologyPath"] = population_info["alternate_morphologies"]\
+                    .get("neurolucida-asc")
+                circuit_conf["MorphologyType"] = "asc"
 
             # find inner connectivity
             for edge_config in network["edges"]:
@@ -222,16 +243,32 @@ class SonataConfig:
 
     @property
     def parsedConnects(self):
-        return {conn_name: dict_change_keys_case(conn_dict)
-                for conn_name, conn_dict in self._sections.get("connection_overrides") or {}}
+        connections = {}
+        for conn_name, conn_dict in self._sections.get("connection_overrides").items():
+            connect = self._translate_dict(conn_dict, "connection_overrides")
+            connect = dict_change_keys_case(connect)
+            connections[conn_name] = connect
+        return connections
 
     @property
     def parsedStimuli(self):
-        return {}
+        stimuli = {}
+        for name, conf in self._sections["inputs"].items():
+            stimulus = self._translate_dict(conf, "inputs")
+            stimulus = dict_change_keys_case(stimulus)
+            stimulus["Pattern"] = snake_to_camel(stimulus["Pattern"])
+            stimuli[name] = stimulus
+        return stimuli
 
     @property
     def parsedInjects(self):
-        return {}
+        injects = {}
+        for name, conf in self._sections["inputs"].items():
+            inj = self._translate_dict(conf, "inputs")
+            inj.setdefault("Stimulus", name)
+            inj.setdefault("Source", "default:")
+            injects["inject"+name] = inj
+        return injects
 
     @property
     def parsedReports(self):

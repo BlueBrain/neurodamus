@@ -134,7 +134,7 @@ class GapJunctionManager(ConnectionManagerBase):
             raise ConfigurationError("Missing GapJunction 'Path' configuration")
 
         super().__init__(gj_conf, target_manager, cell_manager, src_cell_manager, **kw)
-        self._src_target_filter = target_manager.getTarget(cell_manager.circuit_target)
+        self._src_target_filter = target_manager.get_target(cell_manager.circuit_target)
 
     def open_synapse_file(self, synapse_file, *args, **kw):
         super().open_synapse_file(synapse_file, *args, **kw)

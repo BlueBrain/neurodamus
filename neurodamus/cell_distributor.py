@@ -169,8 +169,13 @@ class CellManagerBase(object):
         return "({}: {})".format(self.__class__.__name__, str(self._population_name))
 
     # Compatibility with neurodamus-core (used by TargetManager, CompMapping)
+    # Create hoc vector from numpy.array
     def getGidListForProcessor(self):
-        return self.local_nodes.final_gids()
+        local_gids = self.local_nodes.final_gids()
+        from neuron import h
+        vec = h.Vector(local_gids.size)
+        vec.as_numpy()[:] = local_gids
+        return vec
 
     def _init_config(self, circuit_conf, pop):
         if self._node_format == NodeFormat.SONATA:
@@ -387,9 +392,12 @@ class GlobalCellManager:
     # Accessor methods (Keep CamelCase API for compatibility with existing hoc)
     # ----------------
     def getGidListForProcessor(self):
-        from operator import add
+
+        def _hoc_append(vec_a, vec_b):
+            return vec_a.append(vec_b)
+
         from functools import reduce
-        return reduce(add, (man.getGidListForProcessor() for man in self._cell_managers))
+        return reduce(_hoc_append, (man.getGidListForProcessor() for man in self._cell_managers))
 
     def getMEType(self, gid):
         cell_managers_iter = iter(self._cell_managers)

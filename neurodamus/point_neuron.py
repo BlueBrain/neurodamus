@@ -436,8 +436,8 @@ class PointNeuronSynapseManager(SynapseRuleManager):
         logging.debug("Connecting group %s -> %s", conn_source, conn_destination)
         src_tname = TargetSpec(conn_source).name
         dst_tname = TargetSpec(conn_destination).name
-        src_target = src_tname and self._target_manager.getTarget(src_tname)
-        dst_target = dst_tname and self._target_manager.getTarget(dst_tname)
+        src_target = src_tname and self._target_manager.get_target(src_tname)
+        dst_target = dst_tname and self._target_manager.get_target(dst_tname)
 
         for sgids, tgid, syns_params in self._iterate_conn_params(src_target, dst_target):
             cur_conn = pop.get_or_create_point_connection(sgids, tgid)
@@ -517,8 +517,8 @@ class PointNeuronSynapseManager(SynapseRuleManager):
         """
         src_target_spec = TargetSpec(src_target_name)
         dst_target_spec = TargetSpec(dst_target_name)
-        src_target = self._target_manager.getTarget(src_target_spec.name)
-        dst_target = self._target_manager.getTarget(dst_target_spec.name)
+        src_target = self._target_manager.get_target(src_target_spec)
+        dst_target = self._target_manager.get_target(dst_target_spec)
         gidvec = self._raw_gids if gidvec is None else gidvec
         _, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
 
