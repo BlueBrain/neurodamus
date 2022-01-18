@@ -56,13 +56,16 @@ class NeuroModulationConnection(Connection):
         """
         if not base_conns:
             return None
+        section_i = syn_params.isec
         location_i = syn_params.location
         min_diff = 0.05
         syn_obj = None
         for base_conn in base_conns:
             for syn_j, _ in base_conn.sections_with_synapses:
-                location_j = base_conn._synapse_params[syn_j].location
-                diff = abs(location_j - location_i)/location_i
+                params_j = base_conn._synapse_params[syn_j]
+                if params_j.isec != section_i:
+                    continue
+                diff = abs(params_j.location - location_i)
                 if diff < min_diff:
                     syn_obj = base_conn._synapses[syn_j]
                     min_diff = diff
