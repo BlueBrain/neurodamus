@@ -507,6 +507,9 @@ class LoadBalance:
         self.cxinfo_nrnpath = None
         self.cxinfo_targets = []
         self._load_cxinfo()
+        if MPI.rank == 0 and not ospath.isdir(self.cx_datafolder):
+            os.makedirs(self.cx_datafolder, exist_ok=True)
+        MPI.check_no_errors()  # fancy barrier so that all ranks see the new dir
 
     @run_only_rank0
     def valid_load_distribution(self, target_spec) -> bool:
@@ -575,8 +578,6 @@ class LoadBalance:
                      target_spec.name, previous_target, new_cx_filename)
 
         # Write the new cx file since Neuron needs it to do CPU assignment
-        if not ospath.isdir(ospath.dirname(new_cx_filename)):
-            os.mkdir(ospath.dirname(new_cx_filename))
         with open(new_cx_filename, "w") as newfile:
             self._write_msdat_dict(newfile, cx_other, target_gids)
         # Write updated cxinfo
@@ -665,8 +666,6 @@ class LoadBalance:
         """
         all_targets = sorted(set(self.cxinfo_targets) | set(targets_append))
 
-        if not ospath.isdir(ospath.dirname(self.cxinfo_filename)):
-            os.mkdir(ospath.dirname(self.cxinfo_filename))
         with open(self.cxinfo_filename, "w") as cxinfo:
             print(self.nrnpath, file=cxinfo)
             for tname in all_targets:
@@ -705,8 +704,6 @@ class LoadBalance:
 
         all_ranks_cx = MPI.py_gather(ostring.getvalue(), 0)
         if MPI.rank == 0:
-            if not ospath.isdir(ospath.dirname(out_filename)):
-                os.mkdir(ospath.dirname(out_filename))
             with open(out_filename, "w") as fp:
                 for cx_info in all_ranks_cx:
                     fp.write(cx_info)
