@@ -5,7 +5,7 @@ from __future__ import absolute_import, print_function
 import logging
 from abc import abstractmethod
 from os import path as ospath
-from .core.configuration import SimConfig
+from .core.configuration import ConfigurationError, SimConfig
 from .core import NeurodamusCore as Nd
 import numpy as np
 
@@ -156,7 +156,10 @@ class Cell_V6(METype):
         self.local_to_global_matrix = meinfos_v6.local_to_global_matrix
 
     def local_to_global_coord_mapping(self, points):
-        if self.local_to_global_matrix is None:
+        if self.local_to_global_matrix is False:
+            raise ConfigurationError("To use local_to_global_coord_mapping please "
+                                     "run neurodamus with `enable_coord_mapping=True`")
+        elif self.local_to_global_matrix is None:
             raise Exception("Nodes don't provide all 3d position/rotation info")
         return vector_rotate_translate(points, self.local_to_global_matrix)
 
@@ -272,10 +275,12 @@ class METypeItem(object):
         self.exc_mini_frequency = float(exc_mini_frequency)
         self.inh_mini_frequency = float(inh_mini_frequency)
         self.add_params = add_params
-        self.local_to_global_matrix = self._make_local_to_global_matrix(position, rotation, scale)
+        cli_opts = SimConfig.cli_options
+        self.local_to_global_matrix = self._make_coord_map_matrix(position, rotation, scale) \
+            if cli_opts is None or cli_opts.enable_coord_mapping else False
 
     @staticmethod
-    def _make_local_to_global_matrix(position, rotation, scale):
+    def _make_coord_map_matrix(position, rotation, scale):
         """Build the transformation matrix from local to global"""
         if rotation is None:
             return None

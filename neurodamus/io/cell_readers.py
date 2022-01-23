@@ -152,7 +152,10 @@ def _load_mvd3_h5py(circuit_conf, all_gids, stride=1, stride_offset=0):
 def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *, has_extra_data=False):
     """Load cells from SONATA or MVD3 file
     """
-    import mvdtool
+    try:
+        import mvdtool
+    except ImportError:
+        raise ConfigurationError("load_nodes: mvdtool is not available. Please install")
     pth = circuit_conf.CellLibraryFile
     is_mvd = pth.endswith('.mvd3')
 

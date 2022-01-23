@@ -18,17 +18,15 @@ package_info = dict(
     version=__version__,
     packages=find_packages(exclude=["tests"]),
     install_requires=[
-        'NEURON',
         'h5py',
         'docopt',
         'libsonata',
-        'mvdtool'
     ],
     setup_requires=(["pytest-runner"] if "test" in sys.argv else []),
     tests_require=["pytest"],
     extras_require=dict(
-        plotting=['matplotlib'],
-        full=['matplotlib', 'scipy', 'morphio'],
+        plotting=['matplotlib'],   # only for Neurodamus HL API
+        full=['scipy', 'morphio', 'NEURON', 'mvdtool'],
     ),
     entry_points=dict(
         console_scripts=[

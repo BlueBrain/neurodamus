@@ -48,6 +48,7 @@ class RunOptions(ConfigT):
     keep_build = False
     modelbuilding_steps = None
     experimental_stims = False
+    enable_coord_mapping = False
 
 
 class CircuitConfig(ConfigT):
