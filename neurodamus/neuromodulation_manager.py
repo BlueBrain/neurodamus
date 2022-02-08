@@ -12,7 +12,7 @@ class NeuroModulationConnection(Connection):
     def finalize(self, cell, base_seed=0, *,
                  skip_disabled=False,
                  replay_mode=ReplayMode.AS_REQUIRED,
-                 base_conns=None, **kwargs):
+                 base_manager=None, **_kwargs):
         """ Override the finalize process from the base class.
             NeuroModulatory events do not create synapses but link to existing cell synapses.
             A neuromodulatory connection from projections with match to the closest cell synapse.
@@ -29,6 +29,9 @@ class NeuroModulationConnection(Connection):
 
         for syn_i, sec in self.sections_with_synapses:
             syn_params = self._synapse_params[syn_i]
+            # We need to get all connections since we dont know the sgid
+            # TODO: improve this by extracting all the relative distances only once
+            base_conns = base_manager.get_connections(self.tgid)
             syn_obj = self._find_closest_cell_synapse(syn_params, base_conns)
             if syn_obj is None:
                 logging.warning("No cell synapse associated to the neuromodulatory event")
@@ -110,6 +113,6 @@ class NeuroModulationManager(SynapseRuleManager):
             to be processed by NeuroModulationConnection.
         """
         base_manager = next(self.cell_manager.connection_managers.values())
-        base_conns = base_manager.get_connections(tgid)
-        return super()._finalize_conns(tgid, conns, base_seed, sim_corenrn, base_conns=base_conns,
+        return super()._finalize_conns(tgid, conns, base_seed, sim_corenrn,
+                                       base_manager=base_manager,
                                        **kwargs)
