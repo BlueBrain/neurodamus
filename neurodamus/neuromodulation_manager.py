@@ -76,13 +76,15 @@ class NeuroModulationConnection(Connection):
 
 
 class ModulationConnParameters(SynapseParameters):
-    # Attribute names of synapse parameters
-    _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "synType",
-                       "neuromod_strength", "neuromod_dtc", "location")
+    # Attribute names of synapse parameters,
+    # For consistancy with standard synapses, location is computed with hoc function
+    # TargetManager.locationToPoint using isec, offset, ipt
+    # ipt is not read from data but -1, so that locationToPoint will set location = offset .
+    _synapse_fields = ("sgid", "delay", "isec", "offset", "weight", "synType",
+                       "neuromod_strength", "neuromod_dtc", "ipt", "location")
     # Data fields to read from edges file
-    _data_fields = ("connected_neurons_pre", "delay", "morpho_section_id_post",
-                    "morpho_segment_id_post", "morpho_offset_segment_post", "conductance",
-                    "syn_type_id", "neuromod_strength", "neuromod_dtc")
+    _data_fields = ("connected_neurons_pre", "delay", "afferent_section_id", "afferent_section_pos",
+                    "conductance", "syn_type_id", "neuromod_strength", "neuromod_dtc")
 
 
 class NeuroModulationSynapseReader(SynReaderSynTool):
@@ -98,7 +100,8 @@ class NeuroModulationSynapseReader(SynReaderSynTool):
 
         record_size = len(requested_fields)
         conn_syn_params = ModulationConnParameters.create_array(nrow)
-        supported_nfields = len(conn_syn_params.dtype) - 1  # location is not read from data
+        conn_syn_params.ipt = -1
+        supported_nfields = len(conn_syn_params.dtype) - 2  # location, ipt is not read from data
         return nrow, record_size, supported_nfields, conn_syn_params
 
 
