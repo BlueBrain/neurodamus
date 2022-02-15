@@ -46,8 +46,8 @@ class StimulusManager:
         # Get either hoc target or sonata node_set, needed for python and hoc interpret
         # If sonata node_set, internally register the target and add to hoc TargetList
         target = self._target_manager.get_target(target_spec)
-        python_only_stims = ('ShotNoise', 'RelativeShotNoise',
-                             'OrnsteinUhlenbeck', 'AbsoluteShotNoise')
+        python_only_stims = ('ShotNoise', 'RelativeShotNoise', 'AbsoluteShotNoise',
+                             'OrnsteinUhlenbeck', 'RelativeOrnsteinUhlenbeck')
         if SimConfig.cli_options.experimental_stims or \
                 (stim_t and stim_t.__name__ in python_only_stims):
             # New style Stim, in Python
@@ -112,6 +112,9 @@ class OrnsteinUhlenbeck(BaseStim):
         tpoints = target.getPointList(cell_manager)
         for tpoint_list in tpoints:
             gid = tpoint_list.gid
+            cell = cell_manager.getMEType(gid)
+
+            self.compute_parameters(cell)
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
                 # skip sections not in this split
@@ -150,21 +153,59 @@ class OrnsteinUhlenbeck(BaseStim):
         if self.tau < 0:
             raise Exception("%s relaxation time must be non-negative" % self.__class__.__name__)
 
-        self.sigma = float(stim_info["Sigma"])  # standard deviation [uS]
-        if self.sigma <= 0:
-            raise Exception("%s standard deviation must be positive" % self.__class__.__name__)
-
-        self.mean = float(stim_info.get("Mean", 0.0))  # signal mean [uS]
-        if self.mean < 0 and abs(self.mean) > 2 * self.sigma:
-            logging.warning("%s signal is mostly zero" % self.__class__.__name__)
+        # parse and check stimulus-specific parameters
+        if not self.parse_check_stim_parameters(stim_info):
+            return False  # nothing to do, stim is a no-op
 
         self.seed = stim_info.get("Seed")  # random seed override
         if self.seed is not None:
             self.seed = int(self.seed)
 
-        # delay
-        if stim_info["Mode"] == "Conductance" and self.delay > 0:
-            logging.warning("%s ignores delay in Conductance mode" % self.__class__.__name__)
+        return True
+
+    def parse_check_stim_parameters(self, stim_info):
+        self.sigma = float(stim_info["Sigma"])  # signal stdev [uS]
+        if self.sigma <= 0:
+            raise Exception("%s standard deviation must be positive" % self.__class__.__name__)
+
+        self.mean = float(stim_info["Mean"])    # signal mean [uS]
+        if self.mean < 0 and abs(self.mean) > 2 * self.sigma:
+            logging.warning("%s signal is mostly zero" % self.__class__.__name__)
+
+        return True
+
+    def compute_parameters(self, cell):
+        # nothing to do
+        pass
+
+
+@StimulusManager.register_type
+class RelativeOrnsteinUhlenbeck(OrnsteinUhlenbeck):
+    """
+    Ornstein-Uhlenbeck process, injected as current or conductance,
+    relative to cell threshold current (as proxy for input resistance)
+    """
+
+    def __init__(self, target, stim_info: dict, cell_manager):
+        super().__init__(target, stim_info, cell_manager)
+
+    def parse_check_stim_parameters(self, stim_info):
+        self.mean_perc = float(stim_info["MeanPercent"])
+        self.sigma_perc = float(stim_info["SDPercent"])
+
+        return True
+
+    def compute_parameters(self, cell):
+        threshold = cell.getThreshold()  # cell threshold current [nA]
+        invRin = 0.04 * threshold        # proxy for inverse input resistance [MOhm]
+
+        self.sigma = (self.sigma_perc / 100) * invRin  # signal stdev [uS]
+        if self.sigma <= 0:
+            raise Exception("%s standard deviation must be positive" % self.__class__.__name__)
+
+        self.mean = (self.mean_perc / 100) * invRin    # signal mean [uS]
+        if self.mean < 0 and abs(self.mean) > 2 * self.sigma:
+            logging.warning("%s signal is mostly zero" % self.__class__.__name__)
 
         return True
 
@@ -251,10 +292,6 @@ class ShotNoise(BaseStim):
         self.seed = stim_info.get("Seed")  # random seed override
         if self.seed is not None:
             self.seed = int(self.seed)
-
-        # delay
-        if stim_info["Mode"] == "Conductance" and self.delay > 0:
-            logging.warning("%s ignores delay in Conductance mode" % self.__class__.__name__)
 
         return True
 

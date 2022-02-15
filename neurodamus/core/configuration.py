@@ -374,7 +374,7 @@ def _stimulus_params(config: _SimConfig, run_conf):
             "RelativeShotNoise", "SEClamp", "ShotNoise", "Sinusoidal",
             "SubThreshold", "SynapseReplay", "OrnsteinUhlenbeck",
             "NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace",
-            "AbsoluteShotNoise"
+            "AbsoluteShotNoise", "RelativeOrnsteinUhlenbeck"
         }
     }
     deprecated_values = {
