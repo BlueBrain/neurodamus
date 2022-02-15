@@ -277,7 +277,7 @@ class SignalSource:
 
         rng = self._rng or RNG()  # Creates a default RNG
         if not self._rng:
-            logging.warning("Using a default RNG for shot noise generation")
+            logging.warning("Using a default RNG for Ornstein-Uhlenbeck process")
 
         tvec = Neuron.h.Vector()
         tvec.indgen(self._cur_t, self._cur_t + duration, dt)  # time vector
@@ -436,11 +436,14 @@ class ConductanceSource(SignalSource):
                 assert time_vec is not None and stim_vec is not None
                 self.clamp.dur1 = time_vec[-1]
                 self.clamp.amp1 = reversal
+                # support delay with initial zero
+                self.time_vec = Neuron.h.Vector(1, 0).append(time_vec)
+                self.stim_vec = Neuron.h.Vector(1, 0).append(stim_vec)
                 # replace self.stim_vec with inverted and clamped signal
                 # rs is in MOhm, so conductance is in uS (micro Siemens)
                 self.stim_vec = Neuron.h.Vector(
-                    [1 / x if x > 1E-9 and x < 1E9 else 1E9 for x in stim_vec])
-                self.stim_vec.play(self.clamp._ref_rs, time_vec, 1)
+                    [1 / x if x > 1E-9 and x < 1E9 else 1E9 for x in self.stim_vec])
+                self.stim_vec.play(self.clamp._ref_rs, self.time_vec, 1)
             else:
                 for param, val in clamp_params.items():
                     setattr(self.clamp, param, val)
