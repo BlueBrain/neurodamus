@@ -171,7 +171,7 @@ VERBATIM
     if (ifarg(1)) {
         sprintf(output_dir,"%s", gargstr(1));
     }
-    sonata_create_spikefile(output_dir);
+    sonata_create_spikefile(output_dir, "out");
 #endif
 #endif
 ENDVERBATIM
@@ -238,7 +238,7 @@ VERBATIM
     for(i=0; i<num_spikes; ++i) {
         int_gid[i] = (int)gid[i];
     }
-    sonata_create_spikefile(output_dir);
+    sonata_create_spikefile(output_dir, "out");
     sonata_add_spikes_population(population_name, 0, time, num_spikes, int_gid, num_gids);
     sonata_write_spike_populations();
     sonata_close_spikefile();
