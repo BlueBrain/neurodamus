@@ -171,7 +171,12 @@ VERBATIM
     if (ifarg(1)) {
         sprintf(output_dir,"%s", gargstr(1));
     }
-    sonata_create_spikefile(output_dir, "out");
+    char file_name[256] = "out";
+    // file name
+    if (ifarg(2)) {
+        sprintf(file_name,"%s", gargstr(2));
+    }
+    sonata_create_spikefile(output_dir, file_name);
 #endif
 #endif
 ENDVERBATIM
@@ -204,6 +209,7 @@ VERBATIM
 
     char output_dir[256] = ".";
     char population_name[256] = "All";
+    char file_name[256] = "out";
     double *time = NULL, *gid = NULL;
     int num_spikes = 0;
     int num_gids = 0;
@@ -238,7 +244,7 @@ VERBATIM
     for(i=0; i<num_spikes; ++i) {
         int_gid[i] = (int)gid[i];
     }
-    sonata_create_spikefile(output_dir, "out");
+    sonata_create_spikefile(output_dir, file_name);
     sonata_add_spikes_population(population_name, 0, time, num_spikes, int_gid, num_gids);
     sonata_write_spike_populations();
     sonata_close_spikefile();

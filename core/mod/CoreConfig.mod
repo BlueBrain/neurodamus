@@ -121,18 +121,6 @@ VERBATIM
         buffer_size = (int)*getarg(12); 
     }
 
-    // Default population name
-    char population_name[256] = "All";
-    if (ifarg(13)) {
-        sprintf(population_name,"%s", hoc_gargstr(13));
-    }
-
-    // Default population offset
-    int population_offset = 0;
-    if (ifarg(14) && !hoc_is_str_arg(14)) {
-        population_offset = (int)*getarg(14);
-    }
-
     // copy doible gids to int array
     int *gids = (int*) calloc(num_gids, sizeof(int));
     int i;
@@ -146,7 +134,7 @@ VERBATIM
 
     // write report information
     FILE *fp = open_file(reportConf, "a");
-    fprintf(fp, "%s %s %s %s %s %s %d %lf %lf %lf %d %d %s %d\n",
+    fprintf(fp, "%s %s %s %s %s %s %d %lf %lf %lf %d %d\n",
             hoc_gargstr(1),
             hoc_gargstr(2),
             hoc_gargstr(3),
@@ -158,9 +146,7 @@ VERBATIM
             *getarg(9),
             *getarg(10),
             num_gids,
-            buffer_size,
-            population_name,
-            population_offset);
+            buffer_size);
     fwrite(gids, sizeof(int), num_gids, fp);
     fprintf(fp, "%s", "\n");
     fclose(fp);
@@ -256,6 +242,22 @@ VERBATIM
         fprintf(fp, " %d", (int)*getarg(2));
     }
     fprintf(fp, "\n");
+    fclose(fp);
+#endif
+ENDVERBATIM
+}
+
+: Write spike file name
+PROCEDURE write_spike_filename() {
+VERBATIM
+#ifndef CORENEURON_BUILD
+    if(nrnmpi_myid > 0) {
+        return 0;
+    }
+    char* filename = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
+    sprintf(filename, "%s/%s", outputdir, REPORT_CONFIG_FILE);
+    FILE *fp = open_file(filename, "a");
+    fprintf(fp, "%s\n", hoc_gargstr(1));
     fclose(fp);
 #endif
 ENDVERBATIM
