@@ -22,7 +22,7 @@ import logging
 from .core import NeurodamusCore as Nd
 from .utils.logging import log_verbose
 from .core.configuration import SimConfig
-from .core.stimuli import CurrentSource, ConductanceSource
+from .core.stimuli import CurrentSource, ConductanceSource, RealElectrode, PointSourceElectrode
 from .core import random
 
 
@@ -47,7 +47,7 @@ class StimulusManager:
         # If sonata node_set, internally register the target and add to hoc TargetList
         target = self._target_manager.get_target(target_spec)
         python_only_stims = ('ShotNoise', 'RelativeShotNoise', 'AbsoluteShotNoise',
-                             'OrnsteinUhlenbeck', 'RelativeOrnsteinUhlenbeck')
+                             'OrnsteinUhlenbeck', 'RelativeOrnsteinUhlenbeck','Extracellular') # Adds extracellular
         if SimConfig.cli_options.experimental_stims or \
                 (stim_t and stim_t.__name__ in python_only_stims):
             # New style Stim, in Python
@@ -59,9 +59,10 @@ class StimulusManager:
             # Fallback to hoc stim manager
             self._hoc.interpret(target_spec.name, stim_info.hoc_map)
 
-    def interpret_extracellulars(self, injects, stimuli):
-        """Hoc only implementation for extra-cellulars"""
-        self._hoc.interpretExtracellulars(injects.hoc_map, stimuli.hoc_map)
+    # We don't need hoc extracellular stimulus any more
+    # def interpret_extracellulars(self, injects, stimuli):
+    #     """Hoc only implementation for extra-cellulars"""
+    #     self._hoc.interpretExtracellulars(injects.hoc_map, stimuli.hoc_map)
 
     def __getattr__(self, item):
         logging.debug("Pass unknown method request to Hoc")
@@ -71,6 +72,7 @@ class StimulusManager:
         ShotNoise.stimCount = 0
         Noise.stimCount = 0
         OrnsteinUhlenbeck.stimCount = 0
+        Extracellular.stimCount = 0
 
     @classmethod
     def register_type(cls, stim_class):
@@ -752,3 +754,112 @@ class SEClamp(BaseStim):
         self.rs = float(stim_info.get("RS", 0.01))  # series resistance [MOhm]
         if self.delay > 0:
             logging.warning("%s ignores delay" % self.__class__.__name__)
+
+@StimulusManager.register_type
+class Extracellular(BaseStim):
+    """
+    Extracellular stimulus
+    """
+    stimCount = 0  # global count for seeding
+
+    def __init__(self, target, stim_info: dict, cell_manager):
+        super().__init__(target, stim_info, cell_manager)
+
+        self.stimList = []  # sources go here
+
+        if not self.parse_check_all_parameters(stim_info):
+            return None  # nothing to do, stim is a no-op
+
+        tpoints = target.getPointList(cell_manager)
+
+        for tpoint_list in tpoints:
+            gid = tpoint_list.gid
+            cell = cell_manager.getMEType(gid)
+
+            for sec_id, sc in enumerate(tpoint_list.sclst):
+                # skip sections not in this split
+                if not sc.exists():
+                    continue
+
+                # inject Extracellular signal
+                if stim_info["Electrode_Path"] == None:
+                    es = PointSourceElectrode(self.pattern,self.delay,self.type,self.duration,
+                    self.AmpStart,self.frequency,self.width,self.x,self,y,self.z)
+                else:
+                    es = RealElectrode(elf.pattern,self.delay,self.type,self.duration,
+                     self.AmpStart,self.frequency,self.width,self.electrode_path)
+                # attach source to section
+                es.attach_to(sc.sec, tpoint_list.x[sec_id])
+                self.stimList.append(es)  # save source
+
+        Extracellular.stimCount += 1  # increment global count
+
+
+    def parse_check_all_parameters(self, stim_info: dict):
+
+        if stim_info["Pattern"] == None:
+            raise Exception("%s pattern must be provided" % self.__class__.__name__)
+        else:
+            self.pattern = stim_info["Pattern"]
+
+        if stim_info["Electrode_Path"] is None:
+
+            try:
+                self.x = float(stim_info.get("x"))  # electrode x position
+            except:
+                raise Exception("%s electrode x position must be provided" % self.__class__.__name__)
+            try:
+                self.y = float(stim_info.get("y"))  # electrode x position
+            except:
+                raise Exception("%s electrode y position must be provided" % self.__class__.__name__)
+            try:
+                self.z = float(stim_info.get("z"))  # electrode x position
+            except:
+                raise Exception("%s electrode z position must be provided" % self.__class__.__name__)
+
+        else:
+            self.electrode_path = stim_info["Electrode_Path"]
+
+        # parse and check stimulus-specific parameters
+        if not self.parse_check_stim_parameters(stim_info):
+            return False  # nothing to do, stim is a no-op
+
+        return True
+
+    def parse_check_stim_parameters(self, stim_info):
+
+        try:
+            self.delay = float(stim_info.get("Delay"))
+            if self.delay < 0:
+                raise Exception("Delay must be non-negative")
+        except:
+            raise Exception("Delay must be provided")
+
+        try:
+            self.duration = float(stim_info.get("Duration"))
+            if self.delay < 0:
+                raise Exception("Duration must be non-negative")
+        except:
+            raise Exception("Duration must be provided")
+
+        try:
+            self.AmpStart = float(stim_info.get("AmpStart"))
+        except:
+            raise Exception("AmpStart must be provided")
+
+        try:
+            self.frequency = float(stim_info.get("Frequency"))
+        except:
+            raise Exception("Frequency must be provided")
+
+        try:
+            self.width = float(stim_info.get("Width"))
+        except:
+            raise Exception("Width must be provided")
+
+        try:
+            self.type = stim_info.get("Type")
+        except:
+            raise Exception("Type must be provided")
+
+        return True
