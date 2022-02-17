@@ -122,16 +122,14 @@ class OrnsteinUhlenbeck(BaseStim):
                     continue
 
                 rng = random.Random123(seed1, seed2, seed3(gid))  # setup RNG
+                ou_args = (self.tau, self.sigma, self.mean, self.duration)
+                ou_kwargs = {'dt': self.dt, 'delay': self.delay, 'rng': rng}
                 # inject Ornstein-Uhlenbeck signal
                 if stim_info["Mode"] == "Conductance":
-                    cs = ConductanceSource.ornstein_uhlenbeck(self.tau, self.sigma, self.mean,
-                                                              self.duration, dt=self.dt,
-                                                              delay=self.delay, rng=rng,
+                    cs = ConductanceSource.ornstein_uhlenbeck(*ou_args, **ou_kwargs,
                                                               base_amp=self.reversal)
                 else:
-                    cs = CurrentSource.ornstein_uhlenbeck(self.tau, self.sigma, self.mean,
-                                                          self.duration, dt=self.dt,
-                                                          delay=self.delay, rng=rng)
+                    cs = CurrentSource.ornstein_uhlenbeck(*ou_args, **ou_kwargs)
                 # attach source to section
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
                 self.stimList.append(cs)  # save source
@@ -245,16 +243,15 @@ class ShotNoise(BaseStim):
                     continue
 
                 rng = random.Random123(seed1, seed2, seed3(gid))  # setup RNG
+                shotnoise_args = (self.tau_D, self.tau_R, self.rate,
+                                  self.amp_mean, self.amp_var, self.duration)
+                shotnoise_kwargs = {'dt': self.dt, 'delay': self.delay, 'rng': rng}
                 # generate shot noise current source
                 if stim_info["Mode"] == "Conductance":
-                    cs = ConductanceSource.shot_noise(self.tau_D, self.tau_R, self.rate,
-                                                      self.amp_mean, self.amp_var, self.duration,
-                                                      dt=self.dt, delay=self.delay, rng=rng,
+                    cs = ConductanceSource.shot_noise(*shotnoise_args, **shotnoise_kwargs,
                                                       base_amp=self.reversal)
                 else:
-                    cs = CurrentSource.shot_noise(self.tau_D, self.tau_R, self.rate,
-                                                  self.amp_mean, self.amp_var, self.duration,
-                                                  dt=self.dt, delay=self.delay, rng=rng)
+                    cs = CurrentSource.shot_noise(*shotnoise_args, **shotnoise_kwargs)
                 # attach current source to section
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
                 self.stimList.append(cs)  # save CurrentSource
