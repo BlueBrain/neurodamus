@@ -435,6 +435,15 @@ class GlobalCellManager:
             return self._binfo.thishost_gid(gid)
         return gid
 
+    def getPopulationInfo(self, gid):
+        cell_managers_iter = iter(self._cell_managers)
+        prev_manager = next(cell_managers_iter)  # base cell manager
+        for manager in cell_managers_iter:
+            if manager.local_nodes.offset > gid:
+                break
+            prev_manager = manager
+        return prev_manager.population_name, prev_manager.local_nodes.offset
+
 
 class CellDistributor(CellManagerBase):
     """ Manages a group of cells for BBP simulations, V5 and V6

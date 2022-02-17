@@ -5,6 +5,7 @@
         "$INPUT_DIR": "./"
     },
     "node_sets_file": "nodesets.json",
+    "target_simulator": "NEURON",
     "node_set": "l4mc",
     "run": {
         "tstart": 0,

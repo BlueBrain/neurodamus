@@ -157,6 +157,7 @@ class SonataConfig:
         parsed_run["CircuitPath"] = "<NONE>"  # Sonata doesnt have default circuit
         parsed_run["OutputRoot"] = self.output.get("output_dir", "output")
         parsed_run["TargetFile"] = self.circuits.node_sets_path
+        parsed_run["SpikesFile"] = self.output.get("spikes_file", "out")
         copy_config_if_valid(self._entries.get("target_simulator"), parsed_run, "Simulator")
         copy_config_if_valid(self._entries.get("node_sets_file"), parsed_run, "TargetFile")
         copy_config_if_valid(self._entries.get("node_set"), parsed_run, "CircuitTarget")

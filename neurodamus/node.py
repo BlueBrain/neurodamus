@@ -715,18 +715,15 @@ class Node:
                 continue
 
             target_population = rep_target.population or self._target_spec.population
-            population_offset = 0
             cell_manager = self._circuits.get_node_manager(target_population)
             offset = pop_offsets[target_population] if target_population in pop_offsets \
                      else pop_offsets[alias_pop[target_population]]
             if offset > 0:  # dont reset if not needed (recent hoc API)
                 target.set_offset(offset)
-                population_offset = offset
 
             report_on = rep_conf["ReportOn"]
             rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
-                                    "start, end, output_dir, electrode, scaling, isc, "
-                                    "population_name, population_offset")(
+                                    "start, end, output_dir, electrode, scaling, isc")(
                 rep_name,
                 rep_type,  # rep type is case sensitive !!
                 report_on,
@@ -738,9 +735,7 @@ class Node:
                 SimConfig.output_root,
                 electrode,
                 Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
-                rep_conf.get("ISC", ""),
-                population_name,
-                population_offset
+                rep_conf.get("ISC", "")
             )
 
             if SimConfig.use_coreneuron and MPI.rank == 0:
@@ -808,8 +803,7 @@ class Node:
                 core_report_params = (
                     (rep_name, rep_target.name, rep_type, report_on.replace(" ", ","))
                     + rep_params[3:5] + (target_type,) + rep_params[5:8]
-                    + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
-                    + (population_name, population_offset,)
+                    + (target.completegids(), SimConfig.corenrn_buff_size)
                 )
                 SimConfig.coreneuron.write_report_config(*core_report_params)
 
@@ -832,17 +826,21 @@ class Node:
                                                                 compartments=compartments)
                 for point in points:
                     gid = point.gid
+                    pop_name, pop_offset = global_manager.getPopulationInfo(gid)
                     cell = global_manager.getCell(gid)
                     spgid = global_manager.getSpGid(gid)
 
                     # may need to take different actions based on report type
                     if rep_type.lower() == "compartment":
-                        report.addCompartmentReport(cell, point, spgid, SimConfig.use_coreneuron)
+                        report.addCompartmentReport(
+                            cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
                     elif rep_type.lower() == "summation":
                         report.addSummationReport(
-                            cell, point, target.isCellTarget(), spgid, SimConfig.use_coreneuron)
+                            cell, point, target.isCellTarget(), spgid, SimConfig.use_coreneuron,
+                            pop_name, pop_offset)
                     elif rep_type.lower() == "synapse":
-                        report.addSynapseReport(cell, point, spgid, SimConfig.use_coreneuron)
+                        report.addSynapseReport(
+                            cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
 
             # Custom reporting. TODO: Move above processing to SynRuleManager.enable_report
             cell_manager.enable_report(report, rep_target, SimConfig.use_coreneuron)
@@ -859,11 +857,19 @@ class Node:
         if SimConfig.use_coreneuron:
             # write spike populations
             if hasattr(SimConfig.coreneuron, "write_population_count"):
-                SimConfig.coreneuron.write_population_count(len(pop_offsets))
-            for key, value in pop_offsets.items():
-                population_name = key or "All"
-                population_offset = value
-                SimConfig.coreneuron.write_spike_population(population_name, population_offset)
+                # Do not count populations with None pop_name
+                pop_count = (len(pop_offsets) - 1 if None in pop_offsets else len(pop_offsets))
+                SimConfig.coreneuron.write_population_count(pop_count)
+            for pop_name, offset in pop_offsets.items():
+                if pop_name is not None:
+                    SimConfig.coreneuron.write_spike_population(pop_name, offset)
+            spike_path = self._run_conf.get("SpikesFile")
+            if spike_path is not None:
+                # Get only the spike file name
+                file_name = spike_path.split('/')[-1]
+            else:
+                file_name = "out.h5"
+            SimConfig.coreneuron.write_spike_filename(file_name)
 
         if not SimConfig.use_coreneuron:
             # Report Buffer Size hint in MB.
@@ -997,10 +1003,11 @@ class Node:
         # create a spike_id vector which stores the pairs for spikes and timings for
         # every engine
         for cell_manager in self._circuits.all_node_managers():
-            self._spike_populations.append(
-                (cell_manager.population_name, cell_manager.local_nodes.offset))
-            self._spike_vecs.append(cell_manager.record_spikes() if cell_manager.record_spikes()
-                                    else (Nd.Vector(), Nd.Vector()))
+            if cell_manager.population_name is not None:
+                self._spike_populations.append(
+                    (cell_manager.population_name, cell_manager.local_nodes.offset))
+                self._spike_vecs.append(cell_manager.record_spikes() if cell_manager.record_spikes()
+                                        else (Nd.Vector(), Nd.Vector()))
 
         self._pc.timeout(200)  # increase by 10x
 
@@ -1287,8 +1294,14 @@ class Node:
         # SONATA SPIKES
         if hasattr(self._sonatareport_helper, "create_spikefile"):
             # Write spike report for multiple populations if exist
+            spike_path = self._run_conf.get("SpikesFile")
+            if spike_path is not None:
+                # Get only the spike file name
+                file_name = spike_path.split('/')[-1]
+            else:
+                file_name = "out.h5"
             # create a sonata spike file
-            self._sonatareport_helper.create_spikefile(output_root)
+            self._sonatareport_helper.create_spikefile(output_root, file_name)
             # write spikes per population
             for (population, population_offset), (spikevec, idvec) in zip(self._spike_populations,
                                                                           self._spike_vecs):
