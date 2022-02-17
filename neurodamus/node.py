@@ -494,7 +494,7 @@ class Node:
         add_args = []
         if "BaseSeed" in self._run_conf:
             add_args.append(self._run_conf["BaseSeed"])
-        self._stim_manager = StimulusManager(self._target_manager, self._elec_manager, *add_args)
+        self._stim_manager = StimulusManager(self._target_manager, None, *add_args) # Does not use hoc electrode manager
         # Nd.StimulusManager(
         #     self._target_manager.hoc, self._elec_manager, *extra_params)
 
@@ -510,9 +510,9 @@ class Node:
             if stim.get("Mode") == "Extracellular":
                 has_extra_cellular = True
 
-        # Treat extracellular stimuli
-        if has_extra_cellular:
-            self._stim_manager.interpret_extracellulars(SimConfig.injects, SimConfig.stimuli)
+        # Treat extracellular stimuli along with all other stimuli
+        # if has_extra_cellular:
+        #     self._stim_manager.interpret_extracellulars(SimConfig.injects, SimConfig.stimuli)
 
         logging.info("Instantiating Stimulus Injects:")
 
@@ -548,12 +548,14 @@ class Node:
         if electrode_path is not None:
             logging.info("ElectrodeManager using electrodes from %s", electrode_path)
         else:
-            logging.info("No electrodes path. Extracellular class of stimuli will be unavailable")
+            logging.info("No electrodes path. Point source electrodes used")
 
-        self._elec_manager = Nd.ElectrodeManager(
-            electrode_path and Nd.String(electrode_path),
-            SimConfig.get_blueconfig_hoc_section("parsedElectrodes")
-        )
+        # We no longer need the hoc electroe manager
+
+        # self._elec_manager = Nd.ElectrodeManager(
+        #     electrode_path and Nd.String(electrode_path),
+        #     SimConfig.get_blueconfig_hoc_section("parsedElectrodes")
+        # )
 
     # -
     @mpi_no_errors
