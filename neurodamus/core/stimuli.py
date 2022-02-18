@@ -60,7 +60,12 @@ class SignalSource:
         A pulse is characterized by raising from a base amplitude, for a certain duration.
         """
         base_amp = kw.get("base_amp", self._base_amp)
+
         self._add_point(base_amp)
+
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
         self.add_segment(max_amp, duration)
         self._add_point(base_amp)
         return self
@@ -71,7 +76,12 @@ class SignalSource:
         A ramp is characterized by a pulse whose peak changes uniformly during its length.
         """
         base_amp = kw.get("base_amp", self._base_amp)
+
         self._add_point(base_amp)
+
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
         self.add_segment(amp1, duration, amp2)
         self._add_point(base_amp)
         return self
@@ -87,6 +97,10 @@ class SignalSource:
             base_amp: The base amplitude
         """
         base_amp = kw.get("base_amp", self._base_amp)
+
+        init_delay = kw.get("delay",0)
+        self.delay(int_delay)
+
         tau = 1000 / frequency
         delay = tau - pulse_duration
         number_pulses = int(total_duration / tau)
@@ -114,6 +128,8 @@ class SignalSource:
             step: The step, in ms (default: 0.025)
         """
         base_amp = kw.get("base_amp", self._base_amp)
+        delay = kw.get("delay",0)
+        self.delay(delay)
 
         tvec = Neuron.h.Vector()
         tvec.indgen(self._cur_t, self._cur_t + total_duration, step)
@@ -146,6 +162,10 @@ class SignalSource:
         # First and last are base_amp
         base_amp = kw.get("base_amp", self._base_amp)
         self._add_point(base_amp)
+
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
         self.add_segment(amp, pulse_duration)
         for amp in more_amps:
             self.add_segment(amp, pulse_duration)
@@ -486,7 +506,7 @@ class ElectrodeSource(SignalSource):
         """
         Creates a new §current source that injects a signal under IClamp
         """
-        super().__init__(AmpStart)
+        super().__init__()
         self.pattern  = pattern
         self.stim_delay = delay
         self.duration = duration
@@ -498,11 +518,11 @@ class ElectrodeSource(SignalSource):
         self.extracellulars = []
 
         if self.type == "Pulse":
-            self.add_pulse(self.AmpStart,self.duration)
+            self.add_pulse(self.AmpStart,self.duration,delay=self.stim_delay)
         elif self.type == "Train":
-            self.add_train(self.AmpStart, self.frequency, self.width, self.duration)
+            self.add_train(self.AmpStart, self.frequency, self.width, self.duration,delay=self.stim_delay)
         elif self.type == "Sinusoid":
-            self.add_sin(self.AmpStart, self.duration, self.frequency)
+            self.add_sin(self.AmpStart, self.duration, self.frequency,delay=self.stim_delay)
         else:
             raise Exception("Stimulus type not defined")
 
@@ -531,7 +551,7 @@ class PointSourceElectrode(ElectrodeSource):
             segVec.copy(self.stim_vec)
             segVec.mul(scaleFactor)
 
-            out = segVec.play(seg.extracellular._ref_e,self.time_vec,True)
+            out = segVec.play(seg.extracellular._ref_e,self.time_vec)
 
             self.extracellulars.append(out)
 
