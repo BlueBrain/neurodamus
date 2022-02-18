@@ -581,7 +581,35 @@ class PointSourceElectrode(ElectrodeSource):
 
 class RealElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrodepath):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path, electrode_name,gid,numSegs):
         super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
-        self.electrode_path = electrodepath
-        self.scaleFactors = h5py.File(self.electrode_path)
+        scaleFile = h5py.File(electrode_path)
+        # offset = scaleFile['offsets'][str(int(gid))][(int(sec_id))]
+        # endOffset = scaleFile['offsets'][str(int(gid))][(int(sec_id+1))]
+        self.scaleFactor = scaleFile['electrodes'][electrode_name][str(int(gid))]#[offset:endOffset]
+        self.numSegs = numSegs
+    def attach_to(self,section):
+
+        section.insert('extracellular')
+
+        numNewSegs = 0
+
+        for i,seg in enumerate(section):
+
+
+
+            segVec = h.Vector()
+            segVec.copy(self.stim_vec)
+
+
+
+            scaleFac = self.scaleFactor[self.numSegs+i][0]*self.AmpStart
+
+            numNewSegs += 1
+
+
+            segVec.mul(scaleFac)
+            out = segVec.play(seg.extracellular._ref_e,self.time_vec)
+            self.extracellulars.append(out)
+
+            return numNewSegs

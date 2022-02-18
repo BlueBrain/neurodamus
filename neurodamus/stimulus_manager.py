@@ -776,6 +776,8 @@ class Extracellular(BaseStim):
             gid = tpoint_list.gid
             cell = cell_manager.getMEType(gid)
 
+            numSegs = 0
+
             for sec_id, sc in enumerate(tpoint_list.sclst):
                 # skip sections not in this split
                 if not sc.exists():
@@ -786,10 +788,10 @@ class Extracellular(BaseStim):
                     es = PointSourceElectrode(self.pattern,self.delay,self.type,self.duration,
                     self.AmpStart,self.frequency,self.width,self.x,self.y,self.z)
                 else:
-                    es = RealElectrode(elf.pattern,self.delay,self.type,self.duration,
-                     self.AmpStart,self.frequency,self.width,self.electrode_path)
+                    es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
+                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.electrode_name, gid,numSegs)
                 # attach source to section
-                es.attach_to(sc.sec)
+                numSegs += es.attach_to(sc.sec)
                 self.stimList.append(es)  # save source
 
         Extracellular.stimCount += 1  # increment global count
@@ -819,6 +821,7 @@ class Extracellular(BaseStim):
 
         else:
             self.electrode_path = stim_info["Electrode_Path"]
+            self.electrode_name = stim_info["Electrode_Name"]
 
         # parse and check stimulus-specific parameters
         if not self.parse_check_stim_parameters(stim_info):
