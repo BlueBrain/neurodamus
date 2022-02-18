@@ -9,7 +9,7 @@ import logging
 import h5py
 import numpy as np
 from scipy.interpolate import interp1d
-
+from neuron import h
 
 class SignalSource:
 
@@ -482,18 +482,20 @@ class ConductanceSource(SignalSource):
 class ElectrodeSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, pattern, delay, type duration,  AmpStart, frequency, width):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width):
         """
-        Creates a new current source that injects a signal under IClamp
+        Creates a new §current source that injects a signal under IClamp
         """
         super().__init__(AmpStart)
         self.pattern  = pattern
-        self.delay = delay
+        self.stim_delay = delay
         self.duration = duration
         self.AmpStart = AmpStart
         self.frequency = frequency
         self.width = width
         self.type = type
+        self._all_sources.append(self)
+        self.extracellulars = []
 
         if self.type == "Pulse":
             self.add_pulse(self.AmpStart,self.duration)
@@ -508,8 +510,9 @@ class ElectrodeSource(SignalSource):
 
 class PointSourceElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type duration,  AmpStart, frequency, width, x, y, z, sigma=0.277):
-        super().__init__(pattern, delay, type duration,  AmpStart, frequency, width)
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, x, y, z, sigma=0.277):
+
+        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
         self.x = x
         self.y = y
         self.z = z
@@ -522,15 +525,17 @@ class PointSourceElectrode(ElectrodeSource):
         for seg in section:
             segpositions = self.interp_seg_positions(section,seg.x)
             distance = np.linalg.norm(np.array([self.x,self.y,self.z])-segpositions)
-            scaleFactor = self.AmpStart / (4 * np.PI * self.sigma * distance)
+            scaleFactor = self.AmpStart / (4 * np.pi * self.sigma * distance)*1e3
 
             segVec = h.Vector()
             segVec.copy(self.stim_vec)
             segVec.mul(scaleFactor)
 
-            segVec.play(seg.ref_e_extracellular,self.time_vec)
+            out = segVec.play(seg.extracellular._ref_e,self.time_vec,True)
 
-    def interp_seg_positons(self,section,x):
+            self.extracellulars.append(out)
+
+    def interp_seg_positions(self,section,x):
 
         n3d = section.n3d()
         xpos = []
@@ -542,20 +547,21 @@ class PointSourceElectrode(ElectrodeSource):
             xpos.append(section.x3d(n))
             ypos.append(section.y3d(n))
             zpos.append(section.z3d(n))
-            lens.append(section.arc3d(n))
+            lens.append(section.arc3d(n)/section.L)
 
-        fX = interp1d(xpos,lens)
+
+        fX = interp1d(lens,xpos)
         segX = fX(x)
-        fY = interp1d(ypos,lens)
+        fY = interp1d(lens,ypos)
         segY = fY(x)
-        fZ = interp1d(zpos,lens)
+        fZ = interp1d(lens,zpos)
         segZ = fZ(x)
 
         return np.array([segX,segY,segZ])
 
-class RealElectrode(ElectodeSource):
+class RealElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type duration,  AmpStart, frequency, width, electrodepath):
-        super().__init__(pattern, delay, type duration,  AmpStart, frequency, width)
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrodepath):
+        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
         self.electrode_path = electrodepath
         self.scaleFactors = h5py.File(self.electrode_path)

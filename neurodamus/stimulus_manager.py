@@ -784,12 +784,12 @@ class Extracellular(BaseStim):
                 # inject Extracellular signal
                 if stim_info["Electrode_Path"] == None:
                     es = PointSourceElectrode(self.pattern,self.delay,self.type,self.duration,
-                    self.AmpStart,self.frequency,self.width,self.x,self,y,self.z)
+                    self.AmpStart,self.frequency,self.width,self.x,self.y,self.z)
                 else:
                     es = RealElectrode(elf.pattern,self.delay,self.type,self.duration,
                      self.AmpStart,self.frequency,self.width,self.electrode_path)
                 # attach source to section
-                es.attach_to(sc.sec, tpoint_list.x[sec_id])
+                es.attach_to(sc.sec)
                 self.stimList.append(es)  # save source
 
         Extracellular.stimCount += 1  # increment global count
