@@ -502,11 +502,12 @@ class ConductanceSource(SignalSource):
 class ElectrodeSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, delay, type, duration,  AmpStart, frequency, width):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width):
         """
         Creates a new §current source that injects a signal under IClamp
         """
         super().__init__()
+        self.pattern  = pattern
         self.stim_delay = delay
         self.duration = duration
         self.AmpStart = AmpStart
@@ -529,17 +530,15 @@ class ElectrodeSource(SignalSource):
 
 class PointSourceElectrode(ElectrodeSource):
 
-    def __init__(self, delay, type, duration,  AmpStart, frequency, width, x, y, z, sigma=0.277):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, x, y, z, sigma=0.277):
 
-        super().__init__(delay, type, duration,  AmpStart, frequency, width)
+        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
         self.x = x
         self.y = y
         self.z = z
         self.sigma = sigma
 
     def attach_to(self,section):
-
-        pritn("Attaching")
 
         section.insert('extracellular')
 
@@ -582,8 +581,8 @@ class PointSourceElectrode(ElectrodeSource):
 
 class RealElectrode(ElectrodeSource):
 
-    def __init__(self, delay, type, duration,  AmpStart, frequency, width, electrode_path, electrode_name,gid,numSegs):
-        super().__init__(delay, type, duration,  AmpStart, frequency, width)
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path, electrode_name,gid,numSegs):
+        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
         scaleFile = h5py.File(electrode_path)
         # offset = scaleFile['offsets'][str(int(gid))][(int(sec_id))]
         # endOffset = scaleFile['offsets'][str(int(gid))][(int(sec_id+1))]
