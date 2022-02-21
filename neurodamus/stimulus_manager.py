@@ -791,7 +791,7 @@ class Extracellular(BaseStim):
                     es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
                      self.AmpStart,self.frequency,self.width,self.electrode_path,self.electrode_name, gid,numSegs)
                 # attach source to section
-                numSegs += es.attach_to(sc.sec)
+                    numSegs += es.attach_to(sc.sec)
                 self.stimList.append(es)  # save source
 
         Extracellular.stimCount += 1  # increment global count
