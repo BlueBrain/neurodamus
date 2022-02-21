@@ -42,6 +42,7 @@ class StimulusManager:
         self.reset_helpers()  # reset helpers for multi-cycle builds
 
     def interpret(self, target_spec, stim_info):
+        print("interping")
         stim_t = self._stim_types.get(stim_info["Pattern"])
         # Get either hoc target or sonata node_set, needed for python and hoc interpret
         # If sonata node_set, internally register the target and add to hoc TargetList
@@ -762,8 +763,12 @@ class Extracellular(BaseStim):
     """
     stimCount = 0  # global count for seeding
 
+
+
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
+
+        print('exc')
 
         self.stimList = []  # sources go here
 
@@ -773,22 +778,26 @@ class Extracellular(BaseStim):
         tpoints = target.getPointList(cell_manager)
 
         for tpoint_list in tpoints:
+            print('intheloop')
             gid = tpoint_list.gid
             cell = cell_manager.getMEType(gid)
 
             numSegs = 0
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
+                print('insecloop')
                 # skip sections not in this split
                 if not sc.exists():
                     continue
 
                 # inject Extracellular signal
                 if stim_info["Electrode_Path"] == None:
-                    es = PointSourceElectrode(self.pattern,self.delay,self.type,self.duration,
+                    print("Instantiating")
+                    es = PointSourceElectrode(self.delay,self.type,self.duration,
                     self.AmpStart,self.frequency,self.width,self.x,self.y,self.z)
+                    print("Instantiated")
                 else:
-                    es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
+                    es = RealElectrode(self.delay,self.type,self.duration,
                      self.AmpStart,self.frequency,self.width,self.electrode_path,self.electrode_name, gid,numSegs)
                 # attach source to section
                 numSegs += es.attach_to(sc.sec)
@@ -851,18 +860,27 @@ class Extracellular(BaseStim):
             raise Exception("AmpStart must be provided")
 
         try:
-            self.frequency = float(stim_info.get("Frequency"))
-        except:
-            raise Exception("Frequency must be provided")
-
-        try:
-            self.width = float(stim_info.get("Width"))
-        except:
-            raise Exception("Width must be provided")
-
-        try:
             self.type = stim_info.get("Type")
         except:
             raise Exception("Type must be provided")
+
+        if self.type == 'Train' or self.type=='Sinusoid':
+
+            try:
+                self.frequency = float(stim_info.get("Frequency"))
+            except:
+                raise Exception("Frequency must be provided")
+        else:
+            self.frequency = None
+
+        if self.type == 'Train':
+            try:
+                self.width = float(stim_info.get("Width"))
+            except:
+                raise Exception("Width must be provided")
+        else:
+            self.width == None
+
+
 
         return True

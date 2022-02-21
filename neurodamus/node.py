@@ -522,11 +522,13 @@ class Node:
             stim_name = inject.get("Stimulus") if isinstance(inject.get("Stimulus"), str) \
                 else inject.get("Stimulus").s
             stim = stim_dict.get(stim_name)
+
             if stim is None:
                 raise ConfigurationError("Stimulus Inject %s uses non-existing Stim %s",
                                          name, stim_name)
 
             stim_pattern = stim["Pattern"]
+
             if stim_pattern == "SynapseReplay":
                 continue  # Handled by enable_replay
 
