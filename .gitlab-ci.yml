@@ -38,7 +38,7 @@ py38-full-spack:
 blueconfig_tests:
   variables:
     bb5_build_dir: pipeline
-    PYNEURODAMUS_BRANCH: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    PY_NEURODAMUS_BRANCH: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
   trigger:
     project: hpc/sim/blueconfigs
     branch: $BLUECONFIGS_BRANCH
