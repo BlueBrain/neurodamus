@@ -541,9 +541,10 @@ class Node:
 
     # -
     def _enable_electrodes(self):
-        if SimConfig.use_coreneuron:
+        #if SimConfig.use_coreneuron:
             # Coreneuron doesnt support electrodes
-            return False
+        # Maybe it does with Joe's modification?
+            #return False
         electrode_path = self._run_conf.get("ElectrodesPath")
         if electrode_path is not None:
             logging.info("ElectrodeManager using electrodes from %s", electrode_path)
