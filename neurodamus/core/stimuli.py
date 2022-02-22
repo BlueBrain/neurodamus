@@ -531,6 +531,7 @@ class ElectrodeSource(SignalSource):
 class PointSourceElectrode(ElectrodeSource):
 
     def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, x, y, z, sigma=0.277):
+        print("Initializing point source electrodes")
 
         super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
         self.x = x
@@ -554,6 +555,7 @@ class PointSourceElectrode(ElectrodeSource):
             out = segVec.play(seg.extracellular._ref_e,self.time_vec)
 
             self.extracellulars.append(out)
+        print("ATTACHED")
 
     def interp_seg_positions(self,section,x):
 

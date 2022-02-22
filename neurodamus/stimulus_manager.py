@@ -48,6 +48,7 @@ class StimulusManager:
         target = self._target_manager.get_target(target_spec)
         python_only_stims = ('ShotNoise', 'RelativeShotNoise', 'AbsoluteShotNoise',
                              'OrnsteinUhlenbeck', 'RelativeOrnsteinUhlenbeck','Extracellular') # Adds extracellular
+
         if SimConfig.cli_options.experimental_stims or \
                 (stim_t and stim_t.__name__ in python_only_stims):
             # New style Stim, in Python
@@ -787,6 +788,7 @@ class Extracellular(BaseStim):
                 if stim_info["Electrode_Path"] == None:
                     es = PointSourceElectrode(self.pattern,self.delay,self.type,self.duration,
                     self.AmpStart,self.frequency,self.width,self.x,self.y,self.z)
+                    es.attach_to(sc.sec)
                 else:
                     es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
                      self.AmpStart,self.frequency,self.width,self.electrode_path,self.electrode_name, gid,numSegs)
