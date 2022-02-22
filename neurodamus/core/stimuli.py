@@ -555,7 +555,6 @@ class PointSourceElectrode(ElectrodeSource):
             out = segVec.play(seg.extracellular._ref_e,self.time_vec)
 
             self.extracellulars.append(out)
-        print("ATTACHED")
 
     def interp_seg_positions(self,section,x):
 
