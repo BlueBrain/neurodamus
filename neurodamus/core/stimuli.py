@@ -99,7 +99,7 @@ class SignalSource:
         base_amp = kw.get("base_amp", self._base_amp)
 
         init_delay = kw.get("delay",0)
-        self.delay(int_delay)
+        self.delay(init_delay)
 
         tau = 1000 / frequency
         delay = tau - pulse_duration
