@@ -808,18 +808,24 @@ class Extracellular(BaseStim):
 
         if stim_info["Electrode_Path"] is None:
 
-            try:
-                self.x = float(stim_info.get("x"))  # electrode x position
-            except:
+            if stim_info.get("x") == None:
                 raise Exception("%s electrode x position must be provided" % self.__class__.__name__)
-            try:
-                self.y = float(stim_info.get("y"))  # electrode x position
-            except:
+            else:
+
+                self.x = float(stim_info.get("x"))  # electrode x position
+
+            if stim_info.get("y") == None:
                 raise Exception("%s electrode y position must be provided" % self.__class__.__name__)
-            try:
-                self.z = float(stim_info.get("z"))  # electrode x position
-            except:
+            else:
+
+                self.y = float(stim_info.get("y"))  # electrode y position
+
+            if stim_info.get("z") == None:
                 raise Exception("%s electrode z position must be provided" % self.__class__.__name__)
+            else:
+
+                self.x = float(stim_info.get("z"))  # electrode z position
+
 
         else:
             self.electrode_path = stim_info["Electrode_Path"]
@@ -833,38 +839,53 @@ class Extracellular(BaseStim):
 
     def parse_check_stim_parameters(self, stim_info):
 
-        try:
+        if stim_info.get("Delay") == None:
+            raise Exception("Delay must be provided")
+        else:
             self.delay = float(stim_info.get("Delay"))
             if self.delay < 0:
                 raise Exception("Delay must be non-negative")
-        except:
-            raise Exception("Delay must be provided")
 
-        try:
+
+        if stim_info.get("Duration") == None:
+            raise Exception("Delay must be provided")
+        else:
             self.duration = float(stim_info.get("Duration"))
             if self.delay < 0:
                 raise Exception("Duration must be non-negative")
-        except:
-            raise Exception("Duration must be provided")
 
-        try:
-            self.AmpStart = float(stim_info.get("AmpStart"))
-        except:
+
+        if stim_info.get("AmpStart") == None:
             raise Exception("AmpStart must be provided")
+        else:
+            self.AmpStart = float(stim_info.get("AmpStart"))
 
-        try:
-            self.frequency = float(stim_info.get("Frequency"))
-        except:
-            raise Exception("Frequency must be provided")
 
-        try:
-            self.width = float(stim_info.get("Width"))
-        except:
-            raise Exception("Width must be provided")
-
-        try:
-            self.type = stim_info.get("Type")
-        except:
+        if stim_info.get("Type") == None:
             raise Exception("Type must be provided")
+        else:
+            self.type = stim_info.get("Type")
+
+        if self.type == "Pulse":
+
+            self.frequency = None
+            self.width = None
+
+        else:
+
+            if stim_info.get("Frequency") == None:
+                raise Exception("Frequency must be provided")
+            else:
+                self.frequency = float(stim_info.get("Frequency"))
+
+            if self.Type == "Train":
+
+                if stim_info.get("Width") == None:
+                    raise Exception("Width must be provided")
+                else:
+                    self.width = float(stim_info.get("Width"))
+
+            else:
+                self.width == None
 
         return True
