@@ -102,19 +102,18 @@ class SignalSource:
         self.delay(init_delay)
 
         tau = 1000 / frequency
-        delay = tau - pulse_duration
+        delay = tau - np.sum(pulse_duration)
         number_pulses = int(total_duration / tau)
         for _ in range(number_pulses):
-            self.add_pulse(amp, pulse_duration, base_amp=base_amp)
+            self.add_pulses(amp, pulse_duration, base_amp=base_amp)
             self.delay(delay)
 
-        # Add final pulse, possibly partial
+        # Add final pulse, if possible
         remaining_time = total_duration - number_pulses * tau
-        if pulse_duration <= remaining_time:
-            self.add_pulse(amp, pulse_duration, base_amp=base_amp)
-            self.delay(min(delay, remaining_time - pulse_duration))
-        else:
-            self.add_pulse(amp, remaining_time, base_amp=base_amp)
+        if np.sum(pulse_duration) <= remaining_time:
+            self.add_pulses(amp, pulse_duration, base_amp=base_amp)
+            self.delay(min(delay, remaining_time - np.sum(pulse_duration)))
+
         # Last point
         self._add_point(base_amp)
         return self
@@ -148,14 +147,14 @@ class SignalSource:
     def add_sinspec(self, start, dur):
         raise NotImplementedError()
 
-    def add_pulses(self, pulse_duration, amp, *more_amps, **kw):
+    def add_pulses(self, amp, width, **kw):
         """Appends a set of pulsed signals without returning to zero
-           Each pulse is applied 'dur' time.
+           Each pulse is applied for time in list width.
 
         Args:
-          pulse_duration: The duration of each pulse
-          amp: The amplitude of the first pulse
-          *more_amps: 2nd, 3rd, ... pulse amplitudes
+
+          width: The duration of each pulse
+          amp: The amplitude of each pulse
           **kw: Additional params:
             - base_amp [default: 0]
         """
@@ -166,9 +165,9 @@ class SignalSource:
         delay = kw.get("delay",0)
         self.delay(delay)
 
-        self.add_segment(amp, pulse_duration)
-        for amp in more_amps:
-            self.add_segment(amp, pulse_duration)
+        self.add_segment(amp[0], width[0])
+        for i  in len(amp[1:]):
+            self.add_segment(amp[i], width[i])
         self._add_point(base_amp)
         return self
 
@@ -518,7 +517,7 @@ class ElectrodeSource(SignalSource):
         self.extracellulars = []
 
         if self.type == "Pulse":
-            self.add_pulse(self.AmpStart,self.duration,delay=self.stim_delay)
+            self.add_pulses(self.AmpStart,self.width,delay=self.stim_delay)
         elif self.type == "Train":
             self.add_train(self.AmpStart, self.frequency, self.width, self.duration,delay=self.stim_delay)
         elif self.type == "Sinusoid":
@@ -531,7 +530,6 @@ class ElectrodeSource(SignalSource):
 class PointSourceElectrode(ElectrodeSource):
 
     def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, x, y, z, sigma=0.277):
-        print("Initializing point source electrodes")
 
         super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
         self.x = x
