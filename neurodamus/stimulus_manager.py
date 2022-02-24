@@ -857,8 +857,13 @@ class Extracellular(BaseStim):
 
         if stim_info.get("AmpStart") == None:
             raise Exception("AmpStart must be provided")
+        elif ',' in stim_info.get("AmpStart"):
+            amps = stim_info.get("AmpStart").split(',')
+            self.AmpStart = []
+            for amp in amps:
+                self.AmpStart.append(float(amp))
         else:
-            self.AmpStart = float(stim_info.get("AmpStart"))
+            self.AmpStart = [float(stim_info.get("AmpStart"))]
 
 
         if stim_info.get("Type") == None:
@@ -869,23 +874,46 @@ class Extracellular(BaseStim):
         if self.type == "Pulse":
 
             self.frequency = None
-            self.width = None
 
-        else:
+            if stim_info.get("Width") == None:
+                self.width = [self.duration]
+            elif ',' in stim_info.get("Width"):
+                ws = stim_info.get("Width").split(',')
+                self.width = []
+                for w in ws:
+                    self.width.append(float(w))
+            else:
+                self.width = [float(stim_info.get("Width"))]
+
+        if self.type == "Train":
 
             if stim_info.get("Frequency") == None:
                 raise Exception("Frequency must be provided")
             else:
                 self.frequency = float(stim_info.get("Frequency"))
 
-            if self.Type == "Train":
-
-                if stim_info.get("Width") == None:
-                    raise Exception("Width must be provided")
-                else:
-                    self.width = float(stim_info.get("Width"))
-
+            if stim_info.get("Width") == None:
+                self.width = self.duration
+            elif ',' in stim_info.get("Width"):
+                ws = stim_info.get("Width").split(',')
+                self.width = []
+                for w in ws:
+                    self.width.append(float(w))
             else:
-                self.width == None
+                self.width = float(stim_info.get("Width"))
+
+        if self.Type == 'Sinusoid':
+
+            if stim_info.get("Frequency") == None:
+                raise Exception("Frequency must be provided")
+            else:
+                self.frequency = float(stim_info.get("Frequency"))
+
+            self.width = None
+
+        if self.Type != 'Sinusoid':
+            if len(self.AmpStart) != len(self.width):
+                raise Exception("Each amplitude must have corresponding width")
+
 
         return True
