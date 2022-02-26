@@ -65,7 +65,7 @@ class SignalSource:
 
         delay = kw.get("delay",0)
         self.delay(delay)
-
+        self._add_point(base_amp)
         self.add_segment(max_amp, duration)
         self._add_point(base_amp)
         return self
@@ -165,9 +165,13 @@ class SignalSource:
         delay = kw.get("delay",0)
         self.delay(delay)
 
+        self._add_point((base_amp))
+
         self.add_segment(amp[0], width[0])
-        for i  in len(amp[1:]):
-            self.add_segment(amp[i], width[i])
+
+        if len(amp)>1:
+            for i in np.arange(1,len(amp[1:])):
+                self.add_segment(amp[i], width[i])
         self._add_point(base_amp)
         return self
 
@@ -537,6 +541,7 @@ class PointSourceElectrode(ElectrodeSource):
         self.z = z
         self.sigma = sigma
 
+
     def attach_to(self,section):
 
         section.insert('extracellular')
@@ -544,13 +549,13 @@ class PointSourceElectrode(ElectrodeSource):
         for seg in section:
             segpositions = self.interp_seg_positions(section,seg.x)
             distance = np.linalg.norm(np.array([self.x,self.y,self.z])-segpositions)
-            scaleFactor = self.AmpStart / (4 * np.pi * self.sigma * distance)*1e3
+            scaleFactor = 1 / (4 * np.pi * self.sigma * distance)*1e3
 
             segVec = h.Vector()
             segVec.copy(self.stim_vec)
             segVec.mul(scaleFactor)
 
-            out = segVec.play(seg.extracellular._ref_e,self.time_vec)
+            out = segVec.play(seg.extracellular._ref_e,self.time_vec,1)
 
             self.extracellulars.append(out)
 
@@ -587,6 +592,8 @@ class RealElectrode(ElectrodeSource):
         # endOffset = scaleFile['offsets'][str(int(gid))][(int(sec_id+1))]
         self.scaleFactor = scaleFile['electrodes'][electrode_name][str(int(gid))]#[offset:endOffset]
         self.numSegs = numSegs
+
+
     def attach_to(self,section):
 
         section.insert('extracellular')

@@ -824,7 +824,7 @@ class Extracellular(BaseStim):
                 raise Exception("%s electrode z position must be provided" % self.__class__.__name__)
             else:
 
-                self.x = float(stim_info.get("z"))  # electrode z position
+                self.z = float(stim_info.get("z"))  # electrode z position
 
 
         else:
@@ -855,15 +855,16 @@ class Extracellular(BaseStim):
                 raise Exception("Duration must be non-negative")
 
 
-        if stim_info.get("AmpStart") == None:
+        if stim_info.get("Amp") == None:
             raise Exception("AmpStart must be provided")
-        elif ',' in stim_info.get("AmpStart"):
-            amps = stim_info.get("AmpStart").split(',')
+        elif ',' in stim_info.get("Amp"):
+            amps = stim_info.get("Amp").split(',')
             self.AmpStart = []
             for amp in amps:
                 self.AmpStart.append(float(amp))
         else:
-            self.AmpStart = [float(stim_info.get("AmpStart"))]
+            self.AmpStart = [float(stim_info.get("Amp"))]
+
 
 
         if stim_info.get("Type") == None:
@@ -875,15 +876,17 @@ class Extracellular(BaseStim):
 
             self.frequency = None
 
-            if stim_info.get("Width") == None:
+            if stim_info.get("StimWidth") == None:
                 self.width = [self.duration]
-            elif ',' in stim_info.get("Width"):
-                ws = stim_info.get("Width").split(',')
+            elif ',' in stim_info.get("StimWidth"):
+                ws = stim_info.get("StimWidth").split(',')
                 self.width = []
                 for w in ws:
                     self.width.append(float(w))
             else:
-                self.width = [float(stim_info.get("Width"))]
+                self.width = [float(stim_info.get("StimWidth"))]
+
+    
 
         if self.type == "Train":
 
@@ -892,17 +895,18 @@ class Extracellular(BaseStim):
             else:
                 self.frequency = float(stim_info.get("Frequency"))
 
-            if stim_info.get("Width") == None:
+            if stim_info.get("StimWidth") == None:
                 self.width = self.duration
-            elif ',' in stim_info.get("Width"):
-                ws = stim_info.get("Width").split(',')
+            elif ',' in stim_info.get("StimWidth"):
+                ws = stim_info.get("StimWidth").split(',')
                 self.width = []
                 for w in ws:
                     self.width.append(float(w))
             else:
-                self.width = float(stim_info.get("Width"))
+                self.width = float(stim_info.get("StimWidth"))
 
-        if self.Type == 'Sinusoid':
+
+        if self.type == 'Sinusoid':
 
             if stim_info.get("Frequency") == None:
                 raise Exception("Frequency must be provided")
@@ -911,7 +915,7 @@ class Extracellular(BaseStim):
 
             self.width = None
 
-        if self.Type != 'Sinusoid':
+        if self.type != 'Sinusoid':
             if len(self.AmpStart) != len(self.width):
                 raise Exception("Each amplitude must have corresponding width")
 
