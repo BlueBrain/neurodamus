@@ -6,6 +6,8 @@ import libsonata
 import logging
 import os.path
 
+from ..utils.logging import log_verbose
+
 
 class SonataConfig:
 
@@ -16,7 +18,8 @@ class SonataConfig:
         '_config_json',
         '_resolved_manifest',
         'circuits',
-        '_circuit_networks'
+        '_circuit_networks',
+        '_default_population'
     )
 
     _config_entries = (
@@ -55,6 +58,9 @@ class SonataConfig:
 
         self.circuits = libsonata.CircuitConfig.from_file(self.network)
         self._circuit_networks = json.loads(self.circuits.expanded_json)["networks"]
+        self._default_population = [pop for pop in self.circuits.node_populations
+                                    if self.circuits.node_population_properties(pop).type
+                                    != "virtual"][0]  # the first (unvirtual) population as default
 
     @classmethod
     def _resolve(cls, entry, name, manifest: dict):
@@ -128,6 +134,7 @@ class SonataConfig:
             "input_type": "Mode",
             "random_seed": "Seed",
             "node_set": "Target",  # for StimulusInject
+            "source": "Source",  # for StimulusInject
             "type": "Type"
         },
         "reports": {
@@ -149,6 +156,7 @@ class SonataConfig:
         parsed_run = self._translate_dict(self._sections["run"], "run")
         parsed_run["CircuitPath"] = "<NONE>"  # Sonata doesnt have default circuit
         parsed_run["OutputRoot"] = self.output.get("output_dir", "output")
+        parsed_run["TargetFile"] = self.circuits.node_sets_path
         copy_config_if_valid(self._entries.get("target_simulator"), parsed_run, "Simulator")
         copy_config_if_valid(self._entries.get("node_sets_file"), parsed_run, "TargetFile")
         copy_config_if_valid(self._entries.get("node_set"), parsed_run, "CircuitTarget")
@@ -172,9 +180,7 @@ class SonataConfig:
     def Circuit(self):
         node_info_to_circuit = {
             "nodes_file": "CellLibraryFile",
-            "morphologies_dir": "MorphologyPath",
-            "biophysical_neuron_models_dir": "METypePath",
-            "type": "CellType"
+            "type": "PopulationType"
         }
 
         if "node_set" not in self._entries:
@@ -186,23 +192,31 @@ class SonataConfig:
                 CircuitPath=os.path.dirname(nodes_file) or "",
                 CellLibraryFile=nodes_file,
                 CircuitTarget=node_pop_name + ":" + (self._entries.get("node_set") or ""),
-                MorphologyType="swc",
                 **{
                     node_info_to_circuit.get(key, key): value
                     for key, value in population_info.items()
                 }
             )
-            if "alternate_morphologies" in population_info and \
-                    "neurolucida-asc" in population_info["alternate_morphologies"]:
-                circuit_conf["MorphologyPath"] = population_info["alternate_morphologies"]\
-                    .get("neurolucida-asc")
-                circuit_conf["MorphologyType"] = "asc"
+            node_prop = self.circuits.node_population_properties(node_pop_name)
+            circuit_conf["MorphologyPath"] = node_prop.morphologies_dir
+            circuit_conf["MorphologyType"] = "swc"
+            circuit_conf["METypePath"] = node_prop.biophysical_neuron_models_dir
+            if node_prop.alternate_morphology_formats:
+                if "neurolucida-asc" in node_prop.alternate_morphology_formats:
+                    circuit_conf["MorphologyPath"] = \
+                        node_prop.alternate_morphology_formats["neurolucida-asc"]
+                    circuit_conf["MorphologyType"] = "asc"
+                elif "h5v1" in node_prop.alternate_morphology_formats:
+                    circuit_conf["MorphologyPath"] = node_prop.alternate_morphology_formats["h5v1"]
+                    circuit_conf["MorphologyType"] = "h5"
 
             # find inner connectivity
             for edge_config in network["edges"]:
                 for edge_pop_name in edge_config["populations"].keys():
                     edge_storage = self.circuits.edge_population(edge_pop_name)
-                    if edge_storage.source == edge_storage.target == node_pop_name:
+                    edge_type = self.circuits.edge_population_properties(edge_pop_name).type
+                    if edge_storage.source == edge_storage.target == node_pop_name and \
+                            edge_type == "chemical":
                         circuit_conf["nrnPath"] = edge_config["edges_file"] + ":" + edge_pop_name
             return circuit_conf
 
@@ -223,10 +237,11 @@ class SonataConfig:
         for edge_config in self._circuit_networks["edges"]:
             for population_name, edge_pop_config in edge_config["populations"].items():
                 edge_pop = self.circuits.edge_population(population_name)
-                if edge_pop.source == edge_pop.target:  # Inner connectivity
+                pop_type = edge_pop_config.get("type", "chemical")
+                # skip inner connectivity
+                if edge_pop.source == edge_pop.target and pop_type == "chemical":
                     continue
                 # projection
-                pop_type = edge_pop_config.get("type", "chemical")
                 projections["{0.source}-{0.target}".format(edge_pop)] = dict(
                     Path=edge_config["edges_file"] + ":" + population_name,
                     Source=edge_pop.source + ":",
@@ -245,6 +260,7 @@ class SonataConfig:
     def parsedConnects(self):
         connections = {}
         for conn_name, conn_dict in self._sections.get("connection_overrides").items():
+            self.patch_population_to_target(conn_dict, ["source", "target"])
             connect = self._translate_dict(conn_dict, "connection_overrides")
             connect = dict_change_keys_case(connect)
             connections[conn_name] = connect
@@ -252,11 +268,20 @@ class SonataConfig:
 
     @property
     def parsedStimuli(self):
+        _input_type_translation = {
+            "spikes": "Current",
+            "current_clamp": "Current",
+            "voltage_clamp": "Voltage",
+            "extracellular_stimulation": "Extracellular"
+        }
+
         stimuli = {}
         for name, conf in self._sections["inputs"].items():
             stimulus = self._translate_dict(conf, "inputs")
             stimulus = dict_change_keys_case(stimulus)
-            stimulus["Pattern"] = snake_to_camel(stimulus["Pattern"])
+            stimulus["Pattern"] = "SEClamp" if stimulus["Pattern"] == "seclamp" \
+                else snake_to_camel(stimulus["Pattern"])
+            stimulus["Mode"] = _input_type_translation.get(stimulus["Mode"], stimulus["Mode"])
             stimuli[name] = stimulus
         return stimuli
 
@@ -264,9 +289,10 @@ class SonataConfig:
     def parsedInjects(self):
         injects = {}
         for name, conf in self._sections["inputs"].items():
+            self.patch_population_to_target(conf, ["node_set"])
             inj = self._translate_dict(conf, "inputs")
             inj.setdefault("Stimulus", name)
-            inj.setdefault("Source", "default:")
+            inj.setdefault("Source", self._default_population + ":")
             injects["inject"+name] = inj
         return injects
 
@@ -274,14 +300,21 @@ class SonataConfig:
     def parsedReports(self):
         reports = {}
         for name, conf in self._sections["reports"].items():
-            rep = self._translate_dict(conf, "reports")
+            if "cells" not in conf:
+                logging.error("BBP accepts only report configuration with 'cells' provided")
+                raise Exception("BBP accepts only report configuration with 'cells' provided")
+            rep = self._translate_dict(dict_change_keys_case(conf,
+                                       filtered_keys=self._translation["reports"].keys()),
+                                       "reports")
             # Some entries now have defaults. Introduce them here
             rep.setdefault("Type", "compartment")
             rep.setdefault("Format", "SONATA")
             rep.setdefault("Dt", self.run.get("dt"))
             rep.setdefault("StartTime", 0)
             rep.setdefault("Unit", "mV")
-            rep.setdefault("Target", "_ALL_")
+            rep.setdefault("Sections", "soma")
+            default_compartments = "center" if rep.get("Sections") == "soma" else "all"
+            rep.setdefault("Compartments", default_compartments)
             reports[name] = rep
         return reports
 
@@ -303,10 +336,17 @@ class SonataConfig:
             return {}
         return self._entries.get(item_tr) or self._sections.get(item_tr) or {}
 
+    def patch_population_to_target(self, section: dict, keys: dict):
+        for key in keys:
+            if ":" not in section[key]:
+                log_verbose("Target population in '%s' not specified, prepend %s to it",
+                             key, self._default_population)
+                section[key] = self._default_population + ":" + section[key]
+
 
 def snake_to_camel(word):
     return ''.join(x.capitalize() or '_' for x in word.split('_'))
 
 
-def dict_change_keys_case(d):
-    return {snake_to_camel(k): v for k, v in d.items()}
+def dict_change_keys_case(d, filtered_keys=()):
+    return {snake_to_camel(k) if k not in filtered_keys else k: v for k, v in d.items()}

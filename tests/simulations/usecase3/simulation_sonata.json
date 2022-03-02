@@ -24,6 +24,7 @@
             "sections": "soma"
         },
         "compartment_report": {
+            "cells": "l4mc",
             "variable_name": "v",
             "sections": "all"
         }

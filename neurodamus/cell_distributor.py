@@ -85,12 +85,13 @@ class VirtualCellPopulation:
     """
     _total_count = 0
 
-    def __init__(self, population_name):
+    def __init__(self, population_name, gids=None):
         self._population_name = population_name
-        self._local_nodes = NodeSet().register_global(population_name or '')
+        self._local_nodes = NodeSet(gids).register_global(population_name or '')
         VirtualCellPopulation._total_count += 1
         if VirtualCellPopulation._total_count > 1:
-            logging.warning("At the moment only a single Virtual Cell Population works with REPLAY")
+            logging.warning("For non-sonata circuit, "
+                            "only a single Virtual Cell Population works with REPLAY")
 
     local_nodes = property(lambda self: self._local_nodes)
     population_name = property(lambda self: self._population_name)
@@ -171,11 +172,10 @@ class CellManagerBase(object):
     # Compatibility with neurodamus-core (used by TargetManager, CompMapping)
     # Create hoc vector from numpy.array
     def getGidListForProcessor(self):
-        local_gids = self.local_nodes.final_gids()
-        from neuron import h
-        vec = h.Vector(local_gids.size)
-        vec.as_numpy()[:] = local_gids
-        return vec
+        return compat.hoc_vector(self.local_nodes.final_gids())
+
+    def get_final_gids(self):
+        return numpy.array(self.local_nodes.final_gids())
 
     def _init_config(self, circuit_conf, pop):
         if self._node_format == NodeFormat.SONATA:
@@ -225,7 +225,7 @@ class CellManagerBase(object):
 
         if target_spec.name:
             logging.info(" -> Distributing '%s' target cells Round-Robin", target_spec)
-            target_gids = self._target_manager.get_target(target_spec).get_gids()
+            target_gids = self._target_manager.get_target(target_spec).get_raw_gids()
             gidvec, me_infos, full_size = loader_f(conf, target_gids, MPI.size, MPI.rank)
             total_cells = len(target_gids)
         else:
@@ -398,6 +398,9 @@ class GlobalCellManager:
 
         from functools import reduce
         return reduce(_hoc_append, (man.getGidListForProcessor() for man in self._cell_managers))
+
+    def get_final_gids(self):
+        return numpy.concatenate([man.get_final_gids() for man in self._cell_managers])
 
     def getMEType(self, gid):
         cell_managers_iter = iter(self._cell_managers)

@@ -79,6 +79,16 @@ class CircuitManager:
         self.global_target.nodesets.append(cell_manager.local_nodes)
 
     def new_node_manager(self, circuit, *args, **kwargs):
+        if circuit.get("PopulationType") == "virtual":
+            import libsonata
+            storage = libsonata.NodeStorage(circuit.CellLibraryFile)
+            pop_name, _ = circuit.CircuitTarget.split(":")
+            node_size = storage.open_population(pop_name).size
+            gid_vec = list(range(1, node_size+1))
+            virtual_cell_manager = VirtualCellPopulation(pop_name, gid_vec)
+            self.virtual_node_managers[pop_name] = virtual_cell_manager
+            return virtual_cell_manager
+
         engine = circuit.Engine or METypeEngine
         CellManagerCls = engine.CellManagerCls or SynapseRuleManager
         cell_manager = CellManagerCls(circuit, *args, **kwargs)
@@ -128,7 +138,7 @@ class CircuitManager:
             else:
                 raise ConfigurationError("Can't find projection Node population: %s", destination)
 
-        src_manager = self.node_managers.get(source)
+        src_manager = self.node_managers.get(source) or self.virtual_node_managers.get(source)
         if src_manager is None:  # src manager may not exist -> virtual
             logging.info(" * No known population %s. Creating Virtual src for projection", source)
             if conn_type not in (SynapseRuleManager, _ngv.GlioVascularManager):
@@ -776,11 +786,30 @@ class Node:
                     else:
                         target_type = 0
 
+                # for sonata config, compute target_type from user inputs
+                if "Sections" in rep_conf and "Compartments" in rep_conf:
+                    def _compute_corenrn_target_type(section_type, compartment_type):
+                        sections = ["all", "soma", "axon", "dend", "apic"]
+                        compartments = ["center", "all"]
+                        if section_type not in sections:
+                            raise ConfigurationError("Report: invalid section type '%s'",
+                                                     section_type)
+                        if compartment_type not in compartments:
+                            raise ConfigurationError("Report: invalid compartment type '%s'",
+                                                     compartment_type)
+                        if section_type == "all":  # for "all sections", support only target_type=0
+                            return 0
+                        return sections.index(section_type)+1+4*compartments.index(compartment_type)
+
+                    section_type = rep_conf.get("Sections")
+                    compartment_type = rep_conf.get("Compartments")
+                    target_type = _compute_corenrn_target_type(section_type, compartment_type)
+
                 core_report_params = (
                     (rep_name, rep_target.name, rep_type, report_on.replace(" ", ","))
                     + rep_params[3:5] + (target_type,) + rep_params[5:8]
-                    + (target.completegids(), SimConfig.corenrn_buff_size, population_name)
-                    + (population_offset,)
+                    + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
+                    + (population_name, population_offset,)
                 )
                 SimConfig.coreneuron.write_report_config(*core_report_params)
 
@@ -795,8 +824,12 @@ class Node:
                 # For summation targets - check if we were given a Cell target because we really
                 # want all points of the cell which will ultimately be collapsed to a single value
                 # on the soma. Otherwise, get target points as normal.
+                sections = rep_conf.get("Sections")
+                compartments = rep_conf.get("Compartments")
                 points = self._target_manager.get_target_points(target, global_manager,
-                                                                rep_type.lower() == "summation")
+                                                                rep_type.lower() == "summation",
+                                                                sections=sections,
+                                                                compartments=compartments)
                 for point in points:
                     gid = point.gid
                     cell = global_manager.getCell(gid)
@@ -854,6 +887,7 @@ class Node:
         """Iterate over any NeuronConfigure blocks from the BlueConfig.
         These are simple hoc statements that can be executed with minimal substitutions
         """
+        logging.warning("NeuronConfigure block is deprecated")
         logging.info("Executing neuron configures")
         for config in SimConfig.configures.values():
             target_name = config.get("Target").s
@@ -862,7 +896,8 @@ class Node:
                         config.get("Configure").s, target_name)
 
             points = self._target_manager.get_target_points(target_name,
-                                                            self._circuits.base_cell_manager)
+                                                            self._circuits.base_cell_manager,
+                                                            cell_use_compartment_cast=True)
             # iterate the pointlist and execute the command on the section
             for tpoint_list in points:
                 for sec_i, sc in enumerate(tpoint_list.sclst):

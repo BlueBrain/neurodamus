@@ -10,6 +10,7 @@ import numpy
 from .core import MPI, NeurodamusCore as Nd
 from .core.configuration import ConfigurationError, GlobalConfig, find_input_file
 from .core.nodeset import NodeSet
+from .utils import compat
 
 
 class TargetError(Exception):
@@ -184,7 +185,7 @@ class TargetManager:
 
         return new_targets
 
-    def get_target_points(self, target, cell_manager, cell_use_compartment_cast=True):
+    def get_target_points(self, target, cell_manager, cell_use_compartment_cast, **kw):
         """Helper to retrieve the points of a target.
         If target is a cell then uses compartmentCast to obtain its points.
         Otherwise returns the result of calling getPointList directly on the target.
@@ -201,7 +202,7 @@ class TargetManager:
             target = self.get_target(target)
         if target.isCellTarget() and cell_use_compartment_cast:
             target = self.hoc.compartmentCast(target, "")
-        return target.getPointList(cell_manager)
+        return target.getPointList(cell_manager, **kw)
 
     @lru_cache()
     def intersecting(self, target1, target2):
@@ -271,11 +272,20 @@ class NodeSetReader:
         def _get_nodeset(pop_name):
             storage = self._population_stores.get(pop_name)
             population = storage.open_population(pop_name)
-            ns = NodeSet(self.nodesets.materialize(nodeset_name, population).flatten())
-            ns.register_global(pop_name)
-            return ns
+            # Create NodeSet object with 1-based gids
+            try:
+                ns = NodeSet(self.nodesets.materialize(nodeset_name, population).flatten() + 1)
+                ns.register_global(pop_name)
+                return ns
+            except Exception:
+                logging.warning("Target %s cannot be loaded for population %s, skip.",
+                                nodeset_name, pop_name)
+                return NodeSet()
 
-        nodesets = [_get_nodeset(pop_name) for pop_name in self._population_stores]
+        if pop_name:
+            nodesets = [_get_nodeset(pop_name)]
+        else:
+            nodesets = [_get_nodeset(pop_name) for pop_name in self._population_stores]
         return NodesetTarget(target_spec.simple_name, nodesets, hoc_name=target_spec.name)
 
 
@@ -305,7 +315,6 @@ class NodesetTarget(_TargetInterface):
         self.name = name
         self.hoc_name = kw.get("hoc_name", name)
         self.nodesets = nodesets
-        self._gid_offset = 0
 
     @classmethod
     def create_global_target(cls):
@@ -315,6 +324,7 @@ class NodesetTarget(_TargetInterface):
         return sum(len(ns) for ns in self.nodesets)
 
     def get_gids(self):
+        """ Retrieve the final gids of the nodeset target """
         if not self.nodesets:
             logging.warning("Nodeset '%s' can't be materialized. No node populations", self.name)
             return []
@@ -322,6 +332,16 @@ class NodesetTarget(_TargetInterface):
         for extra_nodes in self.nodesets[1:]:
             gids = numpy.append(gids, extra_nodes.final_gids())
         return gids
+
+    def get_raw_gids(self):
+        """ Retrieve the raw gids of the nodeset target """
+        if not self.nodesets:
+            logging.warning("Nodeset '%s' can't be materialized. No node populations", self.name)
+            return []
+        if len(self.nodesets) > 1:
+            logging.error("Can not get raw gids for Nodeset target with multiple populations.")
+            raise TargetError("Can not get raw gids for Nodeset target with multiple populations.")
+        return numpy.array(self.nodesets[0].raw_gids())
 
     @lru_cache()
     def get_hoc_target(self):
@@ -335,23 +355,56 @@ class NodesetTarget(_TargetInterface):
     def getCellCount(self):
         return self.gid_count()
 
+    # always returns the original gids, independent of offsetting
     def completegids(self):
-        final_gids = self.get_gids()
-        hoc_vec = Nd.Vector(final_gids.size)
-        hoc_vec.as_numpy()[:] = final_gids
-        return hoc_vec
+        return compat.hoc_vector(self.get_raw_gids())
 
     def isCellTarget(self):
         return True
 
     def contains(self, gid):
+        """ Determine if a given gid is included in the gid list for this target
+        regardless of which cpu
+        """
         return gid in self.get_gids()
 
     def completeContains(self, gid):
-        return gid - self._gid_offset in self.get_gids()
+        """ For compatibility with hoc target, reuse self.contains(gid) for NodeSetTarget """
+        return self.contains(gid)
 
     def set_offset(self, offset):
-        self._gid_offset = offset
+        """ For compatibility with hoc target, not needed for Nodeset target """
+        pass
+
+    def getPointList(self, cell_manager, **kw):
+        """ Retrieve a TPointList containing compartments (based on section type and compartment type)
+        of any local cells on the cpu.
+        Args:
+            cell_manager: a cell manager or global cell manager
+            sections: section type, such as "soma", "axon", "dend", "apic" and "all",
+                      default = "soma"
+            compartments: compartment type, such as "center" and "all",
+                          default = "center" for "soma", default = "all" for others
+        Returns:
+            list of TPointList containing the compartment position and retrieved section references
+        """
+        section_type = kw.get("sections", "soma")
+        compartment_type = kw.get("compartments", "center" if section_type == "soma" else "all")
+        pointList = compat.List()
+        target_gids = self.get_gids()
+        local_gids = cell_manager.get_final_gids()
+        gids = target_gids[numpy.in1d(target_gids, local_gids)]
+        for gid in gids:
+            point = Nd.TPointList(gid)
+            cellObj = cell_manager.getCell(gid)
+            secs = getattr(cellObj, section_type)
+            for sec in secs:
+                for seg in sec:
+                    if compartment_type == "center" and seg.x != 0.5:
+                        continue
+                    point.append(Nd.SectionRef(sec), seg.x)
+            pointList.append(point)
+        return pointList
 
     def __getattr__(self, item):
         logging.info("Compat interface to hoc target. Calling " + item)
@@ -375,10 +428,17 @@ class _HocTarget(_TargetInterface):
         return int(self.hoc_target.getCellCount())
 
     def get_gids(self):
+        offset = self.hoc_target.get_offset()
+        return self.hoc_target.completegids().as_numpy().astype("uint32") + offset
+
+    def get_raw_gids(self):
         return self.hoc_target.completegids().as_numpy().astype("uint32")
 
     def get_hoc_target(self):
         return self.hoc_target
+
+    def getPointList(self, cell_manager, **kw):
+        return self.hoc_target.getPointList(cell_manager)
 
     def __getattr__(self, item):
         return getattr(self.hoc_target, item)

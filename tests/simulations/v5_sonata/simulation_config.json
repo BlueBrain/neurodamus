@@ -21,50 +21,50 @@
     },
     "connection_overrides": {
         "ConL6Exc-Uni": {
-            "source": "default:Excitatory",
-            "target": "default:Layer6",
+            "source": "Excitatory",
+            "target": "Layer6",
             "weight": 1.0,
             "spont_minis": 0.04
         },
         "ConL5Exc-Uni": {
-              "source": "default:Excitatory",
-              "target": "default:Layer5",
+              "source": "Excitatory",
+              "target": "Layer5",
               "weight": 1.0,
               "spont_minis": 0.067
         },
         "ConL4Exc-Uni": {
-              "source": "default:Excitatory",
-              "target": "default:Layer4",
+              "source": "Excitatory",
+              "target": "Layer4",
               "weight": 1.0,
               "spont_minis": 0.072
         },
         "ConL3Exc-Uni": {
-              "source": "default:Excitatory",
-              "target": "default:Layer3",
+              "source": "Excitatory",
+              "target": "Layer3",
               "weight": 1.0,
               "spont_minis": 0.122
         },
         "ConL2Exc-Uni": {
-              "source": "default:Excitatory",
-              "target": "default:Layer2",
+              "source": "Excitatory",
+              "target": "Layer2",
               "weight": 1.0,
               "spont_minis": 0.26
         },
         "ConL1Exc-Uni": {
-              "source": "default:Excitatory",
-              "target": "default:Layer1",
+              "source": "Excitatory",
+              "target": "Layer1",
               "weight": 1.0,
               "spont_minis": 0.63
         },
         "ConInh-Uni": {
-              "source": "default:Inhibitory",
-              "target": "default:Mosaic",
+              "source": "Inhibitory",
+              "target": "Mosaic",
               "weight": 1.0,
               "spont_minis": 0.012
         },
         "scheme_CaUse_ee": {
-            "source": "default:Excitatory",
-            "target": "default:Excitatory",
+            "source": "Excitatory",
+            "target": "Excitatory",
             "weight": 1.0,
             "synapse_configure": "%s.Use *= 0.158401372855"
         }
@@ -76,7 +76,7 @@
             "spike_file": "input.dat",
             "delay": 0,
             "duration": 30000,
-            "node_set": "default:Mosaic"
+            "node_set": "Mosaic"
         },
         "ThresholdExc": {
             "module": "noise",
@@ -85,7 +85,7 @@
             "variance": 0.001,
             "delay": 0.0,
             "duration": 30000,
-            "node_set": "default:Excitatory"
+            "node_set": "Excitatory"
         },
         "ThresholdInh": {
             "module": "noise",
@@ -94,23 +94,23 @@
             "variance": 0.001,
             "delay": 0.0,
             "duration": 30000,
-            "node_set": "default:Inhibitory"
+            "node_set": "Inhibitory"
         },
         "hypamp_mosaic": {
             "module": "hyperpolarizing",
             "input_type": "Current",
             "delay": 0.0,
             "duration": 30000,
-            "node_set": "default:Mosaic"
+            "node_set": "Mosaic"
         }
     },
     "reports": {
         "soma_report": {
             "cells": "Mosaic",
-            "variable_name": "v",
-            "sections": "soma"
+            "variable_name": "v"
         },
         "compartment_report": {
+            "cells": "Mosaic",
             "variable_name": "v",
             "sections": "all"
         }

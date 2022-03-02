@@ -27,10 +27,7 @@ class Vector(array):
 
     def as_hoc(self):
         """When API compat is not enough, convert to a true hov Vector"""
-        from neuron import h
-        vec = h.Vector(self.size())
-        vec.as_numpy()[:] = self
-        return vec
+        return hoc_vector(self)
 
 
 class List(list):
@@ -158,3 +155,10 @@ class PyMap(dict):
 
     def as_dict(self, *_, **_kw):
         return self
+
+
+def hoc_vector(np_array):
+    from neuron import h
+    hoc_vec = h.Vector(np_array.size)
+    hoc_vec.as_numpy()[:] = np_array
+    return hoc_vec
