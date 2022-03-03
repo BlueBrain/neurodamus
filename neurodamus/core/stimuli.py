@@ -111,7 +111,7 @@ class SignalSource:
         return self
 
 
-    def add_train_arbitrary(self, amp, frequency, pulse_duration, total_duration, **kw):
+    def add_train_arbitrary(self, amp, pulse_duration, frequency, total_duration, **kw):
         """Stimulus with repeated pulse injections at a specified frequency.
 
         Args:
@@ -573,7 +573,7 @@ class ElectrodeSource(SignalSource):
             self.add_pulses_arbitrary(self.AmpStart,self.width,delay=self.stim_delay)
 
         elif self.type == "Train":
-            self.add_train(self.AmpStart, self.frequency, self.width, self.duration,delay=self.stim_delay)
+            self.add_train_arbitrary(self.AmpStart, self.frequency, self.width, self.duration,delay=self.stim_delay)
         elif self.type == "Sinusoid":
             self.add_sin(self.AmpStart, self.duration, self.frequency,delay=self.stim_delay)
         else:

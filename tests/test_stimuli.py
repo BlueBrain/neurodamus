@@ -99,3 +99,8 @@ class TestStimuli(object):
         self.stim.add_pulses_arbitrary([1,2],[10,20],delay=100)
         assert list(self.stim.time_vec) == [0.0, 100.0, 100.0, 110.0, 110.0, 130, 130]
         assert list(self.stim.stim_vec) == [0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 0]
+
+    def test_train_arbitrary(self):
+        self.stim.add_train_arbitrary([1,-1],[200,300],1,2000)
+        assert list(self.stim.stim_vec) == [0.0, 0.0, 1.0, 1.0,  -1, -1, 0,  0.0, 0.0, 1.0, 1.0, -1, -1,   0,   0.0]
+        assert list(self.stim.time_vec) == [0.0, 0.0, 0.0, 200.0,200,500,500,1000,1000,1000,1200,1200,1500,1500,2000]
