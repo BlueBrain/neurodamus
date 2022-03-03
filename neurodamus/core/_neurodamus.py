@@ -6,7 +6,7 @@ from time import strftime
 from ._engine import EngineBase
 from ..utils import classproperty
 from ..utils.logging import setup_logging, log_stage, log_verbose
-from .configuration import GlobalConfig
+from .configuration import GlobalConfig, EXCEPTION_NODE_FILENAME
 from ._neuron import _Neuron
 from ._mpi import MPI
 
@@ -42,6 +42,11 @@ class _NeurodamusCore(_Neuron):
         MPI.barrier()  # Sync so that all processes see the file
         setup_logging(GlobalConfig.verbosity, LOG_FILENAME, MPI.rank)
         log_stage("Initializing Neurodamus... Logfile: " + LOG_FILENAME)
+
+        # Some previous executions may have left a bad exception node file
+        # This is done now so it's a very early stage and we know the mpi rank
+        if MPI.rank == 0 and os.path.exists(EXCEPTION_NODE_FILENAME):
+            os.remove(EXCEPTION_NODE_FILENAME)
 
         # Load mods if not available
         cls._load_nrnmechlibs()

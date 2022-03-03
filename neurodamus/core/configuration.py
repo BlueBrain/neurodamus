@@ -15,6 +15,9 @@ from ..utils import compat
 from ..utils.logging import log_verbose
 from ..utils.pyutils import ConfigT
 
+EXCEPTION_NODE_FILENAME = ".exception_node"
+"""A file which controls which rank shows exception"""
+
 
 class LogLevel:
     ERROR_ONLY = 0
