@@ -60,11 +60,6 @@ class SignalSource:
         A pulse is characterized by raising from a base amplitude, for a certain duration.
         """
         base_amp = kw.get("base_amp", self._base_amp)
-
-        self._add_point(base_amp)
-
-        delay = kw.get("delay",0)
-        self.delay(delay)
         self._add_point(base_amp)
         self.add_segment(max_amp, duration)
         self._add_point(base_amp)
