@@ -541,6 +541,8 @@ class PointSourceElectrode(ElectrodeSource):
         self.z = z
         self.sigma = sigma
 
+        print("Initializing")
+
 
     def attach_to(self,section):
 
@@ -549,7 +551,9 @@ class PointSourceElectrode(ElectrodeSource):
         for seg in section:
             segpositions = self.interp_seg_positions(section,seg.x)
             distance = np.linalg.norm(np.array([self.x,self.y,self.z])-segpositions)
+
             scaleFactor = 1 / (4 * np.pi * self.sigma * distance)*1e3
+
 
             segVec = h.Vector()
             segVec.copy(self.stim_vec)
@@ -557,6 +561,7 @@ class PointSourceElectrode(ElectrodeSource):
 
             out = segVec.play(seg.extracellular._ref_e,self.time_vec,1)
 
+            print(np.max(out.to_python()))
             self.extracellulars.append(out)
 
     def interp_seg_positions(self,section,x):
