@@ -768,6 +768,7 @@ class Extracellular(BaseStim):
 
         self.stimList = []  # sources go here
 
+
         if not self.parse_check_all_parameters(stim_info):
             return None  # nothing to do, stim is a no-op
 
@@ -886,7 +887,7 @@ class Extracellular(BaseStim):
             else:
                 self.width = [float(stim_info.get("StimWidth"))]
 
-    
+
 
         if self.type == "Train":
 
