@@ -130,13 +130,13 @@ class SignalSource:
         delay = tau - np.sum(pulse_duration)
         number_pulses = int(total_duration / tau)
         for _ in range(number_pulses):
-            self.add_pulse_train(amp, pulse_duration, base_amp=base_amp)
+            self.add_pulses_arbitrary(amp, pulse_duration, base_amp=base_amp)
             self.delay(delay)
 
         # Add final pulse, if possible
         remaining_time = total_duration - number_pulses * tau
         if np.sum(pulse_duration) <= remaining_time:
-            self.add_pulse_train(amp, pulse_duration, base_amp=base_amp)
+            self.add_pulses_arbitrary(amp, pulse_duration, base_amp=base_amp)
             self.delay(min(delay, remaining_time - np.sum(pulse_duration)))
 
         # Last point
@@ -193,7 +193,7 @@ class SignalSource:
         return self
 
 
-    def add_pulse_train(self, amp, width, **kw):
+    def add_pulses_arbitrary(self, amp, width, **kw):
         """Appends a set of pulsed signals without returning to zero
            Each pulse is applied for time in list width.
 
@@ -216,7 +216,7 @@ class SignalSource:
         self.add_segment(amp[0], width[0])
 
         if len(amp)>1:
-            for i in np.arange(1,len(amp[1:])):
+            for i in np.arange(1,len(amp)):
                 self.add_segment(amp[i], width[i])
         self._add_point(base_amp)
         return self
@@ -567,7 +567,7 @@ class ElectrodeSource(SignalSource):
         self.extracellulars = []
 
         if self.type == "Pulse":
-            self.add_pulse_train(self.AmpStart,self.width,delay=self.stim_delay)
+            self.add_pulses_arbitrary(self.AmpStart,self.width,delay=self.stim_delay)
         elif self.type == "Train":
             self.add_train(self.AmpStart, self.frequency, self.width, self.duration,delay=self.stim_delay)
         elif self.type == "Sinusoid":

@@ -1,0 +1,720 @@
+/**
+ * @file TargetManager.hoc
+ * @brief Provides an entity to encapsulate the steps to get cell points for use in Stimulation or Reporting
+ * @brief This should make certain features of the simulation transparent such as load balancing and target file format
+ * @author king
+ * @date 2009-06-12
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+//make sure we have some basic things loaded
+{load_file( "nrngui.hoc" )}
+{load_file( "Map.hoc" )}
+{load_file( "SerializedSections.hoc" )}
+{load_file("fileUtils.hoc")}
+
+/**
+ * Target Manager itself, providing the interface for the user to get cell points to use
+ */
+begintemplate TargetManager
+
+{load_file("Target.hoc")}
+
+external terminate
+
+//-----------------------------------------------------------------------------------------------
+// Declare member variables
+//-----------------------------------------------------------------------------------------------
+
+objref targetList, cellList, sectionAccess, isec2sec[1], cellDistributor, deletedSecRef
+
+///a dummy section which will serve as a nil for populating TPointLists
+create dummy
+
+
+//-----------------------------------------------------------------------------------------------
+// public members
+//-----------------------------------------------------------------------------------------------
+
+public init
+public getTarget, setTargetList, getPointList, locationToPoint, cellDistributor, gids
+public getSomaticSections, getApicalSections, getBasalSections, getAxonalSections, registerCell
+public getApicalPoints, getBasalPoints, compartmentCast
+public selectRandomPoints, getCells, getMETypes
+
+// Ruben's PFE
+public getApicalAtDistance, getSomaPoint, getCell
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * $o1 List with targets most likely parsed from Target files
+ * $o2 CellDistributor object for accessing sections
+ */
+proc init() { local lastgid, cellIndex  localobj cellObj, secList, pointList
+
+    if( argtype(1) == 1 ) {  //need to sort out additional use cases for TargetManager
+        targetList = $o1
+        cellDistributor = $o2
+    }
+    nErrors = 0
+
+    sectionAccess = new Map()
+
+    //can I create a dummy section, reference it, then delte it to keep a null SectionRef for insertion into pointlists?
+    access dummy
+    deletedSecRef = new SectionRef()
+    delete_section()
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Assign a targetList (most likely created by a TargetParser) to this TargetManager
+ *
+ * @param $o1 Existing targetList this TargetManger should make a reference to.
+ */
+proc setTargetList() {
+    targetList = $o1
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * If this TargetManager is not being used for a bluebrain simulaion, the user must register
+ * any cells so that the TargetManager can find them (under a bluebrain sim, the pnm object
+ * or something wrapping it will be used)
+ *
+ * @param $o1 Reference to a cell object the user has created
+ */
+proc registerCell() {
+    if( object_id(cellList) == 0 ) {
+        cellList = new List()
+    }
+
+    //should I sort this list?  well, yes, but not now :P
+    cellList.append( $o1 )
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Cell registered with the function registerCell can be obtained by gid
+ *
+ * @param $1 gid
+ */
+obfunc getCell() {
+    if( object_id(cellList) == 0 ) {
+        print "getCell: No cell in list."
+    }
+
+    for listindex=0, cellList.count()-1 {
+        if( cellList.object(listindex).gid == $1 ) {
+            return cellList.object(listindex)
+        }
+    }
+    // not found
+    print "getCell: cell not in list."
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience functin for objects like StimuluManager to get access to cell objects without
+ * having a direct line to the CellDistributor object.  Subject to debate, but there must be some way
+ * for the StimulusManager to access the threshold value for the cells to execute a subThreshols stim (for example).
+ *
+ * @param $s1 Target Name to get the gids and collect references to cell objects
+ * @return List containing cell object references
+ */
+obfunc getCells() { local cellIndex  localobj target, gids, resultList
+
+    resultList = new List()
+
+    target = getTarget( $s1 )
+    gids = target.gids()
+
+    for cellIndex=0, gids.size()-1 {
+        resultList.append( cellDistributor.getCell(gids.x[cellIndex]) )
+    }
+
+    return resultList
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience functin for objects like StimuluManager to get access to cell objects without
+ * having a direct line to the CellDistributor object.  Subject to debate, but there must be some way
+ * for the StimulusManager to access the threshold value for the cells to execute a subThreshols stim (for example).
+ *
+ * @param $s1 Target Name to get the gids and collect references to cell objects
+ * @return List containing cell object references
+ */
+obfunc getMETypes() { local cellIndex  localobj target, gids, resultList
+
+    resultList = new List()
+
+    target = getTarget( $s1 )
+    gids = target.gids()
+
+    for cellIndex=0, gids.size()-1 {
+        resultList.append( cellDistributor.getMEType(gids.x[cellIndex]) )
+    }
+
+    return resultList
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ *  Helper function to aid debugging.  Print targets and info about them to stdout
+ *  Required Inputs :
+ *  Logic           : For each target, print info about all targets to stdout
+ */
+proc printTargets() {
+    //print names of targets found
+    for targetIndex=0, targetList.count()-1 {
+        print "Found target ", targetList.object(targetIndex).name
+        print "\t All Cells: ", targetList.object(targetIndex).gidMembers.size()
+        print "\t Local Cells: ", targetList.object(targetIndex).gids.size()
+        print "\t Targets: ", targetList.object(targetIndex).subtargets.count()
+        for subIndex=0, targetList.object(targetIndex).subtargets.count()-1 {
+            print "\t\t", targetList.object(targetIndex).subtargets.o[subIndex].name
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ *  Public function which retrieve a target from the list and returns it to the caller
+ *  Required Inputs : $s1 Name of target to find and retrieve
+ *  Logic           : Use binary search to locate the target, throwing an error if the target
+ *                    is not found
+ */
+obfunc getTarget() { local targetIndex, potentialGid  localobj targetUtil, singleTarget
+    strdef errorMessage, remake
+
+    targetUtil = new TargetUtility()
+    targetIndex = targetUtil.findTarget( $s1, targetList )
+    if( targetIndex < 0 ) {
+        // not found -> check if it is just a gid and create a basic target
+
+        //is this entry a cell? : make sure not to confuse some names for gids( i.e. a17sources = target, a17 = gid )
+        //  test this by trying to extract a gid then putting it back.  If either step fails, then can't be a gid
+        sscanf($s1, "a%d", &potentialGid )
+        sprint( remake, "a%d", potentialGid )
+
+        if( strcmp( $s1, remake ) == 0 )  { //cell detected
+            singleTarget = new Target( "gid", "Cell" )
+            singleTarget.gidMembers.append( potentialGid )
+            return singleTarget
+        }
+
+        // otherwise, at a loss for what to do
+        sprint( errorMessage, "Error: target %s not found", $s1 )
+        terminate( errorMessage )
+    } else {
+        return targetList.object(targetIndex)
+    }
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Retrieve TPointList for the requested item.  If a gid is passed, a TPointList is retrieved for the given gid; otherwise,
+ * a TargetName is expected and a List of TPointLists are retrieved for members of the Target which are local to the cpu
+ *
+ * @param $1 or $s1 gid of a cell registered with the TargetManager, or name of Target parsed from a target file
+ * @return TPointList for single gid, List<TPointList> for Target
+ */
+obfunc getPointList() { local cellIndex, cmpIndex  localobj activeTarget, ptList, activeCell
+
+    //if cells were registered directly, use that cell list to get cell objects for addressing sections; otherwise,
+    // we will use a pnm object (for now - maybe it will be wrapped in another object?)
+    if( argtype(1) == 0 && object_id(cellList) ) {
+        //no target object.  Just build pointlist
+        // Note: this does not allow for split cells
+        ptList = new TPointList($1)
+
+        //find cell
+        for cellIndex=0, cellList.count()-1 {
+            activeCell = cellList.o(cellIndex)
+
+            if( activeCell.gid == $1 ) {
+
+                //to avoid code duplication, should probably create a temporary target containing the cell and use that for getting all compartment points
+                // does that work without a pnm or CellDistributor object?  I don't think so.
+
+                //just mimic all compartment report
+				//TODO: should put in getCompletePointList instead.  Let this function return just soma, I think
+                forsec activeCell.CellRef.all {
+                    for cmpIndex=1, nseg {
+                        ptList.append( new SectionRef(), cmpIndex/(nseg+1) )
+                    }
+                }
+
+                return ptList
+            }
+        }
+
+		//if reached this point of the code, the cell was not in the list
+		print "No such gid registered with TargetManager: ", $1
+		return ptList
+
+    } else if( argtype(1) == 2 && object_id(cellDistributor) ) {
+
+        activeTarget = getTarget($s1)
+        return activeTarget.getPointList( cellDistributor )
+
+    } else {
+        print "no cell list?  no CellDistributor?  where am I supposed to get cell sections from?.  I'm leaving"
+    }
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get the gids from a target by name
+ *
+ * @param $s1 targetName
+ * @return Vector containing gids of target members local to this cpu
+ */
+obfunc gids() {
+    return getTarget($s1).gids()
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to encapsulate the selection of random points on a cell.
+ *
+ * @param $o1 PointList
+ * @param $2 nPoints
+ * @param $3 seed
+ * @return resultant TPointList with selected points in no particular order
+ */
+obfunc selectRandomPoints() { local synIndex, cmpIndex, x  localobj ptList, allPoints, rng
+
+    //first, get all points
+    allPoints = $o1
+
+    print "got ", allPoints.count(), " points"
+
+	rng = new Random( $3 )
+	rng.MCellRan4( $3 )
+	rng.discunif( 0, allPoints.count()-1 )
+
+	ptList = new TPointList()
+
+	for synIndex=0, $2-1 {
+		cmpIndex = rng.repick()
+
+        //Do I need to check for existence?
+        if( !allPoints.sclst.o(cmpIndex).exists() ) {  //section not on this cpu
+            continue
+        }
+
+        //allPoints.access_(cmpIndex)
+		for allPoints.point(cmpIndex, &x) {
+			ptList.append( new SectionRef(), x )
+		}
+
+	}
+
+    return ptList
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each apical section from a Cell target
+ *
+ * @param $1/$s1 gid or TargetName
+ * @return TPointList/List<TPointList> where each TPointList contains a point to each apical section of the given target
+ */
+obfunc getApicalPoints() { local cellIndex  localobj tempTarget, ptList, activeCell
+
+    if( argtype(1) != 0 ) {
+        terminate("getApicalPoints() now only accepts one int arg")
+    }
+
+    if( object_id(cellList, 1) == -1 ) {
+        terminate( "No cells registered with my null cellList" )
+    }
+
+    ptList = new TPointList($1)
+
+    //find cell
+    for cellIndex=0, cellList.count()-1 {
+        activeCell = cellList.o(cellIndex)
+
+        if( activeCell.gid == $1 ) {
+
+            //just mimic all compartment report
+            //TODO: can we make this code more general and put in a single, utility function.  avoid copy/paste in other get(*subset*)Points funcs?
+            forsec activeCell.CellRef.apical {
+                for cmpIndex=1, nseg {
+                    ptList.append( new SectionRef(), cmpIndex/(nseg+1) )
+                }
+            }
+
+            return ptList
+        }
+    }
+
+    //if reached this point of the code, the cell was not in the list
+    print "No such gid registered with TargetManager: ", $1
+    return ptList
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each basal section from a Cell target
+ *
+ * @param $s1 TargetName
+ * @return List<TPointList> where each TPointList contains a point to each basal section of the given target
+ */
+obfunc getBasalPoints() { local cellIndex  localobj tempTarget, ptList, activeCell
+
+    if( argtype(1) != 0 ) {
+        terminate("getApicalPoints() now only accepts one int arg")
+    }
+    if( object_id(cellList, 1) == -1 ) {
+        terminate( "No cells registered with my null cellList" )
+    }
+
+    ptList = new TPointList($1)
+
+    //find cell
+    for cellIndex=0, cellList.count()-1 {
+        activeCell = cellList.o(cellIndex)
+
+        if( activeCell.gid == $1 ) {
+
+            //just mimic all compartment report
+            //TODO: can we make this code more general and put in a single, utility function.  avoid copy/paste in other get(*subset*)Points funcs?
+            forsec activeCell.CellRef.basal {
+                for cmpIndex=1, nseg {
+                    ptList.append( new SectionRef(), cmpIndex/(nseg+1) )
+                }
+            }
+
+            return ptList
+        }
+    }
+
+    //if reached this point of the code, the cell was not in the list
+    print "No such gid registered with TargetManager: ", $1
+    return ptList
+}
+
+//------------------------------------------------------------------------------------------
+// The following functions are supposedly temporary.  They are here to allow us to compare
+// npoisson from old bglib to new bglib.  However, they should be supplanted by the get(*subset*)Points
+// functions later
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each somatic section from a Cell target
+ *
+ * @param $s1 TargetName
+ * @return List<TPointList> where each TPointList contains a point to each somatic section of the given target
+ */
+obfunc getSomaticSections() { localobj tempTarget
+    tempTarget = sectionCast( $s1, "soma" )
+    return tempTarget.getCompletePointList( cellDistributor )
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each apical section from a Cell target
+ *
+ * @param $s1 TargetName
+ * @return List<TPointList> where each TPointList contains a point to each apical section of the given target
+ */
+obfunc getApicalSections() {  localobj tempTarget
+
+    tempTarget = sectionCast( $s1, "apic" )
+    return tempTarget.getCompletePointList( cellDistributor )
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each basal section from a Cell target
+ *
+ * @param $s1 TargetName
+ * @return List<TPointList> where each TPointList contains a point to each basal section of the given target
+ */
+obfunc getBasalSections() { localobj tempTarget
+    tempTarget = sectionCast( $s1, "dend" )
+    return tempTarget.getCompletePointList( cellDistributor )
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get points for each axonal section from a Cell target
+ *
+ * @param $s1 TargetName
+ * @return List<TPointList> where each TPointList contains a point to each axonal section of the given target
+ */
+obfunc getAxonalSections() { localobj tempTarget
+    tempTarget = sectionCast( $s1, "axon" )
+    return tempTarget.getCompletePointList( cellDistributor )
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Utility function to take an existing Cell target and wrap it in a Section target which
+ * will return 1 compartment in thecenter of each section
+ *
+ * @param $o1/$s1 Target object or Target name
+ * @param $s2 subset name [soma, apic, dend, apic, or "" for all]
+ */
+obfunc sectionCast() { localobj target, wrapper
+
+    if( argtype(1) == 2 ) {
+        target = getTarget( $s1 )
+    } else {
+        target = $s1
+    }
+
+    if( !target.isCellTarget() ) {
+        terminate( "Attempting to apply sectionCast to non-Cell target" )
+    }
+
+    wrapper = new Target( "temp", "Section" )
+    wrapper.subtargets.append( target )
+    wrapper.targetSubsets.append( new String($s2) )
+    wrapper.targetExtraValues.append( new Vector() )
+
+    return wrapper
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Utility function to take an existing Cell target and wrap it in a Compartment target
+ * which will return a point for each compartment in each section
+ *
+ * @param $o1/$s1 Target object or Target name
+ * @param $s2 subset name [soma, apic, dend, apic, or "" for all]
+ */
+obfunc compartmentCast() { localobj target, wrapper
+
+    if( argtype(1) == 2 ) {
+        target = getTarget( $s1 )
+    } else {
+        target = $o1
+    }
+
+    if( !target.isCellTarget() ) {
+        terminate( "Attempting to apply compartmentCast to non-Cell target" )
+    }
+
+    wrapper = new Target( "temp", "Compartment" )
+    wrapper.subtargets.append( target )
+    wrapper.targetSubsets.append( new String($s2) )
+    wrapper.targetExtraValues.append( new Vector() )
+
+    return wrapper
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Given a location for a cell, section id, segment id, and offset into the segment, create a TPointList
+ * containing a section reference to there
+ *
+ * @param $1 gid
+ * @param $2 section index (isec)
+ * @param $3 distance to start of segment (ipt)
+ * @param $4 offset distance beyond the ipt (microns)
+ * @return TPointList with 1 item, where the synapse should go
+ */
+obfunc locationToPoint() { local gid, distance, isec, ipt, offset, total  localobj resultPoint, cellSections, tmpSection, nil, helpCell
+    strdef errorMessage
+
+    gid = $1
+    isec = $2
+    ipt = $3
+    offset = $4
+
+    if( offset < 0 ) { //soma connection, just zero it
+        offset = 0
+    }
+
+    resultPoint = new TPointList( gid )
+
+    cellSections = gidToSections( gid )
+    if( object_id(cellSections) == 0 ) {
+        terminate( "getting locations for non-bg sims is not implemented yet..." )
+    }
+
+    if ( isec >= cellSections.count() ) {
+        sprint( errorMessage, "Error: section %d out of bounds (%d total). Morphology section count is low, is this a good morphology?", isec, cellSections.count() )
+        terminate( errorMessage )
+    }
+
+    distance = 0.5
+    tmpSection = cellSections.isec2sec[isec]
+
+    if (tmpSection == nil) {  //assume we are in LoadBalance mode (until we decide to verify this either here or in a higher layer)
+        resultPoint.append( deletedSecRef, -1 )
+    } else if (ipt == -1) {
+        // SYN2/Sonata spec have the a pre-calculated distance field.
+        // In such cases segment (ipt) is -1 and offset is that distance.
+        if( offset == 0.0 ) {
+            offset = 0.0000001
+        }
+        if( offset >= 1.0 ) {
+            offset = 0.9999999
+        }
+        resultPoint.append( tmpSection, offset )
+    } else {
+        tmpSection.sec {
+            // when a cell is split, the path from the split point
+            // to the root gets its 3d points reversed because
+            // the section orientation is reversed.
+            if (section_orientation() == 1) {
+                ipt = n3d() - 1 - ipt
+                offset = -offset
+            }
+
+            if (ipt < n3d()) {
+                //distance = (arc3d(ipt))/L
+                distance = (arc3d(ipt)+offset)/L
+
+                if( distance == 0.0 ) {
+                    distance = 0.0000001
+                }
+
+                if( distance >= 1.0 ) {
+                    total = (arc3d(ipt)+offset)
+                    distance = 0.9999999
+                }
+            }
+            if (section_orientation() == 1) {
+                distance = 1 - distance
+            }
+        }
+
+        resultPoint.append( tmpSection, distance )
+    }
+
+    return resultPoint
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * For a given gid, we want SectionRefs stored in a List for random access.  This function will
+ * see if such a List already exists and return it, or build that list as needed, storing it for the future before
+ * returning the result.  Note that in split cases, the deleted sections will still have their SectionRefs.
+ * Should this function instead go in the Node object?  The CellDistributor object?
+ *
+ * @param $1 gid
+ * @return List object with SectionRefs to every section in the cell
+ */
+obfunc gidToSections() { local n  localobj resultSerial, nil, cellRef
+
+    resultSerial = sectionAccess.get( $1 )
+
+    if( object_id(resultSerial) == 0 ) {  //must build new one
+        //determine if we should use pnm or cellList based on which is actually allocated
+        if( object_id(cellDistributor) ) {
+            cellRef = cellDistributor.getCell($1)
+        } else if( object_id(cellList) ) {
+            print "cellList implementation pending"
+            return nil
+        } else {
+            print "no cell list?  no CellDistributor?  where am I supposed to get cell sections from?.  I'm leaving"
+            return nil
+        }
+
+        resultSerial = new SerializedSections( cellRef )
+
+        sectionAccess.put( $1, resultSerial )
+    }
+
+    return resultSerial
+}
+
+//------------------------------------------------------------------------------------------
+//
+// for Ruben's PFE
+//
+
+/*!
+ * Given cell object find all Points within the given distance to the soma.
+ * Return the one where the diameter is maximal.
+ *
+ * @param $1 cell gid
+ * @param $2 distance to soma in micrometers
+ * @return PointList object
+ */
+obfunc getApicalAtDistance() { local radius, max_diam, location, i, secnum, d0, d1, stimdist, dd  localobj cell, ptList, sl
+    cell = getCell($1)
+    cell.CellRef.soma distance()
+    radius = $2
+    i = 0
+    max_diam = 0.
+    forsec cell.CellRef.apical {
+        d0 = distance(0)
+        d1 = distance(1)
+        if(d0 <= radius && d1 >= radius) {
+            if(diam > max_diam) {
+                location = (radius - distance(0)) / (distance(1) - distance(0))
+                secnum = i
+                max_diam = diam
+            }
+        }
+        i = i + 1
+    }
+
+    ptList = new TPointList()
+    if(max_diam > 0) {
+        access cell.CellRef.apic[secnum]
+        ptList.append( location )
+        // debug output
+        //printf("Found apical with diam %f.\n", max_diam)
+    }
+
+    // compare to Etay's code:
+    /*
+    stimdist = 620/cell.getLongestBranch(cell.CellRef.apical)
+    printf("stimdist: %f\n",  stimdist)
+    sl = cell.locateSites(cell.CellRef.apical, stimdist)
+    for(i1=0;i1<sl.count();i1+=1) {
+        dd = cell.CellRef.apic[sl.o[i1].x[0]].diam
+        printf("diam: %f\n", dd)
+    }
+    */
+    return ptList
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Get the soma section and return in as TPointList object
+ *
+ * @param $1 cell gid
+ */
+obfunc getSomaPoint() { localobj cell, ptlist
+    cell = getCell($1)
+    ptlist = new TPointList()
+    access cell.CellRef.soma[0]
+    ptlist.append( 0.5 )
+    return ptlist
+}
+
+//------------------------------------------------------------------------------------------
+endtemplate TargetManager

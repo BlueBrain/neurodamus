@@ -1,0 +1,32 @@
+/**
+ * @file mcomplex.hoc
+ * @brief
+ * @author king
+ * @date 2009-10-23
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+{load_file("loadbal.hoc")}
+
+/**
+ * TODO: 17 July 2009: extracel doesn't work currently, but Michael Hines will try to resolve
+ */
+proc create_mcomplex() { local x  localobj lb, pc
+    x = startsw()
+    pc = new ParallelContext()
+    lb = new LoadBalance()
+    lb.ExperimentalMechComplex( "StdpWA", "extracel", "HDF5", "Report", "Memory", "ASCII" )
+    if( pc.id == 0 ) {
+        printf( "create mcomplex.dat %g\n", startsw()-x )
+    }
+}
+//if (name_declared("pnm") != 2) {mcomplex() quit()}
+//{mcomplex() quit()}
+
+/**
+ * @param $o1 LoadBalance object provided by caller to be filled in with mcomplex data
+ */
+proc read_mcomplex() {local i, j, k localobj f, lb, mt, s, s2
+        lb = $o1
+        lb.read_mcomplex()
+}

@@ -1,0 +1,876 @@
+/**
+ * @file CellDistributor.hoc
+ * @brief Handle assignment of cells to processors, instantiate cell objects and store locally and in pnm
+ * @author king
+ * @date 2009-06-12
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+{load_file("ConfigParser.hoc")}
+{load_file("TargetParser.hoc")}
+{load_file("Map.hoc")}
+{load_file("binfo.hoc")}
+{load_file("loadbal.hoc")}
+{load_file("RNGSettings.hoc")}
+{load_file("METype.hoc")}
+{load_file("METypeInfo.hoc")}
+{load_file("RNGSettings.hoc")}
+{load_file("fileUtils.hoc")}
+
+/**
+ * The CellDistributor object encapsulates the steps needed to load cell information (via start.ncs)
+ * then to distribute the cell gids to the proper cpus.  Note that this object does not
+ * instantiate cell objects, that task is left to the Node object
+ */
+begintemplate CellDistributor
+
+//-----------------------------------------------------------------------------------------------
+// Declare member variables
+//-----------------------------------------------------------------------------------------------
+
+objref cellList, gidvec, spgidvec, gid2meobj, gid2metype, gid2mefile, binfo, pnm, load_balance_
+objref tmpCell, this
+
+// when using mvd3 - load full circuit ids (mtypeID, etypeID, morphID); should be made more efficient later
+// (note: etype might need to become emodel later)
+objref mtypeIDVec, etypeIDVec, morphIDVec, comboIDVec
+objref mtypeList, etypeList, meinfo
+objref rngList
+
+//-----------------------------------------------------------------------------------------------
+// Public members
+//-----------------------------------------------------------------------------------------------
+public completeCellCount, cellCount, pnm, cellList
+public init, getGidListForProcessor, getMEType, getMETypeFromGid, getMEFileFromGid, finalize, getCell, getSpGid, printLBInfo
+public msfactor, delayedSplit
+public mvdFormat  // (0) start.nsc, (1) mvd3, (2) Sonata Edges
+public globalSeed, ionchannelSeed
+public isVerbose
+
+external simConfig
+external mymetis3
+external rngForStochKvInit, rng123ForStochKvInit
+external ospath, terminate
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Constructor for CellDistributor object, takes information loaded from start.ncs to know what cells
+ * are available in the circuit and a flag to indicate the state if LoadBalancing.
+ *
+ * @param $o1 vector with gids from start.ncs
+ * @param $o2 list with metype names from start.ncs
+ * @param $o3 configParser (or some other object with data from config file if we change later)
+ * @param $o4 targetParser (in case there is a circuit target)
+ * @param $o5 pnm (to know rank and nNodes)
+ */
+proc init() { local timeID_load, timeID_create, libraryCellCount, cellIndex, gid \
+    localobj circuitTarget, mePath, templatePath, cxPath, runMode, rngInfo, morphPath, morphExt, nil, melabel, meInfoItem, parsedRun
+    pnm = $o5
+    globalSeed = 0
+    ionchannelSeed = 0
+
+    isVerbose = pnm.myid == 0
+
+    msfactor = 0.8
+    parsedRun = $o3.parsedRun
+    mvdFormat = 0  // 0: NCS, 1: mvd3, 2: Sonata
+
+    // for testing if xopen bcast is in use (NEURON 7.3).  We will be loading different templates on different cpus, so it must be disabled at this point
+    execute1( "xopen_broadcast_ = 0" )
+
+    // determine if we should get metype info from start.ncs, circuit.mvd3 or Sonata
+    if( parsedRun.exists( "CellLibraryFile" ) ) if( strcmp( parsedRun.get( "CellLibraryFile" ).s, "start.ncs" ) != 0 ) {
+        if( strcmp( parsedRun.get( "CellLibraryFile" ).s, "circuit.mvd3" ) == 0 ) {
+            if( isVerbose ) { print "Reading gid:METype info from circuit.mvd3" }
+            mvdFormat = 1
+        } else {
+            // mvdtool and python are now mandatory (for support Sonata)
+            if( ! nrnpython("import mvdtool") ) {
+                terminate( "mvdtool not available. It wont be able to read third party formats e.g. Sonata" )
+            }
+            // Pass whatever in BlueConfig to mvdtool
+            if( isVerbose ) { print "Using MVDtool to read Nodes file ", parsedRun.get( "CellLibraryFile" ).s }
+            mvdFormat = 2
+        }
+    } else {
+        if( isVerbose ) { print "Reading gid:METype info from start.ncs" }
+    }
+
+    gid2metype = new Map()
+    gid2mefile = new Map()
+    cellCount = 0
+    completeCellCount = -1  // may be filled in by CircuitTarget or cell library file
+
+    // are we using load balancing?
+    lbFlag = 0
+    if( parsedRun.exists("RunMode") ) {  //when option not given in BlueConfig, default to Round-Robin
+        if( 0 == strcmp( parsedRun.get( "RunMode" ).s, "LoadBalance") || \
+            0 == strcmp( parsedRun.get( "RunMode" ).s, "WholeCell") ) {
+            lbFlag = 1
+        }
+    }
+
+    if( lbFlag ) {
+        //read the cx_* files to build the gidvec
+
+        cxPath = new String()
+        if( $o3.parsedRun.exists("CWD") ){  // TDO: is checking CWD useful?  Should we allow for another path to facilitate reusing cx* files?
+            sprint( cxPath.s, "%s/cx_%d", parsedRun.get("CWD").s, pnm.nhost )
+        } else {
+            sprint( cxPath.s, "cx_%d", pnm.nhost )
+        }
+
+        //binfo reads the files that have the predistributed cells (and pieces)
+        binfo = new BalanceInfo( cxPath.s, pnm.myid, pnm.nhost )
+
+        // binfo has gidlist, but gids can appear multiple times
+        gidvec = new Vector( binfo.gids.size() )   gidvec.resize(0)  // reserve mem
+        for cellIndex=0, binfo.gids.size()-1 {
+            if( ! gid2mefile.exists( binfo.gids.x[cellIndex] ) ) {
+                gidvec.append( binfo.gids.x[cellIndex] )
+                gid2mefile.put( binfo.gids.x[cellIndex], new String() )
+            }
+        }
+
+        spgidvec = new Vector()
+
+        //TODO: do we have any way of knowing that a CircuitTarget found definitively matches the cells in the balance files?
+        // for now, assume the user is being honest
+        if( parsedRun.exists("CircuitTarget") ) {
+            circuitTarget = $o4.getTarget( parsedRun.get("CircuitTarget").s )
+            completeCellCount = circuitTarget.completegids().size()
+        }
+    } else {
+        if( parsedRun.exists("CircuitTarget") ) {
+            //circuit target, so distribute those cells that are members in round-robin style
+            circuitTarget = $o4.getTarget( parsedRun.get("CircuitTarget").s )
+            completeCellCount = circuitTarget.completegids().size()
+            gidvec = new Vector( completeCellCount/pnm.nhost + 1 )   gidvec.resize(0)  // reserve mem
+
+            cellCount = 0
+            for cellIndex=0, circuitTarget.completegids().size()-1 {
+                if( cellCount%pnm.nhost == pnm.myid ) {
+                    gid = circuitTarget.completegids().x[cellIndex]
+                    gidvec.append( gid )
+                    gid2mefile.put( gid, new String() )
+                }
+                cellCount += 1
+            }
+            if( mvdFormat == 2 ) {
+                // Sonata loader requires sorted cells. However a different ordering might change results
+                // For reproducibility we keep compat and only sort in Sonata
+                gidvec.sort()
+            }
+        } else {
+            //if no circuitTarget, distribute all the cells round robin style; readNCS handles this further down
+            //readNCS( parsedRun.get( "nrnPath" ).s, 1 )
+        }
+    }
+
+    // Determine metype; apply round-robin assignment if necessary
+    if( mvdFormat == 1 ) {
+        loadMVD3( $o3, completeCellCount==-1 )
+    } else if( mvdFormat == 2 ) {
+        loadNodes( $o3, completeCellCount==-1 )
+    } else {
+        loadNCS( parsedRun.get( "nrnPath" ).s, completeCellCount==-1 )
+    }
+
+    pnm.ncell = completeCellCount
+    if( pnm.myid == 0 ) {
+        print "Done gid assignment: ", completeCellCount, " cells in simulated network; ", gidvec.size(), " cells on rank 0"
+    }
+
+    // Section where Cells are instantiated (with their morphologies)
+    mePath = $o3.parsedRun.get( "METypePath" )
+    morphPath = simConfig.getMorphologyPath()
+    morphExt = simConfig.getMorphologyExtension()
+    cellList = new List()
+    gid2meobj = new Map()
+    strdef morphNameWithExtension
+
+    for cellIndex=0, gidvec.size()-1 {
+        if( mvdFormat > 0 ) {  // Recent formats (mvd3, Sonata)
+            meInfoItem = meinfo.retrieveInfo( gidvec.x[cellIndex] )
+            sprint(morphNameWithExtension, "%s.%s", meInfoItem.morph_name.s, morphExt.s)
+            tmpCell = new METype( gidvec.x[cellIndex], mePath.s, meInfoItem.emodel.s, morphPath.s, morphNameWithExtension )
+            tmpCell.setThreshold( meInfoItem.threshold_current )
+            tmpCell.setHypAmp( meInfoItem.holding_current )
+        } else { // NCS
+            gid2metype.put( gidvec.x[cellIndex], loadTemplate( mePath, gid2mefile.get( gidvec.x[cellIndex] ) ) )
+            melabel = getMETypeFromGid( gidvec.x[cellIndex] )
+            tmpCell = new METype( gidvec.x[cellIndex], mePath.s, melabel.s, morphPath.s )
+        }
+        cellList.append( tmpCell )
+        gid2meobj.put( tmpCell.gid, tmpCell )
+        pnm.cells.append( tmpCell.CellRef )
+    }
+
+    if( pnm.myid == 0 ) {
+        print completeCellCount, " cells in network"
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Load start.ncs getting the gids and the metypes for all cells in the base circuit
+ * (note that we may simulate less if there is a circuit target present in the blue config file)
+ *
+ * @param $s1 nrnPath
+ * @param $2 round-robin
+ */
+proc loadNCS() { local useRR, cellCount, gid, nErrors  localobj ncsIn, bvec, strUtil, mePath
+    strdef ncsFile, tstr, metype, commentCheck
+
+    sprint( ncsFile, "%s/start.ncs", $s1 )
+    useRR = $2
+
+    strUtil = new StringFunctions()
+
+    ncsIn = new File()
+    {ncsIn.ropen( ncsFile )}
+
+    if( !ncsIn.isopen ) {
+        terminate( "Failed to open start.ncs in directory ", $s1 )
+    }
+
+    // first lines might be comments.  Check for leading '#' (TODO: more robust parsing)
+    ncsIn.gets(tstr)
+    sscanf( tstr, "%s", commentCheck )
+    while( strUtil.substr( commentCheck, "#" ) == 0 ) {
+        ncsIn.gets(tstr)
+        sscanf( tstr, "%s", commentCheck )
+    }
+
+    //should have "Cells x"
+    sscanf(tstr, "%*s %d", &cellCount )	//parse out cell count
+
+    if( pnm.myid == 0 ) {
+        print "read ", cellCount, " from start.ncs"
+    }
+
+    if( useRR ) {
+        gidvec = new Vector(cellCount/pnm.nhost)   gidvec.resize(0)  // reserve mem
+    }
+
+    // sanity check -> did all cpus read the same count?  Use node 0 to confirm
+    bvec = new Vector()
+    if( pnm.myid == 0 ) {
+        bvec.append( cellCount )
+    } else {
+        bvec.append( -1 )
+    }
+    pnm.pc.broadcast( bvec, 0 )
+    nErrors = 0
+    if( bvec.x[0] != cellCount ) {
+        printf( "Error: cell count mismatch between nodes.  Node 0 has %d vs Node %d with %d\n", bvec.x[0], pnm.myid, cellCount )
+        nErrors = 1
+        //execerror( "File read failure" )
+    }
+    nErrors = pnm.pc.allreduce( nErrors, 1 )
+
+    if( nErrors > 0 && pnm.myid == 0 ) {
+        sprint( tstr, "File read failure, %d errors\n", nErrors )
+        execerror( tstr )
+    }
+
+    ncsIn.gets(tstr) // skip the '{'
+
+    for cellIndex=0, cellCount-1 {
+        ncsIn.gets(tstr)
+        if (sscanf(tstr, " a%d %*d %*d %*s %s", &gid, metype ) != 2) {
+            {sprint(tstr, "error in %s format: %s", "start.ncs", tstr)}
+            terminate(tstr)
+        }
+
+        if( useRR ) {
+            if ( cellIndex % pnm.nhost == pnm.myid ) {
+                gidvec.append(gid)
+                gid2mefile.put(gid, new String(metype) )
+            }
+        } else {
+            if ( gid2mefile.exists(gid) ) {
+                sprint( gid2mefile.get(gid).s, metype )
+            }
+        }
+    }
+
+    ncsIn.close()
+
+    if( completeCellCount == -1 ) {
+        completeCellCount = cellCount
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * For circuits v6, start.ncs will no longer have sufficient metype information.  Use circuit.mvd3 to
+ * get gid:metype:morphology relations
+ *
+ * @param $o1 configParser
+ * @param $2 useRR : flag indicating if round robin distribution should be used while loading data
+ */
+func loadMVD3() { local res, incr, cellIndex, ncells, typeIndex, ntypes, mtypeMax, etypeMax, useRR \
+    localobj mvdReader, configParser, morphList, comboList
+    strdef tstr
+    configParser = $o1
+    useRR = $2
+
+    sprint( tstr, "%s/circuit.mvd3", configParser.parsedRun.get( "CircuitPath" ).s )
+    mvdReader = new HDF5Reader( tstr )
+
+    if( useRR ) {
+        // we only have to use round robin if the distribution could not be determine previously (no LB, no circuitTarget)
+        mvdReader.getDimensions( "/cells/properties/me_combo" )
+        ncells = mvdReader.numberofrows( "/cells/properties/me_combo" )
+
+        incr = pnm.nhost
+        gidvec = new Vector( 1+ncells/pnm.nhost )   gidvec.resize(0)  // reserve mem
+
+        // the circuit.mvd3 uses intrinsic gids starting from 1; this might change in the future
+        for( cellIndex=pnm.myid; cellIndex < ncells; cellIndex+=incr ) {
+            gidvec.append( cellIndex+1 )
+            gid2mefile.put( cellIndex+1, new String() )
+        }
+
+        completeCellCount = ncells
+    }
+
+    morphIDVec = new Vector(gidvec.size())
+    comboIDVec = new Vector(gidvec.size())
+
+    for cellIndex=0, gidvec.size()-1 {
+        morphIDVec.x[cellIndex] = mvdReader.getDataInt( "/cells/properties/morphology", gidvec.x[cellIndex]-1 )
+    }
+
+    for cellIndex=0, gidvec.size()-1 {
+        comboIDVec.x[cellIndex] = mvdReader.getDataInt( "/cells/properties/me_combo", gidvec.x[cellIndex]-1 )
+    }
+
+    morphList = new List()
+    for cellIndex=0, gidvec.size()-1 {
+        mvdReader.getDataString( "/library/morphology", morphIDVec.x[cellIndex], tstr )
+        morphList.append( new String( tstr ) )
+    }
+
+    comboList = new List()
+    for cellIndex=0, gidvec.size()-1 {
+        mvdReader.getDataString( "/library/me_combo", comboIDVec.x[cellIndex], tstr )
+        comboList.append( new String( tstr ) )
+    }
+
+    // now we can open the combo file and get the emodel + additional info
+    meinfo = new METypeManager()
+    if( pnm.myid == 0 ) {
+        meinfo.verbose = 1
+    }
+    res = meinfo.loadInfoCombo( configParser.parsedRun, gidvec, comboList, morphList )
+
+    res = pnm.pc.allreduce( res, 1 )
+    if( res < 0 ) {
+        terminate( "Errors while processing mecombo file. Terminating" )
+    }
+
+    return ncells
+}
+
+
+
+ //-----------------------------------------------------------------------------------------------
+
+/**
+ * For circuits v6, Starting late 2019, MVD info (a.k.a. nodes) is stored in Sonata format.
+ *
+ * @param $o1 configParser
+ * @param $2 useRR : flag indicating if round robin distribution should be used while loading data
+ */
+ func loadNodes() { local ncells, incr, cellIndex, useRR, PYBIND11_MIN_NPARRAY_SIZE \
+    localobj configParser, pyobj, nodeReader, pyResult, py_gids, \
+             morpho_names, emodels, threshold_currents, holding_currents
+    PYBIND11_MIN_NPARRAY_SIZE = 10  // See description below
+    strdef tstr
+    configParser = $o1
+    useRR = $2
+
+
+    // File might be rel to current dir or CircuitPath
+    tstr = configParser.parsedRun.get( "CellLibraryFile" ).s
+    if( !ospath.isfile(tstr) && !ospath.isabs(tstr) ) {
+        sprint( tstr, "%s/%s", configParser.parsedRun.get( "CircuitPath" ).s, tstr)
+    }
+    if ( !ospath.isfile(tstr) ) {
+        terminate( "CellLibraryFile not found", tstr )
+    }
+
+    pyobj = new PythonObject()
+    nodeReader = pyobj.mvdtool.open( tstr )
+
+    // open aux MEComboInfoFile if defined
+    if( configParser.parsedRun.exists("MEComboInfoFile") ) {
+        if( isVerbose ) print "MVDtool: Opening MEComboInfo file"
+        nodeReader.openComboTsv(configParser.parsedRun.get("MEComboInfoFile").s)
+    }
+
+    if( useRR ) {
+        // we only have to use round robin if the distribution could not be determine previously (no LB, no circuitTarget)
+        ncells = nodeReader.__len__()
+        incr = pnm.nhost
+        gidvec = new Vector( 1+ncells/pnm.nhost )   gidvec.resize(0)  // reserve mem
+
+        // the circuit.mvd3 uses intrinsic gids starting from 1; this might change in the future
+        for( cellIndex=pnm.myid; cellIndex < ncells; cellIndex+=incr ) {
+            gidvec.append( cellIndex+1 )
+            gid2mefile.put( cellIndex+1, new String() )
+        }
+        completeCellCount = ncells
+    }
+
+    meinfo = new METypeManager()
+    if( pnm.myid == 0 ) {
+        meinfo.verbose = 1
+    }
+
+    if( gidvec.size() == 0 ) {
+        return ncells
+    }
+
+    // astype() will copy. We can then - 1 for mvdtool 0-based ids.
+    py_gids = gidvec.as_numpy().astype("uintp").__sub__(1)
+
+    if( gidvec.size() < PYBIND11_MIN_NPARRAY_SIZE ) {
+        // pybind11 has a bug where a small numpy array matches another overload
+        // for small count use plain list
+        // https://github.com/pybind/pybind11/issues/1392
+        py_gids = py_gids.tolist()
+    }
+
+    morpho_names = nodeReader.morphologies(py_gids)
+    emodels = nodeReader.emodels(py_gids)
+
+    if( ! nodeReader.hasCurrents() ) {
+        if( isVerbose ) print "WARNING: Sonata file doesn't have currents fields. Assuming 0."
+        meinfo.loadInfoNP(gidvec, morpho_names, emodels)
+    } else {
+        threshold_currents = nodeReader.threshold_currents(py_gids)
+        holding_currents = nodeReader.holding_currents(py_gids)
+        meinfo.loadInfoNP(gidvec, morpho_names, emodels, threshold_currents, holding_currents)
+    }
+    return ncells
+ }
+
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Helper function which loads the template into NEURON and returns the name of the template.  The
+ * template name will be slightly different from the file name because the file name contains hyphens
+ * from the morphology instance (e.g. R-C261296A-P1_repaired) but hyphens must not appear in template names.
+ * The actual template name will have any hyphens replaced with underscores.
+ *
+ * @param $o1 Full path to template file or just the metype path
+ * @param $o2 if only the metype path is given for arg 1, then this must contain the metype as it appears in start.ncs
+ * @return The name of the template as it appears inside the file (sans hyphens)
+ */
+obfunc loadTemplate() { local scanCount  localobj templatePath, templateReader, templateLine, templateName
+
+// start.ncs gives metype names with hyphens, but the templates themselves
+// have those hyphens replaced with underscores.  This is because the programming
+// environment cannot have object types with non-standard charatcters (only [a-zA-Z0-9_])
+// I could try to do the character substitutions myself in NEURON, but string operations are difficult
+// instead, open the template file and read the name from the begintemplate line
+
+    if( numarg() == 2 ) {
+        templatePath = new String()
+        sprint ( templatePath.s, "%s/%s.hoc", $o1.s, $o2.s )
+    } else {
+        templatePath = $o1
+    }
+
+    //first open the file manually to get the template name
+    templateReader = new File()
+    templateReader.ropen( templatePath.s )
+
+    if( templateReader.isopen == 0) {
+        terminate( "ERROR: Could not open template file", templatePath.s )
+    }
+
+    templateLine = new String()
+    scanCount = 0
+    while( !templateReader.eof() && scanCount == 0 ) {
+        templateReader.gets( templateLine.s )
+        templateName = new String()
+        scanCount = sscanf( templateLine.s, "begintemplate %s", templateName.s )
+    }
+    templateReader.close()
+
+    //now load the template normally with neuron
+    load_file(templatePath.s)
+
+    return templateName
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Provide the name of the metype which corresponds to a gid
+ *
+ * @param $1 gid for which need the metype
+ * @return String with the metype or nil
+ */
+obfunc getMEType() {
+    return gid2meobj.get($1)
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Provide the name of the metype which corresponds to a gid
+ *
+ * @param $1 gid for which need the metype
+ * @return String with the metype or nil
+ */
+obfunc getMETypeFromGid() {
+    return gid2metype.get($1)
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Provide the file name of the metype which corresponds to a gid (thise may differ from metype due to special character replacement)
+ *
+ * @param $1 gid for which need the mefile
+ * @return String with the mefile or nil
+ */
+obfunc getMEFileFromGid() {
+    return gid2mefile.get($1)
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Get list containing the gids on this cpu.  Note that these gids may be virtual gids.  If real gids are required, each
+ * value in the list should be passed through the getGid() func.
+ */
+obfunc getGidListForProcessor() {
+    return gidvec
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Retrieve a cell object given its gid.  Note that this function handles multisplit cases such that
+ * if the gid must be converted to an spgid, that is handled automatically
+ *
+ * @param $1 gid
+ * @return Cell object
+ */
+obfunc getCell() { lookupgid
+
+    lookupgid = $1
+
+    //are we in load balance mode?  must replace gid with spgid
+    if( lbFlag == 1 ) {
+        lookupgid = binfo.thishost_gid( $1 )
+    }
+
+    return pnm.pc.gid2obj( lookupgid )
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Retrieve the spgid from a gid (provided we are using loadbalancing)
+ *
+ * @param $1 The base gid (as read from start.ncs)
+ * @return The gid as it appears on this cpu (if this is the same as the base gid, then that is the soma piece)
+ */
+func getSpGid() {
+    if( lbFlag == 1 ) {
+        return binfo.thishost_gid($1)
+    } else {
+        return $1
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Calculate cell complexity and write data to file
+ *
+ * @param $1 loadbal neuron object
+ * @param $2 Number of hosts to compute for load balancing
+ */
+proc printLBInfo(){
+    /*
+    if( ProspectiveHosts == 0 ) {  //how to handle whole cell balancing?
+        printMSloadBalance( "cxwc", 0 )
+    } else {
+    */
+        load_balance_ = $o1
+        printMSloadBalance( "cx", $2 )
+    //}
+}
+
+//-----------------------------------------------------------------------------------------------
+
+//helper function - can this be made global?  does it have to be global?
+iterator pcitr() {local i1, i2
+        for i1=0, gidvec.size-1 {
+                $&1 = i1
+                $&2 = gidvec.x[i1]
+                iterator_statement
+        }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * $o1 vector to hold complexity values
+ * $o2 vector to hold gids
+ */
+proc cell_complexity() {local i, gid, ncell  localobj cx_cell, id_cell
+
+    $o1 = new Vector(pnm.cells.count)
+	cx_cell = $o1
+    $o2 = cx_cell.c
+	id_cell = $o2
+	cx_cell.resize(0)
+	id_cell.resize(0)
+	ncell = 0
+	for pcitr(&i, &gid) {
+		id_cell.append(gid)
+		cx_cell.append(load_balance_.cell_complexity(pnm.pc.gid2cell(gid)))
+		ncell += 1
+	}
+	total_ncell = pnm.pc.allreduce(ncell, 1)
+}
+
+//-----------------------------------------------------------------------------------------------
+
+//out parameter $&1 = TotalComplexity .
+//out parameter $&2 = Maximum cell complexity.
+proc  getTotal_MaxMSCellcomplexity(){local lmx, ltc, lcx, TC, MC localobj cx_cell, id_cell
+	lmx = 0
+	ltc = 0
+	cell_complexity( cx_cell, id_cell )
+	for i=0, cx_cell.size()-1 {
+		lcx = cx_cell.x[i]
+		if(lmx < lcx) {
+			lmx = lcx
+		}
+		ltc += lcx
+	}
+	TC = pnm.pc.allreduce(ltc, 1)
+	MC = pnm.pc.allreduce(lmx, 2)
+	$&1 = TC
+	$&2 = MC
+}
+
+//-----------------------------------------------------------------------------------------------
+
+// $1 Total complexity
+// $2 Maximum cell complexity
+// $3 Prospective no of hosts
+func getOptimalMSPieceComplexity(){local lps
+	lps = $1/$3 * msfactor
+	return(int(lps+1))
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * @param $1 prospectiveHosts How many cpus we want running with our LoadBalanced circuit
+ */
+proc cpuAssign() { prospectiveHosts
+    strdef strtmp
+    prospectiveHosts = $1
+
+    sprint(strtmp,"cx_%d", prospectiveHosts )
+    mymetis3(strtmp, prospectiveHosts )
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * @param $s1 filename
+ * @param $2 No of prospective hosts
+ */
+proc printMSloadBalance() {local lTC, lMC, lcx, i, j, k, gid, prospectiveHosts  localobj  msList, ms, b, fp, str
+    prospectiveHosts = $2
+    str = new String()
+    if (prospectiveHosts > 0) {
+        getTotal_MaxMSCellcomplexity(&lTC, &lMC)
+        lcx = getOptimalMSPieceComplexity(lTC, lMC, prospectiveHosts)
+         //print_load_balance_info(3, lcx, $s1)
+        sprint(str.s, "%s_%d.dat", $s1, prospectiveHosts)
+    }else{
+        lcx = 1e9
+        sprint(str.s, "%s.dat", $s1)
+    }
+	msList = new List()
+	ms   = new Vector()
+	b = load_balance_
+//    b.keep_together = 0
+
+    for pcitr(&i, &gid) {
+        //what should be passed into this func? the base cell?  the CCell?
+        b.cell_complexity( pnm.cells.object(i) )
+        b.multisplit(gid, lcx, ms)
+        msList.append(ms.c)
+    }
+	fp = new File()
+	if(pnm.pc.id ==0 ){
+		fp.wopen(str.s)
+		fp.printf("1\n%d\n", pnm.ncell)
+		fp.close()
+		print "LB Info : TC =", lTC, " MC= ", lMC, " OptimalCx = ", lcx, " FileName = ", str.s
+	}
+	for j =0, pnm.pc.nhost-1 {
+		if(j == pnm.pc.id){
+            fp.aopen(str.s)
+            for k = 0, msList.count()-1 {
+                pmsdat(fp, msList.o(k))
+            }
+            fp.close()
+		}
+        pnm.pc.barrier()
+    }
+
+    //now assign to the various cpus - but only the one cpu needs to do the assignment, so use node 0
+    if( pnm.myid == 0 ) {
+        cpuAssign(prospectiveHosts)
+    }
+
+    pnm.pc.barrier()
+
+}
+
+//-----------------------------------------------------------------------------------------------
+
+// File, dataVec, gid
+proc pmsdat() {local i, i1, n1, i2, n2, i3, n3, id, cx, tcx
+	i = -1
+	tcx = 0
+
+	$o1.printf("%d", $o2.x[i+=1]) // gid
+	$o1.printf(" %g", $o2.x[i+=1]) // total complexity of cell
+	n1 = $o2.x[i+=1]
+	$o1.printf(" %d\n", n1) // number of pieces
+	for i1 = 0, n1-1 {
+		n2 = $o2.x[i+=1] // at number of subtrees
+		$o1.printf("  %d\n", n2) // number of subtrees
+		for i2 = 0, n2-1 {
+			cx = $o2.x[i+=1] // at subtree complexity
+			tcx += cx
+			n3 = $o2.x[i+=1] // at number of children in a subtree
+			$o1.printf("   %g %d\n", cx, n3) // subtree complexity
+			if (n3 > 0) { $o1.printf("    ") }
+			for i3 = 0, n3 - 1 {
+				id = $o2.x[i+=1] // at next child
+				$o1.printf(" %d", id)
+			}
+			if (n3 > 0) { $o1.printf("\n") }
+		}
+	}
+	if (0) {
+		printf("gid=%d cell complexity = %g  sum of pieces = %g\n", \
+			$o2.x[0], $o2.x[1], tcx)
+	}
+}
+
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Do final steps to setup the network.  For example, multisplit will handle gids depending on additional info
+ * from binfo object.  Otherwise, normal cells do their finalization
+ *
+ * @param $o1 cellList containing all CCells
+ */
+proc finalize() { local cellIndex, ic, gid, spgid, ret, version  localobj cell, metype, cb, nc, nil, rngInfo
+    strdef tstr
+
+    //First, we need each section of a cell to assign its index value to the voltage field (crazy, huh?)
+    // at this moment, this is used later during synapse creation so that sections can be serialized
+    // into a single array for random acess.
+    rngInfo = new RNGSettings()
+    globalSeed = rngInfo.getGlobalSeed()
+    ionchannelSeed = rngInfo.getIonChannelSeed()
+    rngList = new List()
+
+    for cellIndex=0, gidvec.size()-1 {
+
+        gid = gidvec.x[cellIndex]
+        //cell = pnm.cells.object(cellIndex)
+        metype = cellList.o(cellIndex)
+
+        //TODO: CCell backwards compatibility
+        // if we drop support for older versions, then we can just use
+        //    cell.CCellRef.connect2target(nil, nc )
+        // without the complexity of checking if a getVersion func exists, what is that version, etc.
+        ret = execute1( "{getVersion()}", metype, 0 )
+        if( ret == 0 ) {
+            version = 0
+        } else {
+            version = metype.getVersion()
+        }
+
+        // for v6 and beyond - we can just try to invoke rng initialization
+        if( mvdFormat || rngInfo.getRNGMode() == rngInfo.COMPATIBILITY ) {
+            {sprint( tstr, "{re_init_rng(%d)}", ionchannelSeed )}
+            execute1( tstr, metype, 0 )
+        } else {  // for v5 circuits and earlier
+
+            // check if cell has re_init function.  Instantiate random123 or mcellran4 as appropriate
+            // Note: should CellDist be aware that metype has CCell member?
+            {object_push(metype.CCell)}
+            ret = name_declared("re_init_rng", 1)
+            {object_pop(metype.CCell)}
+
+            if( ret && rngInfo.getRNGMode() == rngInfo.RANDOM123 ) {
+                rng123ForStochKvInit(metype.CCell)
+            } else if ( ret ) {
+                if( metype.gid > 400000 ) {
+                    print "Warning: mcellran4 cannot initialize properly with large gids ", metype.gid
+                }
+                rngList.append( rngForStochKvInit(metype.CCell) )
+            }
+        }
+
+        if( version < 2 ) {
+            metype.CellRef.connect2target(nil, nc )
+        } else {
+            metype.connect2target(nil, nc )
+        }
+
+        //cell = $o1.o(cellIndex)
+
+        if( lbFlag == 1 ) {
+
+            ic = binfo.gids.indwhere("==", gid)
+            cb = binfo.bilist.object(binfo.cbindex.x[ic])
+
+            if( cb.subtrees.count == 0 ) {  //whole cell, normal creation
+                pnm.set_gid2node(gid, pnm.myid)
+                pnm.pc.cell( gid, nc )
+                spgidvec.append(gid)
+            } else {
+                spgid = cb.multisplit( nc, binfo.msgid, pnm.pc, pnm.myid )
+                spgidvec.append(spgid)
+            }
+        } else {
+            pnm.set_gid2node(gid, pnm.myid)
+            pnm.pc.cell( gid, nc )
+        }
+
+    }
+
+    pnm.pc.multisplit()
+}
+
+endtemplate CellDistributor

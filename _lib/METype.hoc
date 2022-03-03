@@ -1,0 +1,98 @@
+/**
+ * @file METype.hoc
+ * @brief
+ * @author king
+ * @date 2017-06-29
+ * @remark Copyright © BBP/EPFL 2005-2017; All rights reserved. Do not distribute without further notice.
+ */
+
+begintemplate METype
+
+public init, printInfo, AddMorphNL, delete_axon,  getCell, biophys, hardcode_biophys, connect2target
+public gid, CCell, CellRef, locateSite, locateSites, getLongestBranch, getThreshold, setThreshold, getHypAmp, setHypAmp
+public synlist, synHelperList, ASCIIrpt, HDF5rpt, re_init_rng, clear
+objref this, CellRef, CCell, synlist, synHelperList, ASCIIrpt, HDF5rpt
+
+public getVersion, connect2target
+
+/**
+ * need the mtype, etype, morphology.  will load the appropriate emodel hoc file and instantiate
+ *
+ * @param $1 gid
+ * @param $s2 etypePath
+ * @param $s3 emodel
+ * @param $s4 morphologyPath
+ * @param $s5 morphology file (with ext)
+ */
+proc init() { local ret  localobj morphPath
+    strdef tstr
+    gid = $1
+
+    // CellRef is an instance of Cell (has section lists)
+    // CCell is a generic cell object for v5, providing a CellRef member. In v6 is as alias
+
+    if( numarg() == 5 ) {
+      // SSCx v6
+      sprint( tstr, "{load_file(\"%s/%s.hoc\")}", $s2, $s3 )
+      {execute1( tstr )}
+
+      sprint( tstr, "CellRef = new %s( %d, \"%s\", \"%s\")", $s3, gid, $s4, $s5 )
+      {execute1( tstr, this )}
+
+      CCell = CellRef  // for re_init_rng
+
+      synlist = new List()
+      synHelperList = new List()
+    } else {
+      // Used by v5 and earlier
+      sprint( tstr, "CCell = new %s( %d, \"%s\" )", $s3, gid, $s4 )
+      {execute1( tstr, this )}
+
+      CellRef = CCell.CellRef
+      synlist = CellRef.synlist
+      synHelperList = CellRef.synHelperList
+
+      setThreshold( CCell.getThreshold() )
+
+      ret = execute1( "{getHypAmp()}", CCell, 0 )
+      if( ret != 0 ) {
+          setHypAmp( CCell.getHypAmp() )
+      }
+    }
+}
+
+
+proc clear() { localobj nil
+    // There seems to be a reference loop among CellRef and CCell
+    // In v5 It was enough to call CellRef.clear() to delete Cell internal reference to the hoc obj
+    // In v6 METype is a new generic wrapper, so we propagate the clear request and break also its loop
+    CellRef.clear()
+    CellRef = nil
+    CCell = nil
+}
+
+proc setThreshold() { thresholdCurrent = $1 }
+func getThreshold() { return thresholdCurrent }
+
+proc setHypAmp() { hypAmpCurrent = $1 }
+func getHypAmp() { return hypAmpCurrent }
+
+func getVersion() { return 3 }
+
+proc connect2target() { //$o1 target point process, $o2 returned NetCon
+  CellRef.soma $o2 = new NetCon(&v(1), $o1)
+  $o2.threshold = -30
+}
+
+/**
+ * For compatibility with v5 CCells, we use 'CCell' ptr.  Note for v6 this CCell var simply points to the same CellRef object
+ * @param $1 ionchannel seed
+ */
+proc re_init_rng() { local res  localobj tstr
+    tstr = new String()
+    sprint( tstr.s, "re_init_rng(%d)", $1 )
+    res = execute1( tstr.s, CCell, 0 )
+}
+
+endtemplate METype
+

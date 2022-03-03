@@ -1,0 +1,95 @@
+/**
+ * @file ModificationManager.hoc
+ * @brief Handle the logic need to apply some experimental manipulation to the network
+ * @author king
+ * @date 2013-04-26
+ * @remark Copyright © BBP/EPFL 2005-2013; All rights reserved. Do not distribute without further notice.
+ */
+
+/**
+ * The ModificationManager will help to interpret a general label for an experimental manipulation and take the necessary steps to apply it to the circuit.  For example, if a user wants to apply TTX, this means that all sodium channels in the speicifed target are blocked and so the conductance (g_bar) for all Na* mechanisms must be set to zero.
+ */
+begintemplate ModificationManager
+
+public init, interpret
+public verbose
+
+objref targetManager
+
+/**
+ * Constructor
+ * @param $o1 TargetManager reference to hold onto during interpretation
+ */
+proc init() {
+    verbose = 0
+    targetManager = $o1
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Given a block parsed from the BlueConfig, determine from the parameters it contain which
+ * Modification to apply and to which cells
+ *
+ * @param $o1 ModificationBlock (Map type)
+ */
+proc interpret() {  localobj modification, targetName
+    modification = $o1
+
+    if( !modification.exists( "Type" ) ) {
+        if( verbose ) {
+            print "ModificationManager: failed to interpret block.  Missing required parameter 'Type'"
+        }
+        return
+    }
+    if( !modification.exists( "Target" ) ) {
+        if( verbose ) {
+            print "ModificationManager: failed to interpret block.  Missing required parameter 'Target'"
+        }
+        return
+    }
+
+    targetName = modification.get("Target")
+
+    // depending on the Type, we may need to check for additional parameters.
+    if( strcmp( modification.get( "Type" ).s, "TTX" ) == 0 ) {
+       applyTTX(targetName)
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Apply the Sodium channel blocker to all sections of the cells in the given target
+ *
+ * @param $o1 TargetName receiving TTX application
+ */
+proc applyTTX() {  local cellIndex, x  localobj targetName, target, points, sf, commstr
+    targetName = $o1
+    sf = new StringFunctions()
+    commstr = new String()
+
+    //since we need all compartments, check if we need to cast the target
+    target = targetManager.getTarget(targetName.s)
+    if( target.isCellTarget() ) {
+        target = targetManager.compartmentCast(target, "")
+    }
+
+    points = target.getPointList( targetManager.cellDistributor )
+    for cellIndex=0, points.count()-1 {
+        for points.o(cellIndex).each_point(&x) {
+            if( sf.substr( secname(), "axon" ) > 0 ) {
+                sprint( commstr.s, "gNaTa_tbar_NaTa_t = 0.0" )
+                execute1( commstr.s, 0 )
+            } else {
+                sprint( commstr.s, "gNaTs2_tbar_NaTs2_t = 0.0" )
+                execute1( commstr.s, 0 )
+            }
+            sprint( commstr.s, "gNap_Et2bar_Nap_Et2 = 0.0" )
+            execute1( commstr.s, 0 )
+        }
+    }
+}
+
+endtemplate ModificationManager
+

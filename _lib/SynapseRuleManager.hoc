@@ -1,0 +1,872 @@
+/**
+ * @file   SynapseRuleManager.hoc
+ * @brief  Process Synapse connections Rules of a BlueConfig (if any) and then instantiate the synapses for a bluebrain sim
+ *
+ * @author King, Ranjan, Delalondre, Leite
+ * @remark Copyright © BBP/EPFL 2005-2018; All rights reserved. Do not distribute without further notice.
+ */
+
+{load_file("ConfigParser.hoc")}
+{load_file("TargetParser.hoc")}
+{load_file("Connection.hoc")}
+{load_file("timeit.hoc")}
+{load_file("SynReaders.hoc")}
+{load_file("fileUtils.hoc")}
+
+
+/*!
+ * The SynapseRuleManager is designed to encapsulate the creation of synapses for BlueBrain simulations, handling
+ * the data coming from the nrn.h5 file.  If the BlueConfig file provides and Connection Rules, those override
+ * which synapses are created.  Note that the Connection rules are processed with the assumption that they come in
+ * the config file from more general to more specific.  e.g. A column->column connection should come before
+ * layer 4 -> layer 2 which should come before L4PC -> L2PC.  Once all aynapses are preped with final wieghts, the
+ * netcons can be created.
+ */
+
+begintemplate SynapseRuleManager
+
+external timeit, timeit_setVerbose, timeit_register, timeit_start, timeit_add, ospath, syntoolEnabled, terminate
+
+//-----------------------------------------------------------------------------------------------
+// Declare member variables
+//-----------------------------------------------------------------------------------------------
+
+objref synapseReader, idReader, maskReader, targetManager, cellDistributor
+objref populationConnectionMap, selectedPopulation, rngList, replayList, loadedMap, this
+strdef _tstr
+
+//-----------------------------------------------------------------------------------------------
+// Public members
+//-----------------------------------------------------------------------------------------------
+
+/// Indicate if BlueConfig connection blocks create new synapses/connections, or just override values of existing ones
+public init, connectAll, connectGroup, configureGroup, finalizeSynapses, replay, setupDelayedConnections, toggleVerbose, restartModSources, openSynapseFile, getSynapseDataForGID
+public openIDFile, openMaskFile, nrnVersion, selectPopulation
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Constructor for SynapseRuleManager, checks that a synapse file is available for reading
+ *
+ * @param $s1 Path to the synapses file (or directory to look for it - legacy mode)
+ * @param $o2 Reference to TargetManager which this RuleManager will use to query targets and translate locations to points
+ * @param $3  nSynapseFiles How many nrn.h5 files to expect (typically 1)
+ * @param $s4 Synapse mode dictating modifiers to what synapses are placed based on synType (AmpaSyns vs DualSyns vs ???)
+ */
+proc init() { local index  localobj synFilesFound, possibleSynFiles, connectTemp, nilConfig, tmpFile
+    strdef nrnPath, synapseFile
+    nrnPath = $s1
+    targetManager = $o2
+    cellDistributor = targetManager.cellDistributor
+    isRank0 = (cellDistributor.pnm.pc.id() == 0)
+    tpopid = 0
+    spopid = 0
+
+    populationConnectionMap = new Map()
+    selectedPopulation = new String("0,0")
+    populationConnectionMap.put( selectedPopulation, new List() )
+    rngList = new List()
+
+    //create a temporary Connection object to get the values for the synapse mode constants
+    connectTemp= new Connection( 0, 0, nilConfig, "STDPoff", 0 )
+
+    synapseMode = connectTemp.DUAL_SYNS
+    if( numarg() == 4 ) {
+        strdef sModeStr
+        sModeStr = $s4
+        if( 0 == strcmp( sModeStr, "AMPA_ONLY" ) || 0 == strcmp( sModeStr, "AmpaOnly" ) ) {
+            synapseMode = connectTemp.AMPA_ONLY
+        } else if ( 0 == strcmp( sModeStr, "DUAL_SYNS" ) || 0 == strcmp( sModeStr, "DualSyns" ) ) {
+            synapseMode = connectTemp.DUAL_SYNS
+        } else {
+            terminate( "Invalid synapse mode", sModeStr)
+        }
+    }
+
+    // Find file to open
+    if( ospath.isdir(nrnPath) ) {
+        synFilesFound = new Vector()
+
+        possibleSynFiles = new List()
+        possibleSynFiles.append(new String("edges.sonata"))
+        possibleSynFiles.append(new String("edges.h5"))
+        possibleSynFiles.append(new String("circuit.syn2"))
+        possibleSynFiles.append(new String("nrn.h5"))  // pos=3
+        for index=0, 3 {
+            sprint(_tstr, "%s/%s", nrnPath, possibleSynFiles.o(index).s)
+            if( ospath.isfile(_tstr) ) {
+                synFilesFound.append(index)
+            }
+        }
+        if (synFilesFound.size() == 0) {
+            terminate("Nrn path is not a file and could not find any synapse file within.")
+        }
+        if( !syntoolEnabled && !synFilesFound.contains(3) ) {
+            terminate("Found synapse file requires synapsetool, which is not available")
+        }
+        if (synFilesFound.size() > 1) {
+            // Deprecate before we break compat!
+            if( isRank0 ) {
+                print " [[ DEPRECATION WARNING ]] Found several synapse file formats in nrnPath. Auto-select is deprecated and will be removed."
+            }
+            if( !syntoolEnabled ) {
+                synFilesFound.x(0) = 3
+            }
+        }
+        sprint(synapseFile, "%s/%s", nrnPath, possibleSynFiles.o(synFilesFound.x(0)).s)
+    } else {
+        synapseFile = nrnPath
+    }
+
+    // idFileLoaded and maskFileLoaded reset on every openSynapseFile()
+    openSynapseFile(synapseFile, $3)
+
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * We are in a transition phase to make synapse identities more robust across multiple circuit generation methods.
+ * This means that synapse ids should be independent of the row number.
+ * This is subject to change, but for now we take ids from a separate file
+ *
+ * @param $s1 Where the nrn_extra.h5 file exists (note that 'nrn_extra.h5' is not needed and is added by this function
+ * @param $2  nSynapseFiles How many nrn.h5 files to expect (typically 1)
+ */
+proc openIDFile() {  localobj fileName, fileTest, testResult, nrnPath
+    nrnPath = new String($s1)
+        testResult = new Vector()
+    fileName = new String()
+
+    if( isRank0 ) {
+        if( $2 == 1 ) {
+            sprint( fileName.s, "%s/nrn_extra.h5", nrnPath.s )
+        } else {
+            sprint( fileName.s, "%s/nrn_extra.h5.0", nrnPath.s )
+        }
+        fileTest = new File( fileName.s )
+        fileTest.ropen()
+        if( fileTest.isopen() ) {
+            print "Will load SynapseID file"
+            fileTest.close()
+            testResult.append( 1 )
+        } else {
+            print "Will use SynapseIndices as IDs"
+            testResult.append( 0 )
+        }
+    }
+    cellDistributor.pnm.pc.broadcast( testResult, 0 )
+
+    if( testResult.x[0] == 1 ) {
+        sprint( fileName.s, "%s/%s", nrnPath.s, "nrn_extra.h5")
+        idReader = new HDF5Reader( fileName.s, $2 )
+
+        idFileLoaded = 1
+    }
+}
+
+
+// ----------------------------------------------------------------------------------------------
+
+/*!
+ * For structural plasticity development, we introduce a mask file which will provide additional information
+ * concerning which synapses are immediately functional, potentially functional, and never to be used.
+ * In the future this should all be contained in a new single synapse file
+ *
+ * @param $o1 String with path to mask file
+ */
+proc openMaskFile() { local ret localobj fileTest, testResult
+    // verify file exists
+
+    testResult = new Vector(1)
+    if( isRank0 ) {
+        fileTest = new File( $o1.s )
+        fileTest.ropen()
+        if( fileTest.isopen() ) {
+            print "Will use mask file ", $o1.s
+            testResult.x[0] = 1
+        } else {
+            print "Failed to open mask file ", $o1.s
+            testResult.x[0] = 0
+        }
+    }
+    cellDistributor.pnm.pc.broadcast( testResult, 0 )
+
+    if( testResult.x[0] == 0 ) {
+        terminate( "Failed to open mask file ", $o1.s )
+    }
+
+    maskReader = new HDF5Reader( $o1.s )
+
+    // this should only be called if we are using the legacy h5 reader, but just to be sure we enclose in execute statement
+    ret = execute1( "synapseReader.setMaskReader( maskReader )", this )
+    if( ret == 0 ) {
+        if( isRank0 ) {
+            print "Could not set maskReader reference for synapseReader.  Only valid for legacy h5 reader"
+        }
+    } else {
+        maskFileLoaded = 1
+        if( isRank0 ) {
+            print "Mask file ready"
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * @param $s1 Root name of Synapse file(s) to open.
+ * @param $2 nSynapseFiles - The number of synapse files (only for nrn)
+ */
+proc openSynapseFile()  { local nSynapseFiles
+    strdef synapseFile, sModeStr
+
+    sprint( synapseFile, "%s", $s1 )
+    nSynapseFiles = 1
+    if (numarg() == 2) nSynapseFiles = $2
+
+    if(syntoolEnabled) {
+        if (isRank0) print "[SynRuleManager] Using new-gen SynapseReader for ", synapseFile
+        synapseReader = new SynReaderSynTool(synapseFile, 0, isRank0)
+        // synapseReader.dbg = isRank0   // enable debug info on rank 0
+    } else {
+        if (isRank0) print "[SynRuleManager] Warning: Attempting legacy Hdf5 NRN reader for ", synapseFile
+        synapseReader = new SynReaderHdf5(synapseFile, nSynapseFiles, targetManager)
+    }
+
+    // indicate that an id file is opened and available
+    idFileLoaded = 0
+
+    // indicate that a mask file is opened and available
+    maskFileLoaded = 0
+
+    // Initialize / Clear previous maps
+    loadedMap = new Map()
+
+    // With a new source, allow existing connections to add more synapses
+    unlockAllConnections()
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * When handling projections, we may need to handle different populations
+ * Ensure Map of populations is ready with available List object to store connections
+ *
+ * @param $1 populationID of presynapstic cells
+ * @param $2 populationID of postsynaptic cells
+ */
+proc selectPopulation() { localobj rngInfo
+    // Checks on legacy RNG usage
+    rngInfo = new RNGSettings()
+    if( rngInfo.getRNGMode() == rngInfo.UPMCELLRAN4 ) {
+        if( $1 > 255 ) {
+            terminate("Legacy use of MCelRan4 does not support population IDs > 255")
+        }
+        if( $2 != 0 ) {
+            if(isRank0) {
+                print "Warning: legacy use of MCelRan4 does not fully support using population ID of post synaptic cells (tpopid)"
+            }
+        }
+    }
+
+    spopid = $1
+    tpopid = $2
+
+    selectedPopulation = new String()
+    sprint( selectedPopulation.s, "%d,%d", spopid, tpopid )
+    if( ! populationConnectionMap.exists( selectedPopulation.s ) ) {
+        populationConnectionMap.put(selectedPopulation, new List() )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * For every gid in on this node, access its synapse parameters and instantiate all synapses
+ * which it receives from (note that the presynatic cells may be off node)
+ *
+ * @param $1 scalar Optional argument to scale all synapse / neetcon weights by the given factor
+ */
+proc connectAll() { \
+    local weightScalar, cellIndex, sgid, tgid \
+    localobj gidvec, synParamsList, activeParams, activeConnection, nilConfig
+
+    gidvec = cellDistributor.getGidListForProcessor()
+    weightScalar = 1
+    if( numarg() > 0 ) {
+        weightScalar = $1
+    }
+
+    for cellIndex=0, gidvec.size()-1 {
+        tgid = gidvec.x[cellIndex]
+        synParamsList = getSynapseParameters(tgid)
+
+        for synIndex=0, synParamsList.count()-1 {
+            // Note: The sgids in any given dataset are expected to come in sorted order, low to high.
+            activeParams = synParamsList.o(synIndex)
+            sgid = activeParams.sgid
+
+            // Same connection? Otherwise clear
+            if( object_id(activeConnection) ) if ( activeConnection.sgid != sgid ) {
+                activeConnection = nilConfig
+            }
+            // Existing connection?
+            if( ! object_id(activeConnection) ) {
+                activeConnection = findConnection( sgid, tgid )
+            }
+            if( ! object_id(activeConnection) ) {
+                activeConnection = new Connection( sgid, tgid, nilConfig, "STDPoff", 0, synapseMode )
+                activeConnection.spopid = spopid
+                activeConnection.tpopid = tpopid
+                activeConnection.setWeightScalar( weightScalar )
+                storeConnection( activeConnection )
+            }
+
+            activeConnection.append( targetManager.locationToPoint( tgid, activeParams.isec, activeParams.ipt, activeParams.offset ), activeParams, activeParams.synapseID )
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Given some gidlists, connect those gids in the source list to those in the dest list (note
+ * the cells in the source list are not limited by what is on this cpu, whereas the dest list requires
+ * the cells be local)
+ *
+ * @param $s1 Name of Source Target
+ * @param $s2 Name of Destination Target
+ * @param $3 synapseTypeIDRestrict to further restrict when the weight is applied [optional]
+ */
+proc connectGroup() { \
+    local cellIndex, gid, synIndex, oldsgid, sgid, tgid, synapseTypeIDRestrict, sfound, createdConnections \
+    localobj sTarget, dTarget, gidvec, synParamsList, activeParams, curConn, nil
+
+    //unlike connectAll, we must look through existing connections to see if sgid->tgid exists because it may be getting weights updated
+    // Note that it is better to get the whole target over just the gid vector, since then we can use utility functions like 'contains'
+    sTarget = targetManager.getTarget( $s1 )
+    dTarget = targetManager.getTarget( $s2 )
+    gidvec = cellDistributor.getGidListForProcessor()
+    synapseTypeIDRestrict = -1
+    if( numarg() == 3 ) {
+        synapseTypeIDRestrict = $3
+    }
+
+    createdConnections = 0
+    curConn = nil
+
+    for cellIndex=0, gidvec.size()-1 {
+        tgid = gidvec.x[cellIndex]
+        if( !dTarget.contains( tgid ) ) {
+            continue
+        }
+
+        // this cpu owns some or all of the destination gid
+        synParamsList = getSynapseParameters( gidvec.x[cellIndex] )
+        oldsgid = -1
+
+        for synIndex=0, synParamsList.count()-1 {
+            activeParams = synParamsList.o(synIndex)
+            // Are we restricting the synapse type ID?
+            if( synapseTypeIDRestrict != -1 && activeParams.synType != synapseTypeIDRestrict ) {
+                continue
+            }
+
+            sgid = activeParams.sgid
+            if( sgid != oldsgid ) {
+                sfound = sTarget.completeContains(sgid)
+            }
+            if( sfound == 0 ) {
+                continue
+            }
+
+            // to reach here, 'source' target includes a cell that sends to the tgid
+            //   (don't care about which cpu sgid exists on)
+            // is it another connection than the previous iteration? (change tgid -> sgid=-1)
+            if( sgid != oldsgid ) {
+                oldsgid = sgid
+                if( object_id(curConn) ) {
+                    curConn.locked = 1
+                }
+                curConn = findConnection( sgid, tgid )
+                if( object_id(curConn) == 0 ) {
+                    curConn = new Connection( sgid, tgid, nil, "STDPoff", 0, synapseMode )
+                    curConn.spopid = spopid
+                    curConn.tpopid = tpopid
+                    storeConnection(curConn)
+                    createdConnections += 1
+                }
+            }
+            if( curConn.locked ) {
+                continue
+            }
+            curConn.append( \
+                targetManager.locationToPoint( \
+                    tgid, activeParams.isec, activeParams.ipt, activeParams.offset ), \
+                activeParams, activeParams.synapseID )
+        }
+        // Lock last connection of the tgid!
+        if( object_id(curConn) ) {
+            curConn.locked = 1
+        }
+    }  //end for each tgid
+
+    createdConnections = cellDistributor.pnm.pc.allreduce( createdConnections, 1 )
+    if( isRank0 && createdConnections ) {
+        print "  * Pathway ", $s1, " -> ", $s2, ": ", createdConnections, "connections"
+    }
+}
+
+
+//-----------------------------------------------------------------------------------------------
+/*!
+ * Find all the connections for a given target cell
+ *
+ * @param $o1 some connectionList for a population
+ * @param $2 tgid Target cell
+ * @param $3 Create if doesnt exist (default: false)
+ */
+obfunc findConnectionsOf() { \
+    local key, shallCreate, binsrch_low, binsrch_mid, binsrch_high \
+    localobj newlist, nil, connectionList
+    connectionList = $o1
+    key = $2
+    shallCreate = 0
+    if( numarg() == 3 ) shallCreate = $3
+
+    //search through list, using binary search to find if this target exists
+    binsrch_low = 0
+    binsrch_high = connectionList.count()
+
+    while ( binsrch_low < binsrch_high ) {
+        binsrch_mid = int(( binsrch_low+binsrch_high) * 0.5 )
+
+        if( key < connectionList.o(binsrch_mid).o(0).tgid ) { //guess again, lower
+            binsrch_low = binsrch_mid + 1
+        } else {
+            binsrch_high = binsrch_mid
+        }
+
+    }
+
+    if( binsrch_low < connectionList.count() ) {
+        if( connectionList.o(binsrch_low).o(0).tgid == key ) {
+            //found! Return it!
+            return connectionList.o(binsrch_low)
+        }
+    }
+
+    //no inner list, but we create it if requested
+    if( shallCreate ) {
+        newlist = new List()
+        if( binsrch_low < connectionList.count() ) {
+            connectionList.insrt( binsrch_low, newlist )
+        } else {
+            connectionList.append( newlist )
+        }
+        return newlist
+    }
+
+    return nil  // not found
+}
+
+
+
+//-----------------------------------------------------------------------------------------------
+/*!
+ * Configure connections according to a BlueConfig Connection block
+ *
+ * @param $s1 Name of Source Target
+ * @param $s2 Name of Destination Target
+ * @param $o3 Connection block configuration map
+ */
+proc configureGroup() { \
+    local popIndex, cellIndex, connIndex \
+    localobj sTarget, dTarget, connConfig, gidvec, connList, curConn
+
+    sTarget = targetManager.getTarget( $s1 )
+    dTarget = targetManager.getTarget( $s2 )
+    gidvec = cellDistributor.getGidListForProcessor()
+    connConfig = $o3
+
+    // Since the introduction of populations, we have to process all of them
+    for cellIndex=0, gidvec.size()-1 {
+        tgid = gidvec.x[cellIndex]
+
+        if( !dTarget.contains( tgid ) ) {
+            continue
+        }
+
+        for popIndex=0, populationConnectionMap.count()-1 {
+
+            connList = findConnectionsOf( populationConnectionMap.o(popIndex), tgid )
+            if ( ! object_id(connList) ) {
+                continue
+            }
+
+            for connIndex=0, connList.count()-1 {
+                curConn = connList.o(connIndex)
+                if( ! sTarget.completeContains( curConn.sgid ) ) {
+                    continue
+                }
+                if( connConfig.exists( "Weight" ) ) {
+                    curConn.setWeightScalar( connConfig.valueOf( "Weight" ) )
+                }
+                if( connConfig.exists( "SpontMinis" ) ) {
+                    curConn.spontMiniRate = connConfig.valueOf( "SpontMinis" )
+                }
+                if( connConfig.exists( "ModOverride" ) ) {
+                    // allows a helper object to grab any additional configuration values
+                    curConn.synOverride = connConfig
+                }
+                if( connConfig.exists( "SynapseConfigure" ) ) {
+                    curConn.appendSynapseConfiguration( connConfig.get("SynapseConfigure") )
+                }
+                if( connConfig.exists( "SynDelayOverride" ) ) {
+                    curConn.overrideSynDelay( connConfig.valueOf( "SynDelayOverride") )
+                }
+            }
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Setup delayed connection weights for synapse initialization
+ * For all delayed connection groups, find source and target gids and the associated connection and 
+ * add the delay and weight to their delay vectors 
+ *
+ * @param $o1 Connection configuration parsed from BlueConfig
+ * @param $o2 Vector of gids on the local cpu
+ */
+proc setupDelayedConnections() { local weight, cellIndex, gid, synIndex, tgid \
+    localobj sTarget, dTarget, gidvec, connList, curConn, connConfigs, delayConnConfig
+    connConfigs = $o1
+    gidvec = $o2
+
+    // for all delayed connection configurations
+    for delayIndex=0, connConfigs.count()-1 {
+        delayConnConfig = connConfigs.o(delayIndex)
+        sTarget = targetManager.getTarget( delayConnConfig.get("Source").s )
+        dTarget = targetManager.getTarget( delayConnConfig.get("Destination").s )
+        for cellIndex=0, gidvec.size()-1 {
+            // gid on local should be member of destination target
+            tgid = gidvec.x[cellIndex]
+            if( !dTarget.contains( tgid ) ) {
+                continue
+            }
+            for popIndex=0, populationConnectionMap.count()-1 {
+                connList = findConnectionsOf( populationConnectionMap.o(popIndex), tgid )
+                if ( ! object_id(connList) ) {
+                    continue
+                }
+
+                for connIndex=0, connList.count()-1 {
+                    curConn = connList.o(connIndex)
+                    if( ! sTarget.completeContains( curConn.sgid ) ) {
+                        continue
+                    }
+                    if( delayConnConfig.exists( "Weight" ) ) {
+                        curConn.updateDelayVecs( delayConnConfig.valueOf("Delay"), delayConnConfig.valueOf("Weight") )
+                    } else {
+                        curConn.updateDelayVecs( delayConnConfig.valueOf("Delay"), 0 )
+                    }
+                }
+            }
+        }
+    }
+
+    sortAllDelayedWeightVectors()
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * sort all delayed connection weight vectors
+ */
+proc sortAllDelayedWeightVectors() {local popIndex, innerIndex, connIndex \
+    localobj connectObj, connectionList
+
+
+    for popIndex=0, populationConnectionMap.count()-1 {
+        connectionList = populationConnectionMap.o(popIndex)
+
+        for connIndex=0, connectionList.count()-1 {
+            for innerIndex=0, connectionList.o(connIndex).count()-1 {
+                connectObj = connectionList.o(connIndex).o(innerIndex)
+                connectObj.sortDelayedWeightVectors()
+            }
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Go through list of created connections and see if any match the pathway sgid->tgid
+ *
+ * @param $1 sgid Source/Presynaptic cell
+ * @param $2 tgid Destination/Postsynaptic cell
+ * @return Reference to existing Connection object or nil if it is the first time the pathway exists
+ */
+obfunc findConnection() { local connIndex, key  localobj nil, innerList
+
+    innerList = findConnectionsOf( populationConnectionMap.get(selectedPopulation.s), $2)
+    if( object_id(innerList) == 0 ) {
+        return nil
+    }
+
+    //if we reach here, then we have found a pre-existing inner list that we now must search
+    binsrch_low = 0
+    binsrch_high = innerList.count()
+    key = $1
+
+    while ( binsrch_low < binsrch_high ) {
+        binsrch_mid = int(( binsrch_low+binsrch_high)*0.5 )
+
+        if( key < innerList.o(binsrch_mid).sgid ) { //guess again, lower
+            binsrch_low = binsrch_mid+1
+        } else {
+            binsrch_high = binsrch_mid
+        }
+    }
+
+    if( binsrch_low<innerList.count() ) if ( innerList.o(binsrch_low).sgid == key ) {  //found
+        return innerList.o(binsrch_low)
+    }
+
+    return nil
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * When we have created a new connection (sgid->tgid), determine where to store it in our arrangement
+ * and store it for faster retrieval later
+ *
+ * @param $o1 Connection object to be stored in the select population's connectionList
+ */
+proc storeConnection() { \
+    local binsrch_low, binsrch_mid, binsrch_high, key \
+    localobj innerList
+
+    innerList = findConnectionsOf( populationConnectionMap.get(selectedPopulation.s), $o1.tgid, 1)
+
+    binsrch_low = 0
+    binsrch_high = innerList.count()
+
+    if( binsrch_high == 0 ) {
+        innerList.append($o1)
+        return
+    }
+
+    key = $o1.sgid
+
+    while ( binsrch_low < binsrch_high ) {
+        binsrch_mid = int(( binsrch_low+binsrch_high)*0.5 )
+
+        if( key < innerList.o(binsrch_mid).sgid ) { //guess again, lower
+            binsrch_low = binsrch_mid+1
+        } else {
+            binsrch_high = binsrch_mid
+        }
+    }
+
+    if( binsrch_low<innerList.count() ) {
+        if( innerList.o(binsrch_low).sgid == key ) {
+            //error! already exists
+            print "Why are we attempting to store a connection (", $o1.sgid, "->", $o1.tgid, ") twice?"
+        } else {
+            //put Connection obj here
+            innerList.insrt( binsrch_low, $o1 )
+        }
+    } else {  //can append Connection obj to end list
+        innerList.append( $o1 )
+    }
+}
+
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * All synapses should be placed, all weight scalars should have their final values.  Now we can create the netcons
+ *
+ * @param $1 baseSeed optional argument to adjust synapse RNGs (default=0)
+ */
+proc finalizeSynapses() { local popIndex, innerIndex, connIndex, spgid, baseSeed  localobj connectObj, metype, connectionList
+
+    baseSeed = 0
+    if( numarg()==1 ) baseSeed = $1
+
+    for popIndex=0, populationConnectionMap.count()-1 {
+        connectionList = populationConnectionMap.o(popIndex)
+
+        for connIndex=0, connectionList.count()-1 {
+            for innerIndex=0, connectionList.o(connIndex).count()-1 {
+                connectObj = connectionList.o(connIndex).o(innerIndex)
+                metype = targetManager.cellDistributor.getMEType( connectObj.tgid )
+                spgid = targetManager.cellDistributor.getSpGid( connectObj.tgid )
+
+                connectObj.finalize( targetManager.cellDistributor.pnm, metype, baseSeed, spgid )
+                //connectObj.finalize( targetManager.cellDistributor.pnm, cell, baseSeed, spgid )
+            }
+
+            //print "gid ", cell.gid, " has ", cell.synlist.count(), " synapses"
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * After all synapses have been placed, we can create special netcons to trigger
+ * events on those synapses
+ *
+ * @param $s1 Target name whose gids should be replayed
+ * @param $o2 map of gids with vector of spike times
+ * @param $3 Delay for when events may start to be delivered
+ */
+proc replay() { local popIndex, timeitVerbose, tgidIndex, sgidIndex, cellIndex, timeID, tgid  localobj connectObj, target, spikeMap, connectionList
+    spikeMap = $o2
+    if( object_id( replayList, 1 ) == -1 ) {
+        replayList = new List()
+    }
+
+    baseSeed = 0
+    if( numarg()==1 ) baseSeed = $1
+
+    target = targetManager.getTarget( $s1 )
+
+    timeID = timeit_register( "register replay events" )
+    timeitVerbose = timeit_setVerbose(0)  //don't want to see a message for every gid
+
+    for popIndex=0, populationConnectionMap.count()-1 {
+        connectionList = populationConnectionMap.o(popIndex)
+
+        for tgidIndex=0, connectionList.count()-1 {
+            tgid = connectionList.o(tgidIndex).o(0).tgid
+
+            timeit_start( timeID )
+
+            if( target.contains( tgid ) ) {
+                for sgidIndex=0, connectionList.o(tgidIndex).count()-1 {
+                    connectObj = connectionList.o(tgidIndex).o(sgidIndex)
+
+                    if( spikeMap.exists(connectObj.sgid) ) {
+                        connectObj.replay( spikeMap.get(connectObj.sgid), $3 )
+                        replayList.append(connectObj)
+                    }
+                }
+            }
+            timeit_add( timeID )
+        }
+    }
+    {timeit_setVerbose(timeitVerbose)}
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Access the specified dataset from the nrn.h5 file to get all synapse parameters for a post-synaptic cell
+ *
+ * @param $1 gid of the cell whose data is needed
+ * @return List populated by SynapseParameters objects read from the nrn.h5 file
+ */
+obfunc getSynapseParameters() {  local gid, onlyNewData  localobj synParamsList
+    gid = $1
+    if( loadedMap.exists(gid) ) {
+        return loadedMap.get(gid)
+    }
+
+    synParamsList = synapseReader.loadSynapseParameters(gid)
+    loadedMap.put(gid, synParamsList)
+
+    return synParamsList
+}
+
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * @param $1 gid whose synapses are to be verbose
+ */
+proc toggleVerbose() { local gid, synapseIndex  localobj gidvec, cell
+    gid = $1
+
+    gidvec = targetManager.cellDistributor.getGidListForProcessor()
+    if( gidvec.contains( gid ) ) {
+        cell = targetManager.cellDistributor.getCell(gid)
+        print "test ", cell.synlist
+        print "test2 ", cell.synlist.size()
+/*
+        for synapseIndex=0, cell.synlist.size()-1 {
+            print cell.synlist.o(synapseIndex)
+            //cell.synlist.o(synapseIndex).toggleVerbose()
+        }
+*/
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * After a restore, any minis or replays in this Connection will need to be restarted
+ *
+ * @param $o1 jumpstarters List object to hold NetCons which are used to restart the ALUs
+ */
+proc restartModSources() { local popIndex, tgidIndex, sgidIndex localobj popConnections
+    for popIndex=0, populationConnectionMap.count()-1 {
+        popConnections = populationConnectionMap.o(popIndex)
+        for tgidIndex=0, popConnections.count()-1 {
+            for sgidIndex=0, popConnections.o(tgidIndex).count()-1 {
+                popConnections.o(tgidIndex).o(sgidIndex).restartModSources( $o1 )
+            }
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Utility function to help query synaptic data for a given gid in the current population
+ *
+ * @param $1 gid whose data we are accessing
+ * @return list with synapse data for the gid
+ */
+obfunc getSynapseDataForGID() {  local synIndex, innerIndex  localobj tgidConnList, synapseList, allSynList
+    allSynList = new List()
+    tgidConnList = findConnectionsOf(populationConnectionMap.get(selectedPopulation.s), $1)
+
+    if( ! object_id( tgidConnList ) ) {
+        return allSynList
+    }
+    for innerIndex=0, tgidConnList.count()-1 {
+        synapseList = tgidConnList.o(innerIndex).synapseParamsList
+        for synIndex=0, synapseList.count()-1 {
+            allSynList.append( synapseList.o(synIndex) )
+        }
+    }
+    return allSynList
+}
+
+
+/**
+ * After setting a new source, one can unlock all connections to add more synapses
+ */
+proc unlockAllConnections() { local popIndex, tgidIndex, sgidIndex localobj popConnections
+    for popIndex=0, populationConnectionMap.count()-1 {
+        popConnections = populationConnectionMap.o(popIndex)
+        for tgidIndex=0, popConnections.count()-1 {
+            for sgidIndex=0, popConnections.o(tgidIndex).count()-1 {
+                popConnections.o(tgidIndex).o(sgidIndex).locked = 0
+            }
+        }
+    }
+}
+
+
+endtemplate SynapseRuleManager

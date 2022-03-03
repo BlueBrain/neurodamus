@@ -1,0 +1,102 @@
+/**
+ * @file TPointList.hoc
+ * @brief
+ * @author moor
+ * @date 2010-03-08
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+D__TPOINTLISTTHOC = 1
+{load_file("TType.hoc","D__TTYPEHOC")}
+//see help file in neuron extention help pages (wiki)
+// https://bbpteam.epfl.ch/wiki/index.php/NE:TPointList
+
+
+begintemplate TPointList
+	public append,each_point,count,sclst,point,access_,gid
+	objref sclst,x,null,this,rtti
+	strdef classname,tmp
+	public classname,loc, x
+
+
+	proc init(){
+		sclst = new List()
+		x = new Vector()
+		SPLIT = 0 //by default it will be only the local list
+		gid = -1 //by default points do not have to belong to the same cell.
+		rtti = new TType()
+		if(numarg()>0) gid = $1
+		if(numarg()>1) SPLIT = $2 //you will be able to set it to complete by the Manager objects
+	}
+
+
+	obfunc append(){local j,na,at localobj pl,sl
+		an = numarg()
+		at = argtype(1)
+		//need to push the currect section into the section stack
+		if(at==rtti.NUMBER){
+			x.append($1)
+			sclst.append(new SectionRef())
+		}else if(at==rtti.STRDEF){
+			//python style address - wraps NEURON style
+			sprint(tmp,"%s %s.append(%g)",$s1,this,$2)
+			execute(tmp)
+		}else if(at==rtti.OBJREF){
+			if(rtti.equal($o1,"SectionRef")){
+				sclst.append($o1) //add the section ref as is
+				x.append($2)
+			} else if(rtti.equal($o1,"TPointList")){
+				sl = $o1.sclst
+				//this assumes that all sections exists
+				for j=0, sl.count - 1 {
+					sclst.append(sl.o(j))//we do not mind to reference the existing object
+					x.append($o1.x.x[j])
+				}
+			}
+		}
+		return this //for chaning
+	}
+
+	iterator each_point(){local i
+		for i=0, sclst.count-1{
+			if(sclst.o(i).exists) {
+				sclst.o(i).sec{
+					$&1 = x.x[i]
+					iterator_statement
+				}
+			}else{
+				if(SPLIT){
+					$&1 = -1 //Prevent using this number as a section loc(x)
+					iterator_statement
+				}
+			}
+		}
+	}
+
+
+	//from here on some utility functions which make the use of this class more convinient
+	iterator point(){
+		sclst.o($1).sec{
+			$&2 = x.x[$1]
+			iterator_statement
+		}
+	}
+
+
+	proc loc(){
+		sclst.o($2).sec $o1.loc(x.x[$2])
+	}
+
+
+	func count(){
+		return sclst.count
+	}
+
+
+	func access_(){
+		sclst.o($1).sec sprint(tmp,"access %s",secname())
+		execute(tmp)
+		return x.x[$1]
+	}
+
+endtemplate TPointList

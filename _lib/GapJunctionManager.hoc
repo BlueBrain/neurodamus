@@ -1,0 +1,542 @@
+/**
+ * @file GapJunctionManager.hoc
+ * @brief Process Gap Junctions
+ *
+ * @author king, leite
+ * @remark Copyright © BBP/EPFL 2005-2018; All rights reserved. Do not distribute without further notice.
+ */
+
+{load_file("ConfigParser.hoc")}
+{load_file("TargetParser.hoc")}
+{load_file("timeit.hoc")}
+{load_file("SynReaders.hoc")}
+{load_file("fileUtils.hoc")}
+
+/*!
+ * The GapJunctionManager is similar to the SynapseRuleManager.  It will open special nrn.h5 files which will
+ * have the locations and conductance strengths of gap junctions detected in the circuit.  The user will have the
+ * capacity to scale the conductance weights
+ */
+begintemplate GapJunctionManager
+
+external timeit, timeit_setVerbose, timeit_register, timeit_start, timeit_add, syntoolEnabled, ospath, terminate
+
+//-----------------------------------------------------------------------------------------------
+// Declare member variables
+//-----------------------------------------------------------------------------------------------
+
+objref synapseReader, targetManager, connectionList, loadedMap, this
+objref circuitTarget, gjOffsets
+
+//-----------------------------------------------------------------------------------------------
+// Public members
+//-----------------------------------------------------------------------------------------------
+
+/// Indicate if BlueConfig connection blocks create new synapses/connections, or just override values of existing ones
+public updateCond //Oren
+
+public creationMode
+public init, connectAll, groupConnect, finalizeSynapses, replay, groupDelayedWeightAdjust, openSynapseFile, finalizeGapJunctions
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+/**!
+ * Constructor for GapJunctionManager, checks that the nrn.h5 synapse file is available for reading
+ *
+ * @param $s1 Circuit path. The path where to search for Gap Junctions (attempts nrn_gj.h5 and gj.syn2)
+ * @param $o2 Reference to TargetManager which this RuleManager will use to query targets and translate locations to points
+ * @param $3  nNrnFiles How many nrn.h5 files to expect (typically 1)
+ * @param $o4 circuitTarget Used to know if a given gid is being simulated, including off node. nil if using full circuit
+ *
+ * NOTE: Old NRN files (nrn_gj.h5) files use relative GJ IDs, while new formats use absolute IDs
+ */
+proc init() { local gjSum  localobj gjinfoFile
+    strdef circuitPath, synapseFile, gjfname
+    circuitPath = $s1
+    targetManager = $o2
+    nSynapseFiles = 1
+    if (numarg() >= 3) nSynapseFiles = $3
+    circuitTarget = $o4
+    verbose = (targetManager.cellDistributor.pnm.pc.id() == 0)
+    gjFileFound = 0
+
+    // If syntool avail attempt finding gj.syn2 since is the new default.
+    // Syanpsetool warns if a directory is given for syn2
+    if (syntoolEnabled) {
+        sprint(synapseFile, "%s/%s", circuitPath, "gj.syn2")
+        gjFileFound = ospath.isfile(synapseFile)
+        if (!gjFileFound) {
+            sprint(synapseFile, "%s/%s", circuitPath, "gj.sonata")
+            gjFileFound = ospath.isfile(synapseFile)
+        }
+    }
+
+    if (!gjFileFound) {
+        sprint(synapseFile, "%s/%s", circuitPath, "nrn_gj.h5")
+        if( ospath.isfile(synapseFile) ) {
+            gjFileFound = -1  // Legacy mode flag
+        }
+    }
+    if (!gjFileFound) {
+        terminate("Could not find any compatible synapse file.")
+    }
+
+
+    if (syntoolEnabled) {
+        // Use SynReaderSynTool if mod available, since it supports all formats
+        if (verbose) print "[GapJunctManager] Using new-gen SynapseReader for ", synapseFile
+        synapseReader = new SynReaderSynTool(synapseFile, 1, verbose)
+    } else {
+        if (verbose) print "[GapJunctManager] Warning: Attempting legacy Hdf5 NRN reader for ", synapseFile
+        synapseReader = new SynReaderHdf5(synapseFile, nSynapseFiles, targetManager)
+    }
+
+    // Initialize / Clear previous maps
+    loadedMap = new Map()
+
+    if (gjFileFound == -1) {
+        // TODO: we should not use this offset map for gap junctions in the long term.
+        // TODO: axe this once old circuits are out of circulation
+        // Note: assumes that gids of circuit are contiguous
+        gjOffsets = new Vector()
+
+        sprint( gjfname, "%s/gjinfo.txt", $s1 )
+        gjinfoFile = new File( gjfname )
+        gjinfoFile.ropen()
+        if( gjinfoFile.isopen() ) {
+            gjSum = 0
+
+            // read gid, but throw away
+            {gjinfoFile.scanvar()}
+            while( ! gjinfoFile.eof() ) {
+                gjOffsets.append( gjSum )  // rem - fist gid has no offset.  the final total is not used as an offset at all.
+                gjSum = gjSum + 2*gjinfoFile.scanvar()
+
+                // read gid next gid
+                if( ! gjinfoFile.eof() ) {
+                    {gjinfoFile.scanvar()}
+                }
+            }
+            gjinfoFile.close()
+        }
+    }
+    connectionList = new List()
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * For every gid in on this node, access its synapse parameters and instantiate all synapses
+ * which it receives from (note that the presynatic cells may be off node)
+ *
+ * @param $o1 Vector with all local gids
+ * @param $2 scalar Optional argument to scale all synapse / neetcon weights by the given factor
+ */
+proc connectAll() { local weightScalar, cellIndex, sgid, tgid \
+    localobj gidvec, synParamsList, activeParams, activeConnection, nilConfig
+
+    gidvec = $o1
+    weightScalar = 1
+    if( numarg() > 1 ) {
+        weightScalar = $2
+    }
+
+    //printf( "iterate %d cells\n", gidvec.size() )
+    for cellIndex=0, gidvec.size()-1 {
+        tgid = gidvec.x[cellIndex]
+        synParamsList = getSynapseParameters( tgid )
+
+        //printf( "focus post a%d - %d items\n", gidvec.x[cellIndex], synParamsList.count() )
+        for synIndex=0, synParamsList.count()-1 {
+
+            sgid = synParamsList.o(synIndex).sgid
+            //printf( "connect pre a%d to post a%d\n", sgid, tgid )
+            if( object_id( circuitTarget, 1 ) != -1 ) {
+                if( !circuitTarget.completeContains(sgid) ) {
+                    continue
+                }
+
+                // should still need to check that the other side of the gap junction will be there by ensuring
+                // that other gid is in the circuit target
+            }
+
+            //Note: The sgids in any given dataset from nrn.h5 will come in sorted order, low to high.
+            // This code therefore doesn't search or sort on its own.  If the nrn.h5 file changes in the future,
+            // we must update the code accordingly
+
+            if( object_id(activeConnection) == 0 ) {
+                activeConnection = new Connection( sgid, tgid, nilConfig, "STDPoff", 0 )
+                activeConnection.setWeightScalar( weightScalar )
+                storeConnection( activeConnection )
+            }
+
+            if( activeConnection.tgid!=tgid || activeConnection.sgid != sgid ){
+                activeConnection = new Connection( sgid, tgid, nilConfig, "STDPoff", 0 )
+                activeConnection.setWeightScalar( weightScalar )
+                storeConnection( activeConnection )
+            }
+
+            //placeSynapses( activeConnection, synParamsList.o(synIndex), synIndex+1 )
+            activeParams = synParamsList.o(synIndex)
+            activeConnection.append( targetManager.locationToPoint( tgid, activeParams.isec, activeParams.ipt, activeParams.offset ), activeParams, synIndex )
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Given some gidlists, connect those gids in the source list to those in the dest list (note
+ * the cells in the source list are not limited by what is on this cpu, whereas the dest list requires
+ * the cells be local)
+ *
+ * @param $s1 Name of Source Target
+ * @param $s2 Name of Destination Target
+ * @param $3  Scaling weight to apply to the synapses
+ * @param $o4 SynapseConfiguration string, or nil
+ * @param $o5 Vector of gids on the local cpu
+ */
+proc groupConnect() { local weight, cellIndex, gid, synIndex, oldsgid, sgid, tgid \
+    localobj sTarget, dTarget, gidvec, synParamsList, activeParams, pendConn, existingConn, configuration, nil
+
+    //unlike connectAll, we must look through connectionList to see if sgid->tgid exists because it may be getting weights updated
+    // Note that it is better to get the whole target over just the gid vector, since then we can use utility functions like 'contains'
+    sTarget = targetManager.getTarget( $s1 )
+    dTarget = targetManager.getTarget( $s2 )
+
+    weight = $3
+    configuration = $o4
+
+    gidvec = $o5
+    for cellIndex=0, gidvec.size()-1 {
+        tgid = gidvec.x[cellIndex]
+        if( !dTarget.contains( tgid ) ) {
+            continue
+        }
+
+        //this cpu owns some or all of the destination gid
+        synParamsList = getSynapseParameters( gidvec.x[cellIndex] )
+
+        oldsgid = -1
+        pendConn = nil
+        for synIndex=0, synParamsList.count()-1 {
+            sgid = synParamsList.o(synIndex).sgid
+
+            // if this gid in the source target?
+            if( !sTarget.completeContains( sgid ) ) {
+                continue
+            }
+
+            // is this gid in the circuitTarget (if defined)
+            if( object_id(circuitTarget, 1) != -1 ) if( !circuitTarget.completeContains( sgid ) ) {
+                continue
+            }
+
+            //to reach here, 'source' target includes a cell that sends to the tgid and sgid should exist somewhere in the
+            // simulation - on or off node.  Don't care
+
+            // are we on a different sgid than the previous iteration?
+            if( sgid != oldsgid ) {
+
+                if( pendConn != nil ) { //if we were putting things in a pending object, we can store that away now
+                    storeConnection( pendConn )
+                }
+
+                oldsgid = sgid
+
+                //determine what we will do with the new sgid: update weights if seen before, or prep for pending connections
+                existingConn = findConnection( sgid, tgid )
+                if( object_id(existingConn, 1) != -1 ) {
+                    // since we have seen this pathway/connection before, we just need to update the weights
+                    if( weight != -1 ) {
+                        existingConn.setWeightScalar( weight )
+                    }
+                    existingConn.appendSynapseConfiguration( configuration )
+                    pendConn = nil
+                } else {
+                    if( creationMode == 1 ) {
+                        // recently added the feature where weight is optional.  But what should happen if the initial group
+                        // connect is given -1?  I would think is is an error.  For now, emit a warning
+                        if( weight == -1 ) {
+                            print "Warning: invalid weight value for initial connection creation"
+                        }
+                        pendConn = new Connection( sgid, tgid, configuration, nil, 0, nil )
+                        pendConn.setWeightScalar( weight )
+                    }
+                    existingConn = nil  //should already be nil, but that's okay
+                }
+            }
+
+            // if we are using an object for a pending connection, then it is new and requires we place the synapse(s) for the current index
+            if( object_id(pendConn,1) != -1 ) {
+                activeParams = synParamsList.o(synIndex)
+                pendConn.append( targetManager.locationToPoint( tgid, activeParams.isec, activeParams.ipt, activeParams.offset ), activeParams, synIndex )
+            }
+        }
+
+        //if we have a pending connection, make sure we store it
+        if( object_id(pendConn,1) != -1 ) {
+            storeConnection(pendConn)
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Given some gidlists, recover the connection objects for those gids involved and adjust the weights
+ *
+ * @param $s1 Name of Source Target
+ * @param $s2 Name of Destination Target
+ * @param $3 Scaling weight to apply to the synapses
+ * @param $o4 Vector of gids on the local cpu
+ */
+proc groupDelayedWeightAdjust() { local weight, cellIndex, gid, synIndex, oldsgid, sgid, tgid \
+    localobj sTarget, dTarget, gidvec, synParamsList, activeParams, pendConn, existingConn, sgids, nil
+
+    //unlike connectAll, we must look through connectionList to see if sgid->tgid exists because it may be getting weights updated
+    // Note that it is better to get the whole target over just the gid vector, since then we can use utility functions like 'contains'
+    sTarget = targetManager.getTarget( $s1 )
+    dTarget = targetManager.getTarget( $s2 )
+    weight = $3
+
+    gidvec = $o4
+    for cellIndex=0, gidvec.size()-1 {
+        // gid on local should be member of destination target
+        tgid = gidvec.x[cellIndex]
+        if( !dTarget.contains( tgid ) ) {
+            continue
+        }
+
+        //is it better to iterate over the cell's presyn gids or the target's gids.  Probably the former, but this is easier.  Can change later
+        sgids = sTarget.completegids()
+        for sgidIndex=0,sgids.size()-1 {
+            sgid = sgids.x[sgidIndex]
+            existingConn = findConnection( sgid, tgid )
+            if( object_id(existingConn, 1) != -1 ) {
+                //change the weight for all those netcons
+                existingConn.updateWeights( weight )
+            }
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Go through list of created connections and see if any match the pathway sgid->tgid
+ *
+ * @param $1 sgid Source/Presynaptic cell
+ * @param $2 tgid Destination/Postsynaptic cell
+ * @return Reference to existing Connection object or nil if it is the first time the pathway exists
+ */
+obfunc findConnection() { local connIndex, key  localobj nil, innerList
+
+    key = $2
+//    if( targetManager.cellDistributor.pnm.myid == 0 ) {
+//        print "find ", $2, "->", $1, " amongst ", connectionList.count(), "items"
+//    }
+
+    //search through list, using binary search to find if this target exists
+    binsrch_low = 0
+    binsrch_high = connectionList.count()
+
+    while ( binsrch_low < binsrch_high ) {
+        binsrch_mid = int(( binsrch_low+binsrch_high)*0.5 )
+
+//        if( targetManager.cellDistributor.pnm.myid == 0 ) {
+//            print key, " vs ", connectionList.o(binsrch_mid).o(0).tgid
+//        }
+
+        if( key < connectionList.o(binsrch_mid).o(0).tgid ) { //guess again, lower
+            binsrch_low = binsrch_mid+1
+        } else {
+            binsrch_high = binsrch_mid
+        }
+
+//        if( targetManager.cellDistributor.pnm.myid == 0 ) {
+//            print "new range: ", binsrch_low, "..", binsrch_high
+//        }
+
+    }
+
+    if( binsrch_low<connectionList.count() ) {
+        if( connectionList.o(binsrch_low).o(0).tgid == key ) {
+            //found it!
+            innerList = connectionList.o(binsrch_low)
+        } else {
+            //no inner list for this sgid, so we can return nil
+            return nil
+        }
+    } else {  //not found, return nil
+        return nil
+    }
+
+    //if we reach here, then we have found a pre-existing inner list that we now must search
+    binsrch_low = 0
+    binsrch_high = innerList.count()
+    key = $1
+
+    while ( binsrch_low < binsrch_high ) {
+        binsrch_mid = int(( binsrch_low+binsrch_high)*0.5 )
+
+        if( key < innerList.o(binsrch_mid).sgid ) { //guess again, lower
+            binsrch_low = binsrch_mid+1
+        } else {
+            binsrch_high = binsrch_mid
+        }
+    }
+
+    if( binsrch_low<innerList.count() ) if ( innerList.o(binsrch_low).sgid == key ) {  //found
+        return innerList.o(binsrch_low)
+    }
+
+    return nil
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * When we have created a new connection (sgid->tgid), determine where to store it in our arrangement
+ * and store it for faster retrieval later
+ *
+ * @param $o1 Connection object to be stored in the connectionList
+ */
+proc storeConnection() { local binsrch_low, binsrch_mid, binsrch_high, key  localobj innerList
+
+    key = $o1.tgid
+//    if( targetManager.cellDistributor.pnm.myid == 0 ) {
+//        print "store ", $o1.tgid, "->", $o1.sgid, " amongst ", connectionList.count(), "items"
+//    }
+
+    //search through list, using binary search to find if this target exists
+    binsrch_low = 0
+    binsrch_high = connectionList.count()
+
+    while ( binsrch_low < binsrch_high ) {
+        binsrch_mid = int(( binsrch_low+binsrch_high)*0.5 )
+
+//        if( targetManager.cellDistributor.pnm.myid == 0 ) {
+//            print key, " vs ", connectionList.o(binsrch_mid).o(0).tgid
+//        }
+        if( key < connectionList.o(binsrch_mid).o(0).tgid ) { //guess again, lower
+            binsrch_low = binsrch_mid+1
+        } else {
+            binsrch_high = binsrch_mid
+        }
+//        if( targetManager.cellDistributor.pnm.myid == 0 ) {
+//            print "new range: ", binsrch_low, "..", binsrch_high
+//        }
+
+    }
+
+    if( binsrch_low<connectionList.count() ) {
+        if( connectionList.o(binsrch_low).o(0).tgid == key ) {
+            //found it!
+            innerList = connectionList.o(binsrch_low)
+        } else {
+            //no inner list, but we can make one and insert it using binsrch_low which is where we expected it
+
+            connectionList.insrt( binsrch_low, new List() )
+            connectionList.o(binsrch_low).append( $o1 )
+            return
+        }
+    } else {  //not found, should be appended to list
+        connectionList.append( new List() )
+        connectionList.o(connectionList.count()-1).append( $o1 )
+        return
+    }
+
+    //if we reach here, then we have found a pre-existing inner list that we now must search
+    binsrch_low = 0
+    binsrch_high = innerList.count()
+    key = $o1.sgid
+
+    while ( binsrch_low < binsrch_high ) {
+        binsrch_mid = int(( binsrch_low+binsrch_high)*0.5 )
+
+        if( key < innerList.o(binsrch_mid).sgid ) { //guess again, lower
+            binsrch_low = binsrch_mid+1
+        } else {
+            binsrch_high = binsrch_mid
+        }
+    }
+
+    if( binsrch_low<innerList.count() ) {
+        if( innerList.o(binsrch_low).sgid == key ) {
+            //error! already exists
+            print "Why are we attempting to store a connection (", $o1.sgid, "->", $o1.tgid, ") twice?"
+        } else {
+            //put Connection obj here
+            innerList.insrt( binsrch_low, $o1 )
+        }
+    } else {  //can append Connection obj to end list
+        innerList.append( $o1 )
+    }
+}
+
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * All GapJunctions should be placed, all weight scalars should have their final values.  Now we can create the netcons
+ */
+proc finalizeGapJunctions() { local innerIndex, connIndex, spgid, baseSeed  localobj cell, connectObj, pc, metype
+
+    for connIndex=0, connectionList.count()-1 {
+        for innerIndex=0, connectionList.o(connIndex).count()-1 {
+            connectObj = connectionList.o(connIndex).o(innerIndex)
+            cell = targetManager.cellDistributor.getCell( connectObj.tgid )
+            metype = targetManager.cellDistributor.getMEType( connectObj.tgid )
+            spgid = targetManager.cellDistributor.getSpGid( connectObj.tgid )
+
+            if (gjFileFound == -1) {
+                connectObj.finalizeGapJunctions( targetManager.cellDistributor.pnm, metype, gjOffsets.x[connectObj.tgid-1], gjOffsets.x[connectObj.sgid-1] )
+            } else {
+                connectObj.finalizeGapJunctions( targetManager.cellDistributor.pnm, metype )
+            }
+        }
+    }
+
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Helper function to update gap junction conductace
+ */
+proc updateCond(){ local innerIndex, connIndex localobj connectObj
+    for connIndex=0, connectionList.count()-1 {
+        for innerIndex=0, connectionList.o(connIndex).count()-1 {
+            connectObj = connectionList.o(connIndex).o(innerIndex)
+            connectObj.updateConductance($1)
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Access the specified dataset from the nrn.h5 file to get all synapse parameters for a post-synaptic cell
+ *
+ * @param $1 gid of the cell whose data is needed
+ * @return $o2 List populated by SynapseParameters objects read from the nrn.h5 file
+ */
+obfunc getSynapseParameters() { local gid  localobj synParamsList
+    gid = $1
+
+    if( loadedMap.exists(gid) ) {
+        return loadedMap.get(gid)
+    }
+
+    synParamsList = synapseReader.loadSynapseParameters(gid)
+
+    loadedMap.put(gid, synParamsList)
+
+    return synParamsList
+}
+
+
+endtemplate GapJunctionManager

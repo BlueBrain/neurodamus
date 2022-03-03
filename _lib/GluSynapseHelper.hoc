@@ -1,0 +1,113 @@
+/**
+ * @file GluSynapseHelper.hoc
+ * @brief Encapsulate any hoc actions that are necessary to instantiate this synapse type
+ * @author king, chindemi
+ * @date 26/04/2017
+ * @remark Copyright © BBP/EPFL 2005-2016; All rights reserved. Do not distribute without further notice.
+ */
+
+// Global that is shared/accessible from GluSynapseHelper objects
+// Note that a name should be chosen that should not be used for any other global. Otherwise may cause strange behavior
+objref synapseReaderGluSynapseHelper
+
+/**
+ * This helper object will encapsulate the hoc actions needed to create our plastic excitatory synapse
+ */
+{load_file("RNGSettings.hoc")}
+begintemplate GluSynapseHelper
+
+objref synapse
+public synapse
+
+external synapseReaderGluSynapseHelper
+
+/**
+ * @param tgid gid of Postsynaptic cell
+ * @param synParameters set of paramters loaded from default nrn.h5
+ * @param x location of the synapse along the section (0<=x<=1)
+ * @param synapseID id assigned to this synapses within the cell's context
+ * @param baseSeed for random number generator
+ * @param parseConnection Map of field/value pairs of Connection block taken from ConfigParser
+ */
+proc init() { local tgid, x, synapseID, baseSeed, res, spopid, tpopid  localobj synParams, parseConnection, fname, rngInfo
+    strdef datasetName
+
+    tgid = $1
+    synParams = $o2
+    x = $3
+    synapseID = $4
+    baseSeed = $5
+    if (numarg()>=8) {
+        spopid = $6 // placeholder
+        tpopid = $7 // placeholder
+        parseConnection = $o8
+    } else {
+        parseConnection = $o6
+        spopid = 0 // placeholder
+        tpopid = 1 // placeholder
+    }
+
+    rngInfo = new RNGSettings()
+    synapse = new GluSynapse(x)
+
+    if( synParams.maskValue > 1 ) {
+        // deactivate synapses not part of original functional circuit
+        synapse.synstate_RW = 0
+    }
+
+    if( parseConnection.exists( "OtherSynPath" ) ) {
+        if( object_id( synapseReaderGluSynapseHelper, 1 ) == -1 ) {
+            // This field can be named whatever the user wants.  Needs to just use 'get' method
+            fname = parseConnection.get( "OtherSynPath" )
+            // print "access more info at ", fname.s
+    
+            // This requires there be a single HDF5 file.  If multiple files are to be supported, we need to change code structure
+            synapseReaderGluSynapseHelper = new HDF5Reader( fname.s )
+        }
+    
+        // Note that HDF5readers remember the last data set loaded.  As long as the same gid is requested, it will not go back to the disk
+        {sprint( datasetName, "a%d", tgid )}
+        res = synapseReaderGluSynapseHelper.loadData( datasetName )
+        if( res < 0 ) {
+            print "Error loading data for gid ", datasetName
+            return
+        }
+        
+        // Use parameters
+        synapse.Use_d_GB = synapseReaderGluSynapseHelper.getData( datasetName, synapseID, 3 )
+        synapse.Use_p_GB = synapseReaderGluSynapseHelper.getData( datasetName, synapseID, 4 )
+        tau_Use_GB_GluSynapse = synapseReaderGluSynapseHelper.getData( datasetName, synapseID, 5 )
+    
+        // Rho parameters
+        tau_GB_GluSynapse = synapseReaderGluSynapseHelper.getData( datasetName, synapseID, 8 )
+        synapse.theta_d_GB = synapseReaderGluSynapseHelper.getData( datasetName, synapseID, 9 )
+        synapse.theta_p_GB = synapseReaderGluSynapseHelper.getData( datasetName, synapseID, 10 )
+        gamma_d_GB_GluSynapse = synapseReaderGluSynapseHelper.getData( datasetName, synapseID, 11 )
+        gamma_p_GB_GluSynapse = synapseReaderGluSynapseHelper.getData( datasetName, synapseID, 12 )
+        synapse.rho0_GB = synapseReaderGluSynapseHelper.getData( datasetName, synapseID, 13 )
+    
+        // Spine parameters
+        synapse.volume_CR = synapseReaderGluSynapseHelper.getData( datasetName, synapseID, 16 )
+    
+        // Release parameters
+        synapse.tau_d_AMPA = synParams.DTC
+        if (synapse.rho0_GB > rho_star_GB_GluSynapse) {
+            // Instantiate a potentiated synapse
+            synapse.Use = synapse.Use_p_GB
+        } else {
+            // Instantiate a depressed synapse
+            synapse.Use = synapse.Use_d_GB
+        }
+        synapse.Dep = abs( synParams.D )
+        synapse.Fac = abs( synParams.F )
+        synapse.Nrrp = 2
+    }
+    
+    // for now, use two seeds based on gid and snyapseID.  In the future we will have an optional synapseSeed
+    // also note that somewhere we must have set the random123 global seed (BlueConfig BaseSeed)
+    synapse.setRNG( tgid, 100000 + synapseID, rngInfo.getSynapseSeed() + 200)
+    synapse.synapseID = synapseID
+}
+
+endtemplate GluSynapseHelper
+

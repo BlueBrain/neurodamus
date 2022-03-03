@@ -1,0 +1,12 @@
+Auks API request failed : krb5 cred : unable to read credential cache
+Autoloading reportinglib/2.5.6
+Autoloading hpe-mpi/2.25.hmpt
+Autoloading python/3.9.7
+Requirement already satisfied: pip in ./venv/lib/python3.9/site-packages (21.2.3)
+WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x2aaab40453d0>: Failed to establish a new connection: [Errno 101] Network is unreachable')': /simple/pip/
+WARNING: Retrying (Retry(total=3, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x2aaab40455e0>: Failed to establish a new connection: [Errno 101] Network is unreachable')': /simple/pip/
+WARNING: Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x2aaab4045790>: Failed to establish a new connection: [Errno 101] Network is unreachable')': /simple/pip/
+WARNING: Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x2aaab4027f10>: Failed to establish a new connection: [Errno 101] Network is unreachable')': /simple/pip/
+WARNING: Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x2aaab40310d0>: Failed to establish a new connection: [Errno 101] Network is unreachable')': /simple/pip/
+Requirement already satisfied: setuptools in /gpfs/bbp.cscs.ch/ssd/apps/bsd/2022-01-10/stage_applications/install_intel-2021.4.0-skylake/py-setuptools-57.4.0-5flpil/lib/python3.9/site-packages (57.4.0)
+slurmstepd: error: *** JOB 311533 ON r2i1n35 CANCELLED AT 2022-03-03T17:17:51 ***

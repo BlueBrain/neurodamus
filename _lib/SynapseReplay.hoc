@@ -1,0 +1,299 @@
+/**
+ * @file SynapseReplay.hoc
+ * @brief Stimulus implementation where incoming synaptic events are replayed for a single gid
+ * @author king
+ * @date 2011-03-02
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+{load_file("Map.hoc")}
+{load_file("timeit.hoc")}
+{load_file("fileUtils.hoc")}
+
+/**
+ * A SynapseReplay stim can be used for a single gid that has all the synapses instantiated.  Given an out.dat
+ * file from a previous run, this object uses a NetStim object to retrigger the synapses at the appropriate time
+ * as though the presynaptic cells were present and active
+ */
+begintemplate SynapseReplay
+
+external timeit, timeit_setVerbose, timeit_register, timeit_start, timeit_add, terminate
+
+//-----------------------------------------------------------------------------------------------
+// Declare member variables
+//-----------------------------------------------------------------------------------------------
+
+objref this, synapseRuleManager, gidFireEvents, memUsage
+
+//-----------------------------------------------------------------------------------------------
+// Public members
+//-----------------------------------------------------------------------------------------------
+
+public init, replay, readSpikeFile, isVerbose, append
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Constructor for SynapseReplay
+ *
+ * @param $o1 SynapseRuleManager used to handle the nrn.h5 file
+ * @param $s2 path to spike out file.  if ext is .bin, interpret as binary file; otherwise, interpret as ascii
+ * @param $3 delay to apply to spike times
+ * @param $4 isVerbose 1 indicates that messages should be printed to the console [optional]
+ */
+proc init() { local delay, index  localobj strobj
+    strdef filename
+
+    synapseRuleManager = $o1
+    filename = $s2
+    delay = $3
+    if( numarg() > 3 ) {
+        isVerbose = $4
+    }
+
+    memUsage = new MemUsage()
+
+    gidFireEvents = new Map()
+    distributedSpikes = 0
+
+    readSpikeFile( filename, delay )
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/**
+ * @param $s1 path to spike out file.  if ext is .bin, interpret as binary file; otherwise, interpret as ascii
+ * @param $2 delay
+ */
+proc readSpikeFile() { local delay  localobj strobj
+    strdef filename
+
+    filename = $s1
+    delay = $2
+
+    //determine if we have binary or ascii file
+    strobj = new StringFunctions()
+
+    // TODO: filename should be able to handle relative paths, using the Run.CurrentDir as an initial path
+    index = strobj.substr( filename, ".bin" )
+    if( index > 0 && index == (strobj.len(filename)-4) ) {
+        readBinaryEvents( filename, delay )
+    } else {
+        readAsciiEvents( filename, delay )
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/**
+ * Read in the ascii file with spike events - expected to be in the format produced by NEURON at simulation end
+ * where the first line contains '/scatter' and all remaining lines are time/gid pairs
+ *
+ * @param $s1 file path to out.dat
+ * @param $2 delay used to offset the timings of spike events
+ */
+proc readAsciiEvents() { local delay  localobj file, tvec, gidvec, pc
+    strdef tstr
+
+    file = new File()
+    file.ropen( $s1 )
+
+    delay = $2
+
+    if( !file.isopen() ) {
+        terminate( "Failed to open spike data file ", $s1 )
+    }
+
+    //first line is '/scatter'
+    file.gets( tstr )
+
+    //read all subsequent entries - time gid pairs.
+    tvec = new Vector()
+    gidvec = new Vector()
+    while( !file.eof() ) {
+        tvec.append( file.scanvar()+delay )
+        gidvec.append( file.scanvar() )
+
+        //print "read ", gidvec.x[gidvec.size()-1], " ", tvec.x[tvec.size()-1]
+    }
+    file.close()
+
+    // any data read?
+    if( tvec.size() == 0 && isVerbose ) {
+        print "Warning: No spike/gid pairs found in ", $s1
+    }
+
+    binEvents( tvec, gidvec )
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/**
+ * read in the binary file with spike events - format is such that first half of file is interpreted as double precision
+ * time values followed by an equal number of double precision gid values.  File must be produced on same architecture
+ * as where NEURON will run (i.e. no byte switching is performed)
+ *
+ * Read the data on the root node, broadcasting info.  This is fine as long
+ * as the entire data set fits in a single node's memory.  Should it become significantly larger, this could be replaced
+ * with a distributed model where each node loads a portion of the file, and exchanges with other nodes so as to ultimately
+ * hold data for local gids.
+ *
+ * @param $s1 Name of the file
+ * @param $2 delay used to offset the timings of spike events
+ */
+proc readBinaryEvents() { local nErrors, fileSize, nEvents, nInput, delay, timeIndex  localobj pc, spikeFile, tvec, gidvec
+    strdef fileName
+    fileName = $s1
+    delay = $2
+
+    pc = new ParallelContext()
+
+    tvec = new Vector()
+    gidvec = new Vector()
+
+    nErrors=0
+
+    // read data on cpu 0, broadcast to others
+    if( pc.id() == 0 ) {
+        print "open spike file"
+        spikeFile = new File(fileName)
+        spikeFile.ropen()
+        if( !spikeFile.isopen() ) {
+            execerror( "Failed to open spike data file %s", $s1 )
+        }
+
+        print "get fsize"
+        spikeFile.seek(0, 2)
+        fileSize = spikeFile.tell()
+        spikeFile.seek(0)
+
+        print "load data"
+        // there *should* be a number of doubles (8 bytes) such that it is divisible by 2 (half for time values, half for gids)
+        nEvents = fileSize/16
+        if( fileSize%16 != 0 ) {
+            print "Error with spike file - the file size is not divible by 16 (suggesting a mismatch between time values and gid values)"
+            nErrors = nErrors+1
+        } else {
+            tvec.resize(nEvents)
+            gidvec.resize(nEvents)
+
+            // time comes first, then gids
+            print "grabbing data"
+            spikeFile.vread( nEvents, &tvec.x[0] )
+            spikeFile.vread( nEvents, &gidvec.x[0] )
+
+            if( delay != 0 ) {
+                for timeIndex=0, tvec.size()-1 {
+                    tvec.x[timeIndex] = tvec.x[timeIndex] + delay
+                }
+            }
+        }
+
+        spikeFile.close()
+
+        print "read ", tvec.x[0], " ", gidvec.x[0]
+        print "communicate"
+    }
+
+    if( nErrors != 0 ) {
+        return
+    }
+
+    {memUsage.print_mem_usage()}
+    //broadcast the data
+    timeit()
+    pc.broadcast( tvec, 0 )
+    pc.broadcast( gidvec, 0 )
+    timeit( "broadcast" )
+    {memUsage.print_mem_usage()}
+
+    //so all cpus have the data.  Continue as normal
+    timeit()
+    binEvents( tvec, gidvec )
+    timeit( "BinEvents" )
+    {memUsage.print_mem_usage()}
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/**
+ * Take the spike events loaded from disk and organize around gids
+ *
+ * @param $o1 tvec
+ * @param $o2 gidvec
+ */
+proc binEvents() { local gid, gidIndex, lineNumber  localobj gidvec, tvec, gidorder, gidCollection, tempMap
+    tvec = $o1
+    gidvec = $o2
+
+    //To improve performance.  By inserting new elements into a temp map, then appending that map at the end
+    //  we avoid resorting the main map each time a new element is added
+    tempMap = new Map()
+
+    //sort on gids and then build individual vectors
+    //timeit()
+    gidorder = gidvec.sortindex()
+    //timeit( "sort index" )
+
+    gid = -1
+
+    for gidIndex=0, gidorder.size()-1 {
+        lineNumber = gidorder.x[gidIndex]
+
+        //do we need a new vector because we've switched gids?
+        if( gidvec.x[lineNumber] != gid ) {
+
+            gid = gidvec.x[lineNumber]
+
+            if( gidFireEvents.exists(gid) ) {
+                gidCollection = gidFireEvents.get(gid)
+            } else {
+                gidCollection = new Vector()
+                tempMap.put( gid, gidCollection )
+            }
+        }
+
+        //print "assign ", gid, " ", tvec.x[lineNumber], "line ", gidorder.x[gidIndex]
+        gidCollection.append( tvec.x[lineNumber] )
+    }
+
+    // transfer all the items from tempMap to existing gidFireEvents
+    for gidIndex=0, tempMap.count()-1 {
+        gidFireEvents.put( tempMap.keyValue(gidIndex), tempMap.o(gidIndex) )
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/**
+ * @param $s1 Target name whose gids are to be replayed (should contain only 1 gid)
+ * @param $2  Delay for when the events may be delivered.  e.g. if an AP delivers to 2 synapses, the delay might allow only the second to be delivered if the delay falls between the two delivery times
+ */
+proc replay() {
+
+    if( object_id( synapseRuleManager, 1 ) != -1 ) {
+        //request the synapseRuleManager to use the synapse data
+        synapseRuleManager.replay( $s1, gidFireEvents, $2 )
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/**
+ * For benefit of CoreNeuron, allow fire events to be output to a single new file (in case of multiple replays)
+ *
+ * @param $o1 Out file
+ */
+proc append() { local mapIndex, tIndex, keyValue  localobj tvec
+    for mapIndex=0, gidFireEvents.count()-1 {
+        keyValue = gidFireEvents.keyValue(mapIndex)
+        tvec = gidFireEvents.o(mapIndex)
+        for tIndex=0, tvec.size()-1 {
+            $o1.printf( "%.3f %d\n", tvec.x[tIndex], keyValue )
+        }
+    }
+}
+
+endtemplate SynapseReplay

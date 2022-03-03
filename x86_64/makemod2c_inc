@@ -1,0 +1,209 @@
+
+./ALU.c: ../mods.tmp/ALU.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) ALU.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./ALU.o: ./ALU.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./ASCIIrecord.c: ../mods.tmp/ASCIIrecord.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) ASCIIrecord.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./ASCIIrecord.o: ./ASCIIrecord.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./BinReportHelper.c: ../mods.tmp/BinReportHelper.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) BinReportHelper.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./BinReportHelper.o: ./BinReportHelper.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./BinReports.c: ../mods.tmp/BinReports.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) BinReports.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./BinReports.o: ./BinReports.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./CoreConfig.c: ../mods.tmp/CoreConfig.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) CoreConfig.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./CoreConfig.o: ./CoreConfig.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./DetAMPANMDA.c: ../mods.tmp/DetAMPANMDA.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) DetAMPANMDA.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./DetAMPANMDA.o: ./DetAMPANMDA.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./DetGABAAB.c: ../mods.tmp/DetGABAAB.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) DetGABAAB.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./DetGABAAB.o: ./DetGABAAB.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./gap.c: ../mods.tmp/gap.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) gap.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./gap.o: ./gap.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./GluSynapse.c: ../mods.tmp/GluSynapse.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) GluSynapse.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./GluSynapse.o: ./GluSynapse.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./GluSynapse_TM.c: ../mods.tmp/GluSynapse_TM.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) GluSynapse_TM.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./GluSynapse_TM.o: ./GluSynapse_TM.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./HDF5reader.c: ../mods.tmp/HDF5reader.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) HDF5reader.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./HDF5reader.o: ./HDF5reader.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./HDF5record.c: ../mods.tmp/HDF5record.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) HDF5record.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./HDF5record.o: ./HDF5record.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./lookupTableV2.c: ../mods.tmp/lookupTableV2.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) lookupTableV2.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./lookupTableV2.o: ./lookupTableV2.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./memoryaccess.c: ../mods.tmp/memoryaccess.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) memoryaccess.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./memoryaccess.o: ./memoryaccess.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./MemUsage.c: ../mods.tmp/MemUsage.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) MemUsage.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./MemUsage.o: ./MemUsage.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./netstim_inhpoisson.c: ../mods.tmp/netstim_inhpoisson.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) netstim_inhpoisson.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./netstim_inhpoisson.o: ./netstim_inhpoisson.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./ProbAMPANMDA_EMS.c: ../mods.tmp/ProbAMPANMDA_EMS.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) ProbAMPANMDA_EMS.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./ProbAMPANMDA_EMS.o: ./ProbAMPANMDA_EMS.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./ProbGABAAB_EMS.c: ../mods.tmp/ProbGABAAB_EMS.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) ProbGABAAB_EMS.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./ProbGABAAB_EMS.o: ./ProbGABAAB_EMS.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./ProfileHelper.c: ../mods.tmp/ProfileHelper.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) ProfileHelper.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./ProfileHelper.o: ./ProfileHelper.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./SonataReportHelper.c: ../mods.tmp/SonataReportHelper.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) SonataReportHelper.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./SonataReportHelper.o: ./SonataReportHelper.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./SonataReports.c: ../mods.tmp/SonataReports.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) SonataReports.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./SonataReports.o: ./SonataReports.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./SpikeWriter.c: ../mods.tmp/SpikeWriter.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) SpikeWriter.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./SpikeWriter.o: ./SpikeWriter.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./SynapseReader.c: ../mods.tmp/SynapseReader.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) SynapseReader.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./SynapseReader.o: ./SynapseReader.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./TTXDynamicsSwitch.c: ../mods.tmp/TTXDynamicsSwitch.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) TTXDynamicsSwitch.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./TTXDynamicsSwitch.o: ./TTXDynamicsSwitch.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./utility.c: ../mods.tmp/utility.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) utility.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./utility.o: ./utility.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+
+./VecStim.c: ../mods.tmp/VecStim.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "../mods.tmp"; MODLUNIT=$(NRNUNITS) $(NOCMODL) VecStim.mod -o "/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/x86_64")
+
+./VecStim.o: ./VecStim.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I"../mods.tmp" $(INCLUDES) -fPIC -c $< -o $@
+

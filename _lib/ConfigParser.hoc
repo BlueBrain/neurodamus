@@ -1,0 +1,293 @@
+/**
+ * @file ConfigParser.hoc
+ * @brief The ConfigParser will handle reading BlueConfig files and make the information available
+ * @brief to other modules.  Whether the data read from the file should be stored in objects defined
+ * @brief in other files may be revised later.  For now, store everything in generic "map" class built
+ * @brief from basic implementation
+ * @author king
+ * @date 2009-06-24
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+{load_file("nrngui.hoc")}
+{load_file("Map.hoc")}
+{load_file("fileUtils.hoc")}
+
+//------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * For a simple quick version, just have "map" objects that link up to reports, stims, etc.  These in turn
+ * contain maps for the actual contents of a given block
+ */
+begintemplate ConfigParser
+    //TODO: make a better encapsulated version
+
+external terminate
+
+//------------------------------------------------------------------------------------------------------------
+// Member fields
+//------------------------------------------------------------------------------------------------------------
+
+objref parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, \
+    parsedConfigures, parsedModifications, parsedProjections, strUtil
+
+//------------------------------------------------------------------------------------------------------------
+// Public accessible
+//------------------------------------------------------------------------------------------------------------
+
+public init, open, toggleVerbose
+public parsedRun, parsedReports, parsedStimuli, parsedInjects, parsedConnects, parsedElectrodes, \
+    parsedConfigures, parsedModifications, parsedProjections
+
+//------------------------------------------------------------------------------------------------------------
+// Member function implementations
+//------------------------------------------------------------------------------------------------------------
+
+proc init() {
+    strUtil = new StringFunctions()
+
+    // note that since there should only be one Run object, we create nothing now.
+    parsedReports = new Map()
+    parsedStimuli = new Map()
+    parsedInjects = new Map()
+    parsedConnects = new Map()
+    parsedElectrodes = new Map()
+    parsedConfigures = new Map()
+    parsedModifications = new Map()
+    parsedProjections = new Map()
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Read the specified Config File, populating basic maps with the data read for now.
+ *
+ * @param $s1 Name of file to open and parse
+ * @param $2 verbose
+ */
+proc open() { local commentCheck, verbose  localobj configIn, sectionName, sectionType, tempBlock
+    verbose = 0
+    if( numarg() >= 2 ) {
+        verbose = $2
+    }
+
+    configIn = new File()
+    configIn.ropen( $s1 )
+
+    if( configIn.isopen == 0 ) {
+        terminate( "Error: Could not open BlueConfig file", $s1 )
+    }
+
+    //read line by line, branch off when encountering major block type: run, stimulus, report, stimulusinject, connect
+    strdef rawline
+    strdef strtemp
+    sectionType = new String()
+    sectionName = new String()
+
+    while( configIn.gets(rawline) >= 0 ) {
+        trim( rawline )
+
+        if( isEmpty(rawline) ) {
+            continue
+        }
+        if( isCommented(rawline) ) {
+            // This can skip whole section. It is a section if next line starts with {
+            sectionType.s = rawline
+            configIn.gets(rawline)
+            // { may be commented
+            strUtil.tail(rawline, "[ \t#]*", strtemp)
+            strUtil.left(strtemp, 1)
+
+            if( strcmp(strtemp, "{") == 0 ) {
+                if( verbose ) { print "   [SKIP] Section: ", sectionType.s }
+                while( ! isTerminated(rawline) && configIn.gets(rawline) >= 0 ) {
+                    strUtil.tail(rawline, "[ \t#]*", rawline)
+                }
+                continue
+            } else if ( isCommented(rawline) ) {
+                // If it's not a section and is commented, skip, otherwise parse normally
+                continue
+            }
+        }
+
+        //non-comment line, there should be a name along with the yet to be determined section type
+        sectionType.s = ""
+        sscanf( rawline, "%s%s", sectionType.s, sectionName.s )
+
+        //next line is open brace, so grab it now
+        configIn.gets(strtemp)
+        if ( verbose ) { print "  ConfigParser: Parsing section ", sectionType.s, ": ", sectionName.s }
+
+        if( strcmp( sectionType.s, "Run" ) == 0 ) {
+            if( object_id(parsedRun) > 0 ) {
+                //user is only allowed to declare one Run section in the config file
+                terminate("Error: multiple Run objects declared in config file")
+            }
+            parsedRun = parseBlock(configIn)
+        } else {
+            tempBlock = parseBlock( configIn )
+            if ( strcmp( sectionType.s, "Report" ) == 0 ) {
+                parsedReports.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "Stimulus" ) == 0 ) {
+                parsedStimuli.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "StimulusInject" ) == 0 ) {
+                parsedInjects.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "Connection" ) == 0 ) {
+                parsedConnects.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "Electrode" ) == 0 ){
+                parsedElectrodes.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "NeuronConfigure" ) == 0 ){
+                parsedConfigures.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "Modification" ) == 0 ) {
+                parsedModifications.put( sectionName, tempBlock )
+            } else if ( strcmp( sectionType.s, "Projection" ) == 0 ) {
+                parsedProjections.put( sectionName, tempBlock )
+            }
+        }
+    }
+
+    configIn.close
+}
+
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Generic method for parsing the field/value pairs bwteen the opening/closing braces in the config file
+ *
+ * @param $o1 File getting parsed
+ */
+obfunc parseBlock() { localobj pendingBlock, configIn, fieldName, fieldValue
+    strdef rawline
+    configIn = $o1
+    pendingBlock = new Map()
+
+    while( configIn.gets(rawline) >= 0 ) {
+        trim( rawline )
+        if( isEmpty(rawline) || isCommented(rawline) ) {
+            continue
+        }
+        if( isTerminated(rawline) ) {
+            return pendingBlock
+        }
+
+        //just grab the first string, then everything after that string
+        fieldName = new String()
+        fieldValue = new String()
+        sscanf( rawline, "%s", fieldName.s )
+        strUtil.tail( rawline, fieldName.s, fieldValue.s )
+
+        // Trim eventual leading white chars (trailing ones removed before split)
+        trimFront( fieldValue.s )
+
+        if( pendingBlock.exists(fieldName.s) ) {
+            terminate("Key defined twice in Config", fieldName.s)
+        }
+
+        //add to the map
+        pendingBlock.put( fieldName, fieldValue )
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/**
+ * Remove white space from start and end of a string
+ * @param $s1 string to get trimmed
+ */
+proc trimFront() {
+    strUtil.tail($s1, "[ \t]*", $s1)
+}
+
+
+proc trimBack() { local idx
+    strdef lastchar
+
+    while( strUtil.len($s1) ) {
+        lastchar=$s1
+        idx=strUtil.len($s1) - 1
+        strUtil.right(lastchar, idx)
+        if( strUtil.head(lastchar, "[ \t\n]", lastchar) > -1 ) {
+            strUtil.left($s1, idx)
+        } else {
+            break
+        }
+    }
+}
+
+
+proc trim() {
+    trimFront($s1)
+    trimBack($s1)
+}
+
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * @param $s1 Line to check for if it is commented or not
+ * @return 1 if the line is commented (first non-ws character is a '#') or 0 if not commented
+ */
+func isCommented() {
+    strdef temp
+    sscanf( $s1, "%s", temp )
+
+    //verify first non-ws charater is not '#'; otherwise, ignore whole line as comment
+    if( strUtil.substr( temp, "#" ) != 0 ) {
+        return 0
+    } else {
+        return 1
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * @param $s1 Line to check for if terminating close brace is present
+ * @return 1 if the line contains closing brace '}' to terminate section
+ */
+func isTerminated() {
+    strdef temp
+    sscanf( $s1, "%s", temp )
+
+    if( strcmp( temp, "}" ) != 0 ) {
+        return 0
+    } else {
+        return 1
+    }
+}
+
+func isEmpty() {
+    return ( strcmp($s1, "") == 0 || strcmp($s1, "\n") == 0 )
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * For all the maps stored in the ConfigParser, activate verbose logging so that any unexpected events are
+ * more descriptively printed to the console
+ */
+proc toggleVerbose() { local mapIndex, itemIndex  localobj mapList
+    parsedRun.toggleVerbose()
+
+    mapList = new List()
+    mapList.append( parsedReports )
+    mapList.append( parsedStimuli )
+    mapList.append( parsedInjects )
+    mapList.append( parsedConnects )
+    mapList.append( parsedElectrodes )
+    mapList.append( parsedConfigures )
+    mapList.append( parsedModifications )
+    mapList.append( parsedProjections )
+
+    for mapIndex=0, mapList.count()-1 {
+        mapList.o(mapIndex).toggleVerbose()
+        for itemIndex=0, mapList.o(mapIndex).count()-1 {
+            mapList.o(mapIndex).o(itemIndex).toggleVerbose()
+        }
+    }
+}
+
+endtemplate ConfigParser

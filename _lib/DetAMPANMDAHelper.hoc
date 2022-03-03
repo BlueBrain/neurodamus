@@ -1,0 +1,41 @@
+/**
+ * @file DetAMPANMDAHelper.hoc
+ * @brief Encapsulate any hoc actions that are necessary to instantiate this synapse type
+ * @author king
+ * @date 2015-04-16
+ * @remark Copyright © BBP/EPFL 2005-2015; All rights reserved. Do not distribute without further notice.
+ */
+
+/**
+ * This helper object will encapsulate the hoc actions needed to create a deterministic version of our excitatory synapse
+ */
+begintemplate DetAMPANMDAHelper
+
+objref synapse
+public synapse
+
+/**
+ * @param tgid gid of Postsynaptic cell
+ * @param synParameters set of paramters loaded from default nrn.h5
+ * @param x location of the synapse along the section (0<=x<=1)
+ * @param synapseID id assigned to this synapses within the cell's context
+ * @param baseSeed for random number generator
+ */
+proc init() { local tgid, x, synapseID, baseSeed  localobj synParams
+    tgid = $1
+    synParams = $o2
+    x = $3
+    synapseID = $4
+    baseSeed = $5
+
+    synapse = new DetAMPANMDA(x)
+    synapse.tau_d_AMPA = synParams.DTC
+    synapse.Use = abs( synParams.U )
+    synapse.Dep = abs( synParams.D )
+    synapse.Fac = abs( synParams.F )
+
+    synapse.synapseID = synapseID
+}
+
+endtemplate DetAMPANMDAHelper
+

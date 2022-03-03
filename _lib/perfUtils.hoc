@@ -1,0 +1,25 @@
+/**
+ * Utils to help performance tunning
+ * @author Leite
+ * @date 2018-Oct
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+//Include me in the beggining of any hoc file to be profiled
+// So that it instantiates and pauses the profiler when loading hoc and creating the model
+objref profileHelper, memUsage
+
+profileHelper = new ProfileHelper()
+{profileHelper.pause_profiling()}
+memUsage = new MemUsage()
+
+{load_file( "timeit.hoc" )}
+
+/**
+  * Prints mem and creates a time checkpoint.
+  * @param $s1 The stage name to timeit
+  */
+proc runtime_stats() {
+    memUsage.print_mem_usage()
+    if( numarg() == 1 ) timeit($s1) else timeit()
+}

@@ -1,0 +1,86 @@
+/**
+ * @file init.hoc
+ * @brief A launch script for dumping cell state after sim setup, using prcellstate()
+ * @author FPereira
+ * @date Sept-2018
+ * @remark Copyright © BBP/EPFL 2005-2018; All rights reserved. Do not distribute without further notice.
+ */
+
+//In place of init.hoc, use this to test things as they progress.
+//Sample bglib/bluebrain sequence
+
+// imports/loads
+{load_file( "nrngui.hoc" )}
+{load_file( "netparmpi.hoc" )}
+{load_file( "Node.hoc" )}
+{load_file( "ShowProgress.hoc" )}
+
+//objects for network creation
+objref cvode
+objref node, progress
+
+//read BlueConfig - default is "BlueConfig" unless the strdef variable 'configFile' is set at the global level
+configOverride = name_declared("configFile")
+if (configOverride == 4) {  //is a strdef, we can use that
+    node = new Node( configFile )
+} else {
+    if (configOverride != 0) {  //var is declared, but unhandled type: objref, scalar, or section; print a warning
+        // Note: I don't have the parallel net manager yet, and I don't want to print ncpu messages.  Defer the warning until later
+        warn = 1
+    }
+    node = new Node( "BlueConfig" )
+
+    if( warn ) {
+        node.log( "Warning: variable 'configFile' declared, but not as strdef.  Using default \"BlueConfig\"" )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+//read Targets (start.target/user.target)
+//-----------------------------------------------------------------------------------------------
+
+{node.log( "load targets" )} //targets after initial load are the same regardless of load balancing
+{node.loadTargets()}
+
+{node.computeLB()}
+
+{node.log( "create model for simulation" )}
+
+//-----------------------------------------------------------------------------------------------
+// create cells
+//-----------------------------------------------------------------------------------------------
+{node.createCells()}
+
+// Apply any cell value overrides as defined by user in BlueConfig
+{node.executeNeuronConfigures()}
+
+//-----------------------------------------------------------------------------------------------
+// create connections
+//-----------------------------------------------------------------------------------------------
+{node.log( "Create Synapses" )}
+{node.createSynapses()}
+{node.log( "Create GapJunctions" )}
+{node.createGapJunctions()}
+
+
+//-----------------------------------------------------------------------------------------------
+// use targets
+//-----------------------------------------------------------------------------------------------
+
+//we're going to have separate objects handling stimulus instantiation.  should they do it out here, or within
+// the Node object?  Should both options be available to the user?  The Node object handles declared stims in the BlueConfig
+// but the user has the option to create stims separately?
+
+//create stims
+{node.log( "Enable Stimulus" )}
+{node.enableStimulus()}
+
+//apply any modifications
+{node.log( "Enable Modifications" ) }
+{node.enableModifications()}
+
+node.dumpCellState("dbg")
+
+{node.cleanup()}
+quit()
+

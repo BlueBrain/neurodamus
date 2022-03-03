@@ -1,0 +1,5 @@
+Auks API request failed : krb5 cred : unable to read credential cache
+Autoloading reportinglib/2.5.6
+Autoloading hpe-mpi/2.25.hmpt
+Autoloading python/3.9.7
+python: can't open file '/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/neurodamus-py/tests/tests/test_sonata_config.py': [Errno 2] No such file or directory

@@ -1,4 +1,8 @@
 #!/bin/bash
+#SBATCH --account=proj45
+#SBATCH -C cpu
+#SBATCH --nodes=1
+#SBATCH --partition=prod
 set -euo pipefail
 unset $(set +x; env | awk -F= '/^(PMI|SLURM)_/ {print $1}' | xargs)
 TESTNAME=${1:-tests/test_sonata_config.py}

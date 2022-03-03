@@ -1,0 +1,50 @@
+/**
+ * @file ShowProgress.hoc
+ * @brief Implements a function which will cause the percentage complete of the simulation to periodically be printed to the console
+ * @author king
+ * @date 2010-03-16
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+begintemplate ShowProgress
+
+objref cvode, this
+public init, updateProgress
+
+external tstop
+
+/**
+ * Utility function which will set up a timer to perioducally check the amount of time lapsed
+ * in the simulation compared to the final tstop value.  This is converted into a percentage
+ * of the job complete which is then printed to the console.
+ * NOTE: Please build the timer after finitialize / stdinit
+ *
+ * @param $o1 Reference to cvode object
+ * @param $2 cpu rank, since only cpu id 0 needs to execute anything
+ */
+proc init() {
+    cvode = $o1
+
+    if( $2 == 0 ) {
+        lastTimeCheck = startsw()
+	simStart = lastTimeCheck
+        updateProgress()
+    }
+}
+
+/**
+ * Call back function that refreshes the progress value (if enough time has elapsed) and then
+ * inserts the next call into the event queue
+ */
+proc updateProgress() {
+    if( (startsw() - lastTimeCheck > 0.75) && (t > 0) ) {
+        lastTimeCheck = startsw()
+        NumSecRemain = (lastTimeCheck - simStart) * (tstop / t - 1)
+        printf("\r[t=%5.2f] Completed %2.f%% ETA: %02.f:%02.f:%02.f  ",\
+               t, (t*100/tstop), NumSecRemain/3600, NumSecRemain%3600/60, NumSecRemain%3600%60)
+    }
+
+    cvode.event(t+1, "updateProgress()")
+}
+
+endtemplate ShowProgress

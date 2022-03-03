@@ -1,0 +1,152 @@
+/**
+ * @file CompartmentMapping.hoc
+ * @brief Implement interface to register section segment mapping with NEURON.
+ * @remark Copyright © BBP/EPFL 2005-2017; All rights reserved. Do not distribute without further notice.
+ */
+
+{nrnpython( "import mapping" )}
+
+// global object which python will manipulate
+objref secvec
+objref segvec
+
+/*!
+ * Determine the absolute index of a section within the cell
+ * @param $o1 Cell object who owns the currently accessed section
+ * @return index which can be used to map back onto the neuron
+ */
+func sectionNo() { local baseOffset, secIndex  localobj str, strobj
+    strdef subset
+    str = new String()
+    strobj = new StringFunctions()
+
+    if( strobj.substr( secname(), "soma" ) > 0 ) {
+        subset = "soma"
+        baseOffset = 0
+    } else if (strobj.substr( secname(), "axon") >0) {
+        subset = "axon"
+        baseOffset = $o1.nSecSoma
+    }else if (strobj.substr( secname(), "dend") >0) {
+        subset = "dend"
+        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig
+    }else if (strobj.substr( secname(), "apic") > 0) {
+        subset = "apic"
+        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal
+    }
+
+    // parse out the index from the secname
+    strobj.tail( secname(), subset, str.s )
+    if (strobj.len(str.s) > 0) {
+        strobj.left(str.s, strobj.len(str.s)-1) // result should look like [n
+        strobj.right(str.s, 1)
+        sscanf( str.s, "%d", &secIndex )
+    } else {
+        // todo : abort on error here
+        print "Error while getting section number (should this ever happen?) !"
+    }
+
+    return baseOffset + secIndex
+}
+
+/*!
+ * Register section/segment mapping to NEURON for report generation
+ * todo : removing logic of target selection as its incomplete
+ * @param $o1 cellDistributor object
+ * @param $o2 target object
+ */
+
+proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic, nSec, nSeg, val \
+  localobj gidvec, cellref, pyobj, commstr, target, cellDistributor, pc
+
+  cellDistributor = $o1
+  //target = $o2
+
+  pyobj = new PythonObject()
+  commstr = new String()
+  pc = new ParallelContext()
+
+  // list of gids on current rank
+  gidvec = cellDistributor.getGidListForProcessor()
+
+  for cellIndex=0, gidvec.size()-1 {
+    activegid = gidvec.x[cellIndex]
+    cellref = cellDistributor.getCell(activegid)
+
+    // skip gids that we don't want to report, instead of skipping
+    // we should add a flag in mapping
+    //if(!target.contains(activegid)) {
+        //continue
+    //}
+
+    nSoma = 0
+    nAxon = 0
+    nDend = 0
+    nApic = 0
+    nSec = 0
+
+    // vectors holding section and segments
+    secvec = new Vector()
+    segvec = new Vector()
+
+    // gather all somas and register somas with neuron
+    forsec cellDistributor.getCell(activegid).somatic {
+        nSec = nSec + 1
+        val = sectionNo( cellref )
+        sprint( commstr.s, "mappinginfo = mapping.getNodeID(%d, %d)", val, nSoma )
+        nrnpython( commstr.s )
+        nSoma = pyobj.mappinginfo
+    }
+
+    pc.nrnbbcore_register_mapping(activegid, "soma", secvec, segvec )
+
+    // gather axonal compartments and register with neuron
+
+    nSec = 0
+    secvec = new Vector()
+    segvec = new Vector()
+
+    forsec cellDistributor.getCell(activegid).axonal {
+        nSec = nSec + 1
+        val = sectionNo( cellref )
+        sprint( commstr.s, "mappinginfo = mapping.getNodeID( %d, %d )", val, nAxon )
+        nrnpython( commstr.s )
+        nAxon = pyobj.mappinginfo
+    }
+
+    pc.nrnbbcore_register_mapping(activegid, "axon", secvec, segvec )
+
+
+    // gather basal compartments and register with neuron
+
+    nSec = 0
+    secvec = new Vector()
+    segvec = new Vector()
+
+    forsec cellDistributor.getCell(activegid).basal {
+        nSec = nSec + 1
+        val = sectionNo( cellref )
+        sprint( commstr.s, "mappinginfo = mapping.getNodeID( %d, %d )", val, nDend )
+        nrnpython( commstr.s )
+        nDend = pyobj.mappinginfo
+    }
+
+    pc.nrnbbcore_register_mapping(activegid, "dend", secvec, segvec )
+
+    nSec = 0
+    secvec = new Vector()
+    segvec = new Vector()
+
+    // gather apical compartments and register with neuron
+
+    forsec cellDistributor.getCell(activegid).apical {
+        nSec = nSec + 1
+        val = sectionNo( cellref )
+        sprint( commstr.s, "mappinginfo = mapping.getNodeID( %d, %d )", val, nApic )
+        nrnpython( commstr.s )
+        nApic = pyobj.mappinginfo
+    }
+
+    pc.nrnbbcore_register_mapping(activegid, "apic", secvec, segvec )
+
+  }  // end for gidIndex
+}

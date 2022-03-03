@@ -1,0 +1,181 @@
+/**
+ * @file SimSettings.hoc
+ * @brief To help co-ordinating simulations with NEURON and CoreNEURON.
+ * @remark Copyright © BBP/EPFL 2005-2017; All rights reserved. Do not distribute without further notice.
+ */
+
+{load_file("defvar.hoc")}
+{load_file("fileUtils.hoc")}
+
+simulatorMode = 0  // corresponds to NEURON
+objref coreneuronDataDir, coreneuronOutputDir
+
+
+begintemplate SimSettings
+
+public init, interpret, execResult
+public getSimulatorMode, generateData, runNeuron, getCoreneuronDataDir, coreNeuronUsed, getCoreneuronOutputDir, getMorphologyPath, getMorphologyExtension
+public NEURON, CORENEURON, NEURON_CORENEURON
+
+external simulatorMode, coreneuronDataDir, simulator, coreneuronOutputDir, ospath, terminate
+objref this
+objref morphologyPath, morphologyExtension
+
+/* BlueConfig can specify simulator mode : NEURON, CORENEURON or NEURON_CORENEURON
+ *
+ * NEURON     : Run simulation using NEURON (current default behaviour)
+ * CORENEURON : Build model with NEURON, dump dataset to disk and continue simulation with CoreNEURON
+ * NEURON_CORENEURON : Build model with NEURON, dump dataset to disk, run simulation with NEURON
+ *       and also run same simulation with CoreNEURON. This is more for debugging purpose and
+ *       comparing results between two simulators.
+ */
+
+// constants for simulation mode handling
+proc init() {
+    morphologyPath = new String()
+    morphologyExtension = new String()
+    NEURON = 0
+    CORENEURON = 1
+    NEURON_CORENEURON = 2
+}
+
+/**
+ * Given the Run block from a BlueConfig, check simulator to be used
+ * $o1 ParsedRun from a BlueConfig (type is Map)
+ */
+proc interpret() { localobj runInfo, pc, rng, commandString, configMorphPath
+    runInfo = $o1
+    pc = new ParallelContext()
+
+
+    if( runInfo.exists( "MorphologyPath" ) ) {
+        configMorphPath = runInfo.get( "MorphologyPath" )
+        if(runInfo.exists("MorphologyType")) {
+            morphologyExtension.s = runInfo.get( "MorphologyType" ).s
+            morphologyPath.s = configMorphPath.s
+            if( pc.id == 0 ) { print "MorphologyType specified in BlueConfig: ", morphologyExtension.s, ". Using full MorphologyPath: ", morphologyPath.s }
+        } else {
+            sprint(morphologyPath.s, "%s/ascii", configMorphPath.s)
+            morphologyExtension.s = "asc"
+            if( pc.id == 0 ) { print "No MorphologyType in BlueConfig, default to legacy 'asc'. MorphologyPath becomes: ", morphologyPath.s }
+        }
+    } else {
+        terminate( "MorphologyPath not available in the BlueConfig. Terminating" )
+    }
+
+    if( runInfo.exists( "Simulator" ) ) {
+        if( pc.id == 0 ) print "Taking Simulator mode from BlueConfig"
+        simulator = runInfo.get( "Simulator" ).s
+    }
+
+    // check if simulator option is set in BlueConfig, abort if invalid
+    if( strcmp( simulator, "NEURON" ) == 0 ) {
+        simulatorMode = NEURON
+    } else if( strcmp( simulator, "CORENEURON" ) == 0 ) {
+        simulatorMode = CORENEURON
+    } else if( strcmp( simulator, "NEURON_CORENEURON" ) == 0 ) {
+        simulatorMode = NEURON_CORENEURON
+    } else {
+        strdef errmsg
+        sprint( errmsg, "Invalid SimulatorMode '%s'; use NEURON, CORENEURON or NEURON_CORENEURON. Terminating", simulator)
+        terminate( errmsg )
+    }
+
+    // create directory for dumping dataset into separate directory inside OutputRoot
+    if( simulatorMode != NEURON ) {
+        // create directory for dumping coreneuron binary dataset
+        coreneuronDataDir = new String()
+        coreneuronOutputDir = new String()
+        sprint(coreneuronDataDir.s, "%s/coreneuron_input", runInfo.get( "OutputRoot" ).s )
+        sprint(coreneuronOutputDir.s, "%s/", runInfo.get( "OutputRoot" ).s )
+        if( pc.id() == 0 ) {
+            commandString = new String()
+            execResult = 0
+            sprint( commandString.s, "%s.execResult = checkDirectory( \"%s\" )", this, coreneuronOutputDir.s )
+            execute( commandString.s )
+            if( execResult < 0 ) {
+                strdef errmsg
+                sprint( errmsg, "Error while creating directory '%s'. Terminating.", coreneuronOutputDir.s)
+                terminate( errmsg )
+            }
+
+            // if we are Restoring, then we will reuse the datadirectory
+            if( runInfo.exists( "Restore" ) ) {
+                nrnpython( "import os" )
+                sprint( commandString.s, "os.symlink( os.path.realpath(\"%s/../coreneuron_input\"), \"%s\" )", runInfo.get( "Restore" ).s, coreneuronDataDir.s )
+                print commandString.s
+                nrnpython( commandString.s )
+            } else {
+              sprint( commandString.s, "%s.execResult = checkDirectory( \"%s\" )", this, coreneuronDataDir.s )
+              execute( commandString.s )
+              if( execResult < 0 ) {
+                strdef errmsg
+                sprint( errmsg, "Error while creating directory '%s'. Terminating.", coreneuronOutputDir.s)
+                terminate( errmsg )
+              }
+            }
+        }
+    }
+
+    if( pc.id() == 0 ) {
+        print "SimulatorMode set to '", simulator, "'"
+    }
+
+    if( runInfo.exists( "RandomizeGabaRiseTime" ) ) {
+        execute("{load_file(\"GABAABHelper.hoc\")}")
+        if( name_declared("randomize_Gaba_risetime") ) {
+            // Set the HOC global variable randomize_Gaba_risetime
+            strdef cmd
+            sprint( cmd, "randomize_Gaba_risetime=\"%s\"", runInfo.get( "RandomizeGabaRiseTime" ).s )
+            execute( cmd )
+        } else {
+            terminate( "Models don't support the parameter RandomizeGabaRiseTime, please load a newer version." )
+        }
+    }
+
+    pc.barrier()
+}
+
+func getSimulatorMode() {
+    return simulatorMode
+}
+
+// NEURON simulator mode doesn't need data generation
+func generateData() {
+    return (simulatorMode != NEURON)
+}
+
+// true if coreneuron is specified
+func coreNeuronUsed() {
+    return (simulatorMode != NEURON)
+}
+
+// Don't run NEURON if "exclusive" CoreNEURON mode specified
+func runNeuron() {
+    return (simulatorMode != CORENEURON)
+}
+
+// Directory where data will be dumped for CoreNEURON
+obfunc getCoreneuronDataDir() {
+    return coreneuronDataDir
+}
+
+// Directory where coreneuron will be output files
+obfunc getCoreneuronOutputDir() {
+    return coreneuronOutputDir
+}
+
+obfunc getMorphologyPath() {
+    return morphologyPath
+}
+
+obfunc getMorphologyExtension() {
+    return morphologyExtension
+}
+
+endtemplate SimSettings
+
+
+// Instantiate singleton  -  load_file() makes sure runs only once
+objref simConfig
+simConfig = new SimSettings()

@@ -1,0 +1,28 @@
+{nrnpython( "import shutil, os.path" )}
+
+
+
+// Use helper functions from python os.path
+objref _py, ospath, shutil
+_py = new PythonObject()
+ospath = _py.os.path
+shutil = _py.shutil
+
+
+
+///Utility function to nicely show error in rank 0 and call execerror to abort MPI
+proc terminate() { localobj outstr, pc
+    pc = new ParallelContext()
+    outstr = new String()
+    sprint(outstr.s, "[ ABORT ] %s", $s1)
+    if( numarg() >= 2 ) {
+        sprint(outstr.s, "%s: %s", outstr.s, $s2)
+    }
+    pc.barrier()
+    if( pc.id() == 0 ) {
+        execerror( outstr.s )
+    } else {
+        execerror()
+    }
+
+}

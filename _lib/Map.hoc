@@ -1,0 +1,334 @@
+/**
+ * @file Map.hoc
+ * @brief Generic associative container
+ * @author king
+ * @date 2009-07-07
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+/*!
+ * Generic associative container to allow field names to be mapped to values (stored in objects)
+ * for simplicity, this is not using any sorting or binary searching.  We should at least do a check
+ * for duplicate items (someday...)
+ */
+begintemplate Map
+
+//------------------------------------------------------------------------------------------------------------
+// Member fields
+//------------------------------------------------------------------------------------------------------------
+
+objref stringList, valueList, numericKeys, sortedLookup, prevItem
+strdef prevKey
+
+//------------------------------------------------------------------------------------------------------------
+// Public accessible
+//------------------------------------------------------------------------------------------------------------
+
+public init, get, put, key, keyValue, o, object, count, getV, valueOf, exists, toggleVerbose
+
+//------------------------------------------------------------------------------------------------------------
+// Member function implementations
+//------------------------------------------------------------------------------------------------------------
+
+proc init() { localobj nil
+    stringList = new List()
+    valueList = new List()
+    isSorted = 0
+    hasOnlyNumericKeys = 1
+    numericKeys = new Vector()
+    prevItem = nil
+    isCacheValid = 0
+    verbose = 0
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * @return The number of elements in the map
+ */
+func count() {
+    return stringList.count()
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * @param $1 index The index into the map from where to get a key
+ * @return The string used as a key at the specified index (no bounds checking)
+ */
+obfunc key() {
+    return stringList.o($1)
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Special version where the key is expected to be a value
+ *
+ * @param $1 index The index into the map from where to get a key
+ * @return The string used as a key at the specified index (no bounds checking)
+ */
+func keyValue() {
+    if( hasOnlyNumericKeys ) {
+        return numericKeys.x[$1]
+    }
+
+    print "cannot return a numeric key from map unless it contains only numeric keys"
+    return -1
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * also see 'object' below
+ * @param $1 index The index into the map from where to get an object
+ * @return The element at the specified index (no bounds checking)
+ */
+obfunc o() {
+    return valueList.o($1)
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * also see 'o' above
+ * @param $1 index The index into the map from where to get an object
+ * @return The element at the specified index (no bounds checking)
+ */
+obfunc object() {
+    return valueList.o($1)
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Temporary 'verbose' function for retrieving a value associated with a given name.  useful for debugging
+ *
+ * @param $s1/$o1 name of object to find
+ * @return value of object found or NULLobject if no name found
+ */
+obfunc getV() { local mapIndex localobj nil
+    //TODO: if we upgrade: objects should be stored sorted and then find via binary search
+
+    strdef searchName
+    if( argtype(1) == 0 ) {  // given numeric key, check if we can use pure numeric search operations
+        if( hasOnlyNumericKeys ) {
+            return binaryGet( $1 )
+        } else {
+            sprint( searchName, "%d", $1 )
+        }
+    } else if( argtype(1) == 1 ) { //extract string
+        searchName = $o1.s
+    } else {
+        searchName = $s1
+    }
+
+    print "look for ", searchName, " prev search was for ", prevKey
+    if( isCacheValid ) if( strcmp( prevKey, searchName ) == 0 ) {
+        return prevItem
+    }
+
+    //print "look for ", searchName
+    prevKey = searchName
+    prevItem = nil
+
+    //iterate over list until we find a name that matches
+    for mapIndex=0, stringList.count()-1 {
+        print stringList.o(mapIndex).s, " vs ", searchName
+        //print mapIndex, " ", stringList.o(mapIndex).s
+        if( strcmp( stringList.o(mapIndex).s, searchName ) == 0 ) {
+            print "    found at index ", mapIndex, "!"
+            prevItem = valueList.o(mapIndex)
+            isCacheValid = 1
+            return prevItem
+        }
+    }
+
+    // if we have reached here, then probably something is wrong (users should use 'exists' first for optional items)
+    if( verbose ) {
+        print "Warning: map key '", searchName, "' not found.\n"
+    }
+    isCacheValid = 0
+    return nil
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Retrieve value associated with a given name
+ *
+ * @param $s1/$o1 name of object to find
+ * @return value of object found or NULLobject if no name found
+ */
+obfunc get() { local mapIndex localobj nil
+    //TODO: if we upgrade: objects should be stored sorted and then find via binary search
+
+    strdef searchName
+    if( argtype(1) == 0 ) {  // given numeric key, check if we can use pure numeric search operations
+        if( hasOnlyNumericKeys ) {
+            return binaryGet( $1 )
+        } else {
+            sprint( searchName, "%d", $1 )
+        }
+    } else if( argtype(1) == 1 ) { //extract string
+        searchName = $o1.s
+    } else {
+        searchName = $s1
+    }
+
+    if( isCacheValid ) if( strcmp( prevKey, searchName ) == 0 ) {
+        return prevItem
+    }
+
+    //print "look for ", searchName
+    prevKey = searchName
+    prevItem = nil
+
+    //iterate over list until we find a name that matches
+    for mapIndex=0, stringList.count()-1 {
+        //print mapIndex, " ", stringList.o(mapIndex).s
+        if( strcmp( stringList.o(mapIndex).s, searchName ) == 0 ) {
+            //print "    found at index ", mapIndex, "!"
+            prevItem = valueList.o(mapIndex)
+            isCacheValid = 1
+            return prevItem
+        }
+    }
+
+    // if we have reached here, then probably something is wrong (users should use 'exists' first for optional items)
+    if( verbose ) {
+        print "Warning: map key '", searchName, "' not found.\n"
+    }
+    isCacheValid = 0
+    return nil
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/**
+ * If our map has only been using numeric keys, then we can use a binary search to find the associate item.
+ * If we can have duplicate numeric keys in a map, then this will break.
+ *
+ * @param $1 key we are looking for in the map
+ * @return found object or nil if not found
+ */
+obfunc binaryGet() { local low, high, mid, key  localobj nil
+    if( !isSorted ) {
+        //print "resort ", numericKeys.size(), " items"
+        sortedLookup = numericKeys.sortindex()
+        isSorted = 1
+    }
+
+    low = 0
+    high = sortedLookup.size()
+    key = $1
+
+    while ( low < high ) {
+        mid = int(( low+high)*0.5 )
+
+        //print key, " vs ", numericKeys.x[ sortedLookup.x[mid] ]
+        if( key > numericKeys.x[ sortedLookup.x[mid] ] ) { // must guess again, lower
+            low = mid+1
+        } else {
+            high = mid
+        }
+        //print "range ", low, " .. ", high
+    }
+
+    //did we stop somewhere?
+    //print low
+    if( high < sortedLookup.size() ) {
+        //print sortedLookup.x[low], numericKeys.x[ sortedLookup.x[low] ]
+        if( numericKeys.x[ sortedLookup.x[low] ] == key ) {  //found
+            return valueList.o( sortedLookup.x[low] )
+        }
+    }
+
+    //print "nil"
+    return nil
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Add new name/value pair to map
+ *
+ * @param $o1/$s1 Name used to identify pair
+ * @param $o2 Object containing value to associate with given name
+ */
+proc put() { localobj wrapString
+    //TODO: if we upgrade: check for duplicates and store new objects in lexographical order
+
+    if( argtype(1) == 0 ) {  //given number.  As long as only numeric keys are given, we can maintain info for binary searching
+        wrapString = new String()
+        sprint( wrapString.s, "%d", $1 )
+        stringList.append( wrapString )
+
+        if( hasOnlyNumericKeys ) {
+            numericKeys.append($1)
+            isSorted = 0
+        }
+    } else if( argtype(1) == 2 ) {  //must wrap string in object
+        wrapString = new String($s1)
+        stringList.append( wrapString )
+        hasOnlyNumericKeys = 0
+    } else {
+        stringList.append( new String($o1.s) ) //so as not to store a reference which might change
+        hasOnlyNumericKeys = 0
+    }
+
+    isCacheValid = 0
+    valueList.append( $o2 )
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to get a value from a Map associated with a given key and put it in a hoc primitive
+ *
+ * $s1 Field name - i.e. map key
+ * @return Value corresponding to the key
+ */
+func valueOf() { local tvalue  localobj tfield
+    tfield = get( $s1 )
+    sscanf( tfield.s, "%lf", &tvalue )
+    return tvalue
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Convenience function to determine if the map contains the given key.  Useful for testing if optional config
+ * parameters are present rather than testing if the result of the get operation is nil, albeit slower since it does
+ * two linear searches
+ *
+ * @param $1/$s1 Field name - e.g. map key
+ * @return 1 if the key is present, 0 if the key is not present
+ */
+func exists() {  local oldVerbose  localobj tfield
+
+    oldVerbose = verbose
+    verbose = 0
+    if( argtype(1) == 0 ) {
+        tfield = get($1)
+    } else {
+        tfield = get( $s1 )
+    }
+    verbose = oldVerbose
+
+    if( object_id(tfield,1) < 0 ) return 0
+    return 1
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Turns on/off verbose logging.  Useful for having only a single cpu report warnings so as not to get a flood
+ * of messages to the console
+ */
+proc toggleVerbose() {
+    verbose = 1-verbose
+}
+
+endtemplate Map
+

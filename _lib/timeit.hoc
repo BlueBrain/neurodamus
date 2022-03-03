@@ -1,0 +1,155 @@
+/**
+ * @file timeit.hoc
+ * @brief Utility to help with tracking the amount of time spent in certain parts of the simulator
+ * @author king
+ * @date 2011-02-08
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+begintemplate SetPString
+public s
+strdef s
+proc init() {
+    if (numarg()) { s = $s1 }
+}
+endtemplate SetPString
+
+objref setpvec, setpstr
+timeit_verbose=0
+setpvec = new Vector()
+setpstr = new List()
+
+
+/**
+ * Allow certain nodes (typically node 0) to toggle the display of timeit information during run rather than delaying until end of sim.
+ *
+ * @param $1 Verbose level: 0 for none, 1 for active
+ */
+func timeit_setVerbose() { local prev
+    prev = timeit_verbose
+    timeit_verbose = $1
+    return prev
+}
+
+/**
+ * Record the elapsed time since timeit was previously called, and then keep the current stopwatch time for the next call.
+ * Note that the first time timeit is called, it only does the second part.  If the string argument is provided, the elapsed
+ * time will be output during the call to prtime.  Therefore, calling timeit with no arguments is useful to reinit the timer if
+ * you are not interested in how much time has elapsed doing certain tasks
+ *
+ * e.g.
+ * timeit() // init timer
+ * do stuff...
+ * timeit( "Stuff done" ) // record elapsed time, will be printed at end of sim
+ * boring stuff...
+ * timeit()  // record elapsed time, but nothing output at end; ergo, timer effectively reset
+ * interesting stuff...
+ * timeit( "Interesting done" ) // record elaspsed time, will be printed at end of sim
+ *
+ * @param $s1 Optional label that indicated the recorded elapsed time should be printed during call to prtime
+ */
+proc timeit() {local i
+    setpstr.append(new SetPString())
+    i = setpvec.size-1
+    if (i >= 0) {
+        setpvec.x[i] = startsw() - setpvec.x[i]
+        if (numarg() > 0) { setpstr.object(i).s = $s1 }
+        if ( timeit_verbose == 1 ) {
+            printf("setpvec %d %30s %g\n", i, setpstr.object(i).s, setpvec.x[i])
+        }
+    }
+    setpvec.append(startsw())
+}
+
+objref timeit_accum_, timeit_start_, timeit_name_
+timeit_accum_ = new Vector()
+timeit_start_ = new Vector()
+timeit_name_ = new List()
+
+/**
+ * Register some event to the timeit system so that it is available for multiple future time recordings.  This
+ * is useful to time things that might happen repeatedly, but not always together. e.g. The time to create a
+ * neuron might be broken down into dicrete tasks to be timed separately.
+ *
+ * @param eventName
+ * @return ID for the event, to be passed into subsequent timeit functions such as timeit_start or timeit_add
+ */
+func timeit_register() {local n
+    timeit_name_.append(new SetPString($s1))
+    timeit_accum_.append(0)
+    timeit_start_.append(0)
+    return timeit_name_.count - 1
+}
+
+/**
+ * Start timing for the indicated event
+ *
+ * @param $1 ID for an event given to timeit_register
+ */
+proc timeit_start() {
+    timeit_start_.x[$1] = startsw()
+}
+
+/**
+ * Stop timing some event, adding the elapsed time to a running total
+ *
+ * @param $1 ID for an event given to timeit_register
+ */
+proc timeit_add() {
+    timeit_accum_.x[$1] += startsw() - timeit_start_.x[$1]
+    if ( timeit_verbose == 1 ) {
+        printf("accum %d %30s %g\n", $1, timeit_name_.object($1).s, timeit_accum_.x[$1])
+    }
+}
+
+
+
+/**
+ * Collect timing info and compute min and max time spent
+ * @param $o1 A ParallelContext object required for gathering data
+ */
+
+proc timeit_show_stats() { local i  localobj pc, tv, labels, tv_min, tv_max, tv_sum
+    pc = $o1
+    // All timings
+    tv = setpvec.c
+    tv.append(timeit_accum_)
+
+    if( tv.size() == 0 ) {
+        if( pc.id() == 0 ) { print "No timeit measurements recorded." }
+        return
+    }
+
+    // Compute min, max
+    tv_min = tv.c
+    pc.allreduce(tv_min, 3)
+    tv_max = tv.c
+    pc.allreduce(tv_max, 2)
+    tv_sum = tv.c
+    pc.allreduce(tv_sum, 1)
+
+    // Final computations and display
+    if( pc.id() == 0 ) {
+        // all labels
+        labels = new List()
+        for i=0, setpstr.count()-1 {
+            labels.append(setpstr.o(i))
+        }
+        for i=0, timeit_name_.count()-1 {
+            labels.append(timeit_name_.o(i))
+        }
+
+        printf("\n")
+        printf("+=========================== TIMEIT STATS ========================+\n")
+        printf("|           Event Label          | Avg.Time | Min.Time | Max.Time |\n")
+        printf("+-----------------------------------------------------------------+\n")
+        for i=0, tv.size()-1 {
+            if( strcmp(labels.o(i).s, "") ) {
+                printf("| %30.30s   %8.2f | %8.2f | %8.2f |\n", \
+                       labels.o(i).s, tv_sum.x[i] / pc.nhost(), tv_min.x[i], tv_max.x[i] )
+            }
+        }
+        printf("+-----------------------------------------------------------------+\n")
+    }
+
+}

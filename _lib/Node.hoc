@@ -1,0 +1,2110 @@
+/**
+ * @file Node.hoc
+ * @brief Initial version of a Node object to manage the structures necessary for a blue brain simulation
+ * @author king
+ * @date 2009-06-24
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+{load_file("nrngui.hoc")}
+{load_file("stdrun.hoc")}
+{load_file("SimSettings.hoc")}  // global options. loads defvar
+{load_file("loadbal.hoc")}
+{load_file("mcomplex.hoc")}
+{load_file("ConfigParser.hoc")}
+{load_file("TargetParser.hoc")}
+{load_file("TargetManager.hoc")}
+{load_file("CellDistributor.hoc")}
+{load_file("SynapseRuleManager.hoc")}
+{load_file("GapJunctionManager.hoc")}
+{load_file("ElectrodeManager.hoc")}
+{load_file("StimulusManager.hoc")}
+{load_file("SynapseReplay.hoc")}
+{load_file("Cell.hoc")}
+{load_file("TDistFunc.hoc")}
+{load_file("Report.hoc")}
+{load_file("timeit.hoc")}
+{load_file("ShowProgress.hoc")}
+{load_file("ModificationManager.hoc")}
+{load_file("CompartmentMapping.hoc")}
+{load_file("RNGSettings.hoc")}
+{load_file("fileUtils.hoc")}
+
+
+// BBSaveState() requires all mechanisms to have a no-args constructor
+// We test it right away to avoid late exceptions
+proc test_SaveState() { localobj tmp
+    tmp = new BBSaveState()
+}
+test_SaveState()
+
+
+begintemplate Node
+
+//-----------------------------------------------------------------------------------------------
+// Declare member variables
+//-----------------------------------------------------------------------------------------------
+
+public pnm, updateGJcon, targetParser
+
+objref targetManager, targetParser, cellDistributor, configParser, cellList, gidvec, stimList, reportList
+objref gjManager
+objref pnm, this, tmpCell, stimManager, elecManager, binReportHelper, sonataReportHelper, synapseRuleManager, connectionWeightDelayList
+
+// To assist coreneuron with multiple spike replays
+objref cnPatternFile
+
+external cvode, timeit, timeit_show_stats, timeit_setVerbose, timeit_register, timeit_start, timeit_add, profileHelper, simConfig, ospath, shutil, terminate, set_v_init, v_init
+
+//TODO: remove temp objects
+objref reportNames, coreConfig, outputDir, stimDict
+strdef tstr, default_population
+
+//-----------------------------------------------------------------------------------------------
+// Public members
+//-----------------------------------------------------------------------------------------------
+
+public tdat_
+public init, loadTargets, createCells, createGapJunctions, createSynapses, cleanup, basicStim, finalizeModel, prun, clearModel, log, exportLB, enableStimulus, enableReports, enableModifications, readNCS, spike2file, enableReplay, stimDict
+public computeLB, myid, openConfig, execResult, cellDistributor, configParser, cellList, getSynapseDataForGID, executeNeuronConfigures, checkResume, prCellGid, splitDataGeneration
+public postRestoreConfig, dumpCellState
+
+external stdinit, create_mcomplex, read_mcomplex, tstop, steps_per_ms
+external registerMapping
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+
+proc init() { local corenrn_sim, v_init_val  localobj parsedRun, rngInfo, commandString
+
+    //the user should pass a BlueConfig file name to this function so that it can be parsed.
+    // where should the data be stored?  In some parser object?  Or should a parser object read it but store elsewhere?
+    // don't implement now -- wait a little bit
+    execute("cvode = new CVode()")
+    //execute("cvode_active(1)")
+    pnm = new ParallelNetManager(0) //ncell to be determined later
+
+    // Configuration might have been externally built/modified
+    if( argtype(1) == 1 ) {
+        configParser = $o1
+    } else {
+        configParser = new ConfigParser()
+        configParser.open( $s1 )
+        if( pnm.myid == 0 ) {
+            print "Verbose rank toggled"
+            configParser.toggleVerbose()
+        }
+    }
+
+    // sometimes I want to redirect output to different files for different nodes
+    //redirect()
+
+    //set some basic information
+    parsedRun = configParser.parsedRun
+    if( !object_id(parsedRun) ) {
+        terminate( "No Run block parsed from BlueConfig", $s1 )
+    }
+
+    if( parsedRun.exists( "prCellGid" )) {
+        prCellGid = parsedRun.valueOf( "prCellGid")
+    } else {
+        prCellGid = -1
+    }
+
+    outputDir = parsedRun.get( "OutputRoot" )
+
+    // confirm outputDir exists and is usable -> use utility.mod
+    if( pnm.myid == 0 ) {
+        commandString = new String()
+        sprint( commandString.s, "%s.execResult = checkDirectory( \"%s\" )", this, outputDir.s )
+        execute( commandString.s )
+        if( execResult < 0 ) {
+            execerror( "Error with OutputRoot", outputDir.s)
+        }
+    }
+    pnm.pc.barrier()
+
+    // mod file object to write coreneuron config files
+    coreConfig = new CoreConfig(outputDir.s)
+
+    // simulation configurations parsed before RNGSettings
+    simConfig.interpret( parsedRun )
+    corenrn_sim = (simConfig.getSimulatorMode() == simConfig.CORENEURON)
+
+    // Make sure Random Numbers are prepped
+    rngInfo = new RNGSettings()
+    rngInfo.interpret( parsedRun )
+
+    tstop = parsedRun.valueOf( "Duration" )
+
+    myid = pnm.myid
+    dt = parsedRun.valueOf( "Dt" )
+    steps_per_ms = 1.0/dt
+
+    if( myid == 0 ) {
+        {timeit_setVerbose(1)}
+    }
+
+    // for now, the binReportHelper is also responsible for helping with save/restore.  In the future, maybe split these tasks?
+    if ( !simConfig.coreNeuronUsed() ) {
+        binReportHelper = new BinReportHelper( dt, !corenrn_sim )
+        sonataReportHelper = new SonataReportHelper( dt, !corenrn_sim )
+    }
+
+    if( parsedRun.exists( "V_Init" )) {
+        v_init_val = parsedRun.valueOf( "V_Init" )
+    } else {
+        v_init_val = -65
+    }
+    set_v_init(v_init_val)
+    sprint(tstr, "Setting v_init to %lf (mV)", v_init_val)
+    log(tstr)
+    if( parsedRun.exists( "Celsius" )) {
+        celsius = parsedRun.valueOf( "Celsius" )
+    } else {
+        celsius = 34
+    }
+    sprint(tstr, "Setting celsius to %lf degrees centigrade", celsius)
+    log(tstr)
+    execResult = 0
+
+    connectionWeightDelayList = new List()
+
+    // initialize this string, it will be populated later if there are any replays that coreneuron must handle
+    cnPatternFile = new String()
+
+    cellList = new List()  // will be returned by CellDistributor, but just to have a non-nil pointer
+    doneSetup = 0
+
+    default_population = "All"
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Tests if we are resuming from a bbsavestate.  This will modify the current t
+ */
+proc checkResume() { localobj bbss
+    initial_t = 0
+    if( configParser.parsedRun.exists( "Restore" ) ) {
+        bbss = new BBSaveState()
+        binReportHelper.restoretime( configParser.parsedRun.get("Restore").s )
+        sprint( tstr, "Recovered previous time of %f", t )
+        log(tstr)
+        initial_t = t
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * To facilitate CoreNeuron data generation, we allow users to use ProspectiveHosts to indicate that the CircuitTarget
+ * should be split among multiple, smaller targets. The split factor for the CircuitTarget can also be set by ModelBuildingSteps
+ *
+ * @return list with generated targets, or empty if no splitting was done
+ */
+obfunc splitDataGeneration() { local ncycles, nprospectivehosts, cycleIndex, gidIndex   localobj targetList, allgids, targetName, target, calculatedprospectivehosts
+    ncycles = 1
+    targetList = new List()
+    if( simConfig.getSimulatorMode() == simConfig.CORENEURON && (configParser.parsedRun.exists( "ProspectiveHosts" ) || configParser.parsedRun.exists( "ModelBuildingSteps" )) ) {
+        if( configParser.parsedRun.exists( "ModelBuildingSteps" ) ) {
+            ncycles = configParser.parsedRun.valueOf( "ModelBuildingSteps" )
+            nprospectivehosts = ncycles * pnm.pc.nhost
+            calculatedprospectivehosts = new String()
+            sprint( calculatedprospectivehosts.s, "%d", nprospectivehosts )
+            configParser.parsedRun.put("ProspectiveHosts",calculatedprospectivehosts)
+        } else {
+            nprospectivehosts = configParser.parsedRun.valueOf( "ProspectiveHosts" )
+            ncycles = int(nprospectivehosts / pnm.pc.nhost)
+            if( nprospectivehosts % pnm.pc.nhost != 0 ) {
+                ncycles = ncycles + 1
+            }
+        }
+
+        if( ncycles > 1 ) {
+            // this is to prevent neurodamus from quitting immediately after the loadbal stage
+            sprint( configParser.parsedRun.get( "ProspectiveHosts" ).s, "%d", pnm.pc.nhost )
+
+            if( ! configParser.parsedRun.exists( "CircuitTarget" ) ) {
+                terminate( "Multi-iteration coreneuron data generation requires CircuitTarget." )
+            }
+
+            // for each cycle, grab N cells (last stage will get remainder
+            targetName = configParser.parsedRun.get( "CircuitTarget" )
+            target = targetParser.getTarget( targetName.s )
+
+            allgids = target.completegids()
+
+            // create targets to be added to targetParser
+            for cycleIndex=0, ncycles-1 {
+                target = new Target()
+                sprint( target.name, "%s_%d", targetName.s, cycleIndex )
+                targetList.append( target )
+                targetParser.updateTargetList( target )
+            }
+            cycleIndex = 0
+            for gidIndex=0, allgids.size()-1 {
+                targetList.o(cycleIndex).gidMembers.append(allgids.x[gidIndex])
+                cycleIndex = cycleIndex+1
+                if( cycleIndex == ncycles ) {
+                    cycleIndex = 0
+                }
+            }
+        }
+    }
+
+    return targetList
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * This function has the simulator instantiate the circuit (cells & synapses) for the purpose
+ * of determining the best way to split cells and balance those pieces across the available cpus.
+ */
+proc computeLB() { local prospectiveHosts, doGenerate  localobj loadbal, runMode, cxinfo, cxinfoFileName, cxNrnPath, cxCircuitTarget,cxTargetFile, message, testmcomplex
+    log("[INFO] Configuring Load-Balance...")
+    if( ! configParser.parsedRun.exists("RunMode") ) {
+        if( simConfig.coreNeuronUsed() ) {
+            log( "RunMode not specified. Using WholeCell L.B. for CoreNEURON" )
+            runMode = new String("WholeCell")
+            configParser.parsedRun.put("RunMode", runMode)
+        } else {
+            log( "RunMode not specified. Will use Round-Robin distribution" )
+            return
+        }
+    } else {
+        runMode = configParser.parsedRun.get( "RunMode" )
+
+        if( strcmp( runMode.s, "LoadBalance" ) == 0 ) {
+            if( simConfig.coreNeuronUsed() ) {
+                log( "WARNING: LoadBalance changed to WholeCell for compat with CoreNEURON" )
+                runMode = new String("WholeCell")
+                configParser.parsedRun.put("RunMode", runMode)
+            } else {
+                log( "LoadBalancing enabled with multisplit capability" )
+            }
+        } else if ( strcmp( runMode.s, "WholeCell" ) == 0 ) {
+            log( "Whole Cell balancing enabled" )
+        } else {
+            sprint( tstr, "RunMode %s not used for load balancing.  Will use Round-Robin distribution", runMode.s )
+            log(tstr)
+            return
+        }
+    }
+
+    // Is there a cpu count override in the BlueConfig that tells us to load balance for a different cpu count?
+    prospectiveHosts = pnm.pc.nhost()
+    if( configParser.parsedRun.exists( "ProspectiveHosts" ) ) {
+        prospectiveHosts = configParser.parsedRun.valueOf( "ProspectiveHosts" )
+    }
+
+    // determine if we need to regen load balance info, or if it already exists for the given circuit configuration
+    doGenerate = 0
+
+    // to prevent excessive messages when the file is not there, have rank 0 handle file access
+    // TODO: there was an attempt to add additional conditions to determine when load balancing should be regenerated.
+    // This was buggy, and we should first add version checking to the cxinfo file before changing the format
+    if( pnm.myid == 0 ) {
+        cxinfoFileName = new String()
+        cxNrnPath = new String()
+        cxCircuitTarget = new String()
+        cxTargetFile = new String()
+        sprint( cxinfoFileName.s, "cxinfo_%d.txt", prospectiveHosts )
+        cxinfo = new File( cxinfoFileName.s )
+        {cxinfo.ropen()}
+        if( cxinfo.isopen() ) {  //verify data is the same
+            cxinfo.scanstr(cxNrnPath.s)
+            cxinfo.scanstr(cxCircuitTarget.s)
+            //cxinfo.scanstr(cxTargetFile.s)
+
+            if( strcmp( cxNrnPath.s, configParser.parsedRun.get( "nrnPath" ).s ) != 0 ) {
+                {log( "nrnPath has changed" )}
+                doGenerate = 1
+            }
+
+            // if there is no circuit target, cmp against "---"
+            if( configParser.parsedRun.exists( "CircuitTarget" ) ) {
+                if( strcmp( cxCircuitTarget.s, configParser.parsedRun.get( "CircuitTarget" ).s ) != 0 ) {
+                    {log( "CircuitTarget has changed")}
+                    doGenerate = 1
+                } else if ( strcmp( cxCircuitTarget.s, "---" ) == 0 ) {
+                    {log( "CircuitTarget has changed")}
+                    doGenerate = 1
+                }
+            }
+
+/*
+            if( configParser.parsedRun.exists( "TargetFile" ) ) {
+                print "testing ", configParser.parsedRun.get( "TargetFile" ).s, " vs ", cxTargetFile.s
+                if( strcmp( cxTargetFile.s, configParser.parsedRun.get( "TargetFile" ).s ) != 0 ) {
+                    {log( "TargetFile has changed")}
+                    doGenerate = 1
+                } else if ( strcmp( cxCircuitTarget.s, "---" ) == 0 ) {
+                    {log( "TargetFile has changed")}
+                    doGenerate = 1
+                }
+            }
+*/
+
+            cxinfo.close()
+        } else {
+            {log( "no cxinfo file")}
+            doGenerate = 1
+        }
+    }
+
+    // rank 0 broadcasts the fact whether we need to generate loadbalancing data or not via a Vector object
+    message = new Vector( 1, doGenerate )
+    pnm.pc.broadcast( message, 0 )
+    doGenerate = message.x[0]
+
+    // pre-existing load balance info is good.  We can reuse it, so return now (or quit if prospectiveHosts != ncpus)
+    if( !doGenerate ) {
+        {log( "Using existing load balancing info" )}
+        if( pnm.nhost == prospectiveHosts ) {
+            return
+        } else {
+            message = new String()
+            sprint( message.s, "Relaunch on a partition of %d cpus (as per ProspectiveHosts in BlueConfig)", prospectiveHosts )
+            terminate( message.s )
+        }
+    }
+
+    {log( "Generating loadbalancing data" )}
+
+    // Can we use an existing mcomplex.dat?  If mechanisms change, it needs to be regenerated.  Assume users will delete deprecated versions :)
+    doGenerate = 0
+    if( pnm.myid == 0 ) {
+        testmcomplex = new File()
+        if (!testmcomplex.ropen("mcomplex.dat")) {
+            doGenerate = 1
+        } else {
+            testmcomplex.close()
+
+            {log("Found mcomplex.dat; checking compatibility")}
+            // still need to confirm that mcomplex is compatible - attempt to use
+            if( execute1( "read_mcomplex( new LoadBalance() )" ) == 0 ) {
+                {log( "Must regenerate mcomplex.dat" )}
+                doGenerate = 1
+            }
+        }
+    }
+    message.x[0] = doGenerate
+    pnm.pc.broadcast( message, 0 )
+    doGenerate = message.x[0]
+
+    if( doGenerate ) {
+        {log( "Generate mcomplex.dat" )}
+        create_mcomplex()
+    } else {
+        {log( "Using existing mcomplex.dat" )}
+    }
+    loadbal = new LoadBalance()
+    read_mcomplex( loadbal )
+
+    {log( "instantiate cells Round Robin style" )}
+    {createCells( "RR" )}
+    {createSynapses()}
+    {createGapJunctions()}
+
+    //check if we are doing whole cell balancing which requires an override of a key value
+    if( strcmp( runMode.s, "WholeCell" ) == 0 ) {
+        cellDistributor.msfactor = 1e6
+    }
+
+    cellDistributor.printLBInfo( loadbal, prospectiveHosts )
+
+    // balancing calculations done, we can save the cxinfo file now for future usage
+    if( pnm.myid == 0 ) {
+        cxinfo.wopen()
+        if( !cxinfo.isopen() ) {
+            execerror( "Failed to open file for writing out cxinfo" )
+        }
+
+        cxinfo.printf( "%s\n", configParser.parsedRun.get( "nrnPath" ).s )
+        if( configParser.parsedRun.exists( "CircuitTarget" ) ) {
+            cxinfo.printf( "%s\n", configParser.parsedRun.get( "CircuitTarget" ).s )
+        } else {
+            cxinfo.printf( "---\n" )
+        }
+
+/*
+        if( configParser.parsedRun.exists( "TargetFile" ) ) {
+            cxinfo.printf( "%s\n", configParser.parsedRun.get( "TargetFile" ).s )
+        } else {
+            cxinfo.printf( "---\n" )
+        }
+*/
+
+        cxinfo.close()
+    }
+
+    // if loadbalance was calculated for different number of cpus, then we are done
+    if( prospectiveHosts != pnm.pc.nhost() ) {
+        message = new String()
+        sprint( message.s, "Loadbalancing computed for %d cpus.  Relaunch on a partition of that size", prospectiveHosts )
+        terminate( message.s )
+    }
+
+    //compute cell weights and calculate split points
+    {log( "clearing model" )}
+    {clearModel()}
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Provided that the circuit location is known and whether a user.target file has been specified,
+ * load any target files via a TargetParser.  Note that these will be moved into a TargetManager
+ * after the cells have been distributed, instantiated, and potentially split
+ */
+proc loadTargets() {
+    strdef startTarget
+
+    //use hard-coded locations for now. These should come from the BlueConfig file
+    targetParser = new TargetParser()
+    if( pnm.myid == 0 ) {
+        targetParser.isVerbose = 1
+    }
+
+    sprint( startTarget, "%s/%s", configParser.parsedRun.get("CircuitPath").s, "start.target" )
+    if( !ospath.isfile(startTarget) ) {
+        log("DEPRECATION WARNING: start.target shall be within CircuitPath. Within nrnPath is deprecated and will be removed")
+        sprint( startTarget, "%s/%s", configParser.parsedRun.get("nrnPath").s, "start.target" )
+    }
+    if( !ospath.isfile(startTarget) ) {
+        terminate("start.target not found! Check circuit.")
+    }
+    targetParser.open( startTarget )
+
+    if( configParser.parsedRun.exists("TargetFile") ) {
+        targetParser.open( configParser.parsedRun.get("TargetFile").s, 1 )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Provide a function which prints a message to the console
+ * @param $s1 Message to print from the debug node (0)
+ */
+proc log() {
+    if( pnm.myid == 0 ) {
+        print $s1
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * @param neuron built-in loadbal
+ */
+proc exportLB() {
+    cellDistributor.printLBInfo( $o1, pnm.pc.nhost() )
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * temp function?  load start.ncs getting the gids and the metypes for all cells in the base circuit
+ * (note that we may simulate less if there is a circuit target present in the blue config file)
+ *
+ * @param $s1 path to nrn files
+ * @param $o2 where gids should be stored
+ * @param $o3 where metypes should be stored
+ */
+proc readNCS() { local cellCount, gid, nErrors  localobj ncsIn, bvec, strUtil
+    strdef ncsFile, metype, commentCheck
+
+    log( "Node::readNCS will soon be deprecated.  Investigate CellDistributor for gid assignement, metype determination" )
+
+    sprint( ncsFile, "%s/start.ncs", $s1 )
+
+    strUtil = new StringFunctions()
+
+    ncsIn = new File()
+    {ncsIn.ropen( ncsFile )}
+
+    if( !ncsIn.isopen ) {
+        strdef errmsg
+        sprint ( errmsg, "Failed to open ncs file %s/start.ncs\n", $s1 )
+        terminate( errmsg )
+    }
+
+    $o2 = new Vector()
+    $o3 = new List()
+
+    // first lines might be comments.  Check for leading '#' (TODO: more robust parsing)
+    ncsIn.gets(tstr)
+    sscanf( tstr, "%s", commentCheck )
+    while( strUtil.substr( commentCheck, "#" ) == 0 ) {
+        ncsIn.gets(tstr)
+        sscanf( tstr, "%s", commentCheck )
+    }
+
+    //should have "Cells x"
+    sscanf(tstr, "%*s %d", &cellCount )	//parse out cell count
+
+    // sanity check -> did all cpus read the same count?  Use node 0 to confirm
+    bvec = new Vector()
+    if( pnm.myid == 0 ) {
+        bvec.append( cellCount )
+    } else {
+        bvec.append( -1 )
+    }
+    pnm.pc.broadcast( bvec, 0 )
+    nErrors = 0
+    if( bvec.x[0] != cellCount ) {
+        printf( "Error: cell count mismatch between nodes.  Node 0 has %d vs Node %d with %d\n", bvec.x[0], pnm.myid, cellCount )
+        nErrors = 1
+    }
+    nErrors = pnm.pc.allreduce( nErrors, 1 )
+
+    if( nErrors > 0 ) {
+        sprint( tstr, "File read failure, %d errors\n", nErrors )
+        terminate( tstr )
+    }
+
+    ncsIn.gets(tstr) // skip the '{'
+    for i=0, cellCount-1 { // significantly improvable
+
+        ncsIn.gets(tstr)
+        if (sscanf(tstr, " a%d %*d %*d %*s %s", &gid, metype ) != 2) {
+            //{sprint(tstr, "error in %s format: %s", "start.ncs", tstr)}
+            //print tstr
+            //execerror(tstr)
+            break
+        }
+
+        $o2.append(gid)
+        $o3.append( new String(metype) )
+
+    }//end of for
+
+    ncsIn.close
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Instantiate the cells of the network, handling distribution and any load balancing as needed.
+ * Any targets will be updated to know which cells are local to the cpu
+ *
+ * $s1 optional argument to override RunMode as "RR" or "LoadBalance"
+ */
+proc createCells() { local x, cellIndex  localobj synVec, target, nrnPath, allVec, allME, gidvec, nil, nc, morphPath, runMode, oldMode
+    log("[INFO] Instantiating cells...")
+    if( numarg() == 1 ) {
+        log( "override RunMode" )
+        if( ! configParser.parsedRun.exists( "RunMode" ) ) {
+            //wasn't specified to begin with, default to RR
+            runMode = new String( "RR" )
+            configParser.parsedRun.put( "RunMode", runMode )
+        } else {
+            runMode = configParser.parsedRun.get( "RunMode" )
+        }
+
+        oldMode = new String( runMode.s )
+        sprint( runMode.s, $s1 )
+    }
+
+    //read start.ncs from the nrnPath
+    nrnPath = configParser.parsedRun.get( "nrnPath" )
+    //readNCS( nrnPath.s, allVec, allME )
+
+    //will LoadBalancing need the pnm during distribution?  maybe not round-robin, but maybe split cell?
+    cellDistributor = new CellDistributor( allVec, allME, configParser, targetParser, pnm )
+
+    //cellList = new List()
+
+    //instantiate full cells -> should this be in CellDistributor object?  depends on how split cases work
+    gidvec = cellDistributor.getGidListForProcessor()
+    cellList = cellDistributor.cellList
+
+    /* move all this to CellDist
+    morphPath = configParser.parsedRun.get( "MorphologyPath" )
+
+    for cellIndex=0, gidvec.size()-1 {
+
+        //when we need to dynamically determine which cell to instantiate, use sprint & execute
+        sprint( tstr, "tmpCell = new %s( %d, \"%s/ascii/\" )", cellDistributor.getMETypeFromGid( gidvec.x[cellIndex] ).s, gidvec.x[cellIndex], morphPath.s )
+        execute( tstr, this )
+
+        cellList.append( tmpCell )
+        pnm.cells.append( tmpCell.CellRef )
+
+        tmpCell = nil
+    }*/
+
+    if( pnm.myid == 0 ) {
+        print "  - Created ", pnm.cells.count(), " cells"
+    }
+
+    // localize targets, give to target manager
+    targetParser.updateTargets( gidvec )
+
+    //give a TargetManager the TargetParser's completed targetList
+    targetManager = new TargetManager( targetParser.targetList, cellDistributor )
+
+    //Let the CellDistributor object have any final say in the cell objects (e.g. discard certain sections)
+    cellDistributor.finalize( cellList )
+
+    if( numarg() ==1 ) {  //restore original if there was any override
+        sprint( runMode.s, "%s", oldMode.s )
+    }
+}
+
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Creates connections according to loaded parameters featuring in Connection blocks of BlueConfig
+ */
+proc createGroupConnections() { \
+    local connectIndex  \
+    localobj spConnect, connSrc, connDst
+    log("[INFO] Creating Group Connections...")
+
+    for connectIndex=0, configParser.parsedConnects.count()-1 {
+        spConnect = configParser.parsedConnects.o(connectIndex)
+
+        // Connection blocks using a 'Delay' option are handled later
+        if( spConnect.exists( "Delay" ) ) if ( spConnect.valueOf("Delay") > 0 ) {
+            continue
+        }
+
+        connSrc = spConnect.get( "Source" )
+        connDst = spConnect.get( "Destination" )
+
+        // check if we are not supposed to create (only configure later)
+        if( spConnect.exists( "CreateMode" )) \
+                if( strcmp( spConnect.get( "CreateMode" ).s, "NoCreate") == 0 ) {
+            continue
+        }
+
+        if( spConnect.exists( "SynapseID" ) ) {
+            synapseRuleManager.connectGroup( \
+                 connSrc.s, connDst.s, spConnect.valueOf("SynapseID") )
+        } else {
+            synapseRuleManager.connectGroup( connSrc.s, connDst.s )
+        }
+    }
+}
+
+/*!
+ * Configure-only circuit connections according to BlueConfig Connection blocks
+ */
+proc configureConnections() { local connectIndex \
+    localobj spConnect, connSource, connDestination, message
+    log("[INFO] Configuring Connections...")
+
+    for connectIndex=0, configParser.parsedConnects.count()-1 {
+        spConnect = configParser.parsedConnects.o(connectIndex)
+
+        // Connection blocks using a 'Delay' option are handled later
+        if( spConnect.exists( "Delay" ) ) if ( spConnect.valueOf("Delay") > 0 ) {
+            continue
+        }
+
+        connSource = spConnect.get( "Source" )
+        connDestination = spConnect.get( "Destination" )
+
+        message = new String()
+        sprint( message.s, "  * Pathway %s -> %s", connSource.s, connDestination.s )
+        if( spConnect.exists( "SynapseConfigure" ) ) {
+            sprint( message.s , "%s: Configure with '%s'", message.s, \
+                     spConnect.get("SynapseConfigure").s )
+        }
+        log( message.s )
+
+        // Configure group
+        // Note, we dont pass SynapseID since those synapses were not created in the first place
+        synapseRuleManager.configureGroup( connSource.s, connDestination.s, spConnect )
+
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+proc createGapJunctions() {  local projIndex  localobj nrnPath, circuitTarget, projection
+    log("[INFO] Creating Gap Junctions...")
+    if( configParser.parsedRun.exists("CircuitTarget") ) {
+        circuitTarget = targetManager.getTarget( configParser.parsedRun.get("CircuitTarget").s )
+    }
+
+    for projIndex=0, configParser.parsedProjections.count()-1 {
+        projection = configParser.parsedProjections.o(projIndex)
+
+        // check if this Projection block is for gap junctions
+        if( projection.exists( "Type" ) ) if( strcmp( projection.get( "Type" ).s, "GapJunction" ) == 0 ) {
+            nrnPath = projection.get( "Path" )
+            log( nrnPath.s )
+
+            // use connectAll for gj_manager
+            if( object_id( gjManager, 1 ) != -1 && pnm.myid == 0 ) {
+                print "Error: neurodamus can only support loading one gap junction file."
+            }
+
+            gjManager = new GapJunctionManager( nrnPath.s, targetManager, 1, circuitTarget )
+            gjManager.connectAll( cellDistributor.getGidListForProcessor(), 1 )
+        }
+    }
+
+    if( object_id( gjManager, 1 ) != -1 ) {
+        gjManager.finalizeGapJunctions()
+    }
+}
+
+// Update GJ conductance
+
+proc updateGJcon(){
+    if( object_id( gjManager, 1 ) != -1 ) {
+        gjManager.updateCond($1)
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Create synapses among the cells, handling any connection blocks that appear in the config file
+ */
+proc createSynapses() { local connectIndex, projIndex, nSynapseFiles, timeID, gidIndex, nSourced, delayIndex \
+    localobj nrnPath, synMode, projSource, projection, fileTest, fileName, gidvec, countVec, connObj, delayItem
+
+    //quick check - if we have a single connect block and it sets a weight of zero, can skip synapse creation
+    // in its entirety.  This is useful for when no nrn.h5 exists, so we don't error trying to init hdf5 reader.
+    // This may not be the cleanest solution.  Will keep on backburner
+    if( configParser.parsedConnects.count() == 1 ) {
+        if( configParser.parsedConnects.o(0).valueOf( "Weight" ) == 0 ) {
+            return
+        }
+    }
+
+    //do I need the synapse reader outside this function?
+    nrnPath = configParser.parsedRun.get("nrnPath")
+    if( configParser.parsedRun.exists( "SynapseMode" ) ) {
+        synMode = configParser.parsedRun.get("SynapseMode")
+    }
+
+    // note - with larger scale circuits, we may divide synapses among several files.  Need to know how many from the BlueConfig
+    // TODO: determine number of synapse files from nrn.h5.0; it has an info dataset where that count is stored
+    nSynapseFiles = 1
+    // For compat, look inside directories for multi nrn.h5
+    if( ospath.isdir(nrnPath.s) ) {
+        if( configParser.parsedRun.exists( "NumSynapseFiles" ) ) {
+            nSynapseFiles = configParser.parsedRun.valueOf( "NumSynapseFiles" )
+        }
+
+        // Even if the user specifies how many synapse files there are, override if we have the single nrn.h5 file
+        fileName = new String()
+        sprint( fileName.s, "%s/nrn.h5", nrnPath.s )
+        if( ospath.isfile(fileName.s) ) {
+            nSynapseFiles = 1
+        }
+    }
+
+    timeID = timeit_register( "Synapse init" )
+    timeit_start( timeID )
+    if( object_id(synMode) == 0 ) {
+        synapseRuleManager = new SynapseRuleManager( nrnPath.s, targetManager, nSynapseFiles )  //use default synMode, DUAL_SYNS at last check
+    } else {
+        synapseRuleManager = new SynapseRuleManager( nrnPath.s, targetManager, nSynapseFiles, synMode.s )
+    }
+    timeit_add( timeID )
+
+    // allow for a separate mask file to control which synapses are created
+    if( configParser.parsedRun.exists( "SynapseMask" ) ) {
+        synapseRuleManager.openMaskFile( configParser.parsedRun.get( "SynapseMask" ) )
+    }
+
+    if( configParser.parsedConnects.count() == 0 ) {
+        synapseRuleManager.connectAll()
+    } else {
+        // Do a quick scan for any ConnectionBlocks with 'Delay' keyword and put a reference on a separate list
+        // to be adjusted until later.  Note that this requires that another connection
+        // block without a delay will connect the cells.
+        for connectIndex=0, configParser.parsedConnects.count()-1 {
+            connObj = configParser.parsedConnects.o(connectIndex)
+            if( connObj.exists( "Delay" ) ) if( connObj.valueOf( "Delay" ) > 0 ) {
+                connectionWeightDelayList.append( connObj )
+            }
+        }
+
+        // Now handle the connection blocks as normal
+        createGroupConnections()
+    }
+
+    //Check for additional synapse files.  Now requires a connection block.
+    // Continue support for compatibility, but new BlueConfigs should use Projection blocks
+    if( configParser.parsedRun.exists( "BonusSynapseFile" ) ) {
+        log( "Handle Bonus synapse file" )
+        nSynapseFiles = 1
+        if( configParser.parsedRun.exists( "NumBonusFiles" ) ) {
+            nSynapseFiles = configParser.parsedRun.valueOf( "NumBonusFiles" )
+        }
+        synapseRuleManager.openSynapseFile( configParser.parsedRun.get( "BonusSynapseFile" ).s, nSynapseFiles, 0 )
+        if( configParser.parsedConnects.count() == 0 ) {
+            synapseRuleManager.connectAll()
+        } else {
+            createGroupConnections()
+        }
+    }
+
+    // Check for Projection blocks
+    if( configParser.parsedProjections.count() > 0 ) {
+        log( "[INFO] Handling Projections" )
+    }
+
+    for projIndex=0, configParser.parsedProjections.count()-1 {
+        nSynapseFiles = 1
+        projection = configParser.parsedProjections.o(projIndex)
+        if( projection.exists( "NumSynapseFiles" ) ) {
+            nSynapseFiles = projection.valueOf( "NumSynapseFiles" )
+        }
+
+        // check if this Projection block is for gap junctions
+        if( projection.exists( "Type" ) ) if( strcmp( projection.get( "Type" ).s, "GapJunction" ) == 0 ) {
+            continue
+        }
+
+        // Do we have a populationID field? (interim support until natively contained in synapse file)
+        if( projection.exists( "PopulationID" )) {
+            // Note that for this interim, only source (pre) population id is queried.
+            // In the future, the input files should supply both spopid and tpopid
+            synapseRuleManager.selectPopulation(projection.valueOf("PopulationID"),0)
+        } else {
+            synapseRuleManager.selectPopulation(0,0)
+        }
+
+        nrnPath = findProjectionFiles( projection )
+        synapseRuleManager.openSynapseFile( nrnPath.s, nSynapseFiles, 0 )
+
+        // A 'Source' field is provided that indicates a target name that contains all the gids used by the
+        // presynaptic cells of the projection. If no Connection blocks use that source, create all projections; otherwise, limit
+        projSource = configParser.parsedProjections.key(projIndex)
+        if ( projection.exists( "Source" ) ) {
+            projSource = projection.get("Source")
+        }
+
+        nSourced=0
+        for connectIndex=0, configParser.parsedConnects.count()-1 {
+            connObj = configParser.parsedConnects.o(connectIndex)
+            if( strcmp( connObj.get( "Source" ).s, projSource.s ) == 0 ) {
+                nSourced = nSourced + 1
+            }
+        }
+
+        if( nSourced == 0 ) {
+            synapseRuleManager.connectAll()
+        } else {
+            createGroupConnections()
+        }
+    }
+
+    // Apply the connection parameters in BlueConfig to all created connections in one go
+    configureConnections()
+
+
+    //Check if we need to override the base seed for synapse RNGs
+    if( configParser.parsedRun.exists("BaseSeed") ) {
+        synapseRuleManager.finalizeSynapses( configParser.parsedRun.valueOf("BaseSeed") )
+    } else {
+        synapseRuleManager.finalizeSynapses()
+    }
+
+    // process delayed connect block initialization - this should be done
+    // before finitialize, such that net_send can be called appropriately
+    synapseRuleManager.setupDelayedConnections(connectionWeightDelayList, cellDistributor.getGidListForProcessor() )
+
+    // debug: how many total synapses on node 0, all ranks
+    countVec = new Vector(1)
+    gidvec = cellDistributor.getGidListForProcessor()
+    for gidIndex=0, gidvec.size()-1 {
+        countVec.x[0] += cellDistributor.getMEType(gidvec.x[gidIndex]).synlist.count()
+    }
+
+    if( pnm.myid == 0 ) {
+        print "Done synapses.  Rank 0 has ", countVec.x[0], " local"
+    }
+    pnm.pc.allreduce(countVec, 1)
+    if( pnm.myid == 0 ) {
+        print "    All ranks have ", countVec.x[0], " global"
+    }
+
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Determine where to find the synapse files.  Try relative path first.  Then check for
+ * ProjectionPath field in Run, finally use CircuitPath
+ * We accept a file or dir. If dir then look for proj_nrn.h5 (legacy mode)
+ *
+ * @param $o1 projection Reference to active projection block being processed
+ */
+obfunc findProjectionFiles() { localobj projection, nrnPath, strobj, helper
+    projection = $o1
+
+    strobj = new StringFunctions()
+    nrnPath = new String( projection.get( "Path" ).s )
+    helper = new String( projection.get( "Path" ).s )
+
+    strobj.left( helper.s, 1 )
+
+    if( strcmp( helper.s, "/" ) == 0 ) {
+        // if leading slash '/' then absolute path -> can be used immediately
+    } else if( configParser.parsedRun.exists( "ProjectionPath" ) ) {
+        sprint( nrnPath.s, "%s/%s", configParser.parsedRun.get("ProjectionPath").s, nrnPath.s )
+    } else {
+        sprint( nrnPath.s, "%s/%s", configParser.parsedRun.get( "CircuitPath" ).s, nrnPath.s )
+    }
+
+    // If not file, look inside for proj_nrn.h5
+    if( ! ospath.isfile(nrnPath.s)) {
+        sprint( nrnPath.s, "%s/proj_nrn.h5", nrnPath.s )
+    }
+
+    if( ! ospath.isfile(nrnPath.s) ) {
+        terminate( "Could not find projection file", projection.get("Path").s )
+    }
+
+    log( nrnPath.s )
+    return nrnPath
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * For use with intrinsic load balancing.  After creating and evaluating the network using round robin distribution,
+ * we want to clear the cells and synapses in order to have a clean slate on which to instantiate the balanced cells.
+ * Clears appropriate lists and other stored references.
+ */
+proc clearModel() { local cellIndex  localobj nil, bbss
+    pnm.pc.gid_clear()
+	pnm.nclist.remove_all
+	pnm.cells.remove_all()
+    //return
+    for cellIndex=0, cellList.count()-1 {
+        cellList.o(cellIndex).clear()
+    }
+    cellList.remove_all()
+
+    //remove the synapseRuleManager to destroy all underlying synapses/connections
+    synapseRuleManager = nil
+    gjManager = nil
+    connectionWeightDelayList = new List()
+
+    //topology()
+
+    //clear reports
+    if( object_id(reportList,1) != -1 ) {
+        reportList.remove_all()
+    }
+
+    //reset time.  It advanced beyond 0 while computing complexities
+    t = 0
+
+    // make sure nothing is marked to be ignored under savestate
+    bbss = new BBSaveState()
+    bbss.ignore()
+
+    // remove reports if any added
+    if ( !simConfig.coreNeuronUsed() ) {
+        binReportHelper.clear()
+        sonataReportHelper.clear()
+    }
+
+    // prepare for next model (maybe this should go somewhere else?)
+    // mod file object to write coreneuron config files
+    coreConfig = new CoreConfig()
+}
+
+//-----------------------------------------------------------------------------------------------
+
+func scanStimuli() { local hasExtraCellular, stimIndex  localobj stimName, stim
+    if( nrnpython("") == 1 ) {
+        log( "Build Stim Dictionary" )
+        stimDict = new PythonObject()
+        stimDict = stimDict.dict()
+        for stimIndex=0, configParser.parsedStimuli.count()-1 {
+            stimName = configParser.parsedStimuli.key(stimIndex)
+            stim = configParser.parsedStimuli.o(stimIndex)
+            stimDict.setdefault( stimName.s, stim )
+
+            if( strcmp( stim.get( "Mode" ).s, "Extracellular" ) == 0 ) {
+                hasExtraCellular = 1
+            }
+        }
+    }
+
+    return hasExtraCellular
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Iterate over any stimuli/stim injects defined in the config file given to the simulation and instantiate them.
+ * This iterates over the injects, getting the stim/target combinations and passes the raw text in field/value pairs
+ * to a StimulusManager object to interpret the text and instantiate an actual stimulus object.
+ */
+proc enableStimulus() { local hasExtraCellular, timeID, stimIndex, injIndex, timeshift, replayCount \
+    localobj injRequests, stimName, targetName, stim, synReplay, elecPath, simMode, cnPatternOut, nil
+
+    //setup of Electrode objects part of enable stimulus
+    if( configParser.parsedRun.exists("ElectrodesPath") ) {
+        elecPath = configParser.parsedRun.get("ElectrodesPath")
+    }
+    elecManager = new ElectrodeManager( elecPath, configParser.parsedElectrodes)
+    //for each stimulus defined in the config file, request the stimmanager to instantiate
+    if( configParser.parsedRun.exists( "BaseSeed" ) ) {
+        stimManager = new StimulusManager( targetManager, elecManager, configParser.parsedRun.valueOf( "BaseSeed" ) )
+    } else {
+        stimManager = new StimulusManager( targetManager, elecManager )
+    }
+
+    //print what stims we have
+    injRequests = configParser.parsedInjects
+
+    // build a dictionary of stims for faster lookup : useful when applying 10k+ stims
+    // while we are at it, check if any stims are using extracellular
+    hasExtraCellular = scanStimuli()
+
+    //Treat extracellular stimuli
+    if( hasExtraCellular ) {
+        stimManager.interpretExtracellulars(injRequests,configParser.parsedStimuli)
+    }
+
+    timeID = timeit_register( "Replay init" )
+    for injIndex=0, injRequests.count()-1 {
+
+        targetName = injRequests.o(injIndex).get( "Target" )
+        stimName = injRequests.o(injIndex).get( "Stimulus" )
+
+        //print "apply ", stimName.s, " to ", targetName.s
+        if( nrnpython("") == 1 ) {
+            stim = stimDict.get( stimName.s )
+        } else {
+            stim = configParser.parsedStimuli.get( stimName )
+        }
+
+        // check the pattern for special cases that are handled here.
+        if( strcmp( stim.get( "Pattern" ).s, "SynapseReplay" ) == 0 ) {
+            // skip - will handle after all others
+        } else {  //all other patterns the stim manager will interpret
+            if( strcmp( stim.get( "Pattern" ).s, "NPoisson" ) == 0 ) {
+                log("NPoisson stim is deprecated. Please consider using Replay on projections")
+            }
+            stimManager.interpret( targetName.s, stim )
+        }
+    }
+
+    enableReplay()
+
+    if( numarg() == 0 ) {
+        elecManager.clear()
+        elecManager = nil
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Iterate over any stimuli/stim injects defined in the config file given to the simulation and instantiate them.
+ * This iterates over the injects, getting the stim/target combinations and passes the raw text in field/value pairs
+ * to a StimulusManager object to interpret the text and instantiate an actual stimulus object.
+ */
+proc enableReplay() { local timeID, stimIndex, injIndex, timeshift, replayCount \
+    localobj injRequests, stimName, targetName, stim, synReplay, elecPath, simMode, cnPatternOut, lastReplay, pycopy, nil
+
+    //print what stims we have
+    injRequests = configParser.parsedInjects
+
+    // build a dictionary of stims for faster lookup : useful when applying 10k+ stims
+    {scanStimuli()}
+
+    if( simConfig.generateData() ) {
+        replayCount = 0
+        cnPatternFile = new String()
+        sprint( cnPatternFile.s, "%s/pattern.dat", configParser.parsedRun.get( "OutputRoot" ).s )
+        log ("Creating pattern.dat file for CoreNEURON")
+
+        // count how many replays to simplify CoreNEURON workflow
+        for injIndex=0, injRequests.count()-1 {
+            targetName = injRequests.o(injIndex).get( "Target" )
+            stimName = injRequests.o(injIndex).get( "Stimulus" )
+
+            if( nrnpython("") == 1 ) {
+                stim = stimDict.get( stimName.s )
+            } else {
+                stim = configParser.parsedStimuli.get( stimName )
+            }
+
+            // check the pattern for special cases that are handled here.
+            if( strcmp( stim.get( "Pattern" ).s, "SynapseReplay" ) == 0 ) {
+                replayCount = replayCount + 1
+                lastReplay = stim
+            }
+        }
+
+        if( replayCount == 0 ) {
+            log("No Replay sources set, skipping '--pattern' file")
+            sprint(cnPatternFile.s, "")
+        } else if( replayCount == 1 ) {
+            log( "Single Replay file detected. Using copy command" )
+            if( pnm.myid == 0 ) {
+                shutil.copy2( lastReplay.get("SpikeFile").s, cnPatternFile.s )
+            }
+            return
+        } else {
+            log( "Multiple Replays detected. Will merge into one for CoreNEURON" )
+        }
+    }
+
+    timeID = timeit_register( "Replay init" )
+    replayCount = 0
+    for injIndex=0, injRequests.count()-1 {
+
+        targetName = injRequests.o(injIndex).get( "Target" )
+        stimName = injRequests.o(injIndex).get( "Stimulus" )
+
+        //print "apply ", stimName.s, " to ", targetName.s
+        if( nrnpython("") == 1 ) {
+            stim = stimDict.get( stimName.s )
+        } else {
+            stim = configParser.parsedStimuli.get( stimName )
+        }
+
+        // check the pattern for special cases that are handled here.
+        if( strcmp( stim.get( "Pattern" ).s, "SynapseReplay" ) == 0 ) {
+
+            timeit_start( timeID )
+            //Note, maybe I should let the StimulusManager have a reference to the SynapseRuleManager.  Then I can move all this into that obj
+            // I could then have the logic of Delay/Duration added in a more appropriate place (for now, there is no delay/duration handling, but
+            // it might be nice to be able to allow only spikes that occur within a given window to be replayed)
+            //timeID = timeit_register( "Replay init" )
+            timeshift = 0
+            if( stim.exists( "Timing" ) ) {
+                if( strcmp( stim.get( "Timing" ).s, "Absolute" ) == 0 ) {
+                    timeshift = 0
+                } else {
+                    if( simConfig.generateData() ) {
+                        terminate( "ERROR: Replay 'Timing' option for CoreNEURON only supports Absolute" )
+                    }
+                    timeshift = t
+                }
+            }
+
+            synReplay = new SynapseReplay( synapseRuleManager, stim.get( "SpikeFile" ).s, timeshift, pnm.myid == 0  )
+
+            timeit_add( timeID )
+
+            timeID = timeit_register( "Replay inject" )
+            timeit_start( timeID )
+            delay = 0
+
+            if (simConfig.runNeuron()) {
+                // CoreNeuron handles Replay via its PatternStim
+                synReplay.replay( targetName.s, stim.valueOf( "Delay" ) )
+            }
+
+            // For CoreNeuron, we should put the replays into a single out file to be used as PatternStim
+            if( pnm.myid == 0 && simConfig.generateData() ) {
+                if( replayCount == 0 ) {
+                    cnPatternOut = new File( cnPatternFile.s )
+                    cnPatternOut.wopen()
+                    cnPatternOut.printf( "/scatter\n" )
+                    cnPatternOut.close()
+                    cnPatternOut.aopen()
+                }
+                synReplay.append( cnPatternOut )
+            }
+            replayCount = 1+replayCount
+
+            timeit_add( timeID )
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Iterate over any Modification blocks read from the BlueConfig and apply them to the network.  The steps needed are more complex
+ * than NeuronConfigures, so the user should not be expected to write the hoc directly, but rather access a library of
+ * already available Modifications
+ */
+proc enableModifications() { local modIndex  localobj modificationManager
+
+    modificationManager = new ModificationManager(targetManager)
+    for modIndex=0, configParser.parsedModifications.count()-1 {
+        modificationManager.interpret( configParser.parsedModifications.o(modIndex) )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Iterate over reports defined in the config file given to the simulation and instantiate them.
+ */
+proc enableReports() { local reportIndex, cellIndex, simDt, repDt, startTime, endTime, reportgid, spgid, nErrors, \
+    corenrnDataMode, targetType, targetIndex, compartmentOffset \
+    localobj activeReport, reportRequests, unit, format, reportOn, targetName, type, reportName, electrodeName, message, \
+    report, target, sectionType, electrode, points, nil, scalingOption, commandString, reportCell, iscParam, gidList, \
+    activeTarget
+    //no report manager exists (yet?) like stimulus manager
+
+    //need bin report helper to handle MPI communication of Bin reports.  (Created During Node init)
+    simDt = configParser.parsedRun.valueOf( "Dt" )
+
+    corenrnDataMode = simConfig.generateData()
+    reportRequests = configParser.parsedReports
+
+    // Early check invalid reports
+    for reportIndex=0, reportRequests.count()-1 {
+        type = reportRequests.o(reportIndex).get( "Type" )
+        if ( strcmp( type.s, "compartment" ) &&  strcmp( type.s, "Summation" ) && strcmp( type.s, "Synapse" ) ) {
+            terminate( "Invalid report type", type.s )
+        }
+    }
+
+    if( corenrnDataMode ) {
+        coreConfig.write_report_count(reportRequests.count(), outputDir.s)
+    }
+
+    reportList = new List()
+    nErrors = 0
+
+    for reportIndex=0, reportRequests.count()-1 {
+        //all reports have same fields - note that reportOn field may include space separated values
+        reportName = reportRequests.key(reportIndex)
+        activeReport = reportRequests.o(reportIndex)
+        targetName = activeReport.get( "Target" )
+        target = targetParser.getTarget(targetName.s)
+
+        type = activeReport.get( "Type" )
+        reportOn = activeReport.get( "ReportOn" )
+        unit = activeReport.get( "Unit" )
+        format = activeReport.get( "Format" )
+        electrodeName = nil
+        if( activeReport.exists( "Electrode" ) ) { electrodeName = activeReport.get( "Electrode" ) }
+        repDt = activeReport.valueOf( "Dt" )
+        startTime = activeReport.valueOf( "StartTime" )
+        endTime = activeReport.valueOf( "EndTime" )
+
+        // 0=Compartment, 1=Cell, Section { 2=Soma 3=Axon, 4=Dendrite, 5=Apical }
+        targetType = target.isCellTarget()
+        compartmentOffset = 0
+
+        // On resume, we need to offset the times in the BlueConfig
+        if( t > 0 ) {
+            startTime = startTime + t
+            endTime = endTime + t
+        }
+        if( endTime > tstop ) {
+            endTime = tstop
+        }
+
+        //print "report from ", startTime, " until ", endTime
+
+        scalingOption = nil
+        if( activeReport.exists( "Scaling" ) ) {
+            scalingOption = activeReport.get( "Scaling" )
+        }
+        if( startTime > endTime ) {
+            // Probably a misconfigured BlueConfig.  This will cause ReportingLib to crash, so better to gracefully exit now
+            message = new String()
+            sprint( message.s, "Report '%s': bad start/end value; start %g is after end %g", reportName.s, startTime, endTime )
+            log(message.s)
+            nErrors = nErrors + 1
+        }
+
+        // Identify ISC activity
+        if( activeReport.exists( "ISC" ) ) {
+            iscParam = reportRequests.o(reportIndex).get( "ISC")
+        } else {
+            iscParam = new String("")
+        }
+
+        if( electrodeName != nil ){
+            electrode = elecManager.getElectrode(electrodeName.s)
+        }
+
+        report = new Report( reportName.s, type.s, reportOn.s, unit.s, format.s, repDt,\
+                             startTime, endTime, outputDir.s, electrode, scalingOption, iscParam.s, default_population)
+
+        //Go through the target members, one cell at a time. If theres no target (Restore?) SKIP
+        if( object_id( targetManager, 1 ) > -1 ) {
+            //For summation targets - check if we were given a Cell target because we really want all points of the cell which will ultimately
+            // be collapsed to a single value on the soma.  Otherwise, get target points as normal.
+            if( targetType && strcmp( type.s, "Summation" ) == 0 ) {
+                points = targetManager.compartmentCast( target, "" ).getPointList( cellDistributor )
+            } else {
+                points = targetManager.getPointList( targetName.s )
+            }
+
+            for cellIndex=0, points.count()-1 {
+                reportgid = points.o(cellIndex).gid
+                reportCell = cellDistributor.getCell(reportgid)
+                spgid = cellDistributor.getSpGid(reportgid)
+
+                //may need to take different actions based on report type
+                if( 0 == strcmp( type.s, "compartment" ) ) {
+                    report.addCompartmentReport( reportCell, points.o(cellIndex), spgid, corenrnDataMode )
+                } else if ( 0 == strcmp( type.s, "Summation" ) ) {
+                    report.addSummationReport( reportCell, points.o(cellIndex), targetType, spgid, corenrnDataMode )
+                } else if ( 0 == strcmp( type.s, "Synapse" ) ) {
+                    report.addSynapseReport( reportCell, points.o(cellIndex), spgid, corenrnDataMode)
+                }
+            }
+        }
+
+        if( !corenrnDataMode ) {
+            //keep report object?  Who has the ascii/hdf5 object? (1 per cell) the bin object? (1 per report)
+            reportList.append(report)
+        } else {
+            // for coreneuron
+            if( pnm.myid > 0 ) continue
+            gidList = target.completegids()
+            bufferSize = 8
+            if ( configParser.parsedRun.exists( "ReportingBufferSize" ) ) {
+                bufferSize = configParser.parsedRun.valueOf( "ReportingBufferSize" )
+            }
+
+            // Note: CoreNEURON does not support more than one Section in a Compartment target
+            if (target.isCompartmentTarget()) {
+                for targetIndex=0, target.subtargets.count()-1 {
+                    activeTarget = target.subtargets.object( targetIndex )
+
+                    if ( activeTarget.isSectionTarget() ) {
+                        // Ensure that we only found one Section (i.e., number of subtargets is also 1)
+                        if (target.subtargets.count() > 1) {
+                            message = new String()
+                            sprint( message.s, "Report '%s': only a single Section is allowed in a Compartment target", reportName.s )
+                            log(message.s)
+                            nErrors = nErrors + 1
+                            break
+                        }
+
+                        // If we reach this point, update the original target and offset for the target type
+                        target = activeTarget
+                        compartmentOffset = 4
+                    }
+                }
+            }
+
+            if (target.isSectionTarget()) {
+                if( target.subtargets.count() != 1 || !target.subtargets.object(0).isCellTarget() ) {
+                    message = new String()
+                    sprint( message.s, "Report '%s': only a single Cell subtarget is allowed in a Section target", reportName.s )
+                    log(message.s)
+                    nErrors = nErrors + 1
+                    continue
+                }
+
+                sectionType = target.targetSubsets.o(0)
+
+                if( 0 == strcmp( sectionType.s, "soma" ) ) {
+                    targetType = 2 + compartmentOffset
+                } else if ( 0 == strcmp( sectionType.s, "axon" ) ) {
+                    targetType = 3 + compartmentOffset
+                } else if ( 0 == strcmp( sectionType.s, "dend" ) ) {
+                    targetType = 4 + compartmentOffset
+                } else if ( 0 == strcmp( sectionType.s, "apic" ) ) {
+                    targetType = 5 + compartmentOffset
+                } else {
+                    targetType = 0
+                }
+            }
+
+            coreConfig.write_report_config(reportName.s, targetName.s, type.s, reportOn.s, unit.s, format.s, targetType, repDt, startTime, endTime, gidList, bufferSize, default_population)
+        }
+    }
+
+    if( corenrnDataMode ) {
+        coreConfig.write_spike_population(default_population)
+    }
+
+    // Report Buffer Size hint in MB.
+    if ( configParser.parsedRun.exists( "ReportingBufferSize" ) ) if ( !simConfig.coreNeuronUsed() ) {
+        binReportHelper.set_max_buffer_size_hint ( configParser.parsedRun.valueOf( "ReportingBufferSize" ) )
+        sonataReportHelper.set_max_buffer_size_hint ( configParser.parsedRun.valueOf( "ReportingBufferSize" ) )
+    }
+
+    nErrors = pnm.pc.allreduce( nErrors, 1 )
+    if( nErrors > 0 ) {
+        message = new String()
+        sprint( message.s, "%d reporting errors detected; Terminating", nErrors )
+        terminate( message.s )
+    }
+
+    //once all reports are created, we finalize the communicators and prepare the sonata datasets (buffer sizes)
+    if( !corenrnDataMode ) {
+        binReportHelper.make_comm()
+        sonataReportHelper.make_comm()
+        sonataReportHelper.prepare_datasets()
+    }
+
+    //electrode manager is no longer needed. free the memory
+    if( object_id(elecManager,1) != -1 ) {
+        elecManager.clear()
+        elecManager = nil
+    }
+
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * setup recording of spike events (crossing of threshold) for the cells on this node
+ */
+proc want_all_spikes() {local i, gid, mg  localobj gidvec
+    gidvec = cellDistributor.getGidListForProcessor()
+
+    for i=0, gidvec.size()-1 {
+        //only want to collect spikes off cell pieces with the soma (i.e. the real gid)
+        if( cellDistributor.getSpGid(gidvec.x[i]) == gidvec.x[i] ) {
+            //print "collect spikes for gid ", gidvec.x[i]
+            pnm.spike_record( gidvec.x[i] )
+        } /*else {
+            print "don't control gid ", gidvec.x[i]
+        }*/
+
+	}
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Have the compute nodes wrap up tasks before exiting
+ */
+proc cleanup() { local i   localobj outf, memUsage
+    memUsage = new MemUsage()
+    memUsage.print_mem_usage()
+
+    timeit_show_stats(pnm.pc)
+
+    // resume profiling just before everyone quit to get final profile result
+    {profileHelper.resume_profiling()}
+
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Write the spike events that occured on each node into a single output file.  Nodes will write
+ * in order, one after the other.  Maybe a later update could try to have them write in parallel.
+ * In the case of running a simulation after a resume, the spike times can be mapped so that they
+ * fall in the range 0..SimDuration (default behavior).  Otherwise, the option exists to keep spike
+ * times according to the running time that was used within the simulator
+ *
+ * @param $s1 output spike file
+ * @param $2 remap spikes: 1=yes (default), 0=no
+ */
+proc spike2file() { local i, timeshift, nodeIndex  localobj outvec, spikewriter
+    strdef spikeFile, spikeDir
+    timeshift = 1
+    if( numarg() > 1 ) {
+        timeshift = $2
+    }
+
+    spikeDir = configParser.parsedRun.get( "OutputRoot" ).s
+    sprint( spikeFile, "%s/%s", spikeDir, $s1 )
+
+    if( timeshift ) {
+        outvec = pnm.spikevec.c.sub( initial_t )
+    } else {
+        outvec = pnm.spikevec
+    }
+
+    spikewriter = new SpikeWriter()
+    spikewriter.write(outvec, pnm.idvec, spikeFile)
+    sonataReportHelper.create_spikefile(spikeDir)
+    sonataReportHelper.add_spikes_population(outvec, pnm.idvec, default_population, 0)
+    sonataReportHelper.write_spike_populations()
+    sonataReportHelper.close_spikefile()
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Utility function to help query synaptic data for a given gid
+ *
+ * @param $1 gid whose data we are accessing
+ * @return list with synapse data for the gid
+ */
+obfunc getSynapseDataForGID() {
+    return synapseRuleManager.getSynapseDataForGID($1)
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Iterate over any NeuronConfigure blocks from the BlueConfig.  These are simple hoc statements that can be executed
+ * with minimal substitutions
+ */
+proc executeNeuronConfigures() { local configIndex, cellIndex, x, ret  localobj activeConfig, message, target, points, sf
+    strdef tstr1
+
+    message = new String()
+    sf = new StringFunctions()
+
+    for configIndex=0, configParser.parsedConfigures.count()-1 {
+        activeConfig = configParser.parsedConfigures.o(configIndex)
+
+        sprint( message.s, "Apply configure statement \"%s\" on target %s", activeConfig.get( "Configure" ).s, activeConfig.get( "Target" ).s )
+        log( message.s )
+
+        // if target is cell target, then cast to all sections
+        target = targetManager.getTarget( activeConfig.get( "Target" ).s )
+        if( target.isCellTarget() ) {
+            points = targetManager.compartmentCast( target, "" ).getPointList( cellDistributor )
+        } else {
+            points = targetManager.getPointList( activeConfig.get( "Target" ).s )
+        }
+
+        // iterate the pointlist and execute the command on the section
+        for cellIndex=0, points.count()-1 {
+            for points.o(cellIndex).each_point(&x) {
+                if ( x != -1 ) {
+                    tstr = activeConfig.get( "Configure" ).s
+
+                    // keep checking the string for '%s'; as long as one is there, rebuild the string around it
+                    while( sf.substr( tstr, "%s" ) != -1 ) {
+                        sf.head( tstr, "%s", tstr1 )
+                        sf.tail( tstr, "%s", tstr )
+                        sprint( tstr, "%s%s%s", tstr1, secname(), tstr )
+                    }
+
+                    // keep checking the string for '%g'; as long as one is there, rebuild the string around it
+                    while( sf.substr( tstr, "%g" ) != -1 ) {
+                        sf.head( tstr, "%g", tstr1 )
+                        sf.tail( tstr, "%g", tstr )
+                        sprint( tstr, "%s%g%s", tstr1, x, tstr )
+                    }
+
+                    //log( tstr )
+                    ret = execute1( tstr, 0 )
+                }
+            }
+        }
+    }
+}
+
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Dump prcellstate of gid specified in BlueConfig
+ */
+proc prCellDump () {
+    strdef filename
+    if (prCellGid > 0) {
+        sprint (filename, "neuron_t%f", $1)
+        pnm.pc.prcellstate(prCellGid, filename)
+    }
+}
+
+
+//-----------------------------------------------------------------------------------------------
+
+objref tdat_
+proc finalizeModel() { local nextReportFlush, timeID, spike_compress, cacheeffic, forwardSkip, flushBufferScalar  localobj memusage, nil
+
+    pnm.pc.setup_transfer()
+    spike_compress = 3
+
+    memusage = new MemUsage()
+
+    //check for optional argument "ForwardSkip"
+    forwardSkip = 0
+    if( configParser.parsedRun.exists( "ForwardSkip" ) && !configParser.parsedRun.exists("Restore") ) {
+        forwardSkip = configParser.parsedRun.valueOf( "ForwardSkip" )
+    }
+
+    //enable multi-send implementation for spike exchange which improves scaling performance
+    //specially for strong scaling simulations. Parameter 13 is combination of multisend(1)
+    //+ two_phase(8) + two_intervals(4) methods.
+    //{pnm.pc.spike_compress(0, 0, 13)}
+    // original method of enabling spike compression
+    //{pnm.pc.spike_compress(spike_compress, spike_compress != 0, 0/*multisend*/)}
+
+    //enable use of binq (1) and no separate queue for slef events (0)
+    //because it's incompatible with save-restore implementation.
+    //BBPBGLIB-338: ForwardSkip + SpontMinis have an issue with binq.  For now, don't use binq if ForwardSkip is in use
+    //if( ! forwardSkip > 0 ) {
+    //    {execute( "cvode.queue_mode(1,0)")}
+    //}
+
+    //LFP calculation requires WholeCell balancing and extracellular mechanism. This is incompatible with efficient caching atm.
+    cacheeffic = 0
+    if( configParser.parsedRun.exists( "ElectrodesPath" ) ) {
+        execute( "cvode.cache_efficient(0)" )
+    } else {
+        execute( "cvode.cache_efficient(1)" )
+    }
+
+    pnm.pc.set_maxstep(4)
+
+    // check if we have to increase reporting buffers. By default we stop simulation after
+    // 25 msec (nextReportFlush). So if reporting dt is 0.1 then we need to buffer 250
+    // timesteps and hence steps_to_buffer must be at least 250. User can specify increase
+    // this flush frequency by specifying FlushBufferScalar key in BlueConfig. For example,
+    // if we specify it as 10, then we will increase nextReportFlush to 250 and also
+    // steps_to_buffer to 3000.
+
+    flushBufferScalar = 1
+    if( configParser.parsedRun.exists( "FlushBufferScalar" ) ) {
+        flushBufferScalar = configParser.parsedRun.valueOf( "FlushBufferScalar" )
+    }
+
+    // when debugging with prints, helps to send output to separate files for each node
+    //binReportHelper.redirect()
+
+    // reporting - recently we have an issue where MPI collective routines for reporting and spike exchange
+    // are mixed such that some cpus are blocked waiting to complete reporting while others are blocked waiting
+    // to finish spike exchange.  As a work-around, reporting will only flush to disk outside of psolve.
+    // It will thus need to periodically make simulation execution halt.
+    nextReportFlush = t + (25*flushBufferScalar)
+
+
+    // This must be done in the window where all reports declared/exist, but they have not initialized by stdinit (called below)
+    // temporarily disabling steps to buffer because we were getting error (301 steps greater than 300)
+    //binReportHelper.set_steps_to_buffer(300*flushBufferScalar)  // we can flush more frequently than 300 reporting steps, but this should be calculated in the future
+    // enable auto-flush temporarily as reportinglib has issue
+    //binReportHelper.disable_auto_flush()
+
+    // stdinit
+    timeID = timeit_register( "stdinit" )
+    timeit_start( timeID )
+
+    stdinit()
+
+    timeit_add( timeID )
+    log( "MemUsage after stdinit" )
+        {memusage.print_mem_usage()}
+
+    if( simConfig.generateData() ) {
+        timeID = timeit_register( "corewrite" )
+        timeit_start( timeID )
+        log("Starting dataset generation for CoreNEURON")
+        registerMapping(cellDistributor)
+        pnm.pc.nrnbbcore_write(simConfig.getCoreneuronDataDir().s)
+        if( configParser.parsedRun.exists("BaseSeed") ) {
+            coreConfig.write_sim_config(simConfig.getCoreneuronOutputDir().s, simConfig.getCoreneuronDataDir().s, tstop, dt, forwardSkip, prCellGid, cnPatternFile.s, configParser.parsedRun.valueOf("BaseSeed"))
+        } else {
+            coreConfig.write_sim_config(simConfig.getCoreneuronOutputDir().s, simConfig.getCoreneuronDataDir().s, tstop, dt, forwardSkip, prCellGid, cnPatternFile.s)
+        }
+        log("Finished dataset generation for CoreNEURON")
+        coreConfig = nil
+        timeit_add( timeID )
+    }
+
+    doneSetup = 1
+}
+
+//-----------------------------------------------------------------------------------------------
+
+proc postRestoreConfig() { local timeID  localobj nil
+        timeID = timeit_register( "corewrite" )
+        timeit_start( timeID )
+        log("Starting dataset generation for CoreNEURON")
+        if( configParser.parsedRun.exists("BaseSeed") ) {
+            coreConfig.write_sim_config(simConfig.getCoreneuronOutputDir().s, simConfig.getCoreneuronDataDir().s, tstop, dt, 0, prCellGid, cnPatternFile.s, configParser.parsedRun.valueOf("BaseSeed"))
+        } else {
+            coreConfig.write_sim_config(simConfig.getCoreneuronOutputDir().s, simConfig.getCoreneuronDataDir().s, tstop, dt, 0, prCellGid, cnPatternFile.s)
+        }
+        log("Finished dataset generation for CoreNEURON")
+        coreConfig = nil
+        timeit_add( timeID )
+}
+
+//-----------------------------------------------------------------------------------------------
+
+proc prun() { local simDone, nextReportFlush, nextStop, timeID, forwardSkip, saveDt, flushIndex, delayIndex, stopIndex, delayID, flushBufferScalar, prevStop \
+    localobj stopList, stopVec, stopOrdered, stopItem, typeCheck, progressIndicator, bbss, spConnect, nil, memusage, jumpstarters, keepModelData
+
+    // todo : if block not indented for code review
+    if( simConfig.runNeuron() ) {
+
+    if( !doneSetup ) {
+        finalizeModel()
+    }
+
+    //check for optional argument "ForwardSkip"
+    forwardSkip = 0
+    if( configParser.parsedRun.exists( "ForwardSkip" ) && !configParser.parsedRun.exists("Restore") ) {
+        forwardSkip = configParser.parsedRun.valueOf( "ForwardSkip" )
+    }
+
+    tdat_ = new Vector(7)
+
+    runtime=startsw()
+    tdat_.x[0] = pnm.pc.wait_time
+
+    // check if we have to increase reporting buffers. By default we stop simulation after
+    // 25 msec (nextReportFlush). So if reporting dt is 0.1 then we need to buffer 250
+    // timesteps and hence steps_to_buffer must be at least 250. User can specify increase
+    // this flush frequency by specifying FlushBufferScalar key in BlueConfig. For example,
+    // if we specify it as 10, then we will increase nextReportFlush to 250 and also
+    // steps_to_buffer to 3000.
+
+    flushBufferScalar = 1
+    if( configParser.parsedRun.exists( "FlushBufferScalar" ) ) {
+        flushBufferScalar = configParser.parsedRun.valueOf( "FlushBufferScalar" )
+    }
+
+    // when debugging with prints, helps to send output to separate files for each node
+    //binReportHelper.redirect()
+
+    memusage = new MemUsage()
+
+    if( forwardSkip > 0 ) {
+        t = -1e9
+        saveDt = dt
+        dt = configParser.parsedRun.valueOf( "ForwardSkip" )*0.1
+        for flushIndex=0,9 {
+            fadvance()
+        }
+        dt = saveDt
+        t = 0
+        frecord_init()
+    }
+
+    // increase timeout by 10x
+    pnm.pc.timeout(200)
+
+    want_all_spikes()
+
+    // If we are to resume, we restore state right before we call psolve
+    if( configParser.parsedRun.exists( "Restore" ) ) {
+        jumpstarters = new List()
+        //restore should get a cpu count so it can restore on different node counts
+        timeit( "startrestore" )
+        bbss = new BBSaveState()
+
+        // this should probably be inherent to all stimuli.  Would we ever be a scenario where we want stims
+        // to start and continue?  I think even with synapse ones, I still need to recreate the event queues.
+        stimManager.saveStatePreparation(bbss)
+
+        // binary
+        bbss.ignore(binReportHelper)
+        binReportHelper.restorestate( configParser.parsedRun.get( "Restore" ).s )
+        // ascii
+        //bbss.restore_test()
+
+        timeit( "restoretime" )
+
+        // repopulate event queue for synapse based stimuli such as spont minis or replays
+        stimManager.reevent()
+        synapseRuleManager.restartModSources( jumpstarters )
+
+        bbss.vector_play_init()
+
+        // restart any reports
+        restartReporting( jumpstarters )
+
+    }
+
+    // dump prcellstate of gid at the begining of simulation
+    prCellDump(t)
+
+    // reporting - recently we have an issue where MPI collective routines for reporting and spike exchange
+    // are mixed such that some cpus are blocked waiting to complete reporting while others are blocked waiting
+    // to finish spike exchange.  As a work-around, reporting will only flush to disk outside of psolve.
+    // It will thus need to periodically make simulation execution halt.
+    nextReportFlush = t + (25*flushBufferScalar)
+
+    if( pnm.myid == 0 ) {
+        printf ("Reports Buffering Info : flushBufferScalar: %d, nextReportFlush: %d, steps_to_buffer: %d \n", flushBufferScalar, nextReportFlush, 300*flushBufferScalar)
+    }
+
+    stopVec = new Vector()
+    stopList = new List()
+
+    //Do we have a save/savetime?
+    if( configParser.parsedRun.exists( "Save" ) ) {
+        tsave = tstop
+        if( configParser.parsedRun.exists( "SaveTime" ) ) {
+            tsave = t + configParser.parsedRun.valueOf( "SaveTime")
+            if( tsave > tstop ) {
+                log("SaveTime specified beyond Simulation Duration.  Setting SaveTime to tstop.")
+                tsave = tstop
+            }
+        }
+
+        stopVec.append(tsave)
+        stopList.append( new String( "SaveState" ) )
+    }
+
+    stopOrdered = stopVec.sortindex()
+
+    typeCheck = new TType()
+
+    timeID = timeit_register( "psolve" )
+    delayID = timeit_register( "connUpdate" )
+    {profileHelper.resume_profiling()}
+    timeit_start( timeID )
+
+    progressIndicator = new ShowProgress( cvode, myid )
+    timeit_setVerbose(0)
+
+    stopIndex = 0
+    prevStop = -1
+    simDone = 0  // simDone is added because for long running sims, the floating point error might make t unable to advance past tstop
+    while( t < tstop && simDone == 0 ) {
+        if( stopIndex < stopOrdered.size() ) {
+            nextStop = stopVec.x[stopOrdered.x[stopIndex]]
+            stopItem = stopList.o(stopOrdered.x[stopIndex])
+        } else {
+            nextStop = tstop
+            stopItem = new String( "Finish" )
+        }
+
+        if( nextStop > nextReportFlush ) {
+            nextStop = nextReportFlush
+            nextReportFlush += (25*flushBufferScalar)
+            stopItem = new String( "ReportFlush" )
+        } else {
+            // if stopping for non-report event, give user feedback
+            sprint( tstr, "run until %d", nextStop )
+            log(tstr)
+            stopIndex = stopIndex+1
+        }
+
+        // run until the time of the next stop event
+        if(nextStop != prevStop) { // see BBPBGLIB-494
+            pnm.psolve( nextStop )
+            prevStop = nextStop
+        }
+
+        // what do we do?
+        if ( typeCheck.equal( stopItem, "String" ) ) {
+            if( strcmp( stopItem.s, "SaveState" ) == 0 ) {
+                timeit( "startsave" )
+                {memusage.print_mem_usage()}
+
+                // all stimuli objects are to be marked as ignore
+                bbss = new BBSaveState()
+                stimManager.saveStatePreparation(bbss)
+
+                // if we had done a restore previously, clear out the report jumpstarters since we don't want to save those
+                if( object_id( jumpstarters, 1 ) != -1 ) {
+                    jumpstarters = nil
+                }
+
+                // binary
+                bbss.ignore(binReportHelper)
+
+                // populate buffers from neuron for savestate
+                binReportHelper.pre_savestate( configParser.parsedRun.get( "Save" ).s )
+
+                // During large simulations we saw failures due to memory limits.
+                // As savestate is populated using pre_savestate, we can clear model (provided we are not doing a save mid simulation)
+                if( ! configParser.parsedRun.exists( "SaveTime" ) ) {
+                    {log( "MemUsage Before clearModel" )}
+                    {memusage.print_mem_usage()}
+
+                    {log("Clearing model prior to final save to conserve memory")}
+                    binReportHelper.flush()  // clearModel() closes the reports, we must flush now
+                    {clearModel()}
+
+                    {log( "MemUsage After clearModel" )}
+                    {memusage.print_mem_usage()}
+
+                    targetManager = nil
+                    targetParser = nil
+
+                    {log( "MemUsage after clearing targetManager and targetParser" )}
+                    {memusage.print_mem_usage()}
+
+                    // Dump CellState at Save
+                    prCellDump(t)
+
+                }
+
+                // dump populated buffers
+                binReportHelper.savestate()
+
+                // ascii
+                //bbss.save_test()
+                timeit( "savetime" )
+                {memusage.print_mem_usage()}
+            } else if ( strcmp( stopItem.s, "ReportFlush" ) == 0 ) {
+                //log( "Report flush" )
+                {profileHelper.resume_profiling()}
+                binReportHelper.flush()
+                sonataReportHelper.flush()
+                {profileHelper.pause_profiling()}
+            } else if ( strcmp( stopItem.s, "Finish" ) == 0 ) {
+                log( "Completing simulation" )
+                simDone = 1
+            } else {
+                log( "Warning: unsupported stop string.  Ignoring." )
+            }
+        } else {
+            log( "Warning: unsupported stop item.  Ignoring." )
+        }
+    }
+
+    {profileHelper.pause_profiling()}
+    timeit_add( timeID )
+
+    if( pnm.myid == 0) {
+        timeit_setVerbose(1)
+    }
+
+    {log("simulation finished.  Gather spikes then clean up.")}
+    {spike2file( "out.dat", 0 )}
+
+    // make sure all reports do final flush
+    pnm.pc.barrier()
+    log( "Final report flush starting!" )
+    {memusage.print_mem_usage()}
+
+    {profileHelper.resume_profiling()}
+    binReportHelper.flush()
+    sonataReportHelper.flush()
+
+    pnm.pc.barrier()
+    log( "Final report flush done!" )
+    {memusage.print_mem_usage()}
+    {profileHelper.pause_profiling()}
+
+    tdat_.x[0] = pnm.pc.wait_time - tdat_.x[0]
+    runtime = startsw() - runtime
+    tdat_.x[1] = pnm.pc.step_time
+    tdat_.x[2] = pnm.pc.send_time
+	tdat_.x[3] = pnm.pc.vtransfer_time
+	tdat_.x[4] = pnm.pc.vtransfer_time(1) // split exchange time
+	tdat_.x[6] = pnm.pc.vtransfer_time(2) // reduced tree computation time
+	tdat_.x[4] -= tdat_.x[6]
+    //printf("%d wtime %g\n", pnm.myid, waittime)
+
+    // dump prcellstate of gid at the end of simulation
+    prCellDump (tstop)
+
+    } else {
+        {log("Clearing NEURON model")}
+        {clearModel()}
+        log("Launching simulation with CoreNEURON")
+
+        if( configParser.parsedRun.exists( "Save" ) && configParser.parsedRun.exists( "Restore" ) ) {
+	    coreConfig.psolve_core( "--checkpoint", configParser.parsedRun.get("Save").s, "--restore", configParser.parsedRun.get("Restore").s )
+        } else if ( configParser.parsedRun.exists( "Save" ) ) {
+	    coreConfig.psolve_core( "--checkpoint", configParser.parsedRun.get("Save").s )
+        } else if( configParser.parsedRun.exists( "Restore" ) ) {
+            coreConfig.psolve_core( "--restore", configParser.parsedRun.get("Restore").s )
+        } else {
+            coreConfig.psolve_core()
+            keepModelData = new String()
+            if ( configParser.parsedRun.exists("KeepModelData") ) {
+                keepModelData = configParser.parsedRun.get("KeepModelData")
+            } else {
+                keepModelData.s = "False"
+            }
+            if ( strcmp( keepModelData.s, "False" ) == 0 ) {
+                timeID = timeit_register( "Delete coreneuron_input" )
+                timeit_start( timeID )
+                if ( pnm.myid==0 ) {
+                    strdef targetDir, commandStr
+                    sprint(targetDir, "%s/coreneuron_input", configParser.parsedRun.get( "OutputRoot" ).s )
+                    // delete coreneuron_input folder
+                    printf("Delete coreneuron_input folder: %s\n", targetDir)
+                    sprint( commandStr, "import subprocess; subprocess.call(['/bin/rm', '-rf', '%s'])", targetDir)
+                    nrnpython( commandStr )
+                }
+                timeit_add( timeID )
+            }
+        }
+    }
+
+    coreConfig = nil
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * After a restore operation, reports need to be restarted so that the net_send, net_receive functions are active
+ *
+ * @param $o1 vector to hold netcons that are used to jumpstart the reporting objects
+ */
+proc restartReporting() { local reportIndex, cellIndex  localobj nc, nil, curReportObj
+    // binreports
+    if( object_id( binReportHelper, 1 ) != -1 ) {
+        binReportHelper.restartEvent(t)
+    }
+
+    // ASCII and HDF5 reports
+    for cellIndex=0, cellList.count()-1 {
+        curReportObj = cellList.o(cellIndex).CellRef.ASCIIrpt
+        if( object_id(curReportObj, 1) != -1 ) {
+            curReportObj.restartEvent(t)
+        }
+        curReportObj = cellList.o(cellIndex).CellRef.HDF5rpt
+        if( object_id(curReportObj, 1) != -1 ) {
+            curReportObj.restartEvent(t)
+        }
+    }
+
+    // reports might have ALU objects which need to reactivate
+    for reportIndex=0, reportList.count()-1 {
+        reportList.o(reportIndex).restartALUs()
+    }
+
+    // dump prcellstate of gid at the end of simulation
+    prCellDump (tstop)
+}
+
+
+/**
+ * Exports cells state to files, for debugging purposes.
+ *
+ * If a file named debug_gids.txt exists it will only dump information about
+ * the gids present in that file, specified one per line.
+ */
+proc dumpCellState() {local i, gid localobj allgids, gidvec, gidsFile
+    finitialize()
+    pnm.pc.barrier()
+
+    allgids = cellDistributor.getGidListForProcessor()
+    gidsFile = new File()
+    gidsFile.ropen( "debug_gids.txt" )
+    if( !gidsFile.isopen ) {
+        if( pnm.myid == 0 ) {
+            print "Debugging all cells"
+        }
+        gidvec = allgids
+    } else {
+        gidvec = new Vector()
+        while( ! gidsFile.eof() ) {
+            gid = gidsFile.scanvar()
+            if( allgids.contains(gid))  gidvec.append(gid)
+        }
+        if( gidvec.size() ) {
+            print "Rank ", pnm.myid, ": Debugging ", gidvec.size(), "cells from debug_gids.txt"
+        }
+        gidsFile.close()
+    }
+
+    for i=0, gidvec.size()-1 {
+        gid = gidvec.x[i]
+        pnm.pc.prcellstate(gid, $s1)
+    }
+}
+
+/**
+ * Dump prcellstate of gid specified in BlueConfig
+ * @param $1 the time, which is appended to the filename
+ */
+proc prCellDump () {
+    strdef filename
+    if (prCellGid > 0) {
+        sprint (filename, "neuron_t%f", $1)
+        pnm.pc.prcellstate(prCellGid, filename)
+    }
+}
+
+
+endtemplate Node

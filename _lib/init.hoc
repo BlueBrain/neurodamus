@@ -1,0 +1,262 @@
+/**
+ * @file init.hoc
+ * @author Leite
+ * @date 2018-Oct
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+{load_file( "perfUtils.hoc" )}
+{load_file( "nrngui.hoc" )}
+{load_file( "netparmpi.hoc" )}
+{load_file( "SimSettings.hoc" )}
+{load_file( "Node.hoc" )}
+{load_file( "ShowProgress.hoc" )}
+{load_file( "timeit.hoc" )}
+{load_file( "fileUtils.hoc" )}
+
+default_var("configFile", "BlueConfig")
+
+/**
+ * @param $o1 the node object to run the cycle with. Targets must alredy be loaded
+ */
+proc build_model() {  localobj node
+    node = $o1
+    timeit() //(re)init timer
+
+    runtime_stats("Computing LB")
+    node.computeLB()
+    runtime_stats("Compute LB")
+
+    node.log( "Building model for simulation" )
+    node.createCells()
+    node.executeNeuronConfigures()  // Apply any cell overrides from BlueConfig
+    runtime_stats( "Cell creation" )
+
+    node.log( "Creating Synapses" )
+    node.createSynapses()
+    runtime_stats("Synapse creation")
+
+    node.log( "Creating Gap Junctions" )
+    node.createGapJunctions()
+    runtime_stats("Gap Junction creation")
+
+    // Do we need to restore network state?  Preliminary load
+    node.checkResume()
+
+    //create stims
+    node.log( "Enable Stimulus" )
+    node.enableStimulus()
+    runtime_stats("Enable Stimulus")
+
+    //apply any modifications
+    node.log( "Enable Modifications" )
+    node.enableModifications()
+    runtime_stats("Enable Modifications")
+
+    //create reports
+    node.log( "Enable Reports" )
+    node.enableReports()
+    runtime_stats("Enable Reports")
+
+    //finish setup
+    node.finalizeModel()
+    runtime_stats("Model Finalized")
+}
+
+
+proc restore() { localobj node
+    node = $o1
+    node.log("Loading targets...")
+    node.loadTargets()
+    node.log("Enable Replay")
+    node.enableReplay()
+    node.log( "Enable Reports" )
+    node.enableReports()
+    node.postRestoreConfig()
+}
+
+
+proc run_end()  { localobj node
+    node = $o1
+    node.log( "Starting simulation..." )
+    node.prun()
+    runtime_stats("finished Run")
+
+    //clean up and exit
+    node.cleanup()
+    quit()
+}
+
+
+// Several things are only avail after Node.init()
+// including populated simConfig
+objref node0
+runtime_stats()  // Reference mem and time
+node0 = new Node(configFile)  // Global init
+
+// If Restore do it immediately
+if( simConfig.coreNeuronUsed() && node0.configParser.parsedRun.exists( "Restore" ) ) {
+    node0.log("RESTORING with CoreNEURON")
+    node0.log("=========================")
+    restore(node0)
+    run_end(node0)
+}
+
+
+// ==============================================================================================
+// Stardard neurodamus run (not restore)
+// ==============================================================================================
+
+objref pc
+pc = new ParallelContext()
+
+
+func getStartCycle() { local startCycle, nCycles  localobj cndatafile, commvec
+    strdef cnfilename, outputRoot
+    nCycles = $1
+    outputRoot = $s2
+    commvec = new Vector(1)
+    startCycle = 0
+
+    // resume? check for existing files_x.dat
+    if( pc.id() == 0 ) {
+        for cycleIndex=0, nCycles-1 {
+            sprint( cnfilename, "%s/coreneuron_input/files_%d.dat", node0.configParser.parsedRun.get( "OutputRoot" ).s, cycleIndex )
+            if( ospath.isfile(cnfilename) ) {
+                startCycle = cycleIndex + 1
+            } else {
+                break
+            }
+        }
+        commvec.x[0] = startCycle
+    }
+    pc.broadcast( commvec, 0 )
+    startCycle = commvec.x[0]
+    return startCycle
+}
+
+
+proc mergeFilesdat()  { local ncycles, cycleIndex, nlines  localobj cnEntries, cnFile
+    strdef cnfilename, cndataline, outputRoot
+    strdef line0
+    ncycles = $1
+    outputRoot = $s2
+    cnFile = new File()
+    cnEntries = new List()
+
+    print "Generating merged files.dat"
+
+    for cycleIndex=0,ncycles-1 {
+        print " -> files_", cycleIndex, ".dat"
+        sprint( cnfilename, "%s/coreneuron_input/files_%d.dat", outputRoot, cycleIndex )
+        cnFile.ropen( cnfilename )
+        {cnFile.gets( cndataline )}
+        line0 = cndataline
+        nlines = cnFile.scanvar()  // should be nranks
+        for lineIndex=0, nlines-1 {
+            cnEntries.append( new String() )
+            {cnFile.gets( cnEntries.o(cnEntries.count()-1).s )}
+        }
+        cnFile.close()
+    }
+
+    sprint( cnfilename, "%s/coreneuron_input/files.dat", outputRoot ) //node.configParser.parsedRun.get( "OutputRoot" ).s )
+    print "write ", cnfilename
+    cnFile.wopen( cnfilename )
+    cnFile.printf( line0 )
+    cnFile.printf( "%d\n", cnEntries.count() )
+    for lineIndex=0, cnEntries.count()-1 {
+        cnFile.printf( cnEntries.o(lineIndex).s )
+    }
+    cnFile.close()
+    print "done merging files.dat"
+}
+
+
+/**
+ * Destroy and build a new node0 with given configParser and targetParser
+ * If targets are not required (e.g. before launching coreneuron run) nil can be passed
+ */
+proc reset_node0()  {  localobj configParser, targetParser
+    configParser = $o1
+    targetParser = $o2
+
+    node0.log("Resetting Node to free memory")
+    node0.clearModel()
+    node0 = nil
+    memUsage.print_mem_usage()
+
+    node0 = new Node(configParser)
+    node0.targetParser = targetParser   // assign, dont load
+}
+
+
+
+// Main processing
+// ===============
+proc main() {local nCycles, startCycle, cycleIndex, i  localobj subTargets, configParser, targetParser, curTarget, version_message
+    version_message = get_version()
+    node0.log(version_message.s)
+
+    strdef tmpstr, outputRoot
+    outputRoot = node0.configParser.parsedRun.get( "OutputRoot" ).s
+
+    node0.log("Loading targets")
+    node0.loadTargets()
+    runtime_stats("Target Load")
+    subTargets = node0.splitDataGeneration()
+    nCycles = subTargets.count()
+    node0.log("")
+
+    if( nCycles <= 1 ) {  // Trivial run
+        build_model(node0)
+        if( simConfig.coreNeuronUsed() ) {
+            // clean before running w coreneuron
+            reset_node0(node0.configParser, nil)
+        }
+        run_end(node0)
+    }
+
+    strdef cycles_message
+    sprint(cycles_message, "NEURODAMUS MULTI-CYCLE RUN: %g iterations", nCycles)
+    node0.log(cycles_message)
+    node0.log("==========================")
+    startCycle = getStartCycle(nCycles, outputRoot)
+
+    if( startCycle > 0 ) {
+        if( pc.id() == 0 ) print ">> RESUMING from iteration ", startCycle
+    }
+
+    // Keep ref to config and target parsers for recreating node
+    configParser = node0.configParser
+    targetParser = node0.targetParser
+
+    for cycleIndex=startCycle, nCycles-1 {
+        curTarget = subTargets.o(cycleIndex)
+        if( pc.id() == 0 ) print "LOOP ", cycleIndex, "Buildind model for target ", curTarget.name
+        sprint( configParser.parsedRun.get( "CircuitTarget" ).s, curTarget.name )
+
+        reset_node0(configParser, targetParser)
+
+        // Run for the cycle
+        build_model(node0)
+
+        if( pc.id() == 0 ) {
+            sprint( tmpstr, "coreneuron_input/files_%d.dat", cycleIndex )
+            strdef src, dst
+            sprint( src, "%s/%s", outputRoot, "coreneuron_input/files.dat" )
+            sprint( dst, "%s/%s", outputRoot, tmpstr )
+            shutil.move(src, dst)
+        }
+    }
+
+    if( pc.id() == 0 ) {
+        mergeFilesdat(nCycles, outputRoot)
+    }
+
+    targetParser = nil
+    reset_node0(configParser, nil)  // clean before running w coreneuron
+    run_end(node0)
+}
+
+// Ignition!
+main()

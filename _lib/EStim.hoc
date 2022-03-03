@@ -1,0 +1,198 @@
+/**
+ * @file EStim.hoc
+ * @brief
+ * @author reimann
+ * @date 2010-12-30
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+D__ESTIMHOC = 1
+
+
+		/**
+		 * EStim class is a derivative of TStim for stimuli with an extracelular electrode. The main difference is that it
+		 * collects all elementary stimuli pulses and converts them using a VirtualElectrode object before it injects anything
+		 *
+		 * The stimulus is defined on the hoc level by using the addpoint function for every (step) change in extracellular
+		 * electrode voltage. At this stage only step changes can be used. Gradual, i.e. sinusoidal changes will be
+		 * implemented in the future
+		 * After every step has been defined, you have to call initElec() to perform the frequency dependent transformation.
+		 * This transformation turns e_electrode into e_extracellular at distance d=1 micron from the electrode.
+		 * After the transformation is complete, NO MORE STEPS CAN BE ADDED! You can then use inject() to first scale
+		 * e_extracellular down by a distance dependent factor and then vector.play() it into the currently accessed compartment
+		 *
+		 * TODO: 1. more stimulus primitives than step. 2. a dt of 0.1 ms is hardcoded. make this flexible!
+		 */
+
+begintemplate EStim
+objref tvec, stimVec, elecObj, this
+objref stim,rand,null
+public ic,pulse,ramp,stim,tvec,delay,segment,sinspec,noise,x,c,loc,mark,get_loc, train, initElec, initRawElec, xPos, inject
+
+/**
+ *
+ */
+proc init(/*x[,Random]*/){
+	stim = new Vector()	//where the new voltage of every step change is stored
+	tvec = new Vector() //times of the steps. Formal: e_electrode = stim[i] for t in [tvec[i], tvec[i+1])
+	stimVec = new List() // this is where the transformed and injected Vector objects are stored
+	if(numarg()>0 && argtype(1)!=0) rand = $o1 //At this stage I use no random stimuli... reserved for future versions
+}
+
+/**
+ * initElec(): Performs frequency dependent transform using a VirtualElectrode object.
+ * The VirtualElectrode takes the time/amplitude of the step changes and returns the signal in an unfortunately
+ * hardcoded frequency of 10000Hz.
+ *
+ *
+ */
+proc initElec(){ local i, numElem, eValue, startValue
+	//Instantiation of the VirtualElectrode object wrapped in an execute statement because for some machines
+	//(linsrv1 and sg1 at the moment) the VirtualElectrode.mod cannot be compiled due to missing fftw library.
+	//For these machines we just remove the .mod file (disabling extracellular stimulation!)
+	execute("elecObj = new VirtualElectrode()",this)
+	//elecObj = new VirtualElectrode()
+	elecObj.setLgth(tvec.size()+2) //number of step changes. Add 2 to the end of it to make sure that it really is 0 at the end
+	if(stim.size()==0)return //no steps: not much  to do.
+	startValue = tvec.x[0]
+	for i=0, tvec.size()-1 {
+		elecObj.addPoint(tvec.x[i],stim.x[i]) // fill values into the VirtualElectrode
+	}
+	elecObj.addPoint(tvec.x[tvec.size()-1]+0.1,0) //Make sure it goes down to 0
+	elecObj.addPoint(tvec.x[tvec.size()-1]+20,0) //arbitrary 20 is arbitrary. Maybe use Duration instead?
+	numElem = tvec.x[tvec.size()-1]+20 //We need to know until which time we have to extract samples
+	tvec.resize(0) //empty tvec and stim. These will be re-used to hold the 10000 Hz sampled signal instead
+	stim.resize(0)
+	elecObj.convert()
+	i = 0.0
+	while(i<=numElem) { //now start filling stim with the converted signal
+		eValue = elecObj.getValue()
+		if(i >= startValue){ //To make sure that nothing happens before the stimulus starts. elecObj.getValue() can  be >0 due to numerical issues
+			stim.append(eValue)
+		} else {
+			stim.append(0)
+		}
+		tvec.append(i)
+		i = i+0.1
+	}
+}
+
+proc initRawElec(){ local j, tm, vl, nextTime localobj stimPts, tvecPts
+	stimPts = stim.c
+	tvecPts = tvec.c
+	stim.resize(0)
+	tvec.resize(0)
+	tm = 0.0
+	vl = 0
+	j = 0
+	nextTime = tvecPts.x[j]
+	while( tm < tvecPts.x[tvecPts.size()-1]+20) {
+		if((nextTime > 0) && (nextTime <= tm)){
+			vl = stimPts.x[j]
+			j = j+1
+			if(j < tvecPts.size()){
+				nextTime = tvecPts.x[j]
+			} else {
+				nextTime = -1
+			}
+		}
+		tvec.append(tm)
+		tm = tm+0.1
+		stim.append(vl)
+	}
+}
+
+/*
+ * inject() CALL ONLY AFTER initElect(). TODO: actually check if it has been initiated
+ * injects a scaled down (scale depends on distance) version of the converted signal into the active compartment
+ *
+ * */
+
+proc inject() { local i localobj vecCopy
+	vecCopy = stim.c //copy...
+	//scale down...
+	vecCopy.mul($2)
+	vecCopy.play(&e_extracellular($1),tvec,1) //and inject
+	stimVec.append(vecCopy)
+}
+
+//basically used to start and end a stimulus
+proc addpoint(/*amp,tstart*/){ local i
+	i=0
+	while(i < tvec.size()){
+		if($2 < tvec.x[i]) break
+		if($2 == tvec.x[i]){
+			if(abs($1)>abs(stim.x[i])) stim.x[i] = $1
+			return
+		}
+		i=i+1
+	}
+	tvec.insrt(i,$2)
+	stim.insrt(i,$1)
+}
+
+
+proc pulse(/*start,dur,max_amp[,min_amp]*/){local min_amp
+min_amp = 0
+if(numarg()>3) min_amp = $4
+addpoint($3,$1)
+addpoint(min_amp,$1+$2)
+}
+
+
+/**
+ * Stimulus with repeated pulse injections at a specified frquency
+ *
+ * @param $1 del - time when stimulation starts
+ * @param $2 dur - time when stimulation ends
+ * @param $3 amp - the amplitude of a each pulse
+ * @param $4 frequency - determines the number of pulses per second (hz)
+ * @param $5 width - the duration of a single pulse
+ */
+proc train() { local tpulse, remtime, width
+
+	tpulse = 1000/$4
+	width = $5
+
+	if( width > tpulse ) {  //Duration of a single pulse is longer than the time between pulses -> just use a standard pulse
+		pulse( $1, $2, $3 )
+        return
+	}
+
+	remtime = $2
+	nextpulse = $1
+
+//TODO: for better clarity, don't try to shift pulse onsets by one dt (only done to match old bglib)
+
+	while( remtime > 0 ) {
+		if( width < remtime ) {  //can fit whole pulse in remaining time
+            addpoint( $3, nextpulse )
+            addpoint( 0, nextpulse+width )
+	} else { //final pulse, just paritial
+        addpoint( $3, nextpulse )
+        addpoint( 0, $1+$2 )
+	}
+
+	//TODO: determine if we should stick with old bglib way, where time spent in pulse doesn't count against tpulse
+	//nextpulse = nextpulse + tpulse
+	nextpulse = nextpulse + tpulse + width //by adding time of width, tpulse is kept full
+			remtime = remtime - tpulse // width doesn't count against remtime
+}
+
+
+/*
+for remtime=0, tvec.size()-1 {
+    print tvec.x[remtime], " ", stim.x[remtime]
+}
+ */
+
+}
+
+
+proc delay(/*dur*/){
+	tvec.add($1)
+}
+
+
+endtemplate EStim
+

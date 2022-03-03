@@ -1,0 +1,961 @@
+/**
+ * @file Report.hoc
+ * @brief Gather data references for sending information to files
+ * @author king
+ * @date 2009-11-20
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+{load_file("fileUtils.hoc")}
+
+begintemplate Report
+
+//-----------------------------------------------------------------------------------------------
+// Declare member variables
+//-----------------------------------------------------------------------------------------------
+
+strdef reportName, reportType, reportOn, unit, format, outputDir, iscParam, population_name
+objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, memory_report, activeProcess, electrode
+
+external cvode, terminate
+
+//-----------------------------------------------------------------------------------------------
+// public members
+//-----------------------------------------------------------------------------------------------
+
+public init, addCompartmentReport, addSummationReport, addSynapseReport, get_memory_report, reportName
+
+// for save/restore
+public restartALUs
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Constructor - creates report object with given parameters, will add targets/cells/points later
+ *
+ * @param $s1 reportName - used to either name report file or dataset within the file
+ * @param $s2 type of report - support for compartment and summation
+ * @param $s3 reportOn - which variable(s) to address in the targeted items
+ * @param $s4 unit - unit label to stamp in report header
+ * @param $s5 format - whether report is written in ASCII, HDF5, or Bin
+ * @param $6 Dt - time length between reporting intervals
+ * @param $7 startTime - when the report begins
+ * @param $8 endTime - when the report stops
+ * @param $s9 Output dir - directory where report files are to be written
+ * @param $o10 Electrode - the electrode object (lookupTableV2)
+ * @param $o11 Scaling option to apply to Summation reports: 'None' disables all scaling, 'Area' (or nil) converts density to area, electrodeName - TBD
+ * @param $s12 ISC parameter string
+ * @param $s13 Population name of the SONATA report
+ * @param $14 Offset of the report node ids for the population
+ */
+proc init() { localobj nil
+    reportName = $s1
+    reportType = $s2
+    reportOn = $s3
+    unit = $s4
+    format = $s5
+
+    reportDt = $6
+    startTime = $7
+    endTime = $8
+
+    outputDir = $s9
+
+    if( numarg() < 10){
+        electrode = nil
+    } else {
+        electrode = $o10
+    }
+
+    //variables to hold section counts for the active cell, to be output as extra mapping
+    nAll= 0
+    nSoma = 0
+    nAxon = 0
+    nBasal = 0
+    nApic = 0
+
+    //share one StringFunctions obj for access to substr function
+    strobj = new StringFunctions()
+
+    //note that any BinReports need to be kept unlike ASCII and HDF5 which are stored in the cell
+    binList = new List()
+
+    //variable used to catch return values from functions
+    retVal = 0
+
+    //For some reports, we will need to store the ALU objects that are performing operations on the various properties (e.g. current sources)
+    if( strcmp( reportType, "Summation" ) == 0 ||  strcmp( reportType, "Synapse" ) == 0 ||  strcmp( reportType, "PointType" ) == 0 || strcmp(reportOn, "area") == 0 ) {
+        ALUList = new List()
+    }
+
+    // Constants for scaling
+    SCALING_NONE = 0
+    SCALING_AREA = 1
+    SCALING_ELECTRODE = 2
+
+    scalingMode = SCALING_AREA
+    if( numarg() > 10 ) {
+        if( object_id($o11) != 0 ) {
+            if( strcmp( $o11.s, "None" ) == 0 ) {
+                scalingMode = SCALING_NONE
+            } else if( strcmp( $o11.s, "Area" ) == 0 ) {
+                scalingMode = SCALING_AREA
+            } else {
+                scalingMode = SCALING_ELECTRODE
+                // need to do something with the electrode name -> see LFP branch
+            }
+        }
+    }
+
+    // TODO: clean up excessive number of arguments to this constructor.  Also it makes no sense to have a mandatory arg anfter an optional arg.
+    iscParam = $s12
+    population_name = ""
+    if( numarg() >= 13 ) {
+        population_name = $s13
+    }
+    population_offset = 0
+    if( numarg() >= 14 ) {
+        population_offset = $14
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Determine the absolute index of a section within the cell
+ *
+ * @param $o1 Cell object who owns the currently accessed section
+ * @return index which can be used to map back onto the neuron
+ */
+func sectionNo() { local baseOffset, secIndex  localobj str
+    strdef subset, objtype
+    str = new String()
+
+    sprint( objtype, "%s", $o1 )
+    sprint( str.s, "%s", secname() )
+    strobj.right( str.s, strobj.len(objtype) )
+
+    if( strobj.substr( str.s, "soma" ) > 0 ) {
+        subset = "soma"
+        baseOffset = 0
+    } else if (strobj.substr( str.s, "axon") >0) {
+        subset = "axon"
+        baseOffset = $o1.nSecSoma
+    }else if (strobj.substr( str.s, "dend") >0) {
+        subset = "dend"
+        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig
+    }else if (strobj.substr( str.s, "apic") > 0) {
+        subset = "apic"
+        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal
+    }
+    objtype = str.s
+
+    // parse out the index from the secname
+    strobj.tail( objtype, subset, str.s )
+    if (strobj.len(str.s) > 0) {
+        strobj.left(str.s, strobj.len(str.s)-1) // result should look like [n
+        strobj.right(str.s, 1)
+        sscanf( str.s, "%d", &secIndex )
+    } else {
+        print "should this ever happen?"
+    }
+
+    return baseOffset + secIndex
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Utility function to get the section number for use in mapping the report, while also incrementing
+ * a count tracking how many of each section types have been evaluated so far.  Prior to calling this function,
+ * the currently accessed section should be set as when using the TPointList each_point function
+ *
+ * $o1 ptList
+ */
+proc sumSectionCounts() { local offset, x  localobj prevSection, nil
+    nAll = nSoma = nAxon = nBasal = nApical = 0
+
+    for $o1.each_point(&x) {
+
+        // Have we moved to a new/different section?  reset prevSection
+        if( object_id(prevSection) ) {
+            if( !prevSection.is_cas() ) {
+                prevSection = nil
+            }
+        }
+
+        //if prevSection is unset, we need to examine the section and increment the apprpriate counter
+        if( !object_id(prevSection) ) {
+
+            //remeber this section for upcoming iterations
+            prevSection = new SectionRef()
+
+            // increment appropriate subset counter
+            if( strobj.substr( secname(), "soma" ) > 0 ) {
+                nSoma = nSoma+1
+            } else if (strobj.substr( secname(), "axon") >0) {
+                nAxon   = nAxon + 1
+            }else if (strobj.substr( secname(), "dend") >0) {
+                nBasal  = nBasal+ 1
+            }else if (strobj.substr( secname(), "apic") > 0) {
+                nApical = nApical + 1
+            }
+        }
+    }
+
+    nAll = nSoma + nAxon + nBasal + nApical
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Utility function to prepare a report for information about the cell such as section counts (i.e. extra mapping)
+ * In additon, retrieves the ASCII or HDF5 report object from a cell object, encapsulating the creation of one
+ * in the event provided that this is the first request for either.
+ *
+ * @param $o1 cellObj
+ * @param $o2 TPointList with the points for a single cell
+ * @param $3 vgid of cell (may be same as cells nomal gid)
+ * @param $4 gid of cell if $o1 is empty (called by addPointReport)
+ * @return Reference to the appropriate report object
+ */
+func prepareReportForCell() { local node, rpt, vgid  localobj bbss
+    strdef strCellName, tstr
+    node = 0  //do we really need to know which node produced these reports?  We're trying to make this agnostic to multiple cpu
+    vgid = $3
+
+    // If the function is called from addPointReport set gid to last param
+    if( numarg() >= 4 ) {
+        gid = $4
+    } else {
+        gid = $o1.gid
+    }
+
+    sprint( strCellName, "a%d", gid )
+    if( 0 == strcmp( format, "Bin") || 0 == strcmp( format, "SONATA")) {
+        rpt = -1
+        if (0 == strcmp( format, "SONATA")) {
+            rec = new SonataReport( 0.5, reportName, outputDir, startTime, endTime, reportDt, unit, "compartment")
+            if( 0 != strcmp(population_name, "")) {
+                rec.AddNode(gid, population_name, population_offset)
+            } else {
+                rec.AddNode(gid)
+            }
+        } else if (0 == strcmp( format, "Bin") && 0 == strcmp(iscParam, "")) {
+            rec = new BinReport( 0.5, reportName, strCellName, outputDir, gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit )
+        } else {
+            rec = new BinReport( 0.5, reportName, strCellName, outputDir, gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit, iscParam )
+        }
+        binList.append( rec )
+    } else {
+        if(0 == strcmp( format, "HDF5")) {
+            if(object_id($o1.HDF5rpt, 1) < 0) {
+                $o1.HDF5rpt = new HDF5Record( 0.5, node, outputDir, strCellName )
+            }
+            rec = $o1.HDF5rpt
+        } else if( 0 == strcmp( format, "ASCII") ) {
+            if(object_id($o1.ASCIIrpt, 1) < 0){
+                $o1.ASCIIrpt = new ASCIIRecord( 0.5, node, outputDir, strCellName )
+            }
+            rec = $o1.ASCIIrpt
+        } else {
+            return 0
+        }
+        rpt = rec.newReport(strCellName, reportName, $o2.count(), startTime, endTime, reportDt, unit )
+    }
+
+    bbss = new BBSaveState()
+    bbss.ignore(rec)
+
+    //get section counts: nSoma, nApic, etc
+    sumSectionCounts( $o2 )
+
+    //for ascii/hdf5 reports, must give section counts now to allocate memory - can I give it to Bin reports, too?
+    if (0 == strcmp(iscParam, "") && 0 != strcmp( format, "SONATA")) {
+        if( 0 != strcmp( format, "Bin")) {
+            rec.newMapping(rpt, "compartment", nAll, nSoma, nAxon, nBasal, nApical)
+        } else {
+            rec.ExtraMapping( nAll, nSoma, nAxon, nBasal, nApical)
+        }
+    }
+
+    return rpt
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Generate a report for cell data -> called one cell at a time so that the manager can handle things like bgid vs vgid
+ *
+ * @param $o1 Cell The cell getting reported
+ * @param $o2 TPointList with the points for a single cell
+ * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
+ * @param $4 corenrnDataMode: When simulating with coreNeuron (default: false)
+ */
+proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
+    strdef tstr
+    if( numarg() >= 4 && $4 ) {  // Skip when in coreNeuron mode
+        return
+    }
+
+    // Don't attempt to put a cell with 0 points in a BinReport; bad things happen
+    if( $o2.count() == 0 ) {
+        return
+    }
+
+    //if no $3, use cell's gid
+    if( numarg() >= 3 ) {
+        vgid = $3
+    } else {
+        vgid = $o1.gid
+    }
+
+    rpt = prepareReportForCell( $o1, $o2, vgid )
+
+    /*
+     * define timesteps in tvec does not work, maybe a neuron issue
+    // for the in memory report:
+    tvec = new Vector()
+    tvec.indgen(startTime, endTime, reportDt)
+    */
+    tvec = new Vector()
+    memory_report = new List()
+    memory_report.append(tvec)
+
+    //for each point, register variable and mapping
+    for $o2.each_point(&x) {
+
+        // special case: area.  create an alu to do the reporting.
+        if( strcmp(reportOn, "area") == 0 ) {
+            ALUhelper = new ALU( 0.5, reportDt )
+            ALUhelper.setop( "constant" )
+            sprint( tstr, "{ALUhelper.addvar( &v(%lf), %lf )}", x, area(x)  )
+            result = execute(tstr, this)
+            addSummationVarAndCommitALU( sectionNo($o1), rpt, $o1.gid )
+            bbss = new BBSaveState()
+            bbss.ignore(ALUhelper)
+        } else {
+            // Enable fast_imem calculation in Neuron
+            if ( strcmp(reportOn, "i_membrane") == 0 ) {
+                execute("cvode.use_fast_imem(1)", this)
+                reportOn = "i_membrane_"
+            }
+            //test if we can even access the desired current variable in this compartment
+            sprint(tstr,"{%s.%s(%1.2f)}", secname(), reportOn, x )
+            result = execute1(tstr, 0)
+            if( result != 0 ) {
+                //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
+                if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
+                    if( 0 != strcmp(population_name, "")) {
+                        sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d, population_name)", reportOn, x, sectionNo( $o1 ), $o1.gid)
+                    } else {
+                        sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d)", reportOn, x, sectionNo( $o1 ), $o1.gid)
+                    }
+                    execute(tstr, this)
+                } else if( 0 == strcmp(format, "Memory") ) {
+                    // in-memory report
+                    yvec = new Vector()
+                    cvode = new CVode()
+                    //cvode_active(0)
+                    cvode.active(1)
+                    sprint(tstr, "cvode.record(&%s(%1.2f), yvec, tvec)", reportOn, x)
+                    execute(tstr, this)
+                    memory_report.append(yvec)
+                } else {
+                    sprint(tstr,"retVal = rec.addvar(%d, &%s(%1.2f))", rpt, reportOn, x )
+                    execute(tstr, this)
+                    if(retVal ==0){
+                        break
+                    }
+                    rec.addmapping( rpt, sectionNo( $o1 ) )
+                }
+            }
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * getter for the in-memory report list object
+ *
+ */
+obfunc get_memory_report() {
+    return memory_report
+}
+
+//-----------------------------------------------------------------------------------------------
+/*!
+ * Generate a report for various current sources such that their current contributions are summed into a single value.  This single value
+ * is on a per compartment basis, but may be further collapsed into a single value per cell.  Note that collapsing to a single value per cell is
+ * not supported if multisplit is in use.
+ * Has been updated to also enable reporting of conductances and any internal variable of a point process that is visible on the neuron level (mentioned in the NEURON block)
+ * of the .mod file). Note that this is still a summation report, therefore if several point processes are located on a compartment the values will be summed up to a single value.
+ *
+ *
+ * @param $o1 Cell The cell getting reported
+ * @param $o2 TPointList with the points for a single cell
+ * @param $3 Flag indicating report is to collapse to single value for the cell (1) or run normal where each cmp gets a summed value
+ * @param $4 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
+ * @param $5 corenrnDataMode: When simulating with coreNeuron
+ */
+proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, useElectrode, secType, secNum \
+    localobj intrinsicList, ptProcessList, mechtype, internalVar, nil, bbss
+    strdef tstr
+    if( numarg() >= 5 && $5 ) {  // Coreneuron takes care of summation reports
+        return
+    }
+
+    evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
+    collapsed = $3
+
+    vgid = $o1.gid
+
+    if( numarg() >= 4 ) {
+        vgid = $4
+    }
+    if( electrode == nil ){
+        useElectrode = 0
+    } else {
+        useElectrode = 1
+    }
+
+    rpt = prepareReportForCell( $o1, $o2, vgid )
+
+    //validate that we are not using multisplit and a collapsed summation report
+    if( collapsed && $o1.gid != vgid ) {
+        terminate( "Attempting to use a collapsed summation report while using mutlisplt\n" )
+    }
+
+    if( collapsed ) {  //Since the summations will be collapsed to a single value, we will store the ptprocess in the soma
+        $o1.soma {
+            ALUhelper = new ALU( 0.5, reportDt )
+            ALUhelper.setop( "summation" )
+
+            bbss = new BBSaveState()
+            bbss.ignore(ALUhelper)
+        }
+    }
+
+    for $o2.each_point(&x) {
+        mechtype = new MechanismType(1)
+
+        if( !(collapsed) ) { //need 1 ALU per cmp
+            ALUhelper = new ALU( x, reportDt )
+            ALUhelper.setop( "summation" )
+
+            bbss = new BBSaveState()
+            bbss.ignore(ALUhelper)
+        }
+
+        //intrinsic currents
+        for intrinsicIndex=0, intrinsicList.count()-1 {
+
+            // Enable fast_imem calculation in Neuron
+            if (0 == strcmp(intrinsicList.o(intrinsicIndex).s, "i_membrane_")) {
+                execute("cvode.use_fast_imem(1)", this)
+            }
+
+            //test if we can even access the desired current variable in this compartment
+            sprint(tstr,"{%s.%s(%1.2f)}", secname(), intrinsicList.o(intrinsicIndex).s, x )
+            result = execute1(tstr, 0)
+            if( result != 0 ) { //success, the var exists so we can add it
+                if( area(x) != 0 ) {
+
+                    //need to convert distributed current sources units.  NEURON stores/reports them as mA/cm^2; we want nA
+                    // to convert, multiply by the area of the cmp (micron^2) then multiply by powers of 10 so units agree
+                    //for conductances NEURON reports them as S/cm^2. so the final report is uS
+                    if( scalingMode == SCALING_AREA ) {
+                        scalar = area(x) / 100 // mA => nA (or S => uS):  * 10^6, cm^2 => micron^2 : 1/10^8
+                    } else if( scalingMode == SCALING_NONE ) {
+                        scalar = 1
+                    } else {
+                        scalar = 1 //should use electrode -> pending merge with LFP branch
+                    }
+                    if(useElectrode == 1){
+                        if(!getSecTypeAndIndex(&secType, &secNum)){
+                            scalar = scalar * electrode.getValueForSection(vgid, secType, secNum, x)
+                        } else {
+                            print "Error finding section type and number"
+                            //TODO: Make this an actual error??
+                        }
+                    }
+                    // Convertion of units is not needed with fast_imem since they are in nA
+                    if (0 == strcmp(intrinsicList.o(intrinsicIndex).s, "i_membrane_")) {
+                        scalar = 1
+                    }
+                    sprint(tstr,"{ALUhelper.addvar(&%s(%lf), %f)}", intrinsicList.o(intrinsicIndex).s, x, scalar)
+                    execute(tstr, this)
+                } else {
+                    print "Warning (Error?) intrinsic property exists, but located where area = 0?"
+                }
+            }
+        }
+
+        //point processes - note that we *could* have collapsed reports add all point processes in a single section
+        // at once, but that adds complexity to the code which may or may not save time
+        for ptProcessIndex=0, ptProcessList.count()-1 {
+            mechtype.select( ptProcessList.o(ptProcessIndex).s )
+
+            for( activeProcess=mechtype.pp_begin(); object_id(activeProcess) != 0; activeProcess = mechtype.pp_next() ) {
+
+                dist = activeProcess.get_loc()
+                cmpID = int(dist*nseg)
+                if( cmpID == int(x*nseg) ) {
+                    // need special handling for Clamp processes to flip the current value
+                    if( strcmp( ptProcessList.o(ptProcessIndex).s, "SEClamp" ) == 0 || strcmp( ptProcessList.o(ptProcessIndex).s, "IClamp" ) == 0 ) {
+                        sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s, -1 )}",internalVar.s)
+                    } else {
+                        sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
+                    }
+                    result = execute(tstr, this)
+                    if( result == 0 ) {
+                        //Error message here?!
+                    }
+                    //if( condFlag == 1){
+                    // ALUhelper.addvar( &activeProcess.g )  //As mentioned above, the final report will be in uS. This is exactly what the point process synapses typically deliver.
+                    //} else {
+                    // ALUhelper.addvar( &activeProcess.i )  //no scalar needed
+                    //}
+                }
+                pop_section()
+            }
+        }
+
+        if( !(collapsed) ) {  //we commit one new ALU object per point
+            addSummationVarAndCommitALU( sectionNo($o1), rpt, $o1.gid )
+        }
+    }
+
+    if( collapsed ) {  //otherwise, we commit one new ALU object per cell
+        addSummationVarAndCommitALU( 0, rpt, $o1.gid )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+/*!
+ * Generate a report for all synapses on a cell
+ *
+ * @param $o1 Cell The cell getting reported (used only for getting the gid in prepareReportForCell. Without it no proper report for some reason
+ * @param $2 vgid Cell gid
+ * @param $3 corenrnDataMode: When simulating with coreNeuron we dont want addSummationVarAndCommitALU
+ */
+proc addPointReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, corenrnDataMode \
+    localobj intrinsicList, ptProcessList, locALUList, locTPointList, mechtype, internalVar, synList, bbss, nil
+    strdef tstr
+    corenrnDataMode = 0
+    if( numarg() >= 3 ) { corenrnDataMode=$3 }
+    locALUList = new List()
+    locTPointList = new TPointList()
+
+    evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
+
+    // point cell gid
+    vgid = $2
+
+    $o1.sec() {
+        mechtype = new MechanismType(1)
+
+        for ptProcessIndex=0, ptProcessList.count()-1 {
+            mechtype.select( ptProcessList.o(ptProcessIndex).s )
+
+            // Iterate along the requested point processes
+            for( activeProcess=mechtype.pp_begin(); object_id(activeProcess) != 0; activeProcess = mechtype.pp_next() ) {
+                dist = activeProcess.get_loc()
+                cmpID = int(dist*nseg)
+                if( cmpID == int(x*nseg) ) {
+                    // Here is the "hack" to report with the Summation ALU
+                    ALUhelper = new ALU( 0, reportDt )
+                    ALUhelper.setop( "summation" )
+                    sprint(tstr,"{ALUhelper.addvar( &activeProcess.%s )}",internalVar.s)
+                    result = execute(tstr, this)
+                    if( result == 0 ) {
+                        //is this an error?
+                    }
+                    bbss = new BBSaveState()
+                    bbss.ignore(ALUhelper)
+
+                    locALUList.append(ALUhelper)
+                }
+
+                pop_section()
+            }
+        }
+    }
+    // In Neuron mode, If a cell has no pt processes, don't commit the ALU
+    if( ! corenrnDataMode && locALUList.count() > 0 ) {
+        rpt = prepareReportForCell( $o1, locTPointList, vgid, vgid )
+
+        for ALUIndex=0, locALUList.count()-1 {
+            ALUhelper = locALUList.o(ALUIndex)
+                addSummationVarAndCommitALU( vgid, rpt, vgid )
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+/*!
+ * Generate a report for all synapses on a cell
+ *
+ * @param $o1 Cell The cell getting reported
+ * @param $o2 TPointList with the points for a single cell
+ * @param $3 vgid Optional argument for the split cell case; the virtual gid which may be different than the normal gid (bgid)
+ * @param $4 corenrnDataMode: When simulating with coreNeuron we dont want addSummationVarAndCommitALU
+ */
+proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcessIndex, result, scalar, dist, cmpID, corenrnDataMode \
+    localobj intrinsicList, ptProcessList, locALUList, locTPointList, mechtype, internalVar, synList, bbss
+    strdef tstr
+    corenrnDataMode = 0
+    if( numarg() >= 4 ) { corenrnDataMode=$4 }
+
+    locALUList = new List()
+    locTPointList = new TPointList()
+    synList = new List()
+
+    evaluateSummationReportOn( intrinsicList, ptProcessList, internalVar )
+
+    //if no $3, use cell's gid
+    if( numarg() >= 3 ) {
+        vgid = $3
+    } else {
+        vgid = $o1.gid
+    }
+
+    for $o2.each_point(&x) {
+        mechtype = new MechanismType(1)
+
+        for ptProcessIndex=0, ptProcessList.count()-1 {
+            mechtype.select( ptProcessList.o(ptProcessIndex).s )
+
+            // Iterate along the requested point processes
+            for( activeProcess=mechtype.pp_begin(); object_id(activeProcess) != 0; activeProcess = mechtype.pp_next() ) {
+
+                dist = activeProcess.get_loc()
+                cmpID = int(dist*nseg)
+                if( cmpID == int(x*nseg) ) {
+                    locTPointList.append(x)
+                    synList.append(activeProcess)
+                    activeProcess.selected_for_report = 1
+                }
+
+                pop_section()
+            }
+        }
+    }
+
+    if( ! corenrnDataMode && synList.count() > 0 ) {
+        rpt = prepareReportForCell( $o1, locTPointList, vgid )
+        for synIndex=0, synList.count()-1 {
+            activeProcess = synList.o(synIndex)
+            if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
+                sprint(tstr, "rec.AddVar( &activeProcess.%s, %d, %d)", internalVar.s, activeProcess.synapseID, $o1.gid)
+                execute(tstr, this)
+            }
+        }
+    }
+}
+
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Helper function for adding a var for Summation reports where the only distinction is how the mapping
+ * is computed.  The caller knows if the absolute index is needed (non-collapsed report) or just 0 for
+ * the soma (collapsed report)
+ *
+ * @param mapping index, i.e. the absolute index used to find this section in the morphology
+ * @param rpt A handle to a report object, only used by HDF5/ASCII reports.  Ignored with Bin reports
+ * @param gid
+ */
+proc addSummationVarAndCommitALU() { local rpt
+    //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
+    if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
+        if( 0 != strcmp(population_name, "")) {
+            sprint(tstr, "rec.AddVar( &ALUhelper.output, %d, %d, population_name)", $1, $3 )
+        } else {
+            sprint(tstr, "rec.AddVar( &ALUhelper.output, %d, %d)", $1, $3 )  //note that when we force report on soma, index=0
+        }
+        execute(tstr, this)
+    } else {
+        rpt = $2
+        sprint(tstr,"retVal = rec.addvar(%d, &ALUhelper.output)", rpt )
+        execute(tstr, this)
+        if(retVal ==0){
+            break
+        }
+        rec.addmapping( rpt, $1 )
+    }
+
+    ALUList.append( ALUhelper )
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Helper function to determine which currents are to be reported in a summation report.
+ *
+ * @Param $o1 intrinsicList - List of intrinsic types (ions) generated in this function
+ * @Param $o2 ptProcessList - List of point processes types (ions) generated in this function
+ * @Param $o3 (optional) internalVar - In this String the internal variable to report on will be returned, in the case of point processes
+ */
+proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLibrary, intrinsicLibrary, ptProcessLibrary
+    intrinsicList = new List()
+    ptProcessList = new List()
+
+    //before scanning the ReportOn field, build some libraries that can be used for lookup and comparison
+	//Conductances must be dealt with on an individual mod-file basis. Here I include only mod-files that were used in the
+	// circuit of 27.10.10. Some mod-file in modlib are therefore NOT included! --Michael (Wolf)
+	condLibrary = new List()
+	condLibrary.append( new String( "g_pas" ))
+	condLibrary.append( new String( "gBK_BK" ))
+	condLibrary.append( new String( "gCa_Ca" ))
+	condLibrary.append( new String( "gCa_LVA_Ca_LVA" ))
+	condLibrary.append( new String( "gCa_LVAs_Ca_LVAs" ))
+	condLibrary.append( new String( "gCa_LVAst_Ca_LVAst" ))
+	condLibrary.append( new String( "gIh_Ih" ))
+	condLibrary.append( new String( "gIm_Im" ))
+	condLibrary.append( new String( "gK_P_K_P" ))
+	condLibrary.append( new String( "gK_Ps_K_Ps" ))
+	condLibrary.append( new String( "gK_Pst_K_Pst" ))
+	condLibrary.append( new String( "gK_Ts_K_Ts" ))
+	condLibrary.append( new String( "gK_Tst_K_Tst" ))
+	condLibrary.append( new String( "gKd_Kd" ))
+	condLibrary.append( new String( "gNaTa_t_NaTa_t" ))
+	condLibrary.append( new String( "gNaTaxon_NaTaxon" ))
+	condLibrary.append( new String( "gNaTs2_t_NaTs2_t" ))
+	condLibrary.append( new String( "gNa_S_Na_S" ))
+	condLibrary.append( new String( "gNap_E_Nap_E" ))
+	condLibrary.append( new String( "gNap_Et2_Nap_Et2" ))
+	condLibrary.append( new String( "gSK_E_SK_E" ))
+	condLibrary.append( new String( "gSK_E2_SK_E2" ))
+	condLibrary.append( new String( "gSKv3_1_SKv3_1" ))
+	condLibrary.append( new String( "gkm1_km1" ))
+
+    intrinsicLibrary = new List()
+    intrinsicLibrary.append( new String( "ina" ) )
+    intrinsicLibrary.append( new String( "ica" ) )
+    intrinsicLibrary.append( new String( "ik" ) )
+    intrinsicLibrary.append( new String( "i_pas" ) )
+    intrinsicLibrary.append( new String( "i_cap" ) )
+    intrinsicLibrary.append( new String( "ihcn_Ih" ) )     // \\
+    intrinsicLibrary.append( new String( "ihcn_hcn3" ) )   //  ||- nonspecific currents are handled on an individual mod basis
+    intrinsicLibrary.append( new String( "icsa_csa" ) )   // //
+    intrinsicLibrary.append( new String( "reportcai_mcd" ) )
+
+    ptProcessLibrary = new List()
+    ptProcessLibrary.append( new String( "tmgExSyn" ) )
+    ptProcessLibrary.append( new String( "tmgInhSyn" ) )
+    ptProcessLibrary.append( new String( "SynAMPAEx" ) )
+    ptProcessLibrary.append( new String( "SynNMDAEx" ) )
+    ptProcessLibrary.append( new String( "ExpSyn" ) )
+    ptProcessLibrary.append( new String( "Exp2Syn" ) )
+    ptProcessLibrary.append( new String( "ProbGABAA" ) )
+    ptProcessLibrary.append( new String( "ProbGABAA_EMS" ) )
+    ptProcessLibrary.append( new String( "ProbGABAAB_EMS" ) )
+    ptProcessLibrary.append( new String( "ProbAMPA" ) )
+    ptProcessLibrary.append( new String( "ProbNMDA" ) )
+    ptProcessLibrary.append( new String( "ProbAMPANMDA" ) )
+    ptProcessLibrary.append( new String( "ProbAMPANMDA_EMS" ) )
+    ptProcessLibrary.append( new String( "DetAMPANMDA" ) )
+    ptProcessLibrary.append( new String( "DetGABAAB" ) )
+    ptProcessLibrary.append( new String( "StdpWADoublet" ) )
+    ptProcessLibrary.append( new String( "StdpWATriplet" ) )
+    ptProcessLibrary.append( new String( "GluSynapse" ) )
+    ptProcessLibrary.append( new String( "Gap" ) )
+    ptProcessLibrary.append( new String( "AdEx" ) )
+
+    //Note - only synapse types are put in ptProcessLibrary, with IClamp & SEClamp getting checked separately.  Should we change that behavior?
+
+    //split 'ReportOn' field on white space and check for special keywords - AllCurrent, SynapticCurrents, IntrinsicCurrents
+    strdef fullToken, token, sourceString, skipBlock, internalVar
+    sourceString = reportOn
+    //print "src string ", sourceString
+    while( strcmp( sourceString, "" ) != 0 )  {
+        //find block of white space characters
+        j = strobj.head( sourceString, "[ \t]+", fullToken )
+        if( j!=-1 ) {
+            strobj.right( sourceString, j )
+            //need to get first non-whitespace char
+            j = strobj.head( sourceString, "[^ \t]+", skipBlock )
+            if( j!=-1 ) {
+                strobj.right( sourceString, j )
+            } else {
+                sourceString = ""
+            }
+        } else {
+        	fullToken = sourceString
+            sourceString = ""
+        }
+
+        //print "fullToken:", fullToken
+
+        j = strobj.head( fullToken,"[.]",token )
+        if( j!=-1 ){
+        	strobj.right( fullToken, j+1 )
+        	internalVar = fullToken
+        } else {
+        	token = fullToken
+        	internalVar = ""
+        }
+
+        //print "token:", token
+        //print "internalVar:", internalVar
+
+        if(strcmp( internalVar, "" ) == 0){
+        	if(numarg() > 2){
+        		$o3 = new String( "i" )
+        	}
+        } else {
+            if(numarg() > 2){
+                $o3 = new String( internalVar )
+            } else {
+                terminate("Internal variable to report on specified but evaluateSummationReport called with 2 args!")
+            }
+        }
+        //print "token ", token
+
+        //check for special tokens for keywords
+        if( strcmp(token, "AllCurrents") == 0 ) {
+            //all current sources
+            for libIndex=0, intrinsicLibrary.count()-1 {
+                intrinsicList.append( intrinsicLibrary.o(libIndex) )
+            }
+
+            //synapses + point processes
+            includeSyn = 1
+            for libIndex=0, ptProcessLibrary.count()-1 {
+                ptProcessList.append( ptProcessLibrary.o(libIndex) )
+            }
+            ptProcessList.append( new String( "IClamp" ) )
+            ptProcessList.append( new String( "SEClamp" ) )
+        } else if ( strcmp(token, "SynapticCurrents") == 0 ) {
+            includeSyn = 1
+            for libIndex=0, ptProcessLibrary.count()-1 {
+                ptProcessList.append( ptProcessLibrary.o(libIndex) )
+            }
+        } else if ( strcmp(token,"IntrinsicCurrents") == 0 ) {
+            for libIndex=0, intrinsicLibrary.count()-1 {
+                intrinsicList.append( intrinsicLibrary.o(libIndex) )
+            }
+        } else if( strcmp(token,"IntrinsicConductances") == 0 ){
+        	for libIndex=0, condLibrary.count()-1 {
+        	    intrinsicList.append( condLibrary.o(libIndex) )
+        	}
+        } else if( strcmp(token,"SynapticConductances") == 0 ){
+        	includeSyn = 1
+        	for libIndex=0, ptProcessLibrary.count()-1 {
+        	     ptProcessList.append( ptProcessLibrary.o(libIndex) )
+        	}
+            if( numarg() > 2){
+                $o3 = new String( "g" ) //assumes that total conductance is available as 'g' in evere synapse model file!
+            } else {
+                terminate("Conductance report demanded but function call to evaluateSummationReport with only 2 arguments!")
+            }
+        } else if( strcmp(token, "AllConductances") == 0 ){
+        	for libIndex=0, condLibrary.count()-1 {
+        	    intrinsicList.append( condLibrary.o(libIndex) )
+        	}
+        	includeSyn = 1
+        	for libIndex=0, ptProcessLibrary.count()-1 {
+        	   ptProcessList.append( ptProcessLibrary.o(libIndex) )
+        	}
+            if( numarg() > 2){
+                $o3 = new String( "g" )
+            } else {
+                terminate("Conductance report demanded but function call to evaluateSummationReport with only 2 arguments!")
+            }
+        } else {
+            // Not matched yet, start scanning the lists for specific intance names
+            matched = 0
+            for libIndex=0, intrinsicLibrary.count()-1 {
+                if( strcmp( token, intrinsicLibrary.o(libIndex).s ) == 0 ) {
+                    intrinsicList.append( intrinsicLibrary.o(libIndex) )
+                    matched = 1
+                }
+            }
+            for libIndex=0, condLibrary.count()-1 {
+                if( strcmp( token, condLibrary.o(libIndex).s ) == 0 ) {
+                   intrinsicList.append( condLibrary.o(libIndex) )
+                   matched = 1
+                }
+            }
+            for libIndex=0, ptProcessLibrary.count()-1 {
+                if( strcmp( token, ptProcessLibrary.o(libIndex).s ) == 0 ) {
+                    ptProcessList.append( ptProcessLibrary.o(libIndex) )
+                    matched = 1
+                    includeSyn = 1
+                }
+            }
+            if ( matched == 0 && strcmp(token,"IClamp") == 0 ) {
+                includeSyn = 1
+                matched = 1
+                ptProcessList.append( new String( "IClamp" ) )
+            }
+            if ( matched == 0 && strcmp(token,"SEClamp") == 0 ) {
+                includeSyn = 1
+                matched = 1
+                ptProcessList.append( new String( "SEClamp" ) )
+            }
+            if ( matched == 0 && strcmp(token,"i_membrane") == 0 ) {
+                matched = 1
+                intrinsicList.append( new String( "i_membrane_" ) )
+		// forall insert extracellular
+            }
+            if( matched == 0 ) {
+                // Note that we now check for intrinsic names individually like with synapses.  Therefore, this else no longer
+                //  needs to assume that an unmatched token is an ion.  (In the event new ions are added, we can update the lists)
+                terminate( "Bad type given to Current Summation report: %s", token )
+
+            }
+        }
+    }
+
+    $o1 = intrinsicList
+    $o2 = ptProcessList
+}
+
+func getSecTypeAndIndex() { local baseOffset, secIndex  localobj str, strobj
+        strdef subset
+        str = new String()
+strobj = new StringFunctions()
+if( strobj.substr( secname(), "soma" ) > 0 ) {
+        subset = "soma"
+                        $&1 = 1
+} else if (strobj.substr( secname(), "axon") >0) {
+        subset = "axon"
+                        $&1 = 2
+}else if (strobj.substr( secname(), "dend") >0) {
+        subset = "dend"
+                        $&1=3
+}else if (strobj.substr( secname(), "apic") > 0) {
+        subset = "apic"
+                        $&1=4
+} else {
+        return 1
+}
+// parse out the index from the secname
+strobj.tail( secname(), subset, str.s )
+                if (strobj.len(str.s) > 0) {
+                        strobj.left(str.s, strobj.len(str.s)-1) // result should look like [n
+                        strobj.right(str.s, 1)
+                        sscanf( str.s, "%d", &secIndex )
+                        $&2 = secIndex
+                } else {
+                        return 1
+                }
+$&2=secIndex
+                return 0
+}
+
+/**
+ * After a restore, the ALU objects need to be manually restarted so that they periodically update
+ */
+proc restartALUs() { local aluIndex
+    if( object_id( ALUList, 1 ) != -1 ) for aluIndex=0, ALUList.count()-1 {
+        ALUList.o(aluIndex).restartEvent(t)
+    }
+}
+
+endtemplate Report
+

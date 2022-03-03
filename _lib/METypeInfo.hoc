@@ -1,0 +1,255 @@
+/**
+ * @file METypeInfo.hoc
+ * @brief Object to handle loading/retrieving info for metypes such as eModel, Threshold current, HypAmp current
+ * @author king
+ * @date 2017-08-10
+ * @remark Copyright © BBP/EPFL 2005-2017; All rights reserved. Do not distribute without further notice.
+ */
+
+{load_file("fileUtils.hoc")}
+
+//-----------------------------------------------------------------------------------------------
+// Single Item
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Structure to hold all info for a single metype read from the combo file
+ */
+begintemplate METypeInfoItem
+
+external terminate
+
+public morph_name, layer, fullmtype, etype, emodel, combo_name, threshold_current, holding_current, printCell
+public init, c
+
+objref morph_name, layer, fullmtype, etype, emodel, combo_name
+
+/**
+ * A simple struct of METype info. Can be init'ed with morphology and emodel
+ * @param $s1 The morphology name (optional)
+ * @param $s2 The emodel name (optional)
+ */
+proc init() {
+    if(numarg() > 0) {
+        morph_name = new String($s1)
+    } else {
+        morph_name = new String()
+    }
+    if(numarg() > 1) {
+        emodel = new String($s2)
+    } else {
+        emodel = new String()
+    }
+
+    layer = new String()
+    fullmtype = new String()
+    etype = new String()
+    combo_name = new String()
+    threshold_current = 0
+    holding_current = 0
+}
+
+/**
+ * Copy an METypeItem
+ * @return new METypeItem with copied fields
+ */
+obfunc c() { localobj result
+    result = new METypeInfoItem()
+
+    sprint( result.morph_name.s, morph_name.s )
+    sprint( result.layer.s, layer.s )
+    sprint( result.fullmtype.s, fullmtype.s )
+    sprint( result.etype.s, etype.s )
+    sprint( result.emodel.s, emodel.s )
+    sprint( result.combo_name.s, combo_name.s )
+
+    result.threshold_current = threshold_current
+    result.holding_current   = holding_current
+
+    return result
+}
+
+proc printCell()  {
+    printf("M:%s L:%s MT:%s ET:%s EM:%s C:%s TC:%g HC:%g\n", \
+           morph_name.s, layer.s, fullmtype.s, etype.s, emodel.s, combo_name.s, threshold_current, holding_current)
+}
+
+
+endtemplate METypeInfoItem
+
+//-----------------------------------------------------------------------------------------------
+// Manager Object
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Object to read file with specific METype info and manage the containers for data retrieval
+ */
+begintemplate METypeManager
+
+public retrieveInfo, init, loadInfoCombo, loadInfoNP
+public verbose
+
+objref meMap
+
+//-----------------------------------------------------------------------------------------------
+// Member Functions
+//-----------------------------------------------------------------------------------------------
+
+proc init() {
+    meMap = new Map()
+    verbose = 0
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Read file with mecombo info, retaining only those that are local to this node
+ *
+ * @param $o1 Run info from config parser
+ * @param $o2 gidvec local gids
+ * @param $o2 comboList Combos corresponding to local gids
+ * @param $o3 morphList Morpholgies corresponding to local gids
+ */
+func loadInfoCombo() {  local lineIndex, nErrors, cellIndex, nitems  localobj runInfo, gidvec, meItem, meInfoFile, comboList, morphList, comboFile, gidLookup, gidsubset, nil
+    strdef tstr, key
+
+    runInfo = $o1
+    gidvec = $o2
+    comboList = $o3
+    morphList = $o4
+
+    // TODO: confirm where this file will be in the future and how neurodamus can locate it.  For now use local path
+    //sprint( tstr, ""
+    if( ! runInfo.exists( "MEComboInfoFile" ) ){
+       terminate("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel data. Terminating")
+    }
+    comboFile = runInfo.get( "MEComboInfoFile" )
+    meInfoFile = new File( comboFile.s )
+    if( verbose ) {
+        meMap.toggleVerbose()
+    }
+
+    // build look up for gids
+    if( nrnpython("") == 1 ) {
+        gidLookup = new PythonObject()
+        gidLookup = gidLookup.dict()
+        for cellIndex=0, comboList.count()-1 {
+            sprint( key, "%s;%s", comboList.o(cellIndex).s, morphList.o(cellIndex).s )
+            gidsubset = gidLookup.get(key, nil)
+            if(object_id(gidsubset,1)==-1) {
+                gidsubset = new Vector()
+                gidLookup.setdefault(key,gidsubset)
+            }
+            gidsubset.append(cellIndex)
+        }
+    }
+
+    meInfoFile.ropen()
+    if( ! meInfoFile.isopen() ) {
+        return -1
+    }
+
+    // very inefficient currently; TODO: explore more efficient ways to get this data such as HDF5 file format
+    meInfoFile.gets(tstr) // header: morph_name      layer   fullmtype       etype   emodel  combo_name      threshold_current       holding_current
+
+    meItem = new METypeInfoItem()
+    lineIndex = 1
+
+    while( ! meInfoFile.eof() ) {
+
+        meInfoFile.gets(tstr)
+
+        // should stop using start.ncs and use circuit.mvd3
+        nitems = sscanf( tstr, "%s %s %s %s %s %s %lf %lf", meItem.morph_name.s, meItem.layer.s, meItem.fullmtype.s, meItem.etype.s, meItem.emodel.s, meItem.combo_name.s, &meItem.threshold_current, &meItem.holding_current )
+        if( nitems == 6 ) {
+            meItem.threshold_current = 0
+            meItem.holding_current = 0
+        } else if( nitems != 8 ) {
+            if( verbose ) {
+                print "Error combo.tsv line ", lineIndex, ": unexpected nfields ", nitems, "; expecting 6 (hippocampus) or 8 (somatosensory)"
+                printf( "%s", tstr )
+            }
+            //return -1
+        }
+
+        // does this item match any expected?
+        if( nrnpython("") == 1 ) {
+            sprint( key, "%s;%s", meItem.combo_name.s, meItem.morph_name.s )
+            gidsubset = gidLookup.get( key, nil )
+            if( object_id(gidsubset,1)!=-1 ) {
+                for cellIndex=0,gidsubset.size()-1 {
+                    meMap.put( gidvec.x[gidsubset.x[cellIndex]], meItem.c() )
+                }
+            }
+        } else {
+            for cellIndex=0, comboList.count()-1 {
+                if( strcmp( comboList.o(cellIndex).s, meItem.combo_name.s ) == 0 && strcmp( morphList.o(cellIndex).s, meItem.morph_name.s ) == 0 ) {
+                    meMap.put( gidvec.x[cellIndex], meItem.c() )
+                }
+            }
+        }
+        lineIndex += 1
+    }
+    meInfoFile.close
+
+    // confirm that all gids have been matched.  Otherwise, print combo + morph info to help find issues
+    nErrors = 0
+    for cellIndex=0, gidvec.size()-1 {
+        if( ! meMap.exists( gidvec.x[cellIndex] ) ) {
+            nErrors += 1
+            print "Error: no match for gid ", gidvec.x[cellIndex], " ", comboList.o(cellIndex).s, " ", morphList.o(cellIndex).s
+        }
+    }
+
+    return -1*nErrors
+}
+
+/*
+ * @param $o1 The hoc Vector of gids
+ * @param $o2 NP array of morphology names
+ * @param $o3 NP array of emodels
+ * @param $o4 NP array of threshold_currents (optional)
+ * @param $o5 NP array of holding_currents (optional)
+ */
+proc loadInfoNP() { local cellIndex  localobj gidvec, morpho_names, emodels, threshold_currents, holding_currents, meItem
+    // Need fields to create a METype [emodel, morph_name, threshold_current, holding_current]
+    gidvec = $o1
+    morpho_names = $o2
+    emodels = $o3
+    if( numarg() > 3 ) {
+        threshold_currents = $o4
+        holding_currents = $o5
+    }
+
+    for cellIndex = 0, gidvec.size()-1 {
+        meItem = new METypeInfoItem(morpho_names._[cellIndex], emodels._[cellIndex])
+        if( object_id(threshold_currents) ) {
+            meItem.threshold_current = threshold_currents._[cellIndex]
+            meItem.holding_current = holding_currents._[cellIndex]
+        }
+        meMap.put( gidvec.x[cellIndex], meItem )
+    }
+}
+
+
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Given data from mvd3 file, retrieve the corresponding METypeInfoItem
+ *
+ * @param $1 gid
+ */
+obfunc retrieveInfo() {  localobj nil
+
+    if( !meMap.exists( $1 ) ) {
+        print "Error: failed to find metype gid ", $1
+        return nil
+    }
+
+    return meMap.get( $1 )
+}
+
+endtemplate METypeManager
+
+

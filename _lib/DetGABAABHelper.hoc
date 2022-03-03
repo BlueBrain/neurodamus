@@ -1,0 +1,57 @@
+/**
+ * @file DetGABAABHelper.hoc
+ * @brief Encapsulate any hoc actions that are necessary to instantiate this synapse type
+ * @author king
+ * @date 2015-04-16
+ * @remark Copyright © BBP/EPFL 2005-2015; All rights reserved. Do not distribute without further notice.
+ */
+
+
+if ( ! name_declared("randomize_Gaba_risetime") ) {
+    execute("~strdef randomize_Gaba_risetime")  // otherwise (early-binding) always defines
+    execute("~randomize_Gaba_risetime=\"True\"")
+}
+
+/**
+ * This helper object will encapsulate the hoc actions needed to create a deterministic version of our inhibitory synapse
+ */
+begintemplate DetGABAABHelper
+
+objref synapse, rng
+public synapse
+
+external randomize_Gaba_risetime
+
+/**
+ * @param tgid gid of Postsynaptic cell
+ * @param synParameters set of paramters loaded from default nrn.h5
+ * @param x location of the synapse along the section (0<=x<=1)
+ * @param synapseID id assigned to this synapses within the cell's context
+ * @param baseSeed for random number generator
+ */
+proc init() { local tgid, x, synapseID, baseSeed  localobj synParams
+    tgid = $1
+    synParams = $o2
+    x = $3
+    synapseID = $4
+    baseSeed = $5
+
+    synapse = new DetGABAAB(x)
+
+    if ( strcmp( randomize_Gaba_risetime, "True") == 0 ) {
+        rng = new Random()
+        rng.MCellRan4( synapseID*100000+100, tgid+250+baseSeed )
+        rng.lognormal(0.2, 0.1)
+        synapse.tau_r_GABAA = rng.repick()
+    }
+
+    synapse.tau_d_GABAA = synParams.DTC
+
+    synapse.Use = abs( synParams.U )
+    synapse.Dep = abs( synParams.D )
+    synapse.Fac = abs( synParams.F )
+
+    synapse.synapseID = synapseID
+}
+
+endtemplate DetGABAABHelper

@@ -1,0 +1,239 @@
+/**
+ * @file RNGSetting.hoc
+ * @brief To help with transitioning RNG behavior, this will contain setting/flags.
+ * @author king
+ * @date 2017-03-08
+ * @remark Copyright © BBP/EPFL 2005-2017; All rights reserved. Do not distribute without further notice.
+ */
+{load_file("SimSettings.hoc")}
+{load_file("fileUtils.hoc")}
+
+rngMode = 0  // corresponds to COMPATIBILITY defined below
+ionchannelSeed = 0
+synapseSeed = 0
+stimulusSeed = 0
+minisSeed = 0
+globalSeed = 0
+
+begintemplate RNGSettings
+
+public init, interpret, getRNGMode, getIonChannelSeed, getSynapseSeed, getStimulusSeed, getMinisSeed, getGlobalSeed
+public COMPATIBILITY, RANDOM123, UPMCELLRAN4
+
+external rngMode, ionchannelSeed, synapseSeed, stimulusSeed, minisSeed, globalSeed, simConfig, terminate
+
+proc init() {
+    // consts for random number handling
+    COMPATIBILITY = 0
+    RANDOM123 = 1
+    UPMCELLRAN4 = 2
+}
+
+/**
+ * Given the Run block from a BlueConfig, check if there are special flags governing rng behavior
+ *
+ * $o1 ParsedRun from a BlueConfig (type is Map)
+ */
+proc interpret() { localobj runInfo, pc, rng
+    strdef rngModeField
+    runInfo = $o1
+    rngMode = RANDOM123
+
+    pc = new ParallelContext()
+    if( pc.id() == 0 ) {
+        print "As of Oct 2020 Neurodamus uses Random123 as default"
+    }
+
+    if( runInfo.exists( "RNGMode" ) ) {
+        rngModeField = runInfo.get( "RNGMode" ).s
+        if( strcmp( rngModeField, "Compatibility" ) == 0 ) {
+            rngMode = COMPATIBILITY
+        } else if( strcmp( rngModeField, "UpdatedMCell" ) == 0 ) {
+            rngMode = UPMCELLRAN4
+        } else if( strcmp( rngModeField, "Random123" ) == 0 ) {
+            rngMode = RANDOM123
+        } else {
+            terminate( "Invalid RNGMode ", rngModeField )
+        }
+        if( pc.id() == 0 ) {
+            print "RNGMode set to ", rngMode, " [COMPATIBILITY=0, RANDOM123=1, UPMCELLRAN4=2]"
+        }
+    }
+
+    if( simConfig.coreNeuronUsed() && rngMode != RANDOM123) {
+        // Given R123 is now the default there's no sense to allow an explicit invalid option
+        terminate( "Config Error: CoreNEURON requires Random123 RNG" )
+    }
+
+    if( runInfo.exists("BaseSeed") ) {
+        globalSeed = runInfo.valueOf( "BaseSeed" )
+
+        // random123 can set the global index now
+        if( rngMode == RANDOM123 ) {
+            rng = new Random()
+            rng.Random123_globalindex( globalSeed )
+        }
+    }
+    
+    // don't search for indicidual seeds if we are in compatibility mode
+    if( rngMode == COMPATIBILITY ) {
+        return
+    }
+
+    if( runInfo.exists("IonChannelSeed") ) {
+        ionchannelSeed = runInfo.valueOf( "IonChannelSeed" )
+    }
+    if( runInfo.exists("StimulusSeed") ) {
+        stimulusSeed = runInfo.valueOf( "StimulusSeed" )
+    }
+    if( runInfo.exists("MinisSeed") ) {
+        minisSeed = runInfo.valueOf( "MinisSeed" )
+    }
+    if( runInfo.exists("SynapseSeed") ) {
+        synapseSeed = runInfo.valueOf( "SynapseSeed" )
+    }
+}
+
+func getRNGMode() {
+    return rngMode
+}
+
+func getIonChannelSeed() {
+    return ionchannelSeed
+}
+
+func getStimulusSeed() {
+    return stimulusSeed
+}
+
+func getMinisSeed() {
+    return minisSeed
+}
+
+func getSynapseSeed() {
+    return synapseSeed
+}
+
+func getGlobalSeed() {
+    return globalSeed
+}
+
+endtemplate RNGSettings
+
+
+///////////////////////////////////////////////////////////////////////
+///
+///  These are legacy functions to keep compaltibility
+///
+///////////////////////////////////////////////////////////////////////
+
+/*!
+ * In place of using a CCell's re_init_rng function, we will check for cells that define the re_init_rng function,
+ * but then setRNG using global seed as well
+ *
+ * @param $o1 CCell which is to be checked for setRNG
+ */
+obfunc rngForStochKvInit() {  local channelID, hasStochKv  localobj CCell, rng, rngInfo, rngList, pc
+    CCell = $o1
+    //print "Replace rng for stochKv in gid ", CCell.CellRef.gid
+
+    // quick check to verify this object contains StochKv
+    hasStochKv = 0
+    CCell.CellRef.soma {
+        if( ismembrane( "StochKv" ) ) {
+            hasStochKv = 1
+        }
+    }
+
+    if( !hasStochKv ) {
+        return
+    }
+
+    rngList = new List()
+
+    channelID = 0
+    forsec CCell.CellRef.somatic {
+        for (x, 0) {
+            setdata_StochKv(x)
+            rng = new Random()
+            rng.MCellRan4( channelID*10000+100, globalSeed + ionchannelSeed + CCell.CellRef.gid*10000+250+1 )
+            channelID = channelID + 1
+            rng.uniform(0,1)
+            setRNG_StochKv(rng)
+            rngList.append(rng)
+        }
+    }
+    forsec CCell.CellRef.basal {
+        for (x, 0) {
+            setdata_StochKv(x)
+            rng = new Random()
+            rng.MCellRan4( channelID*10000+100, globalSeed + ionchannelSeed + CCell.CellRef.gid*10000+250+1 )
+            channelID = channelID + 1
+            rng.uniform(0,1)
+            setRNG_StochKv(rng)
+            rngList.append(rng)
+        }
+    }
+    forsec CCell.CellRef.apical {
+        for (x, 0) {
+            setdata_StochKv(x)
+            rng = new Random()
+            rng.MCellRan4( channelID*10000+100, globalSeed + ionchannelSeed + CCell.CellRef.gid*10000+250+1 )
+            channelID = channelID + 1
+            rng.uniform(0,1)
+            setRNG_StochKv(rng)
+            rngList.append(rng)
+        }
+    }
+
+    return rngList
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * In place of using a CCell's re_init_rng function, we will check for cells that define the re_init_rng function,
+ * but then setRNG using random123
+ *
+ * @param $o1 CCell which is to be checked for setRNG
+ */
+proc rng123ForStochKvInit() {  local channelID, hasStochKv  localobj CCell
+    CCell = $o1
+    //print "Replace rng for stochKv in gid ", CCell.CellRef.gid
+
+    // quick check to verify this object contains StochKv
+    hasStochKv = 0
+    CCell.CellRef.soma {
+        if( ismembrane( "StochKv" ) ) {
+            hasStochKv = 1
+        }
+    }
+
+    if( !hasStochKv ) {
+        return
+    }
+
+    channelID = 0
+    forsec CCell.CellRef.somatic {
+        for (x, 0) {
+            setdata_StochKv(x)
+            setRNG_StochKv(ionchannelSeed, channelID, CCell.CellRef.gid + 1)
+            channelID = channelID + 1
+        }
+    }
+    forsec CCell.CellRef.basal {
+        for (x, 0) {
+            setdata_StochKv(x)
+            setRNG_StochKv(ionchannelSeed, channelID, CCell.CellRef.gid + 1)
+            channelID = channelID + 1
+        }
+    }
+    forsec CCell.CellRef.apical {
+        for (x, 0) {
+            setdata_StochKv(x)
+            setRNG_StochKv(ionchannelSeed, channelID, CCell.CellRef.gid + 1)
+            channelID = channelID + 1
+        }
+    }
+}
+

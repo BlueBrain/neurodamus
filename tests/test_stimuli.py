@@ -89,3 +89,13 @@ class TestStimuli(object):
                                                             0.03052109, 0.02882802, 0.03156533,
                                                             0.03289219, 0.03357043, 0.03049419,
                                                             0.0])
+
+    def test_pulses_arbitrary(self):
+        self.stim.add_pulses_arbitrary([1],[1])
+        assert list(self.stim.time_vec) == [0.0, 0.0, 0.0, 1.0, 1.0]
+        assert list(self.stim.stim_vec) == [0.0, 0.0, 1.0, 1.0, 0.0]
+
+    def test_pulses_arbitrary_complex(self):
+        self.stim.add_pulses_arbitrary([1,2],[10,20],delay=100)
+        assert list(self.stim.time_vec) == [0.0, 100.0, 100.0, 110.0, 110.0, 130, 130]
+        assert list(self.stim.stim_vec) == [0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 0]

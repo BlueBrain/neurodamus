@@ -1,0 +1,758 @@
+/**
+ * @file Connection.hoc
+ * @brief Organize the synapses and their locations between two gids, leading to netcon creation
+ * @author king
+ * @date 2009-07-07
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+/**
+ * @remark Data loaded from the nrn.h5 file (or provided elsewhere?), can be stored in an instance of this object
+ * @remark for easier usage of those paramters (passing, accessing,etc.)
+ */
+{load_file("ConnectionUtils.hoc")}
+{load_file("TPointList.hoc")}
+{load_file("timeit.hoc")}
+{load_file("AMPANMDAHelper.hoc")}
+{load_file("GABAABHelper.hoc")}
+{load_file("fileUtils.hoc")}
+
+// A singleton 'container' of aux functions
+objref ConnUtils
+ConnUtils = new ConnectionUtils()
+
+
+//-----------------------------------------------------------------------------------------------
+// Helper Objects members
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * @brief Template describing synapse parameters
+ */
+begintemplate SynapseParameters
+
+external terminate
+
+/**
+ * public data members
+ */
+public init, sgid, delay, isec, ipt, offset, weight, U, D, F, DTC, synType, synapseID, location, nrrp, maskValue
+
+/**
+ * @brief	Initializes synapse
+ * @author	Jim King, Fabien Delalondre
+ * @date		03.08.2011
+ *
+ * @param $o1 (In) Vector with synapse parameters from nrn file (sgid, delay, isec, ipt, weight, U, D, F, DTC, synType)
+ *
+ */
+proc init() {
+    sgid = $o1.x[0]
+    delay = $o1.x[1]
+    isec = $o1.x[2]
+    ipt = $o1.x[3]
+    offset = $o1.x[4]
+    weight = $o1.x[5]
+    U = $o1.x[6]
+    D = $o1.x[7]
+    F = $o1.x[8]
+    DTC = $o1.x[9]
+    synType = $o1.x[10]
+    nrrp = $o1.x[11]
+    synapseID = $o1.x[14]
+
+    // x[12] x[13] are reserved for u_hill_coefficient and conductance_ratio, not used by hoc
+    // optional parameter used for structural plasticity; -1 indicates not assigned (no mask in use)
+    if( $o1.size() > 15 ) {
+        maskValue = $o1.x[15]
+    } else {
+        maskValue = -1
+    }
+
+    // The location will be computed later
+    location = 0.5
+}
+
+endtemplate SynapseParameters
+
+//-----------------------------------------------------------------------------------------------
+// Main Connection template
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * @brief  	A Connection object serves a a container for synapses formed from a presynaptic gid
+ * @brief	and a postsynaptic gid, including Points where those synapses are placed (stored in TPointList)
+ * @author       Jim King, Fabien Delalondre
+ * @date         03.08.2011
+ */
+begintemplate Connection
+
+external timeit_register, timeit_start, timeit_add, ConnUtils, simConfig, tstop
+
+
+//-----------------------------------------------------------------------------------------------
+// declare members
+//-----------------------------------------------------------------------------------------------
+
+objref synapseLocations, synapseParamsList, synapseIDs, synapseList, netconList, configureList, this
+objref synOverride, synapseHelper
+
+///Synapse replay
+objref replayNetconList, handlerList, tVecList, vecList
+
+///Plasticity
+objref weightAdjusterList, waNetConPreList, waNetConPostList
+
+///Spontaneous Minis
+objref miniNetConList, miniRNGList, ipsList, rate_vec, tbins_vec
+
+///Delay Vectors
+objref delayVecList, delayWeightVecList
+
+// reference for the StringFunctions class
+objref str
+
+//-----------------------------------------------------------------------------------------------
+// public members
+//-----------------------------------------------------------------------------------------------
+
+public init, tgid, sgid, append, setWeightScalar, finalize, AMPA_ONLY, DUAL_SYNS, spontMiniRate, finalizeGapJunctions
+public tpopid, spopid
+public updateDelayVecs, updateWeights, sortDelayedWeightVectors // for delayed connection blocks
+public replay // for synapse replay
+public UseSTDP, NO_STDP, DOUBLET_STDP, TRIPLET_STDP //for plasticity
+public appendSynapseConfiguration //for synapse configuration
+public restartModSources //for spontaneous minis and replays after a restore (savestate)
+public synapseParamsList, synOverride
+public executeConfigure, setSpontRate
+
+public updateConductance //Oren
+
+public locked  // No more synapses shall be added (FLP)
+
+public overrideSynDelay // Override synaptic delay from edge files
+
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * @param $1 presynaptic gid
+ * @param $2 postsynaptic gid
+ * @param $o3 Any synapse configurations that should be applied when the synapses are instatiated (or nil for none)
+ * @param $s4 STDP settings
+ * @param $5 rate for spontaneous minis
+ * @param $6 optional synapse mode (default is DUAL_SYNS)
+ */
+proc init() { localobj configuration
+    sgid = $1
+    tgid = $2
+    configuration = $o3
+    spontMiniRate = $5
+    spopid = 0
+    tpopid = 0
+
+    locked = 0
+    weightScalar = 1
+    syndelay_override = -1
+
+    // the nc_type parameter index in the weight index as declared in the mod
+    nc_type = -1
+    // Define values for netcon type
+    NC_PRESYN = 0
+    NC_SPONTMINI = 1
+    NC_REPLAY = 2
+
+    // Define values for each STDP rule. Add more here as more rules are implemented
+    NO_STDP = 0
+    DOUBLET_STDP = 1
+    TRIPLET_STDP = 2
+
+    // Initialize StringFunctions
+    str = new StringFunctions()
+
+    // Check the value of the STDP input ($s4) and set UseSTDP accordingly
+    UseSTDP = 0
+    if( strcmp($s4,"Doublet") == 0 ) {
+        terminate("Starting 2019-01 Stdp no longer supported")
+    } else if( strcmp($s4,"Triplet") == 0) {
+        terminate("Starting 2019-01 Stdp no longer supported")
+    }
+
+    synapseLocations = new TPointList(tgid, 1) //note we set the TPointList to include nil locations when iterating
+    synapseParamsList = new List()
+    synapseIDs = new Vector()
+
+    configureList = new List()
+    if( object_id(configuration) != 0 ) {
+        configureList.append(configuration)
+    }
+
+    //Note, these are constants provided for other objects (like SynapseRuleManager) to see
+    // (eliminated 'DEFAULT' since it was not informative as to what it meant; may add more *named* modes later)
+    AMPA_ONLY = 1
+    DUAL_SYNS = 2
+
+    synapseMode = DUAL_SYNS
+    if( numarg() > 5 ) {
+        if( $6 == AMPA_ONLY || $6 == DUAL_SYNS ) {
+            synapseMode = $6
+        } else {
+            printf( "Invalid synapse mode (%d).  Valid options are AMPA_ONLY(%d) or DUAL_SYNS(%d)\n", $6, AMPA_ONLY, DUAL_SYNS )
+        }
+    }
+
+    // initialize lists to store delayed connection vectors for synapses
+    delayVecList = new List()
+    delayWeightVecList = new List()
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Add a location and synapse to this Connection so that netcons can later be generated
+ *
+ * @param $o1 TPointList with one point on the tgid where the associated synapse exists
+ * @param $o2 Parameters for Synapse object to be placed
+ * @param $3  Optional id for the synapse to be used for seeding rng if applicable
+ */
+proc append() {
+    synapseLocations.append( $o1 )
+    synapseParamsList.append( $o2 )
+
+    // copy the location from the pointlist into the param item for easier debugging access
+    $o2.location = $o1.x.x[0]
+
+    if( numarg() > 2 ) {
+        synapseIDs.append( $3 )
+    } else {
+        synapseIDs.append( synapseLocations.count() )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Modify the weight parameter for all synapses controlled by this Connection
+ *
+ * @param $1 scalar for the weight value (applied when netcons are created)
+ */
+proc setWeightScalar() {
+    weightScalar = $1
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Override the synaptic delay parameter for all synapses controlled by this Connection
+ *
+ * @param $1 scalar for the weight value (applied when netcons are created)
+ */
+proc overrideSynDelay() {
+    syndelay_override = $1
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Add a synapse configuration command to the list.  All commands are executed on synapse creation
+ *
+ * @param $o1 The configure command or nil
+ */
+proc appendSynapseConfiguration() {
+    if( object_id($o1) != 0 ) {
+        configureList.append( $o1 )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+// class members which are accessible during an execute1( *, this ) call
+objref availParams, synobj
+
+/*!
+ * Create one or more synapses, updating the synapseList and TPointList in the supplied Connection object.
+ * This is dependant on the location existing on the cpu
+ *
+ * @param $o1 reference to cell object
+ * @param $o2 SynapseParameters object for the synapse to be placed at a single location
+ * @param $3 distance into the currently accessed section (cas)
+ * @param $4 Synapse id (determined by row number in the nrn.h5 dataset)
+ * @param $5 base seed to adjust synapse RNG - added to MCellRan4's low index parameter
+ */
+proc placeSynapses() { local x, baseSeed, synapseID, ret  localobj synParams, overrideLabel, pc
+    strdef tstr
+    pc=new ParallelContext()
+    synParams = $o2
+    availParams = $o2
+    x = $3
+    synapseID = $4
+    baseSeed = $5
+
+    if( object_id(synOverride, 1) != -1 ) {
+
+        // there should be a 'Helper' for that syntype in the hoc path.
+        // rem: NEURON knows to load a template only once, so no harm in calling load_file multiple times
+        overrideLabel = synOverride.get("ModOverride")
+        {sprint( tstr, "{load_file(\"%sHelper.hoc\")}", overrideLabel.s )}
+        ret = execute1( tstr )
+        if( ret < 0 ) {
+            {sprint( tstr, "Failed to load template: '%sHelper.hoc'", overrideLabel.s )}
+            terminate( tstr )
+        }
+
+        {sprint( tstr, "synapseHelper = new %sHelper( %d, availParams, %.20g, %d, %d, %d, %d, synOverride)", overrideLabel.s, tgid, x, synapseID, baseSeed, spopid, tpopid )}
+        ret = execute1( tstr, this )
+        if( ret < 0 ) {
+            terminate( "Failed to create synapse from helper ", tstr )
+        }
+    } else {
+
+        //I use for, but really there is only one point in the list
+        if( $o2.synType < 100 ) {
+            synapseHelper = new GABAABHelper( tgid, synParams, x, synapseID, baseSeed, spopid, tpopid )
+        } else {
+            synapseHelper = new AMPANMDAHelper( tgid, synParams, x, synapseID, baseSeed, spopid, tpopid )
+        }
+    }
+    //synapseHelper.synapse.toggleVerbose()
+    // set the synapse conductance obtained from the synapse file
+    // this assumes that all synapse mechanisms have a RANGE variable conductance declared
+    // otherwise print error messages and abort.
+    ret = execute1("{synapseHelper.synapse.conductance = availParams.weight}", this, 0 )
+    if( ret < 1 ) {
+        {sprint( tstr, "%s does not define a conductance variable", synapseHelper.synapse  )}
+        terminate(tstr)
+        abort()
+    }
+
+    // uncomment this to populate synapses with sgid & tgid for debugging
+    //synapseHelper.synapse.tgid = tgid
+    //synapseHelper.synapse.sgid = sgid
+
+    $o1.CellRef.synHelperList.append(synapseHelper)
+    $o1.CellRef.synlist.append(synapseHelper.synapse)
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * All parameters are set, create synapses and netcons
+ *
+ * $o1 pnm object which manages cells ( & netcons) for NEURON
+ * $o2 cell object (provided directly rather than via pnm to avoid loadbalance questions
+ * $3 base seed value (should be given default of 0 in case no adjustment is needed)
+ * $4 optional argument which overrides the tgid in the event of loadbalancing
+ */
+proc finalize() { local x, baseSeed, finalgid, synIndex, ncIndex \
+    localobj nc, pnm, cellObj, activeParams, ncWAPre, ncWAPost, weightAdjuster, exprng, uniformrng, ips, netconMini, bbss, rngInfo, vecstim, delayVec, delayWeightVec
+    strdef tstr, syn_name
+
+    pnm = $o1
+    cellObj = $o2
+    baseSeed = $3
+    synapseList = new List()
+    weightAdjusterList = new List()
+    waNetConPreList = new List()
+    waNetConPostList = new List()
+    netconList = new List()
+    ipsList = new List()
+    miniNetConList = new List()
+    miniRNGList = new List()
+    replayNetconList = new List()
+    vecList = new List()
+    tVecList = new List()
+    bbss = new BBSaveState()
+
+    rngInfo = new RNGSettings()
+
+    tbins_vec = new Vector(1)
+    tbins_vec.x[0] = 0.0
+    rate_vec = new Vector(1)
+
+    if( numarg() == 4 ) {
+        finalgid = $4
+    } else {
+        finalgid = tgid
+    }
+
+    // Note that synapseLocation.SPLIT = 1
+    // All locations, on and off node should be in this list, but only synapses/netcons 
+    // on-node should get instantiated
+    synIndex = 0
+    for synapseLocations.each_point(&x) {
+
+        activeParams = synapseParamsList.o(synIndex)
+
+        if( x != -1 ) {
+            placeSynapses( cellObj, activeParams, x, synapseIDs.x[synIndex], baseSeed )
+            synobj = cellObj.CellRef.synlist.o(cellObj.CellRef.synlist.count()-1)
+
+            sprint(syn_name, "%s", synobj)
+            str.head(syn_name, "\[[0-9]+\]", syn_name)
+            {sprint( tstr, "{nc_type = nc_type_param_%s}", syn_name )}
+            ret = execute1(tstr, this, 0)
+            if( ret < 1 ) {
+                nc_type = -1
+            }
+
+            // I keep a reference to the synapse created so that I can access it easily rather than try 
+            // to search among all other synapses of the tgid
+            synapseList.append( synobj )
+
+            executeConfigureList( cellObj )
+
+            // see also pc.gid_connect
+            // if sgid exists (i.e. both gids are local), makes netcon connection (c/c++) immediately; srcgid is fine
+            // if sgid not exist, creates an input PreSyn to receive spikes transited over the net.
+            // that PreSyn is the source to the NetCon, cannot ask net con about the preloc, but srcgid is fine
+
+            ncIndex = pnm.nc_append( sgid, finalgid, cellObj.CellRef.synlist.count()-1, activeParams.delay, activeParams.weight )
+
+            nc = pnm.nclist.object(ncIndex)
+
+            if ( syndelay_override >= 0 ) {
+                nc.delay = syndelay_override
+            } else {
+                nc.delay = activeParams.delay
+            }
+            nc.weight = activeParams.weight * weightScalar
+            nc.threshold = -30
+            if (nc_type > 0) {
+                nc.weight[nc_type] = NC_PRESYN
+            }
+            netconList.append(nc)
+
+            /*  spontaneous minis */
+            /* rate //available as this member variable */
+            ips = new InhPoissonStim(x)
+
+            if( ! simConfig.coreNeuronUsed() ) {
+                // In Neuron we can limit the duration of the Minis since the InhPoissonStims are recreated
+                // on restore. For CoreNeuron the same Stim is used, so events would stop.
+                // Without this (CoreNeuron) there are events far away in future which are saved in the queue
+                // but we cant apply since we dont know the duration the user is going to request on restore.
+                ips.duration = tstop
+            }
+
+            //netconMini = pnm.pc.gid_connect(ips, finalgid)
+            // A simple NetCon will do, as the synapse and cell are local.
+            netconMini = new NetCon(ips, synobj)
+            netconMini.delay = 0.1
+            // TODO: better solution here to get the desired behaviour during
+            // delayed connection blocks
+            // Right now spontaneous minis should be unaffected by delays
+            netconMini.weight = activeParams.weight * weightScalar
+            if (nc_type > 0) {
+                netconMini.weight[nc_type] = NC_SPONTMINI
+            }
+            miniNetConList.append(netconMini)
+            if( rngInfo.getRNGMode() == rngInfo.RANDOM123 ) {
+                seed2 = spopid*65536 + tpopid + rngInfo.getMinisSeed()
+                ips.setRNGs( synobj.synapseID+200, tgid+250, seed2+300, synobj.synapseID+200, tgid+250, seed2+350 )
+            } else {
+                exprng = new Random()
+                if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY ) {
+                    exprng.MCellRan4( synobj.synapseID*100000+200, tgid+250+baseSeed+rngInfo.getMinisSeed() )
+                } else { //if ( rngIndo.getRNGMode()== rngInfo.UPMCELLRAN4 ) {
+                    exprng.MCellRan4( synobj.synapseID*1000+200, spopid*16777216+tgid+250+baseSeed+rngInfo.getMinisSeed() )
+                }
+                exprng.negexp(1)
+                uniformrng = new Random()
+                if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY ) {
+                    uniformrng.MCellRan4( synobj.synapseID*100000+300, tgid+250+baseSeed+rngInfo.getMinisSeed() )
+                } else { //if ( rngIndo.getRNGMode()== rngInfo.UPMCELLRAN4 ) {
+                    uniformrng.MCellRan4( synobj.synapseID*1000+300, spopid*16777216+tgid+250+baseSeed+rngInfo.getMinisSeed() )
+                }
+                uniformrng.uniform(0.0,1.0)
+                ips.setRNGs(exprng, uniformrng)
+
+                // keep variables so they don't get deleted
+                miniRNGList.append(exprng)
+                miniRNGList.append(uniformrng)
+            }
+
+            ipsList.append(ips)
+            rate_vec.x[0] = spontMiniRate
+            ips.setTbins( tbins_vec )
+            ips.setRate( rate_vec )
+            bbss.ignore(ips)
+
+            if (simConfig.runNeuron()) {
+                // create replay netcons even if they might not be used this run (might be used on subsequent restore)
+                // give them an empty vector which will be filled later
+                vecstim = new VecStim()
+                vecList.append(vecstim)
+                bbss.ignore(vecstim)
+                tVecList.append( new Vector() )
+                vecstim.play( tVecList.o(tVecList.count()-1 ) )
+                nc = new NetCon( vecstim, synobj, 10, activeParams.delay, activeParams.weight )
+                nc.weight = activeParams.weight * weightScalar
+                if (nc_type > 0) {
+                    nc.weight[nc_type] = NC_REPLAY
+                }
+                replayNetconList.append( nc )
+            }
+
+            // add a new empty delay vector that will be filled once we know how
+            // many delayed connections we have
+            ret = execute1("{synobj.setup_delay_vecs}", this, 0 )
+            if( ret < 1 ) {
+                {sprint( tstr, "%s does not support delayed connections", synobj )}
+                terminate(tstr)
+                abort()
+            }
+            delayVec = new Vector()
+            delayWeightVec = new Vector()
+            delayVecList.append( delayVec )
+            delayWeightVecList.append( delayWeightVec )
+            synobj.setup_delay_vecs(delayVec, delayWeightVec)
+        }
+
+        synIndex = synIndex+1
+    }
+}
+
+/**
+ * sort all delayed connection weight vectors
+ */
+proc sortDelayedWeightVectors() {local delayVecIdx \
+    localobj delayTimeVec, delayWeightVec, dtv_sortidx
+
+    for delayVecIdx=0, delayVecList.count()-1 {
+        delayTimeVec = delayVecList.o(delayVecIdx)
+        delayWeightVec = delayWeightVecList.o(delayVecIdx)
+        dtv_sortidx = delayTimeVec.sortindex()
+        delayTimeVec.index(delayTimeVec.c, dtv_sortidx)
+        delayWeightVec.index(delayWeightVec.c, dtv_sortidx)
+    }
+}
+
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * All parameters are set, create synapses and netcons
+ *
+ * $o1 pnm object which manages cells ( & netcons) for NEURON
+ * $o2 cell object (provided directly rather than via pnm to avoid loadbalance questions
+ * $3 offset for this cell's gap junctions
+ * $4 offset for the other cell's gap junctions
+ */
+proc finalizeGapJunctions() { local x \
+    localobj pnm, cellObj, activeParams, gapJunction
+
+    pnm = $o1
+    cellObj = $o2
+    synapseList = new List()
+    netconList = new List()
+
+    //Note that synapseLocation.SPLIT = 1
+    //All locations, on and off node should be in this list, but only synapses/netcons on-node should get instantiated
+    synIndex = 0
+    for synapseLocations.each_point(&x) {
+
+        activeParams = synapseParamsList.o(synIndex)
+
+        if( x != -1 ) {
+            gapJunction = new Gap(x)
+
+            if (numarg() == 4) {
+                pnm.pc.target_var( gapJunction, &gapJunction.vgap, ($3 + activeParams.D) )
+                pnm.pc.source_var( &v(x), ($4 + activeParams.F) )
+            } else {
+                pnm.pc.target_var( gapJunction, &gapJunction.vgap, activeParams.D )
+                pnm.pc.source_var( &v(x), activeParams.F )
+            }
+
+            gapJunction.g = activeParams.weight
+
+            //I keep a reference to the GapJunction created so that I can access it easily rather than try to search among all other synapses of the tgid
+            synapseList.append( gapJunction )
+
+            executeConfigureList( cellObj )
+        }
+
+        synIndex = synIndex+1
+    }
+}
+
+
+/**
+ *This function is for updating the conductance of gap junction, it will help finding the correct
+ * Conductance to get the correct coupling coefficent
+ *
+ */
+
+proc updateConductance() {
+    for syn_ind=0,synapseList.count()-1{
+        synapseList.o[syn_ind].g = $1
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Change the rate used for generating spontaneous minis on the synapses for this connection
+ * @param $1 new rate for spont minis
+ */
+proc setSpontRate() { local rate, index, event  localobj nc, nil
+    rate = $1
+
+    rate_vec.x[0] = rate
+
+    for index=0,ipsList.count()-1 {
+        nc = new NetCon( nil, ipsList.o(index), 10, 0, 1 )
+        ipsList.o(index).setRate( rate_vec )
+        ipsList.o(index).generate_next_event()
+        nc.event( t, ipsList.o(index).getPostRestoreFlag() )
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Helper function to execute the statements of the SynapseConfigure options on created synapses
+ *
+ * @param $o1 cellObj
+ */
+proc executeConfigureList() { local synCount, ret  localobj cellObj, sf
+    cellObj = $o1
+    strdef tstr, tstr1, synLabel
+
+    sprint( synLabel, "synlist.o(%d)", cellObj.CellRef.synlist.count()-1 )
+
+    for configIndex=0, configureList.count()-1 {
+        //execute1( configureList.o(configIndex).s, cellObj
+
+        //do we need to execute some statements on the synapse?
+        sf = new StringFunctions()
+
+        //need to replace all '%s' with synList.o[count-1]
+        substituteCount = 0
+        tstr = configureList.o(configIndex).s
+
+        // keep checking the string for '%s'; as long as one is there, rebuild the string around it
+        while( sf.substr( tstr, "%s" ) != -1 ) {
+            sf.head( tstr, "%s", tstr1 )
+            sf.tail( tstr, "%s", tstr )
+            sprint( tstr, "%s%s%s", tstr1, synLabel, tstr )
+        }
+
+        //surround with curly braces then execute
+        sprint(tstr, "{%s}", tstr )
+        ret = execute1( tstr, cellObj.CellRef )
+        if( ret == 0 ) {
+            print "Failed syn configure between gids ", sgid, " -> ", tgid, ": ", tstr
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Helper function to execute the statements of the SynapseConfigure options on created synapses after the simulation
+ * has run for some time.  This means we can't assume that the last synapse of the cell object is the target
+ *
+ * @param $o1 String with configuration command
+ */
+proc executeConfigure() { local nErr
+    nErr = ConnUtils.executeConfigure(configureList, $o1.s)
+    if( nErr ) print "Failed syn configure ", $o1.s, " between gids ", sgid, " -> ", tgid
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * Update the delayed connection vectors in the synapse.
+ * This is called during simulation configuration to setup all the
+ * delayed connection vectors in the synapse mechanisms
+ *
+ * @param $1 the delay time for the new weight
+ * @param $2 the weight to adjust to at this time
+ */
+proc updateDelayVecs() { local synapseIndex  \
+    localobj delayVec, delayWeightVec
+
+    for synapseIndex=0, synapseList.count()-1 {
+        delayVec = delayVecList.o(synapseIndex)
+        delayWeightVec = delayWeightVecList.o(synapseIndex)
+        delayVec.append($1)
+        delayWeightVec.append($2)
+    }
+}
+
+/**
+ * Change the weights of the netcons generated when connecting the source and target gids represented in
+ * this connection
+ *
+ * @param $1 new weight to give to the netcons of this connection
+ */
+proc updateWeights() { netconIndex
+    for netconIndex=0, netconList.count()-1 {
+        netconList.o(netconIndex).weight[0] = $1
+
+        // also change the replay netcons if the list exists
+        //TODO: determine if we need more flexibility for controlling when replayed synapses should
+        // also be affected by a delayed weight change
+        /*
+        if( object_id( replayNetconList, 1 ) != -1 ) {
+            replayNetconList.o(netconIndex).weight[0] = $1
+        }*/
+
+        //netconList.o(netconIndex).weight[1] = $1
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * The synapses connecting these gids are to be activated using predetermined timings
+ *
+ * @param $o1 time for spike events from the sgid
+ * @param $2 delay when events may be delivered
+ */
+proc replay() { local x, allSynIndex, localSynIndex, delay, tIndex
+    strdef tstr
+
+    allSynIndex = localSynIndex = 0
+    delay = $2
+
+    //Note that synapseLocation.SPLIT = 1
+    //All locations, on and off node should be in this list, but only synapses/netcons on-node will receive the events
+    for synapseLocations.each_point(&x) {
+
+        if( x != -1 ) {
+            for tIndex=0, $o1.size()-1 {
+                if( $o1.x[tIndex] + synapseParamsList.o(allSynIndex).delay >= delay ) {
+                    tVecList.o(localSynIndex).append( $o1.x[tIndex] )
+                }
+            }
+            tVecList.o(localSynIndex).sort()
+            localSynIndex = localSynIndex+1
+        }
+
+        allSynIndex = allSynIndex+1
+    }
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/**
+ * After a restore, InhPoissonStim and VecStim will need to be restarted
+ *  (events generated by INITIAL blocks are cleared)
+ */
+proc restartModSources() { local index
+    // Spont Minis
+    if( object_id( ipsList, 1 ) != -1 ) for index=0, ipsList.count() - 1 {
+        ipsList.o(index).restartEvent()
+    }
+    // Replay VecStim's
+    if( object_id( vecList, 1 ) != -1 ) for index=0, vecList.count() - 1 {
+        vecList.o(index).restartEvent()
+    }
+}
+
+endtemplate Connection
+
