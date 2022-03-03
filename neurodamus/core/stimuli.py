@@ -97,6 +97,36 @@ class SignalSource:
             base_amp: The base amplitude
         """
         base_amp = kw.get("base_amp", self._base_amp)
+        tau = 1000 / frequency
+        delay = tau - pulse_duration
+        number_pulses = int(total_duration / tau)
+        for _ in range(number_pulses):
+            self.add_pulse(amp, pulse_duration, base_amp=base_amp)
+            self.delay(delay)
+
+        # Add final pulse, possibly partial
+        remaining_time = total_duration - number_pulses * tau
+        if pulse_duration <= remaining_time:
+            self.add_pulse(amp, pulse_duration, base_amp=base_amp)
+            self.delay(min(delay, remaining_time - pulse_duration))
+        else:
+            self.add_pulse(amp, remaining_time, base_amp=base_amp)
+        # Last point
+        self._add_point(base_amp)
+        return self
+
+
+    def add_train_arbitrary(self, amp, frequency, pulse_duration, total_duration, **kw):
+        """Stimulus with repeated pulse injections at a specified frequency.
+
+        Args:
+            amp: the amplitude of a each pulse
+            frequency: determines the number of pulses per second (hz)
+            pulse_duration: the duration of a single pulse (peak time) (ms)
+            total_duration: duration of the whole train (ms)
+            base_amp: The base amplitude
+        """
+        base_amp = kw.get("base_amp", self._base_amp)
 
         init_delay = kw.get("delay",0)
         self.delay(init_delay)
