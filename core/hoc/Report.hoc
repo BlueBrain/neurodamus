@@ -307,8 +307,13 @@ proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
         vgid = $o1.gid
     }
 
-    pop_name = $s5
-    pop_offset = $6
+    if ( numarg() > 4 ) {
+        pop_name = $s5
+        pop_offset = $6
+    } else {
+        pop_name = "default"
+        pop_offset = 0
+    }
 
     rpt = prepareReportForCell( $o1, $o2, vgid, pop_name, pop_offset )
 
@@ -422,8 +427,13 @@ proc addSummationReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptPro
         useElectrode = 1
     }
 
-    pop_name = $s6
-    pop_offset = $7
+    if ( numarg() > 5 ) {
+        pop_name = $s6
+        pop_offset = $7
+    } else {
+        pop_name = "default"
+        pop_offset = 0
+    }
 
     rpt = prepareReportForCell( $o1, $o2, vgid, pop_name, pop_offset )
 
@@ -560,8 +570,13 @@ proc addPointReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProcess
     // point cell gid
     vgid = $2
 
-    pop_name = $s4
-    pop_offset = $5
+    if ( numarg() > 3 ) {
+        pop_name = $s4
+        pop_offset = $5
+    } else {
+        pop_name = "default"
+        pop_offset = 0
+    }
 
     $o1.sec() {
         mechtype = new MechanismType(1)
@@ -633,8 +648,13 @@ proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProce
         vgid = $o1.gid
     }
 
-    pop_name = $s5
-    pop_offset = $6
+    if ( numarg() > 4 ) {
+        pop_name = $s5
+        pop_offset = $6
+    } else {
+        pop_name = "default"
+        pop_offset = 0
+    }
 
     for $o2.each_point(&x) {
         mechtype = new MechanismType(1)
