@@ -573,7 +573,7 @@ class ElectrodeSource(SignalSource):
             self.add_pulses_arbitrary(self.AmpStart,self.width,delay=self.stim_delay)
 
         elif self.type == "Train":
-            self.add_train_arbitrary(self.AmpStart, self.frequency, self.width, self.duration,delay=self.stim_delay)
+            self.add_train_arbitrary(self.AmpStart, self.width, self.frequency, self.duration,delay=self.stim_delay)
         elif self.type == "Sinusoid":
             self.add_sin(self.AmpStart, self.duration, self.frequency,delay=self.stim_delay)
         else:
@@ -590,8 +590,6 @@ class PointSourceElectrode(ElectrodeSource):
         self.y = y
         self.z = z
         self.sigma = sigma
-
-        print("Initializing")
 
 
     def attach_to(self,section):
@@ -611,7 +609,6 @@ class PointSourceElectrode(ElectrodeSource):
 
             out = segVec.play(seg.extracellular._ref_e,self.time_vec,1)
 
-            print(np.max(out.to_python()))
             self.extracellulars.append(out)
 
     def interp_seg_positions(self,section,x):
