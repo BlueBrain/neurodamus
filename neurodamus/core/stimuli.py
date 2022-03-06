@@ -661,7 +661,8 @@ class RealElectrode(ElectrodeSource):
 
 
 
-            scaleFac = self.scaleFactor[self.numSegs+i][0]*self.AmpStart
+            scaleFac = self.scaleFactor[self.numSegs+i-1][0]
+            print(scaleFac)
 
             numNewSegs += 1
 
