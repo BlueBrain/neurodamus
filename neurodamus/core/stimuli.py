@@ -597,7 +597,12 @@ class PointSourceElectrode(ElectrodeSource):
         section.insert('extracellular')
 
         for seg in section:
-            segpositions = self.interp_seg_positions(section,seg.x)
+
+            if 'soma' in section.name() and section.nseg == 1:
+                segpositions = self.get_soma_position(section)
+            else:
+                segpositions = self.interp_seg_positions(section,seg.x)
+
             distance = np.linalg.norm(np.array([self.x,self.y,self.z])-segpositions)
 
             scaleFactor = 1 / (4 * np.pi * self.sigma * distance)*1e3
@@ -611,9 +616,33 @@ class PointSourceElectrode(ElectrodeSource):
 
             self.extracellulars.append(out)
 
-    def interp_seg_positions(self,section,x):
+    def get_soma_position(self,section):
 
         n3d = section.n3d()
+
+        xpos = []
+        ypos = []
+        zpos = []
+        lens = []
+
+        for n in range(n3d):
+            xpos.append(section.x3d(n))
+            ypos.append(section.y3d(n))
+            zpos.append(section.z3d(n))
+
+        x = np.mean(xpos)
+        y = np.mean(ypos)
+        z = np.mean(zpos)
+
+        return np.array([x,y,z])
+
+
+
+    def interp_seg_positions(self,section,x):
+
+
+        n3d = section.n3d()
+
         xpos = []
         ypos = []
         zpos = []
@@ -662,7 +691,6 @@ class RealElectrode(ElectrodeSource):
 
 
             scaleFac = self.scaleFactor[self.numSegs+i-1][0]
-            print(scaleFac)
 
             numNewSegs += 1
 
