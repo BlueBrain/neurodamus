@@ -803,7 +803,7 @@ class Node:
                 core_report_params = (
                     (rep_name, rep_target.name, rep_type, report_on.replace(" ", ","))
                     + rep_params[3:5] + (target_type,) + rep_params[5:8]
-                    + (target.completegids(), SimConfig.corenrn_buff_size)
+                    + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
                 )
                 SimConfig.coreneuron.write_report_config(*core_report_params)
 
