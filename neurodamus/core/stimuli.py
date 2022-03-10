@@ -8,7 +8,7 @@ from .random import RNG, gamma
 import logging
 import h5py
 import numpy as np
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, RegularGridInterpolator
 from neuron import h
 
 class SignalSource:
@@ -579,43 +579,6 @@ class ElectrodeSource(SignalSource):
         else:
             raise Exception("Stimulus type not defined")
 
-
-
-class PointSourceElectrode(ElectrodeSource):
-
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, x, y, z, sigma=0.277):
-
-        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
-        self.x = x
-        self.y = y
-        self.z = z
-        self.sigma = sigma
-
-
-    def attach_to(self,section):
-
-        section.insert('extracellular')
-
-        for seg in section:
-
-            if 'soma' in section.name() and section.nseg == 1:
-                segpositions = self.get_soma_position(section)
-            else:
-                segpositions = self.interp_seg_positions(section,seg.x)
-
-            distance = np.linalg.norm(np.array([self.x,self.y,self.z])-segpositions)
-
-            scaleFactor = 1 / (4 * np.pi * self.sigma * distance)*1e3
-
-
-            segVec = h.Vector()
-            segVec.copy(self.stim_vec)
-            segVec.mul(scaleFactor)
-
-            out = segVec.play(seg.extracellular._ref_e,self.time_vec,1)
-
-            self.extracellulars.append(out)
-
     def get_soma_position(self,section):
 
         n3d = section.n3d()
@@ -664,15 +627,112 @@ class PointSourceElectrode(ElectrodeSource):
 
         return np.array([segX,segY,segZ])
 
+
+
+class PointSourceElectrode(ElectrodeSource):
+
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, x, y, z, sigma=0.277):
+
+        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
+        self.x = x
+        self.y = y
+        self.z = z
+        self.sigma = sigma
+
+
+    def attach_to(self,section):
+
+        section.insert('extracellular')
+
+        for seg in section:
+
+            if 'soma' in section.name() and section.nseg == 1:
+                segpositions = self.get_soma_position(section)
+            else:
+                segpositions = self.interp_seg_positions(section,seg.x)
+
+            distance = np.linalg.norm(np.array([self.x,self.y,self.z])-segpositions)
+
+            scaleFactor = 1 / (4 * np.pi * self.sigma * distance)*1e3
+
+
+            segVec = h.Vector()
+            segVec.copy(self.stim_vec)
+            segVec.mul(scaleFactor)
+
+            out = segVec.play(seg.extracellular._ref_e,self.time_vec,1)
+
+            self.extracellulars.append(out)
+
+
+
 class RealElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path, electrode_name,gid,numSegs):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path):
         super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
-        scaleFile = h5py.File(electrode_path)
+        #
+        # scaleFile = h5py.File(electrode_path)
         # offset = scaleFile['offsets'][str(int(gid))][(int(sec_id))]
         # endOffset = scaleFile['offsets'][str(int(gid))][(int(sec_id+1))]
-        self.scaleFactor = scaleFile['electrodes'][electrode_name][str(int(gid))]#[offset:endOffset]
-        self.numSegs = numSegs
+        #
+        # self.scaleFactor = scaleFile['electrodes'][electrode_name][str(int(gid))][offset:endOffset]
+
+
+        # self.numSegs = numSegs
+
+        self.electrode_path = electrode_path
+
+    def geth5Dataset(self, h5f, group_name, dataset_name):
+        """
+        Find and get dataset from h5 file.
+        out = geth5Dataset(h5f, group_name, dataset_name)
+        h5f - string - h5 file path and name
+        group_name - string - where to initiate search, '/' for root
+        dataset_name - string - dataset to be found
+        return - numpy array
+        """
+
+        def find_dataset(name):
+            """ Find first object with dataset_name anywhere in the name """
+            if dataset_name in name:
+                return name
+
+        with h5py.File(h5f, 'r') as f:
+            k = f[group_name].visit(find_dataset)
+            return f[group_name + '/' + k][()]
+
+    def interpolate_potentials(self, segpositions):
+
+        '''
+        path_to_input is the path to the h5 file containing the potential field, outputted from Sim4Life
+        path_to_positions is the path to the output from the position-finding script
+        '''
+
+        # Get new output file potential field
+
+        with h5py.File(self.electrode_path, 'r') as f:
+            for i in f['FieldGroups']:
+                tmp = 'FieldGroups/' + i + '/AllFields/EM Potential(x,y,z,f0)/_Object/Snapshots/0/'
+            pot = self.geth5Dataset(self.electrode_path, tmp, 'comp0')
+            for i in f['Meshes']:
+                tmp = 'Meshes/' + i
+                break
+            x = self.geth5Dataset(self.electrode_path, tmp, 'axis_x')
+            y = self.geth5Dataset(self.electrode_path, tmp, 'axis_y')
+            z = self.geth5Dataset(self.electrode_path, tmp, 'axis_z')
+
+            currentApplied = f['CurrentApplied'][0]
+
+
+        segpositions *= 1e-6  # Converts to m
+
+        mesh = np.array(np.meshgrid(x, y, z, indexing='ij'))
+
+        InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear')
+
+        out2rat = InterpFcn(segpositions)
+
+        return out2rat/currentApplied
 
 
     def attach_to(self,section):
@@ -683,20 +743,23 @@ class RealElectrode(ElectrodeSource):
 
         for i,seg in enumerate(section):
 
+            if 'soma' in section.name() and section.nseg == 1:
+                segpositions = self.get_soma_position(section)
+            else:
+                segpositions = self.interp_seg_positions(section,seg.x)
 
+            scaleFac = self.interpolate_potentials(segpositions)
 
             segVec = h.Vector()
             segVec.copy(self.stim_vec)
 
+            # scaleFac = self.scaleFactor[i][0]
 
-
-            scaleFac = self.scaleFactor[self.numSegs+i-1][0]
-
-            numNewSegs += 1
+            # numNewSegs += 1
 
 
             segVec.mul(scaleFac)
             out = segVec.play(seg.extracellular._ref_e,self.time_vec)
             self.extracellulars.append(out)
 
-            return numNewSegs
+            # return numNewSegs

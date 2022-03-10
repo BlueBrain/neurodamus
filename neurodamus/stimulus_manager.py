@@ -781,6 +781,8 @@ class Extracellular(BaseStim):
             numSegs = 0
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
+                print('secID')
+                print(sec_id)
                 # skip sections not in this split
                 if not sc.exists():
                     continue
@@ -792,9 +794,10 @@ class Extracellular(BaseStim):
                     es.attach_to(sc.sec)
                 else:
                     es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
-                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.electrode_name, gid,numSegs)
+                     self.AmpStart,self.frequency,self.width,self.electrode_path)
                 # attach source to section
-                    numSegs += es.attach_to(sc.sec)
+                #     numSegs += es.attach_to(sc.sec)
+                    es.attach_to(sc.sec)
                 self.stimList.append(es)  # save source
 
         Extracellular.stimCount += 1  # increment global count
@@ -830,6 +833,7 @@ class Extracellular(BaseStim):
 
         else:
             self.electrode_path = stim_info["Electrode_Path"]
+
             self.electrode_name = stim_info["Electrode_Name"]
 
         # parse and check stimulus-specific parameters
