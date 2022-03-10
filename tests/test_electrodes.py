@@ -50,7 +50,7 @@ class TestElectrodes(object):
 
     def test_attach_realElectrode(self):
 
-        self.stim = RealElectrode('Extracellular', 1000, 'Pulse', [1],  [1], None, [1], '/gpfs/bbp.cscs.ch/home/tharayil/generalized-neurodamus-py/testField.h5','test_single',3423767,1)
+        self.stim = RealElectrode('Extracellular', 1000, 'Pulse', [1],  [1], None, [1], '/gpfs/bbp.cscs.ch/project/proj45/eegForNeurodamus/C2.h5')
 
         testSec = h.Section(name='testSec')
         testSec.L = 10

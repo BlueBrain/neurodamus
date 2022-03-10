@@ -721,8 +721,6 @@ class RealElectrode(ElectrodeSource):
             y = self.geth5Dataset(self.electrode_path, tmp, 'axis_y')
             z = self.geth5Dataset(self.electrode_path, tmp, 'axis_z')
 
-            currentApplied = f['CurrentApplied'][0]
-
 
         segpositions *= 1e-6  # Converts to m
 
@@ -732,7 +730,7 @@ class RealElectrode(ElectrodeSource):
 
         out2rat = InterpFcn(segpositions)
 
-        return out2rat/currentApplied
+        return out2rat[0]
 
 
     def attach_to(self,section):
@@ -749,6 +747,9 @@ class RealElectrode(ElectrodeSource):
                 segpositions = self.interp_seg_positions(section,seg.x)
 
             scaleFac = self.interpolate_potentials(segpositions)
+
+            print('scalefac is',flush=True)
+            print(scaleFac,flush=True)
 
             segVec = h.Vector()
             segVec.copy(self.stim_vec)
