@@ -191,11 +191,13 @@ class RelativeOrnsteinUhlenbeck(OrnsteinUhlenbeck):
         self.mean_perc = float(stim_info["MeanPercent"])
         self.sigma_perc = float(stim_info["SDPercent"])
 
+        self.invRin_scaling = float(stim_info.get("InvRinScaling", 0.04))
+
         return True
 
     def compute_parameters(self, cell):
         threshold = cell.getThreshold()  # cell threshold current [nA]
-        invRin = 0.04 * threshold        # proxy for inverse input resistance [MOhm]
+        invRin = self.invRin_scaling * threshold       # proxy for inverse input resistance [MOhm]
 
         self.sigma = (self.sigma_perc / 100) * invRin  # signal stdev [uS]
         if self.sigma <= 0:
