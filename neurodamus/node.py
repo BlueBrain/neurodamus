@@ -862,7 +862,7 @@ class Node:
                 SimConfig.coreneuron.write_population_count(pop_count)
             for pop_name, offset in pop_offsets.items():
                 if pop_name is not None:
-                    SimConfig.coreneuron.write_spike_population(pop_name, offset)
+                    SimConfig.coreneuron.write_spike_population(pop_name or "All", offset)
             spike_path = self._run_conf.get("SpikesFile")
             if spike_path is not None:
                 # Get only the spike file name

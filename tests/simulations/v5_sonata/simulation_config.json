@@ -106,13 +106,21 @@
     },
     "reports": {
         "soma_report": {
-            "cells": "Mosaic",
-            "variable_name": "v"
-        },
-        "compartment_report": {
+            "type": "compartment",
             "cells": "Mosaic",
             "variable_name": "v",
-            "sections": "all"
+            "dt": 0.1,
+            "start_time": 0.0,
+            "end_time": 40.0
+        },
+        "compartment_report": {
+            "type": "compartment",
+            "cells": "Mosaic",
+            "variable_name": "v",
+            "sections": "all",
+            "dt": 0.1,
+            "start_time": 0.0,
+            "end_time": 40.0
         }
     }
 }
