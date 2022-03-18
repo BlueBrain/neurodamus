@@ -115,7 +115,7 @@ class SonataConfig:
             "tstop": "Duration",
             "tstart": "Start",
             "dt": "Dt",
-            "seed": "BaseSeed",
+            "random_seed": "BaseSeed",
             # Optional
             "spike_threshold": "SpikeThreshold",
             "spike_location": "SpikeLocation",
@@ -200,7 +200,7 @@ class SonataConfig:
             )
             node_prop = self.circuits.node_population_properties(node_pop_name)
             circuit_conf["MorphologyPath"] = node_prop.morphologies_dir
-            circuit_conf["MorphologyType"] = "swc"
+            circuit_conf["MorphologyType"] = "h5" if node_prop.type == "astrocyte" else "swc"
             circuit_conf["METypePath"] = node_prop.biophysical_neuron_models_dir
             if node_prop.alternate_morphology_formats:
                 if "neurolucida-asc" in node_prop.alternate_morphology_formats:
@@ -210,6 +210,7 @@ class SonataConfig:
                 elif "h5v1" in node_prop.alternate_morphology_formats:
                     circuit_conf["MorphologyPath"] = node_prop.alternate_morphology_formats["h5v1"]
                     circuit_conf["MorphologyType"] = "h5"
+            circuit_conf["Engine"] = "NGV" if node_prop.type == "astrocyte" else "METype"
 
             # find inner connectivity
             for edge_config in network["edges"]:
@@ -225,6 +226,7 @@ class SonataConfig:
             pop_name: make_circuit(node_file_info["nodes_file"], pop_name, pop_info)
             for node_file_info in network["nodes"]
             for pop_name, pop_info in node_file_info["populations"].items()
+            if pop_info.get("type") != "vasculature"
         }
 
     @property
@@ -232,6 +234,8 @@ class SonataConfig:
         projection_type_convert = dict(
             chemical="Synaptic",
             electrical="GapJunction",
+            synapse_astrocyte="NeuroGlial",
+            endfoot="GlioVascular"
         )
         projections = {}
 
@@ -239,18 +243,23 @@ class SonataConfig:
             for population_name, edge_pop_config in edge_config["populations"].items():
                 edge_pop = self.circuits.edge_population(population_name)
                 pop_type = edge_pop_config.get("type", "chemical")
-                # skip inner connectivity
-                if edge_pop.source == edge_pop.target and pop_type == "chemical":
+                # skip unhandled synapse type or inner connectivity
+                if pop_type not in projection_type_convert or \
+                        (edge_pop.source == edge_pop.target and pop_type == "chemical"):
+                    logging.warning("Unhandled synapse type: " + pop_type)
                     continue
                 # projection
-                projections["{0.source}-{0.target}".format(edge_pop)] = dict(
+                projection = dict(
                     Path=edge_config["edges_file"] + ":" + population_name,
                     Source=edge_pop.source + ":",
                     Destination=edge_pop.target + ":",
-                    Type=projection_type_convert.get(pop_type) or logging.warning(
-                        "Unhandled synapse type: " + pop_type
-                    )
+                    Type=projection_type_convert.get(pop_type)
                 )
+                # Reverse projection direction for Astrocyte projection: from neurons to astrocytes
+                if projection.get("Type") == "NeuroGlial":
+                    projection["Source"], projection["Destination"] = projection["Destination"], \
+                        projection["Source"]
+                projections["{0.source}-{0.target}".format(edge_pop)] = projection
         return projections
 
     @property

@@ -218,6 +218,8 @@ class _SimConfig(object):
 
         cls.rng_info = h.RNGSettings()
         cls.rng_info.interpret(parsed_run)
+        if parsed_run.exists("BaseSeed"):
+            logging.info("User-defined RNG base seed %s", parsed_run.valueOf("BaseSeed"))
 
         if cls._simconf.coreNeuronUsed():
             cls.coreneuron = h.CoreConfig(cls.output_root)
