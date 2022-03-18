@@ -80,11 +80,12 @@ class ModulationConnParameters(SynapseParameters):
     # For consistancy with standard synapses, location is computed with hoc function
     # TargetManager.locationToPoint using isec, offset, ipt
     # ipt is not read from data but -1, so that locationToPoint will set location = offset .
-    _synapse_fields = ("sgid", "delay", "isec", "offset", "weight", "synType",
-                       "neuromod_strength", "neuromod_dtc", "ipt", "location")
+    # weight is a placeholder for replaystim, default to 1. and overwritten by connection weight.
+    _synapse_fields = ("sgid", "delay", "isec", "offset", "neuromod_strength", "neuromod_dtc",
+                       "ipt", "location", "weight")
     # Data fields to read from edges file
     _data_fields = ("connected_neurons_pre", "delay", "afferent_section_id", "afferent_section_pos",
-                    "conductance", "syn_type_id", "neuromod_strength", "neuromod_dtc")
+                    "neuromod_strength", "neuromod_dtc")
 
 
 class NeuroModulationSynapseReader(SynReaderSynTool):
@@ -101,6 +102,7 @@ class NeuroModulationSynapseReader(SynReaderSynTool):
         record_size = len(requested_fields)
         conn_syn_params = ModulationConnParameters.create_array(nrow)
         conn_syn_params.ipt = -1
+        conn_syn_params.weight = 1.
         supported_nfields = len(conn_syn_params.dtype) - 2  # location, ipt is not read from data
         return nrow, record_size, supported_nfields, conn_syn_params
 
