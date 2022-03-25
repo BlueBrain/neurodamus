@@ -255,7 +255,7 @@ class EmptyCell(BaseCell):
 class METypeItem(object):
     """ Metadata about an METype, each possibly used by several cells.
     """
-    __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
+    __slots__ = ("__dict__", "morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
                  "threshold_current", "holding_current",
                  "exc_mini_frequency", "inh_mini_frequency", "add_params",
                  "local_to_global_matrix")

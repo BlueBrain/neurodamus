@@ -195,10 +195,10 @@ class CellManagerBase(object):
 
     @classmethod
     def _get_sonata_population_name(self, node_file):
-        import h5py  # only for Sonata
-        ds = h5py.File(node_file, "r")["nodes"]
-        assert len(ds) == 1  # single population
-        return next(iter(ds.keys()))
+        import libsonata  # only for SONATA
+        nodestore = libsonata.NodeStorage(node_file)
+        assert len(nodestore.population_names) == 1
+        for x in nodestore.population_names: return x
 
     def load_nodes(self, load_balancer=None, *, _loader=None):
         """Top-level loader of nodes.
@@ -458,6 +458,9 @@ class CellDistributor(CellManagerBase):
 
     _sonata_with_extra_attrs = True  # Enable search extra node attributes
 
+    # this could be set dynamically based on simulation requirements
+    _extra_sonata_properties = ["@dynamics:input_resistance"]
+
     def _init_config(self, circuit_conf, _pop):
         if not circuit_conf.CellLibraryFile:
             logging.warning("CellLibraryFile not set. Assuming legacy 'start.ncs'")
@@ -473,15 +476,51 @@ class CellDistributor(CellManagerBase):
         )
         super()._init_config(circuit_conf, _pop)
 
+    @staticmethod
+    def load_sonata(circuit_conf, gidvec, stride=1, stride_offset=0,
+                    population=None, extra_props=[], has_extra_data=False, **kw):
+        gidvec, meinfos, fullsize = cell_readers.load_nodes(circuit_conf, gidvec,
+                                                            stride, stride_offset,
+                                                            has_extra_data=has_extra_data, **kw)
+
+        # load additional SONATA properties
+        if extra_props:
+            logging.info("Loading additional cell properties from SONATA file")
+            import libsonata
+            node_file = circuit_conf.CellLibraryFile
+            node_store = libsonata.NodeStorage(node_file)
+            node_pop = node_store.open_population(population)
+            node_sel = libsonata.Selection(gidvec)
+            for prop_name in extra_props:
+                getter = node_pop.get_attribute
+                attrs = node_pop.attribute_names
+                if prop_name.startswith("@dynamics:"):
+                    prop_name = prop_name[10:]  # remove @dynamics: prefix
+                    getter = node_pop.get_dynamics_attribute
+                    attrs = node_pop.dynamics_attribute_names
+                if prop_name not in attrs:
+                    logging.warning("Requested property %s is not present" % prop_name)
+                    continue
+                node_prop = getter(prop_name, node_sel)  # load data
+                for gid, val in zip(gidvec, node_prop):  # update meinfos
+                    setattr(meinfos[gid], prop_name, val)
+
+        return gidvec, meinfos, fullsize
+
     def load_nodes(self, load_balancer=None, **kw):
         """gets gids from target, splits and returns a GidSet with all metadata
         """
         if self._node_format == NodeFormat.SONATA and self._sonata_with_extra_attrs:
-            loader = lambda *args, **kw: cell_readers.load_nodes(*args, **kw, has_extra_data=True)
+            loader = lambda *args, **kw: self.load_sonata(*args, **kw,
+                                                          population=self._population_name,
+                                                          extra_props=self._extra_sonata_properties,
+                                                          has_extra_data=True)
+            loader_name = self.load_sonata.__name__
         else:
             loader = self._cell_loaders.get(self._circuit_conf.CellLibraryFile,
                                             cell_readers.load_nodes)
-        log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader.__name__)
+            loader_name = loader.__name__
+        log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader_name)
         return super().load_nodes(load_balancer, _loader=loader, **kw)
 
     def _instantiate_cells(self, *_):
