@@ -490,7 +490,7 @@ class CellDistributor(CellManagerBase):
             node_file = circuit_conf.CellLibraryFile
             node_store = libsonata.NodeStorage(node_file)
             node_pop = node_store.open_population(population)
-            node_sel = libsonata.Selection(gidvec)
+            node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
             for prop_name in extra_props:
                 getter = node_pop.get_attribute
                 attrs = node_pop.attribute_names
