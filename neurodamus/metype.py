@@ -45,7 +45,8 @@ class METype(BaseCell):
 
     __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons',
                  '_synapses', '_syn_helper_list', '_emodel_name',
-                 'exc_mini_frequency', 'inh_mini_frequency')
+                 'exc_mini_frequency', 'inh_mini_frequency',
+                 'input_resistance')
 
     def __init__(self, gid, etype_path, emodel, morpho_path, meinfos=None):
         """Instantite a new Cell from METype
@@ -66,6 +67,7 @@ class METype(BaseCell):
         self._emodel_name = emodel
         self.exc_mini_frequency = None
         self.inh_mini_frequency = None
+        self.input_resistance = None
 
         self._instantiate_cell(gid, etype_path, emodel, morpho_path, meinfos)
 
@@ -154,6 +156,8 @@ class Cell_V6(METype):
         self.exc_mini_frequency = meinfos_v6.exc_mini_frequency
         self.inh_mini_frequency = meinfos_v6.inh_mini_frequency
         self.local_to_global_matrix = meinfos_v6.local_to_global_matrix
+        self.input_resistance = meinfos_v6.input_resistance \
+                if hasattr(meinfos_v6, 'input_resistance') else None
 
     def local_to_global_coord_mapping(self, points):
         if self.local_to_global_matrix is False:

@@ -196,8 +196,11 @@ class RelativeOrnsteinUhlenbeck(OrnsteinUhlenbeck):
         return True
 
     def compute_parameters(self, cell):
-        threshold = cell.getThreshold()  # cell threshold current [nA]
-        invRin = self.invRin_scaling * threshold       # proxy for inverse input resistance [MOhm]
+        if cell.input_resistance is not None:
+            invRin = 1.0 / cell.input_resistance      # use actual inverse input resistance
+        else:
+            threshold = cell.getThreshold()           # cell threshold current [nA]
+            invRin = self.invRin_scaling * threshold  # proxy for inverse input resistance [MOhm]
 
         self.sigma = (self.sigma_perc / 100) * invRin  # signal stdev [uS]
         if self.sigma <= 0:
