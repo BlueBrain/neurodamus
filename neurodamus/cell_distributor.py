@@ -458,7 +458,7 @@ class CellDistributor(CellManagerBase):
 
     _sonata_with_extra_attrs = True  # Enable search extra node attributes
 
-    # this could be set dynamically based on simulation requirements
+    # these could be set dynamically based on simulation requirements
     _extra_sonata_properties = ["@dynamics:input_resistance"]
 
     def _init_config(self, circuit_conf, _pop):
@@ -485,24 +485,25 @@ class CellDistributor(CellManagerBase):
 
         # load additional SONATA properties
         if extra_props:
-            logging.info("Loading additional cell properties from SONATA file")
+            logging.info("Loading additional cell properties from SONATA")
             import libsonata
             node_file = circuit_conf.CellLibraryFile
             node_store = libsonata.NodeStorage(node_file)
             node_pop = node_store.open_population(population)
             node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
             for prop_name in extra_props:
-                getter = node_pop.get_attribute
-                attrs = node_pop.attribute_names
+                log_verbose("%s" % prop_name)
+                attr_get = node_pop.get_attribute
+                attr_names = node_pop.attribute_names
                 if prop_name.startswith("@dynamics:"):
-                    prop_name = prop_name[10:]  # remove @dynamics: prefix
-                    getter = node_pop.get_dynamics_attribute
-                    attrs = node_pop.dynamics_attribute_names
-                if prop_name not in attrs:
-                    logging.warning("Requested property %s is not present" % prop_name)
+                    prop_name = prop_name[len("@dynamics:"):]  # remove @dynamics: prefix
+                    attr_get = node_pop.get_dynamics_attribute
+                    attr_names = node_pop.dynamics_attribute_names
+                if prop_name not in attr_names:  # should fail if property is required
+                    logging.warning("requested property %s not present" % prop_name)
                     continue
-                node_prop = getter(prop_name, node_sel)  # load data
-                for gid, val in zip(gidvec, node_prop):  # update meinfos
+                node_prop = attr_get(prop_name, node_sel)  # load data
+                for gid, val in zip(gidvec, node_prop):    # update meinfos
                     setattr(meinfos[gid], prop_name, val)
 
         return gidvec, meinfos, fullsize
