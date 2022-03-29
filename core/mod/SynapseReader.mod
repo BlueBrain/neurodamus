@@ -68,6 +68,8 @@ VERBATIM
 // Due to the inability of accessing the state from non-hoc functions, we pass flags in the fieldset
 #define CONN_REQUIRE_NRRP (1<<16)
 #define CONN_FIELD0_ADD1 (1<<17)
+#define CONN_REQUIRE_UHILL (1<<18)
+#define CONN_REQUIRE_CONDUCTANCE (1<<19)
 
 
 /// NEURON utility functions we want to use
@@ -132,6 +134,8 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 //  16 morpho_branch_order_axon        | N/A
 //  17 n_rrp_vesicles (optional)  [11] | N/A
 //  18 morpho_section_type_pos         | N/A
+//  NA u_hill_coefficient         [12] | N/A
+//  NA conductance_scale_factor   [13] | N/A
 
 
 // The SYN2 v2 spec fields
@@ -152,6 +156,8 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 //  decay_time                   [9]  | (N/A)
 //  syn_type_id                  [10] | (N/A)
 //  n_rrp_vesicles  (required)   [11] | (N/A)
+//  u_hill_coefficient           [12] | (N/A)
+//  conductance_scale_factor     [13] | (N/A)
 
 
 // NEUROGLIAL Field Spec  (for reference only)
@@ -169,6 +175,9 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 // C99 Use #define for constants
 #define ND_FIELD_COUNT 14
 #define ND_PREGID_FIELD_I 0
+#define ND_UHILL_FIELD_I 12
+#define ND_CONDUCTANCE_FIELD_I 13
+
 
 // The 11 mandatory fields read by neurodamus
 #define BASE_SYN_FIELDS "connected_neurons_pre, \
@@ -184,7 +193,7 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 #define NRRP_FIELD "n_rrp_vesicles"
 #define POST_FRACTION_FIELD "morpho_section_fraction_post"
 #define UHILL_FIELD "u_hill_coefficient"
-#define CONDUCTSF_FIELD "conductance_scale_factor"
+#define CONDUCTANCE_FIELD "conductance_scale_factor"
 
 // The 6 mandatory fields for GapJunctions read by neurodamus
 #define GJ_FIELDS "connected_neurons_pre, \
@@ -217,30 +226,27 @@ static const ReaderState STATE_RESET = {-1, {NULL, 0}, UINT64_MAX, NULL, 0, -1};
 
 
 // Internal functions can't call getStatePtr()
-#define HAS_NRRP() (_syn_has_field(NRRP_FIELD, getStatePtr()))
 #define IS_V2() (_syn_has_field(POST_FRACTION_FIELD, getStatePtr()))
-#define IS_V3() (IS_V2() && _syn_has_field(UHILL_FIELD, getStatePtr()) \
-                         && _syn_has_field(CONDUCTSF_FIELD, getStatePtr()))
+#define HAS_NRRP() (_syn_has_field(NRRP_FIELD, getStatePtr()))
+#define HAS_UHILL() (_syn_has_field(UHILL_FIELD, getStatePtr()))
+#define HAS_CONDUCTANCE() (_syn_has_field(CONDUCTANCE_FIELD, getStatePtr()))
 
 static const char* SYN_FIELDS_NO_RRP = BASE_SYN_FIELDS;
 static const char* SYN_FIELDS = BASE_SYN_FIELDS ", " NRRP_FIELD;
-static const char* SYN_V3_FIELDS = SYN_V2_FIELDS ", " UHILL_FIELD ", " CONDUCTSF_FIELD;
 
 // relative position of the 7 GJ fields into the ND_FIELD_COUNT-field neurodamus structure
 // Conductance is fetched last since its optional
 // Why the structure is not packed? Any special meaning for pos 1 and 6?
 static const int ND_GJ_POSITIONS[] = {ND_PREGID_FIELD_I, 2, 3, 4, 5, 7, 8};
 // V2 relative positions
-static const int ND_SYNv2_POSITIONS[] = {0, 1, 2, 4, 5, 6, 7, 8, 9, 10 ,11};
+static const int ND_SYNv2_POSITIONS[] = {0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};  // no field 3
 static const int ND_GJv2_POSITIONS[]  = {0, 2, 4, 5, 7, 8};
-static const int ND_SYNv3_POSITIONS[] = {0, 1, 2, 4, 5, 6, 7, 8, 9, 10 ,11, 12, 13};
 
 
 #define CONN_TYPE_POSITIONS(conn_type) \
     (conn_type == CONN_GAPJUNCTIONS_V1)? ND_GJ_POSITIONS \
         : (conn_type == CONN_SYNAPSES_V2)? ND_SYNv2_POSITIONS \
         : (conn_type == CONN_GAPJUNCTIONS_V2)? ND_GJv2_POSITIONS \
-        : (conn_type == CONN_SYNAPSES_V3)? ND_SYNv3_POSITIONS \
         : NULL
 
 
@@ -257,26 +263,34 @@ static int _syn_is_empty(ReaderState* state_ptr) {
 }
 
 
+static int _entry_in_Strings(const char* entry, _Strings strs) {
+    syn2_vec_str entries = strs.data;
+    int i;
+    for (i=0; i < strs.length; i++) {
+        if (strcmp(entries[i], entry) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+
 static _Strings _getFieldNames(ReaderState* state_ptr) {
     if (state_ptr->fieldNames.data == NULL) {
         const Syn2Dataset names_ds = syn_list_property_names(state_ptr->file);
         state_ptr->fieldNames.data = as_str_array(names_ds.data);
         state_ptr->fieldNames.length = names_ds.length;
+        if (_entry_in_Strings(CONDUCTANCE_FIELD, state_ptr->fieldNames)
+                && ! _entry_in_Strings(UHILL_FIELD, state_ptr->fieldNames)) {
+            fprintf(stderr, "[SynReader] Warning: Can't read %s without %s. Skipping both.\n",
+                    CONDUCTANCE_FIELD, UHILL_FIELD);
+        }
     }
     return state_ptr->fieldNames;
 }
 
 
 static int _syn_has_field(const char* field_name, ReaderState* state_ptr) {
-    const _Strings names_ds = _getFieldNames(state_ptr);
-    syn2_vec_str names = names_ds.data;
-
-    int i;
-    for (i=0; i < names_ds.length; i++) {
-        if (strcmp(names[i], field_name) == 0)
-            return 1;
-    }
-    return 0;
+    return _entry_in_Strings(field_name, _getFieldNames(state_ptr));
 }
 
 
@@ -328,6 +342,7 @@ static int _load_data(uint64_t tgid,
                       int conn_type,
                       const char* fields,
                       ReaderState* state_ptr) {
+    char* alt_fields = NULL;
     if (state_ptr->file == -1)  {
         fprintf(stderr, "[SynReader] Error: File not initialized.\n");
         raise(SIGUSR2);
@@ -347,14 +362,26 @@ static int _load_data(uint64_t tgid,
         case CONN_GAPJUNCTIONS_V2:
             fields = GJ_V2_FIELDS;
             break;
-        case CONN_SYNAPSES_V3:
-            fields = SYN_V3_FIELDS;
-            break;
         default:
             if (fields == NULL) {
                 fprintf(stderr, "[SynReader] Error: FIELDSET_CUSTOM requested but no fields provided.\n");
                 raise(SIGUSR2);
             }
+    }
+
+    if (conn_type & CONN_REQUIRE_UHILL) {
+        alt_fields = (char*)malloc(1024);  // enough to store all requested fields' name
+        int cur_len = strlen(fields);
+        memcpy(alt_fields, fields, cur_len);
+        alt_fields[cur_len] = ',';
+        strcpy(alt_fields + cur_len + 1, UHILL_FIELD);
+        cur_len += strlen(UHILL_FIELD) + 1;
+
+        if (conn_type & CONN_REQUIRE_CONDUCTANCE) {  // Conductance only processed if uhill field avail
+            alt_fields[cur_len] = ',';
+            strcpy(alt_fields + cur_len + 1, CONDUCTANCE_FIELD);
+        }
+        fields = alt_fields;
     }
 
     // Already loaded?
@@ -375,6 +402,9 @@ static int _load_data(uint64_t tgid,
                                               : syn_select_post(tgid);
 
     const Syn2Table tb = syn_get_property_table(state_ptr->file, fields, sel);
+    if (alt_fields != NULL) {
+        free(alt_fields);
+    }
 
     state_ptr->conn_type = conn_type;
     return _store_result(tgid, &tb, state_ptr);
@@ -498,6 +528,18 @@ ENDVERBATIM
 }
 
 
+FUNCTION synHasConductanceField() {
+VERBATIM
+#ifndef DISABLE_SYNTOOL
+    /// Currently conductance_scale_factor requires UHILL
+    return HAS_UHILL() && HAS_CONDUCTANCE();
+#else
+    return -1;
+#endif
+ENDVERBATIM
+}
+
+
 FUNCTION isV2() {
 VERBATIM
 #ifndef DISABLE_SYNTOOL
@@ -523,9 +565,15 @@ VERBATIM
     uint64_t tgid = (uint64_t) *getarg(1) - 1;  // 0 based
     const char* fields = ifarg(2)? gargstr(2): NULL;
     int fieldset = (fields != NULL)? CONN_CUSTOM
-                   : IS_V3()? CONN_SYNAPSES_V3
-                   : IS_V2()? CONN_SYNAPSES_V2
-                   : CONN_SYNAPSES_V1 + (HAS_NRRP()? CONN_REQUIRE_NRRP : 0);
+                    : IS_V2()? CONN_SYNAPSES_V2
+                    : CONN_SYNAPSES_V1 + (HAS_NRRP()? CONN_REQUIRE_NRRP : 0);
+    if (HAS_UHILL()) {
+        fieldset |= CONN_REQUIRE_UHILL;
+        if (HAS_CONDUCTANCE()) {
+            fieldset |= CONN_REQUIRE_CONDUCTANCE;
+        }
+    }
+
     return _load_data(tgid, 0, fieldset | CONN_FIELD0_ADD1, fields, getStatePtr());
 #else
     fprintf(stderr, "[SynReader] Error: Neurodamus compiled without SYNTOOL\n");
@@ -683,7 +731,7 @@ VERBATIM
     const int field_i = (field_pos != NULL)? field_pos[column] : column;
     const Syn2Field field = state_ptr->fields[field_i];
 
-    vector_resize(xd, state_ptr->length);  // shinking is almost no-op
+    vector_resize(xd, state_ptr->length);  // shrinking is almost no-op
     double * const vec_buffer = vector_vec(xd);
     to_double_vec(&field, state_ptr->length, vec_buffer);
 
