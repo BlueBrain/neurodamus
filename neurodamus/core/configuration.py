@@ -138,8 +138,12 @@ class _SimConfig(object):
     synapse_options = {}
 
     _validators = []
+    _requisitors = []
+
+    _cell_requirements = {}
 
     restore_coreneuron = property(lambda self: self.use_coreneuron and bool(self.restore))
+    cell_requirements = property(lambda self: self._cell_requirements)
 
     @classmethod
     def init(cls, config_file, cli_options):
@@ -175,6 +179,9 @@ class _SimConfig(object):
 
         for validator in cls._validators:
             validator(cls, run_conf)
+
+        for requisitor in cls._requisitors:
+            requisitor(cls, cls._config_parser)
 
         logging.info("Initializing hoc config objects")
         if not is_sonata_config:
@@ -235,6 +242,11 @@ class _SimConfig(object):
         cls._validators.append(f)
 
     @classmethod
+    def requisitor(cls, f):
+        """Decorator to register requirements investigators"""
+        cls._requisitors.append(f)
+
+    @classmethod
     def update_connection_blocks(cls, alias):
         """Convert source destination to real population names
 
@@ -261,6 +273,14 @@ class _SimConfig(object):
     @classmethod
     def check_connections_configure(cls, target_manager):
         check_connections_configure(cls, target_manager)  # top_level
+
+    @staticmethod
+    def stim_is_injected(stim_name, injects):
+        for _, inject in injects.items():
+            inject = compat.Map(inject)
+            if stim_name == inject["Stimulus"]:
+                return inject
+        return None
 
 
 # Singleton
@@ -872,3 +892,14 @@ def check_connections_configure(SimConfig, target_manager):
             logging.warning(" -> %s", conn["_name"])
     else:
         logging.info(" => CHECK No single Weight=0 blocks!")
+
+@SimConfig.requisitor
+def _input_resistance(config: _SimConfig, config_parser):
+    for stim_name, stim in config.stimuli.items():
+        stim = compat.Map(stim)
+        stim_inject = config.stim_is_injected(stim_name, config.injects)
+        if stim_inject is None:
+            continue  # not injected, don't care
+        target = stim_inject["Target"]  # all we can know so far
+        if stim["Pattern"] == "RelativeOrnsteinUhlenbeck":
+            config._cell_requirements.setdefault(target, set()).add("@dynamics:input_resistance")

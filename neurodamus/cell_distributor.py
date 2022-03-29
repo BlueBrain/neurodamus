@@ -16,7 +16,7 @@ from .connection_manager import ConnectionManagerBase
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
-from .core.configuration import find_input_file
+from .core.configuration import find_input_file, SimConfig
 from .core.nodeset import NodeSet
 from .io import cell_readers
 from .metype import Cell_V5, Cell_V6, EmptyCell
@@ -458,9 +458,6 @@ class CellDistributor(CellManagerBase):
 
     _sonata_with_extra_attrs = True  # Enable search extra node attributes
 
-    # these could be set dynamically based on simulation requirements
-    _extra_sonata_properties = ["@dynamics:input_resistance"]
-
     def _init_config(self, circuit_conf, _pop):
         if not circuit_conf.CellLibraryFile:
             logging.warning("CellLibraryFile not set. Assuming legacy 'start.ncs'")
@@ -503,18 +500,27 @@ class CellDistributor(CellManagerBase):
                     logging.warning("requested property %s not present" % prop_name)
                     continue
                 node_prop = attr_get(prop_name, node_sel)  # load data
-                for gid, val in zip(gidvec, node_prop):    # update meinfos
-                    setattr(meinfos[gid], prop_name, val)
+                for gid, val in zip(gidvec, node_prop):
+                    setattr(meinfos[gid], prop_name, val)  # set additional attribute
 
         return gidvec, meinfos, fullsize
 
     def load_nodes(self, load_balancer=None, **kw):
         """gets gids from target, splits and returns a GidSet with all metadata
         """
+        cell_requirements = set()
+        # check if cell requirements from config apply to this population
+        # XXX: we use All as default population in SONATA files, this is conventional
+        for tgt, reqs in SimConfig.cell_requirements.items():
+            target_spec = TargetSpec(tgt) if isinstance(tgt, str) else TargetSpec(tgt.s)
+            if target_spec.population == self.population_name or \
+               (target_spec.population is None and self.population_name == "All"):
+                cell_requirements.update(reqs)
+
         if self._node_format == NodeFormat.SONATA and self._sonata_with_extra_attrs:
             loader = lambda *args, **kw: self.load_sonata(*args, **kw,
-                                                          population=self._population_name,
-                                                          extra_props=self._extra_sonata_properties,
+                                                          population=self.population_name,
+                                                          extra_props=cell_requirements,
                                                           has_extra_data=True)
             loader_name = self.load_sonata.__name__
         else:
