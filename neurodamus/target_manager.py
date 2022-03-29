@@ -200,8 +200,9 @@ class TargetManager:
         """
         if isinstance(target, TargetSpec):
             target = self.get_target(target)
-        if target.isCellTarget() and cell_use_compartment_cast:
-            target = self.hoc.compartmentCast(target, "")
+        if target.isCellTarget(**kw) and cell_use_compartment_cast:
+            hoc_obj = self.hoc.compartmentCast(target.get_hoc_target(), "")
+            return hoc_obj.getPointList(cell_manager)
         return target.getPointList(cell_manager, **kw)
 
     @lru_cache()
@@ -359,8 +360,10 @@ class NodesetTarget(_TargetInterface):
     def completegids(self):
         return compat.hoc_vector(self.get_raw_gids())
 
-    def isCellTarget(self):
-        return True
+    def isCellTarget(self, **kw):
+        section_type = kw.get("sections", "soma")
+        compartment_type = kw.get("compartments", "center" if section_type == "soma" else "all")
+        return section_type == "soma" and compartment_type == "center"
 
     def contains(self, gid):
         """ Determine if a given gid is included in the gid list for this target
@@ -439,6 +442,9 @@ class _HocTarget(_TargetInterface):
 
     def getPointList(self, cell_manager, **kw):
         return self.hoc_target.getPointList(cell_manager)
+
+    def isCellTarget(self, **kw):
+        return self.hoc_target.isCellTarget()
 
     def __getattr__(self, item):
         return getattr(self.hoc_target, item)

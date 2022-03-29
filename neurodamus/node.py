@@ -820,6 +820,7 @@ class Node:
                 # on the soma. Otherwise, get target points as normal.
                 sections = rep_conf.get("Sections")
                 compartments = rep_conf.get("Compartments")
+                is_cell_target = target.isCellTarget(sections=sections, compartments=compartments)
                 points = self._target_manager.get_target_points(target, global_manager,
                                                                 rep_type.lower() == "summation",
                                                                 sections=sections,
@@ -836,7 +837,7 @@ class Node:
                             cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
                     elif rep_type.lower() == "summation":
                         report.addSummationReport(
-                            cell, point, target.isCellTarget(), spgid, SimConfig.use_coreneuron,
+                            cell, point, is_cell_target, spgid, SimConfig.use_coreneuron,
                             pop_name, pop_offset)
                     elif rep_type.lower() == "synapse":
                         report.addSynapseReport(
