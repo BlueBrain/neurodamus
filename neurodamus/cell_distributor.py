@@ -493,12 +493,11 @@ class CellDistributor(CellManagerBase):
                 attr_get = node_pop.get_attribute
                 attr_names = node_pop.attribute_names
                 if prop_name.startswith("@dynamics:"):
-                    prop_name = prop_name[len("@dynamics:"):]  # remove @dynamics: prefix
+                    prop_name = prop_name[len("@dynamics:"):]  # remove prefix
                     attr_get = node_pop.get_dynamics_attribute
                     attr_names = node_pop.dynamics_attribute_names
-                if prop_name not in attr_names:  # should fail if property is required
-                    logging.warning("requested property %s not present" % prop_name)
-                    continue
+                if prop_name not in attr_names:
+                    raise Exception('Required property %s not present' % prop_name)
                 node_prop = attr_get(prop_name, node_sel)  # load data
                 for gid, val in zip(gidvec, node_prop):
                     setattr(meinfos[gid], prop_name, val)  # set additional attribute

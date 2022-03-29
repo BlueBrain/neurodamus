@@ -141,9 +141,11 @@ class _SimConfig(object):
     _requisitors = []
 
     _cell_requirements = {}
+    _synapse_requirements = set()
 
     restore_coreneuron = property(lambda self: self.use_coreneuron and bool(self.restore))
     cell_requirements = property(lambda self: self._cell_requirements)
+    synapse_requirements = property(lambda self: self._synapse_requirements)
 
     @classmethod
     def init(cls, config_file, cli_options):
@@ -180,6 +182,7 @@ class _SimConfig(object):
         for validator in cls._validators:
             validator(cls, run_conf)
 
+        logging.info("Checking simulation requirements")
         for requisitor in cls._requisitors:
             requisitor(cls, cls._config_parser)
 
@@ -893,13 +896,34 @@ def check_connections_configure(SimConfig, target_manager):
     else:
         logging.info(" => CHECK No single Weight=0 blocks!")
 
+
 @SimConfig.requisitor
 def _input_resistance(config: _SimConfig, config_parser):
+    prop = "@dynamics:input_resistance"
     for stim_name, stim in config.stimuli.items():
         stim = compat.Map(stim)
         stim_inject = config.stim_is_injected(stim_name, config.injects)
         if stim_inject is None:
-            continue  # not injected, don't care
+            continue  # not injected, do not care
         target = stim_inject["Target"]  # all we can know so far
         if stim["Pattern"] == "RelativeOrnsteinUhlenbeck":
-            config._cell_requirements.setdefault(target, set()).add("@dynamics:input_resistance")
+            config._cell_requirements.setdefault(target, set()).add(prop)
+            log_verbose('[cell] %s (%s)' % (prop, target))
+
+
+@SimConfig.requisitor
+def _conductance_scale_factor(config: _SimConfig, config_parser):
+    prop = "conductance_scale_factor"
+    from neuron import h
+    # XXX: there is no good way to know what synapse types are used in the simulation
+    if hasattr(h, "ProbAMPANMDA_EMS") or hasattr(h, "ProbGABAAB_EMS"):
+        config._synapse_requirements.add(prop)
+        log_verbose('[synapse] %s' % prop)
+
+
+@SimConfig.requisitor
+def _u_hill_coefficient(config: _SimConfig, config_parser):
+    prop = "u_hill_coefficient"
+    if 'ExtracellularCalcium' in config.run_conf:
+        config._synapse_requirements.add(prop)
+        log_verbose('[synapse] %s' % prop)

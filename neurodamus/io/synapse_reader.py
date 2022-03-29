@@ -9,6 +9,7 @@ import numpy as np
 
 from ..core import NeurodamusCore as Nd, MPI
 from ..utils.logging import log_verbose
+from ..core.configuration import SimConfig
 
 
 class _SynParametersMeta(type):
@@ -74,6 +75,10 @@ class SynapseReader(object):
                 if mod_override_params is not None:
                     syn_params = SynapseParameters.concatenate(syn_params, mod_override_params)
             self._patch_delay_fp_inaccuracies(syn_params)
+
+            if 'u_hill_coefficient' in SimConfig.synapse_requirements and \
+                    (not self._uhill_property_avail or np.any(syn_params.u_hill_coefficient <= 0)):
+                raise Exception('Invalid u_hill_coefficient values found')
             if self._uhill_property_avail:
                 self._scale_U_param(syn_params, self._ca_concentration, mod_override)
         return syn_params

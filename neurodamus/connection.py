@@ -441,6 +441,9 @@ class Connection(ConnectionBase):
             syn_helper.synapse.conductance = params_obj.weight
 
         # set the default value of synapse NMDA_ratio/GABAB_ratio from circuit
+        if 'conductance_scale_factor' in SimConfig.synapse_requirements and \
+                params_obj.conductance_ratio < 0:
+            raise Exception('Invalid conductance_scale_factor values found')
         if params_obj.conductance_ratio >= 0 and self._mod_override is None:
             self._update_conductance_ratio(syn_helper.synapse, is_inh, params_obj.conductance_ratio)
 
