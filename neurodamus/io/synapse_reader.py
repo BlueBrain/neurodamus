@@ -9,7 +9,6 @@ import numpy as np
 
 from ..core import NeurodamusCore as Nd, MPI
 from ..utils.logging import log_verbose
-from ..core.configuration import SimConfig
 
 
 class _SynParametersMeta(type):
@@ -78,16 +77,19 @@ class SynapseReader(object):
                     syn_params = SynapseParameters.concatenate(syn_params, mod_override_params)
 
             # Check requirements
+            from ..core.configuration import SimConfig
+
             synapse_requirements = SimConfig.synapse_requirements[None]  # base requirements
             # requirements for this population, if present
             synapse_requirements.update(SimConfig.synapse_requirements.get(self._population, set()))
 
-            if 'u_hill_coefficient' in SimConfig.synapse_requirements and \
+            if 'u_hill_coefficient' in synapse_requirements and \
                     (not self._uhill_property_avail or np.any(syn_params.u_hill_coefficient <= 0)):
                 raise Exception('Invalid u_hill_coefficient values found')
 
+            # NOTE: loading of conductance_scale_factor depends on u_hill_coefficient availability
             if 'conductance_scale_factor' in synapse_requirements and \
-                    np.any(syn_params.conductance_ratio < 0):
+                    (not self._uhill_property_avail or np.any(syn_params.conductance_ratio < 0)):
                 raise Exception('Invalid conductance_scale_factor values found')
 
             # Modify parameters

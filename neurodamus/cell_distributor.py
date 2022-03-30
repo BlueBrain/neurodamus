@@ -508,7 +508,9 @@ class CellDistributor(CellManagerBase):
     def load_nodes(self, load_balancer=None, **kw):
         """gets gids from target, splits and returns a GidSet with all metadata
         """
-        cell_requirements = SimConfig.cell_requirements.get(self._population_name, set())
+        # NOTE: if not using SONATA, grab requirements for default base population All
+        cell_pop = 'All' if self._population_name == '' else self._population_name
+        cell_requirements = SimConfig.cell_requirements.get(cell_pop, set())
 
         if self._node_format == NodeFormat.SONATA and self._sonata_with_extra_attrs:
             loader = lambda *args, **kw: self.load_sonata(*args, **kw,
