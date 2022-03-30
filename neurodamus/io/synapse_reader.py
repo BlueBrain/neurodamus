@@ -69,16 +69,24 @@ class SynapseReader(object):
         """
         syn_params = self._syn_params.get(gid)
         if syn_params is None:
+            # Load parameters
             syn_params = self._syn_params[gid] = self._load_synapse_parameters(gid)
             if mod_override:
                 mod_override_params = self._read_extra_fields_from_mod_override(mod_override, gid)
                 if mod_override_params is not None:
                     syn_params = SynapseParameters.concatenate(syn_params, mod_override_params)
-            self._patch_delay_fp_inaccuracies(syn_params)
 
+            # Check requirements
             if 'u_hill_coefficient' in SimConfig.synapse_requirements and \
                     (not self._uhill_property_avail or np.any(syn_params.u_hill_coefficient <= 0)):
                 raise Exception('Invalid u_hill_coefficient values found')
+
+            if 'conductance_scale_factor' in SimConfig.synapse_requirements and \
+                    np.any(syn_params.conductance_scale_factor < 0):
+                raise Exception('Invalid conductance_scale_factor values found')
+
+            # Modify parameters
+            self._patch_delay_fp_inaccuracies(syn_params)
             if self._uhill_property_avail:
                 self._scale_U_param(syn_params, self._ca_concentration, mod_override)
         return syn_params
