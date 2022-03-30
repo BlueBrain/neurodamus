@@ -57,6 +57,7 @@ class SynapseReader(object):
 
     def __init__(self, src, conn_type, population=None, *_, **kw):
         self._conn_type = conn_type
+        self._population = population
         self._ca_concentration = kw.get("extracellular_calcium")
         self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
         self._open_file(src, population, kw.get("verbose", False))
@@ -77,12 +78,16 @@ class SynapseReader(object):
                     syn_params = SynapseParameters.concatenate(syn_params, mod_override_params)
 
             # Check requirements
+            synapse_requirements = SimConfig.synapse_requirements[None]  # base requirements
+            # requirements for this population, if present
+            synapse_requirements.update(SimConfig.synapse_requirements.get(self._population, set()))
+
             if 'u_hill_coefficient' in SimConfig.synapse_requirements and \
                     (not self._uhill_property_avail or np.any(syn_params.u_hill_coefficient <= 0)):
                 raise Exception('Invalid u_hill_coefficient values found')
 
-            if 'conductance_scale_factor' in SimConfig.synapse_requirements and \
-                    np.any(syn_params.conductance_scale_factor < 0):
+            if 'conductance_scale_factor' in synapse_requirements and \
+                    np.any(syn_params.conductance_ratio < 0):
                 raise Exception('Invalid conductance_scale_factor values found')
 
             # Modify parameters

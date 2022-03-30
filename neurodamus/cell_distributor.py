@@ -489,6 +489,7 @@ class CellDistributor(CellManagerBase):
             node_pop = node_store.open_population(population)
             node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
             for prop_name in extra_props:
+                _orig_prop_name = prop_name
                 log_verbose("%s" % prop_name)
                 attr_get = node_pop.get_attribute
                 attr_names = node_pop.attribute_names
@@ -497,7 +498,7 @@ class CellDistributor(CellManagerBase):
                     attr_get = node_pop.get_dynamics_attribute
                     attr_names = node_pop.dynamics_attribute_names
                 if prop_name not in attr_names:
-                    raise Exception('Required property %s not present' % prop_name)
+                    raise Exception('Required property %s not present' % _orig_prop_name)
                 node_prop = attr_get(prop_name, node_sel)  # load data
                 for gid, val in zip(gidvec, node_prop):
                     setattr(meinfos[gid], prop_name, val)  # set additional attribute
@@ -507,22 +508,17 @@ class CellDistributor(CellManagerBase):
     def load_nodes(self, load_balancer=None, **kw):
         """gets gids from target, splits and returns a GidSet with all metadata
         """
-        cell_requirements = set()
-        # check if cell requirements from config apply to this population
-        # XXX: we use All as default population in SONATA files, this is conventional
-        for tgt, reqs in SimConfig.cell_requirements.items():
-            target_spec = TargetSpec(tgt) if isinstance(tgt, str) else TargetSpec(tgt.s)
-            if target_spec.population == self.population_name or \
-               (target_spec.population is None and self.population_name == "All"):
-                cell_requirements.update(reqs)
+        cell_requirements = SimConfig.cell_requirements.get(self._population_name, set())
 
         if self._node_format == NodeFormat.SONATA and self._sonata_with_extra_attrs:
             loader = lambda *args, **kw: self.load_sonata(*args, **kw,
-                                                          population=self.population_name,
+                                                          population=self._population_name,
                                                           extra_props=cell_requirements,
                                                           has_extra_data=True)
             loader_name = self.load_sonata.__name__
         else:
+            if cell_requirements:
+                raise Exception('Additional cell properties only available with SONATA')
             loader = self._cell_loaders.get(self._circuit_conf.CellLibraryFile,
                                             cell_readers.load_nodes)
             loader_name = loader.__name__

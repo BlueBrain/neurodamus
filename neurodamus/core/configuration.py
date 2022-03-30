@@ -141,7 +141,7 @@ class _SimConfig(object):
     _requisitors = []
 
     _cell_requirements = {}
-    _synapse_requirements = set()
+    _synapse_requirements = {}
 
     restore_coreneuron = property(lambda self: self.use_coreneuron and bool(self.restore))
     cell_requirements = property(lambda self: self._cell_requirements)
@@ -899,6 +899,7 @@ def check_connections_configure(SimConfig, target_manager):
 
 @SimConfig.requisitor
 def _input_resistance(config: _SimConfig, config_parser):
+    from ..target_manager import TargetSpec
     prop = "@dynamics:input_resistance"
     for stim_name, stim in config.stimuli.items():
         stim = compat.Map(stim)
@@ -907,7 +908,10 @@ def _input_resistance(config: _SimConfig, config_parser):
             continue  # not injected, do not care
         target = stim_inject["Target"]  # all we can know so far
         if stim["Pattern"] == "RelativeOrnsteinUhlenbeck":
-            config._cell_requirements.setdefault(target, set()).add(prop)
+            target_spec = TargetSpec(target) if isinstance(target, str) else TargetSpec(target.s)
+            # XXX: if target has no "<population>:" prefix, assume base population = All
+            target_pop = "All" if target_spec.population is None else target_spec.population
+            config._cell_requirements.setdefault(target_pop, set()).add(prop)
             log_verbose('[cell] %s (%s)' % (prop, target))
 
 
@@ -917,7 +921,7 @@ def _conductance_scale_factor(config: _SimConfig, config_parser):
     from neuron import h
     # XXX: there is no good way to know what synapse types are used in the simulation
     if hasattr(h, "ProbAMPANMDA_EMS") or hasattr(h, "ProbGABAAB_EMS"):
-        config._synapse_requirements.add(prop)
+        config._synapse_requirements.setdefault(None, set()).add(prop)
         log_verbose('[synapse] %s' % prop)
 
 
@@ -925,5 +929,5 @@ def _conductance_scale_factor(config: _SimConfig, config_parser):
 def _u_hill_coefficient(config: _SimConfig, config_parser):
     prop = "u_hill_coefficient"
     if 'ExtracellularCalcium' in config.run_conf:
-        config._synapse_requirements.add(prop)
+        config._synapse_requirements.setdefault(None, set()).add(prop)
         log_verbose('[synapse] %s' % prop)
