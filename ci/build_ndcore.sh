@@ -20,6 +20,6 @@ if [ ! -f x86_64/special ]; then
     exit 1
 fi
 mkdir -p _lib
-mv x86_64/libnrnmech* _lib/
+cp -f x86_64/libnrnmech* _lib/
 cp -f $CORE_DIR/hoc/*.hoc _lib/
 cp -f $CORE_DIR/models/common/hoc/*.hoc _lib/

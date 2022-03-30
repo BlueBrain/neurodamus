@@ -59,6 +59,9 @@ class SynapseReader(object):
         self._ca_concentration = kw.get("extracellular_calcium")
         self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
         self._open_file(src, population, kw.get("verbose", False))
+        # NOTE u_hill_coefficient and conductance_scale_factor are optional, BUT
+        # while u_hill_coefficient can always be readif avail, conductance reader may not.
+        self._uhill_property_avail = self.has_property("u_hill_coefficient")
 
     def get_synapse_parameters(self, gid, mod_override=None):
         """Obtains the synapse parameters record for a given gid.
@@ -71,7 +74,8 @@ class SynapseReader(object):
                 if mod_override_params is not None:
                     syn_params = SynapseParameters.concatenate(syn_params, mod_override_params)
             self._patch_delay_fp_inaccuracies(syn_params)
-            self._scale_U_param(syn_params, self._ca_concentration, mod_override)
+            if self._uhill_property_avail:
+                self._scale_U_param(syn_params, self._ca_concentration, mod_override)
         return syn_params
 
     @abstractmethod
@@ -88,11 +92,9 @@ class SynapseReader(object):
 
     @staticmethod
     def _scale_U_param(syn_params, extra_cellular_calcium, mod_override):
-        if len(syn_params) == 0 or 'u_hill_coefficient' not in syn_params.dtype.names:
+        if len(syn_params) == 0:
             return
         if extra_cellular_calcium is None:
-            return
-        if not np.any(syn_params.u_hill_coefficient):
             return
 
         def hill(ca_conc, y, K_half):
@@ -226,8 +228,7 @@ class SynReaderSynTool(SynapseReader):
         return self._syn_reader.hasNrrpField()
 
     def has_property(self, field_name):
-        return hasattr(self._syn_reader, 'hasProperty') \
-            and bool(self._syn_reader.hasProperty(field_name))
+        return bool(self._syn_reader.hasProperty(field_name))
 
     def get_property(self, gid, field_name, *is_pre):
         """Retrieves a full property (vector) given a gid and the property name.
@@ -308,7 +309,8 @@ class SynReaderNRN(SynapseReader):
         return self.nrn_version > 4
 
     def has_property(self, field_name):
-        return NotImplemented  # nrn has a predefined set of fields. worthless checking
+        logging.warning("has_property() without SynapseReader returns always False")
+        return False
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader
@@ -345,7 +347,7 @@ class SynReaderNRN(SynapseReader):
                 params[11] = -1
 
             # placeholder for u_hill_coefficient and conductance_ratio, not supported by HDF5Reader
-            params[12] = 0
+            params[12] = -1
             params[13] = -1
 
         return conn_syn_params
