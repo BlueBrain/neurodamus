@@ -34,6 +34,8 @@ class StimulusManager:
     """
 
     _stim_types = {}  # stimulus handled in Python
+    _noisy_types = []  # stimuli that use random numbers
+    _python_only = []  # stimuli only available in Python
 
     def __init__(self, target_manager, elec_manager=None, *args):
         self._hoc = Nd.StimulusManager(target_manager, elec_manager, *args)
@@ -46,10 +48,8 @@ class StimulusManager:
         # Get either hoc target or sonata node_set, needed for python and hoc interpret
         # If sonata node_set, internally register the target and add to hoc TargetList
         target = self._target_manager.get_target(target_spec)
-        python_only_stims = ('ShotNoise', 'RelativeShotNoise', 'AbsoluteShotNoise',
-                             'OrnsteinUhlenbeck', 'RelativeOrnsteinUhlenbeck')
         if SimConfig.cli_options.experimental_stims or \
-                (stim_t and stim_t.__name__ in python_only_stims):
+                (stim_t and stim_t.__name__ in self._python_only):
             # New style Stim, in Python
             log_verbose("Using new-gen stimulus")
             cell_manager = self._target_manager.hoc.cellDistributor
@@ -78,6 +78,18 @@ class StimulusManager:
         cls._stim_types[stim_class.__name__] = stim_class
         return stim_class
 
+    @classmethod
+    def is_noisy(cls, stim_class):
+        """ Registers name of noisy stimulus """
+        cls._noisy_types.append(stim_class.__name__)
+        return stim_class
+
+    @classmethod
+    def python_only(cls, stim_class):
+        """ Registers name of python-only stimulus """
+        cls._python_only.append(stim_class.__name__)
+        return stim_class
+
 
 class BaseStim:
     """
@@ -88,6 +100,8 @@ class BaseStim:
         self.delay = float(stim_info["Delay"])        # start time [ms]
 
 
+@StimulusManager.python_only
+@StimulusManager.is_noisy
 @StimulusManager.register_type
 class OrnsteinUhlenbeck(BaseStim):
     """
@@ -177,6 +191,8 @@ class OrnsteinUhlenbeck(BaseStim):
         pass
 
 
+@StimulusManager.python_only
+@StimulusManager.is_noisy
 @StimulusManager.register_type
 class RelativeOrnsteinUhlenbeck(OrnsteinUhlenbeck):
     """
@@ -210,6 +226,8 @@ class RelativeOrnsteinUhlenbeck(OrnsteinUhlenbeck):
         return True
 
 
+@StimulusManager.python_only
+@StimulusManager.is_noisy
 @StimulusManager.register_type
 class ShotNoise(BaseStim):
     """
@@ -338,6 +356,8 @@ class ShotNoise(BaseStim):
         self.amp_var = self.cv_square * self.amp_mean ** 2
 
 
+@StimulusManager.python_only
+@StimulusManager.is_noisy
 @StimulusManager.register_type
 class RelativeShotNoise(ShotNoise):
     """
@@ -383,6 +403,8 @@ class RelativeShotNoise(ShotNoise):
         super().params_from_mean_var(mean, var)
 
 
+@StimulusManager.python_only
+@StimulusManager.is_noisy
 @StimulusManager.register_type
 class AbsoluteShotNoise(ShotNoise):
     """
@@ -525,6 +547,7 @@ class SubThreshold(Linear):
         self.amp_end = self.amp_start
 
 
+@StimulusManager.is_noisy
 @StimulusManager.register_type
 class Noise(BaseStim):
     """

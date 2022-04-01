@@ -542,7 +542,7 @@ class Node:
 
             logging.info(" * [STIM] %s: %s (%s) -> %s",
                          name, stim_name, stim_pattern, target_spec)
-            if stim_pattern in ["Noise", "ShotNoise", "RelativeShotNoise"] and \
+            if stim_pattern in self._stim_manager._noisy_types and \
                     SimConfig.run_conf.get("StimulusSeed") is None:
                 logging.warning("StimulusSeed unset (default %d), "
                                 "set explicitly to vary noisy stimuli across runs",
