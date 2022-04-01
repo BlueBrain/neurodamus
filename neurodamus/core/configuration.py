@@ -909,9 +909,8 @@ def _input_resistance(config: _SimConfig, config_parser):
         target = stim_inject["Target"]  # all we can know so far
         if stim["Pattern"] == "RelativeOrnsteinUhlenbeck":
             target_spec = TargetSpec(target) if isinstance(target, str) else TargetSpec(target.s)
-            # NOTE: if target has no "<population>:" prefix, assume base population = All
-            target_pop = "All" if target_spec.population is None else target_spec.population
-            config._cell_requirements.setdefault(target_pop, set()).add(prop)
+            # NOTE: key will be None when target has no prefix, referring to the default population
+            config._cell_requirements.setdefault(target_spec.population, set()).add(prop)
             log_verbose('[cell] %s (%s)' % (prop, target))
 
 
@@ -919,7 +918,7 @@ def _input_resistance(config: _SimConfig, config_parser):
 def _conductance_scale_factor(config: _SimConfig, config_parser):
     prop = "conductance_scale_factor"
     from neuron import h
-    # NOTE: there is no good way to know what synapse types are used in the simulation
+    # NOTE: these synapse types have a variable for conductance ratio
     if hasattr(h, "ProbAMPANMDA_EMS") or hasattr(h, "ProbGABAAB_EMS"):
         config._synapse_requirements.setdefault(None, set()).add(prop)
         log_verbose('[synapse] %s' % prop)
