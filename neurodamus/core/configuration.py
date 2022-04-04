@@ -140,8 +140,8 @@ class _SimConfig(object):
     _validators = []
     _requisitors = []
 
-    _cell_requirements = {}
-    _synapse_requirements = {}
+    _cell_requirements = {None: set()}
+    _synapse_requirements = {None: set()}
 
     restore_coreneuron = property(lambda self: self.use_coreneuron and bool(self.restore))
     cell_requirements = property(lambda self: self._cell_requirements)
@@ -918,7 +918,7 @@ def _input_resistance(config: _SimConfig, config_parser):
 def _u_hill_coefficient(config: _SimConfig, config_parser):
     prop = "u_hill_coefficient"
     if 'ExtracellularCalcium' in config.run_conf:
-        config._synapse_requirements.setdefault(None, set()).add(prop)
+        config._synapse_requirements[None].add(prop)
         log_verbose('[synapse] %s' % prop)
 
 
