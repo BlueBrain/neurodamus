@@ -141,9 +141,11 @@ class _SimConfig(object):
     _requisitors = []
 
     _cell_requirements = {}
+    _synapse_requirements = {}
 
     restore_coreneuron = property(lambda self: self.use_coreneuron and bool(self.restore))
     cell_requirements = property(lambda self: self._cell_requirements)
+    synapse_requirements = property(lambda self: self._synapse_requirements)
 
     @classmethod
     def init(cls, config_file, cli_options):
@@ -910,3 +912,21 @@ def _input_resistance(config: _SimConfig, config_parser):
             # NOTE: key will be None when target has no prefix, referring to the default population
             config._cell_requirements.setdefault(target_spec.population, set()).add(prop)
             log_verbose('[cell] %s (%s)' % (prop, target))
+
+
+@SimConfig.requisitor
+def _conductance_scale_factor(config: _SimConfig, config_parser):
+    prop = "conductance_scale_factor"
+    from neuron import h
+    # NOTE: these synapse types have a variable for conductance ratio
+    if hasattr(h, "ProbAMPANMDA_EMS") or hasattr(h, "ProbGABAAB_EMS"):
+        config._synapse_requirements.setdefault(None, set()).add(prop)
+        log_verbose('[synapse] %s' % prop)
+
+
+@SimConfig.requisitor
+def _u_hill_coefficient(config: _SimConfig, config_parser):
+    prop = "u_hill_coefficient"
+    if 'ExtracellularCalcium' in config.run_conf:
+        config._synapse_requirements.setdefault(None, set()).add(prop)
+        log_verbose('[synapse] %s' % prop)
