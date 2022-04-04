@@ -915,18 +915,15 @@ def _input_resistance(config: _SimConfig, config_parser):
 
 
 @SimConfig.requisitor
-def _conductance_scale_factor(config: _SimConfig, config_parser):
-    prop = "conductance_scale_factor"
-    from neuron import h
-    # NOTE: these synapse types have a variable for conductance ratio
-    if hasattr(h, "ProbAMPANMDA_EMS") or hasattr(h, "ProbGABAAB_EMS"):
-        config._synapse_requirements.setdefault(None, set()).add(prop)
-        log_verbose('[synapse] %s' % prop)
-
-
-@SimConfig.requisitor
 def _u_hill_coefficient(config: _SimConfig, config_parser):
     prop = "u_hill_coefficient"
     if 'ExtracellularCalcium' in config.run_conf:
         config._synapse_requirements.setdefault(None, set()).add(prop)
         log_verbose('[synapse] %s' % prop)
+
+
+@SimConfig.requisitor
+def _conductance_scale_factor(config: _SimConfig, config_parser):
+    prop = "conductance_scale_factor"
+    # NOTE: it is hard to determine when this is a requirement
+    pass

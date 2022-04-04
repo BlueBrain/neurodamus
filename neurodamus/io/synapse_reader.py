@@ -88,6 +88,7 @@ class SynapseReader(object):
                 raise Exception('u_hill_coefficient values not present or invalid')
 
             # NOTE: loading of conductance_scale_factor depends on u_hill_coefficient availability
+            # NOTE: this is the right check for this requirement, but detection is not available
             if 'conductance_scale_factor' in synapse_requirements and \
                     (not self._uhill_property_avail or np.any(syn_params.conductance_ratio < 0)):
                 raise Exception('conductance_scale_factor values not present or invalid')
