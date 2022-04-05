@@ -781,8 +781,6 @@ class Extracellular(BaseStim):
             numSegs = 0
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
-                print('secID')
-                print(sec_id)
                 # skip sections not in this split
                 if not sc.exists():
                     continue
@@ -794,7 +792,7 @@ class Extracellular(BaseStim):
                     es.attach_to(sc.sec)
                 else:
                     es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
-                     self.AmpStart,self.frequency,self.width,self.electrode_path)
+                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset)
                 # attach source to section
                 #     numSegs += es.attach_to(sc.sec)
                     es.attach_to(sc.sec)
@@ -835,6 +833,21 @@ class Extracellular(BaseStim):
             self.electrode_path = stim_info["Electrode_Path"]
 
             self.electrode_name = stim_info["Electrode_Name"]
+
+            if stim_info.get("Offset") == None:
+                self.offset = None
+            else:
+
+                self.offset = []
+                pos = stim_info["Offset"].split(',')
+
+                if len(pos)!=3:
+                    raise Exception("Offset must have three coordinates")
+
+                for p in pos:
+                    self.offset.append(float(p))
+
+                self.offset = np.array(self.offset)
 
         # parse and check stimulus-specific parameters
         if not self.parse_check_stim_parameters(stim_info):

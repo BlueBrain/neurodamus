@@ -668,7 +668,7 @@ class PointSourceElectrode(ElectrodeSource):
 
 class RealElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset):
         super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
         #
         # scaleFile = h5py.File(electrode_path)
@@ -681,6 +681,7 @@ class RealElectrode(ElectrodeSource):
         # self.numSegs = numSegs
 
         self.electrode_path = electrode_path
+        self.offset = offset
 
     def geth5Dataset(self, h5f, group_name, dataset_name):
         """
@@ -743,13 +744,15 @@ class RealElectrode(ElectrodeSource):
 
             if 'soma' in section.name() and section.nseg == 1:
                 segpositions = self.get_soma_position(section)
+                self.soma_position = segpositions
             else:
                 segpositions = self.interp_seg_positions(section,seg.x)
 
-            scaleFac = self.interpolate_potentials(segpositions)
+            if self.offset != None:
+                segpositions -= self.soma_position
+                segpositions += self.offset * 1e3
 
-            print('scalefac is',flush=True)
-            print(scaleFac,flush=True)
+            scaleFac = self.interpolate_potentials(segpositions)
 
             segVec = h.Vector()
             segVec.copy(self.stim_vec)
