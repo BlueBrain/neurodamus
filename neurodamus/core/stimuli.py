@@ -668,7 +668,7 @@ class PointSourceElectrode(ElectrodeSource):
 
 class RealElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset,current_applied):
         super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
         #
         # scaleFile = h5py.File(electrode_path)
@@ -682,6 +682,7 @@ class RealElectrode(ElectrodeSource):
 
         self.electrode_path = electrode_path
         self.offset = offset
+        self.current_applied = current_applied
 
     def geth5Dataset(self, h5f, group_name, dataset_name):
         """
@@ -731,7 +732,7 @@ class RealElectrode(ElectrodeSource):
 
         out2rat = InterpFcn(segpositions)
 
-        return out2rat[0]
+        return out2rat[0]/self.current_applied
 
 
     def attach_to(self,section):

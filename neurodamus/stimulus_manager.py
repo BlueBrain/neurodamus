@@ -834,6 +834,8 @@ class Extracellular(BaseStim):
 
             self.electrode_name = stim_info["Electrode_Name"]
 
+            self.current_applied = stim_info["Current"]
+
             if stim_info.get("Offset") == None:
                 self.offset = None
             else:
