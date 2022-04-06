@@ -24,7 +24,7 @@ from .utils.logging import log_verbose
 from .core.configuration import SimConfig
 from .core.stimuli import CurrentSource, ConductanceSource, RealElectrode, PointSourceElectrode
 from .core import random
-
+import numpy as np
 
 class StimulusManager:
 
@@ -780,7 +780,11 @@ class Extracellular(BaseStim):
 
             numSegs = 0
 
+            somaPos = None
+
             for sec_id, sc in enumerate(tpoint_list.sclst):
+
+
                 # skip sections not in this split
                 if not sc.exists():
                     continue
@@ -789,13 +793,20 @@ class Extracellular(BaseStim):
                 if stim_info["Electrode_Path"] == None:
                     es = PointSourceElectrode(self.pattern,self.delay,self.type,self.duration,
                     self.AmpStart,self.frequency,self.width,self.x,self.y,self.z)
+
                     es.attach_to(sc.sec)
                 else:
                     es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
-                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset)
+                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos)
+
+
                 # attach source to section
                 #     numSegs += es.attach_to(sc.sec)
                     es.attach_to(sc.sec)
+
+                    somaPos = es.soma_position
+
+
                 self.stimList.append(es)  # save source
 
         Extracellular.stimCount += 1  # increment global count
@@ -834,7 +845,7 @@ class Extracellular(BaseStim):
 
             self.electrode_name = stim_info["Electrode_Name"]
 
-            self.current_applied = stim_info["Current"]
+            self.current_applied = float(stim_info["Current"])
 
             if stim_info.get("Offset") == None:
                 self.offset = None
@@ -884,6 +895,7 @@ class Extracellular(BaseStim):
                 self.AmpStart.append(float(amp))
         else:
             self.AmpStart = [float(stim_info.get("Amp"))]
+
 
 
 
