@@ -847,6 +847,22 @@ class Extracellular(BaseStim):
 
             self.current_applied = float(stim_info["Current"])
 
+            if stim_info.get('Rotation Angles') == None:
+                self.rotation_angles = None
+            else:
+
+                self.rotation_angles = []
+                pos = stim_info["Rotation Angles"].split(',')
+
+                if len(pos)!=3:
+                    raise Exception("Angles must have three coordinates")
+
+                for p in pos:
+                    self.rotation_angles.append(float(p))
+
+                self.rotation_angles = np.array(self.rotation_angles)
+
+
             if stim_info.get("Offset") == None:
                 self.offset = None
             else:

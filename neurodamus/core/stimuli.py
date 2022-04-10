@@ -568,6 +568,7 @@ class ElectrodeSource(SignalSource):
         self.type = type
         self._all_sources.append(self)
         self.extracellulars = []
+        self.axon1 = False
 
         if self.type == "Pulse":
             self.add_pulses_arbitrary(self.AmpStart,self.width,delay=self.stim_delay)
@@ -611,11 +612,30 @@ class ElectrodeSource(SignalSource):
         zpos = []
         lens = []
 
-        for n in range(n3d):
-            xpos.append(section.x3d(n))
-            ypos.append(section.y3d(n))
-            zpos.append(section.z3d(n))
-            lens.append(section.arc3d(n)/section.L)
+        if n3d == 0:
+
+            xpos.append(self.soma_position[0])
+            ypos.append(self.soma_position[1])
+            zpos.append(self.soma_position[2])
+            lens.append(0)
+
+            xpos.append(self.soma_position[0])
+            ypos.append(self.soma_position[1])
+            lens.append(1)
+
+            if self.axon1 == False:
+                zpos.append(self.soma_position[2]+30)
+                self.axon1 = True
+            else:
+                zpos.append(self.soma_position[2]+60)
+
+        else:
+
+            for n in range(n3d):
+                xpos.append(section.x3d(n))
+                ypos.append(section.y3d(n))
+                zpos.append(section.z3d(n))
+                lens.append(section.arc3d(n)/section.L)
 
 
         fX = interp1d(lens,xpos)
@@ -668,7 +688,7 @@ class PointSourceElectrode(ElectrodeSource):
 
 class RealElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset,current_applied,soma_position):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset,current_applied,soma_position,rotation_angles):
         super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
         #
         # scaleFile = h5py.File(electrode_path)
@@ -684,6 +704,7 @@ class RealElectrode(ElectrodeSource):
         self.offset = offset
         self.current_applied = current_applied
         self.soma_position = soma_position
+        self.rotation_angles = rotation_angles
 
     def geth5Dataset(self, h5f, group_name, dataset_name):
         """
@@ -703,6 +724,27 @@ class RealElectrode(ElectrodeSource):
         with h5py.File(h5f, 'r') as f:
             k = f[group_name].visit(find_dataset)
             return f[group_name + '/' + k][()]
+
+    def rotate(self,positions):
+
+        alpha = self.rotation_angles[0]
+        beta = self.rotation_angles[1]
+        gamma = self.rotation_angles[2]
+
+        Rz = np.array([[np.cos(alpha),-np.sin(alpha),0],[np.sin(alpha),np.cos(alpha),0],[0,0,1]])
+        Ry = np.array([[np.cos(beta),0, np.sin(beta)], [0,1,0], [-np.sin(beta),0,np.cos(beta)]])
+        Rx = np.array([[1,0,0],[0,np.cos(gamma),-np.sin(gamma)],[0,np.sin(gamma),np.cos(gamma)]])
+
+        R = np.matmul(np.matmul(Rz,Ry),Rx)
+
+        positions -= self.soma_position
+
+        newpositions = np.array([])
+        for pos in positons:
+            newpos = np.matmul(R,pos)+self.soma_position
+            newpositions = np.hstack([newpositions,newpos])
+
+        return newpositions
 
     def interpolate_potentials(self, segpositions):
 
@@ -724,6 +766,12 @@ class RealElectrode(ElectrodeSource):
             y = self.geth5Dataset(self.electrode_path, tmp, 'axis_y')
             z = self.geth5Dataset(self.electrode_path, tmp, 'axis_z')
 
+        if self.rotation_angles is not None:
+            newpositions = self.rotate(np.array([x,y,z]).T)
+
+        x = newpositions[:,0]
+        y = newpositions[:,1]
+        z = newpositions[:,2]
 
         segpositions *= 1e-6  # Converts to m
 
@@ -766,7 +814,7 @@ class RealElectrode(ElectrodeSource):
 
 
             segVec.mul(scaleFac)
-    
+
             out = segVec.play(seg.extracellular._ref_e,self.time_vec)
             self.extracellulars.append(out)
 
