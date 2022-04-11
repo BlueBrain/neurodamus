@@ -785,6 +785,7 @@ class Extracellular(BaseStim):
             for sec_id, sc in enumerate(tpoint_list.sclst):
 
 
+
                 # skip sections not in this split
                 if not sc.exists():
                     continue
@@ -797,7 +798,7 @@ class Extracellular(BaseStim):
                     es.attach_to(sc.sec)
                 else:
                     es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
-                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos)
+                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos,self.rotation_angles)
 
 
                 # attach source to section
@@ -847,18 +848,11 @@ class Extracellular(BaseStim):
 
             self.current_applied = float(stim_info["Current"])
 
-            if stim_info.get('Rotation Angles') == None:
+            if stim_info.get('RotX') == None or stim_info.get('RotY') == None or stim_info.get('RotZ') == None:
                 self.rotation_angles = None
             else:
 
-                self.rotation_angles = []
-                pos = stim_info["Rotation Angles"].split(',')
-
-                if len(pos)!=3:
-                    raise Exception("Angles must have three coordinates")
-
-                for p in pos:
-                    self.rotation_angles.append(float(p))
+                self.rotation_angles = [float(stim_info["RotZ"]),float(stim_info["RotY"]),float(stim_info["RotX"])]
 
                 self.rotation_angles = np.array(self.rotation_angles)
 

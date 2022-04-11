@@ -584,10 +584,11 @@ class ElectrodeSource(SignalSource):
 
         n3d = section.n3d()
 
+        print('n3d is '+str(n3d),flush=True)
+
         xpos = []
         ypos = []
         zpos = []
-        lens = []
 
         for n in range(n3d):
             xpos.append(section.x3d(n))
@@ -664,9 +665,12 @@ class PointSourceElectrode(ElectrodeSource):
 
         section.insert('extracellular')
 
+        print(section.name(),flush=True)
+
         for seg in section:
 
-            if 'soma' in section.name() and section.nseg == 1:
+            if 'soma' in section.name():
+
                 segpositions = self.get_soma_position(section)
             else:
                 segpositions = self.interp_seg_positions(section,seg.x)
@@ -725,11 +729,12 @@ class RealElectrode(ElectrodeSource):
             k = f[group_name].visit(find_dataset)
             return f[group_name + '/' + k][()]
 
-    def rotate(self,positions):
+    def rotate(self,segpositions):
 
-        alpha = self.rotation_angles[0]
-        beta = self.rotation_angles[1]
-        gamma = self.rotation_angles[2]
+        alpha = np.radians(self.rotation_angles[0])
+        beta = np.radians(self.rotation_angles[1])
+        gamma = np.radians(self.rotation_angles[2])
+
 
         Rz = np.array([[np.cos(alpha),-np.sin(alpha),0],[np.sin(alpha),np.cos(alpha),0],[0,0,1]])
         Ry = np.array([[np.cos(beta),0, np.sin(beta)], [0,1,0], [-np.sin(beta),0,np.cos(beta)]])
@@ -737,12 +742,16 @@ class RealElectrode(ElectrodeSource):
 
         R = np.matmul(np.matmul(Rz,Ry),Rx)
 
-        positions -= self.soma_position
 
-        newpositions = np.array([])
-        for pos in positons:
-            newpos = np.matmul(R,pos)+self.soma_position
-            newpositions = np.hstack([newpositions,newpos])
+
+        segpositions -= self.new_soma_pos
+
+
+
+        newpositions = np.matmul(R,segpositions)
+
+        newpositions += self.new_soma_pos
+
 
         return newpositions
 
@@ -766,16 +775,12 @@ class RealElectrode(ElectrodeSource):
             y = self.geth5Dataset(self.electrode_path, tmp, 'axis_y')
             z = self.geth5Dataset(self.electrode_path, tmp, 'axis_z')
 
-        if self.rotation_angles is not None:
-            newpositions = self.rotate(np.array([x,y,z]).T)
 
-        x = newpositions[:,0]
-        y = newpositions[:,1]
-        z = newpositions[:,2]
+
+        if self.rotation_angles is not None:
+            segpositions = self.rotate(segpositions)
 
         segpositions *= 1e-6  # Converts to m
-
-        mesh = np.array(np.meshgrid(x, y, z, indexing='ij'))
 
         InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear')
 
@@ -792,7 +797,8 @@ class RealElectrode(ElectrodeSource):
 
         for i,seg in enumerate(section):
 
-            if 'soma' in section.name() and section.nseg == 1:
+
+            if 'soma' in section.name():
                 segpositions = self.get_soma_position(section)
                 self.soma_position = segpositions
             else:
@@ -800,10 +806,15 @@ class RealElectrode(ElectrodeSource):
 
             if isinstance(self.offset,np.ndarray):
 
+
                 segpositions -= self.soma_position
                 segpositions += self.offset * 1e3
+                self.new_soma_pos = self.offset *1e3
+
 
             scaleFac = self.interpolate_potentials(segpositions)
+
+            print(scaleFac)
 
             segVec = h.Vector()
             segVec.copy(self.stim_vec)
