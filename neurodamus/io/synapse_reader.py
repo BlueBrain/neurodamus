@@ -68,7 +68,7 @@ class SynapseReader(object):
         """
         syn_params = self._syn_params.get(gid)
         if syn_params is None:
-            syn_params = self._syn_params[gid] = self._load_synapse_parameters(gid)
+            syn_params = self._load_synapse_parameters(gid)
             if mod_override:
                 mod_override_params = self._read_extra_fields_from_mod_override(mod_override, gid)
                 if mod_override_params is not None:
@@ -76,6 +76,7 @@ class SynapseReader(object):
             self._patch_delay_fp_inaccuracies(syn_params)
             if self._uhill_property_avail:
                 self._scale_U_param(syn_params, self._ca_concentration, mod_override)
+            self._syn_params[gid] = syn_params  # cache parameters
         return syn_params
 
     @abstractmethod
