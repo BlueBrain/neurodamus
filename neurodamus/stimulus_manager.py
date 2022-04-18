@@ -961,7 +961,7 @@ class Extracellular(BaseStim):
             if stim_info.get("Frequency") == None:
                 raise Exception("Frequency must be provided")
             else:
-                freqs = stim_info.get("Frequency")).split(',')
+                freqs = stim_info.get("Frequency").split(',')
 
             if len(freqs)!=2:
                 raise Exception("Must have exactly two Sinusoids")

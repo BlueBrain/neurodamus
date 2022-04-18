@@ -365,7 +365,7 @@ def _stimulus_params(config: _SimConfig, run_conf):
     numeric_fields = ("Dt", "RiseTime", "DecayTime", "AmpMean", "AmpVar", "MeanPercent",
                       "SDPercent", "AmpCV", "AmpStart", "AmpEnd", "PercentStart",
                       "PercentEnd", "PercentLess", "Mean", "Variance", "Voltage", "RS",)
-    non_negatives = ("Duration", "Delay", "Rate", "Frequency", "Width", "Lambda", "Weight",
+    non_negatives = ("Duration", "Delay", "Rate", "Width", "Lambda", "Weight",
                      "NumOfSynapses", "Seed",)
     valid_values = {
         "Mode": ("Current", "Voltage", "Conductance","Extracellular"),
