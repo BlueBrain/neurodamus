@@ -161,9 +161,14 @@ class SignalSource:
         self.time_vec.append(tvec)
         self.delay(total_duration)
 
-        stim = Neuron.h.Vector(len(tvec))
-        stim.sin(freq, .0, step)
-        stim.mul(amp)
+        stim = Neuron.h.Vector(len(tvec),0)
+
+        for i in len(amp):
+            newstim = Neuron.h.Vector(len(tvec))
+            newstim.sin(freq[i], .0, step)
+            newstim.mul(amp[i])
+            stim.add(newstim)
+            
         self.stim_vec.append(stim)
 
         # Last point
@@ -584,7 +589,6 @@ class ElectrodeSource(SignalSource):
 
         n3d = section.n3d()
 
-        print('n3d is '+str(n3d),flush=True)
 
         xpos = []
         ypos = []
@@ -638,7 +642,6 @@ class ElectrodeSource(SignalSource):
                 zpos.append(section.z3d(n))
                 lens.append(section.arc3d(n)/section.L)
 
-
         fX = interp1d(lens,xpos)
         segX = fX(x)
         fY = interp1d(lens,ypos)
@@ -646,7 +649,10 @@ class ElectrodeSource(SignalSource):
         fZ = interp1d(lens,zpos)
         segZ = fZ(x)
 
-        return np.array([segX,segY,segZ])
+        segpos = np.array([segX,segY,segZ])
+
+
+        return segpos
 
 
 
@@ -786,6 +792,8 @@ class RealElectrode(ElectrodeSource):
 
         out2rat = InterpFcn(segpositions)
 
+        print('potential is '+str(out2rat)+' V')
+
         return out2rat[0]/self.current_applied
 
 
@@ -793,40 +801,44 @@ class RealElectrode(ElectrodeSource):
 
         section.insert('extracellular')
 
-        numNewSegs = 0
 
         for i,seg in enumerate(section):
 
 
             if 'soma' in section.name():
                 segpositions = self.get_soma_position(section)
+
                 self.soma_position = segpositions
             else:
                 segpositions = self.interp_seg_positions(section,seg.x)
+
+
 
             if isinstance(self.offset,np.ndarray):
 
 
                 segpositions -= self.soma_position
-                segpositions += self.offset * 1e3
+
+
+                segpositions += self.offset * 1e3 # offset in mm converted to um
+
                 self.new_soma_pos = self.offset *1e3
 
 
-            scaleFac = self.interpolate_potentials(segpositions)
+            scaleFac = self.interpolate_potentials(segpositions)*1e3 #(1e3 to go from V to mV)
 
-            print(scaleFac)
+
+
 
             segVec = h.Vector()
             segVec.copy(self.stim_vec)
-
-            # scaleFac = self.scaleFactor[i][0]
-
-            # numNewSegs += 1
-
 
             segVec.mul(scaleFac)
 
             out = segVec.play(seg.extracellular._ref_e,self.time_vec)
             self.extracellulars.append(out)
+
+
+
 
             # return numNewSegs

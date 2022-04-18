@@ -957,7 +957,25 @@ class Extracellular(BaseStim):
 
             self.width = None
 
-        if self.type != 'Sinusoid':
+        if self.type == 'TI':
+            if stim_info.get("Frequency") == None:
+                raise Exception("Frequency must be provided")
+            else:
+                freqs = stim_info.get("Frequency")).split(',')
+
+            if len(freqs)!=2:
+                raise Exception("Must have exactly two Sinusoids")
+
+            self.frequency = []
+            for f in freqs:
+                self.frequency.append(float(f))
+
+            if len(self.AmpStart) != 2:
+                raise Exception("Each sinusoid must have amplitude")
+
+
+
+        if self.type != 'Sinusoid' and self.type != 'TI':
             if len(self.AmpStart) != len(self.width):
                 raise Exception("Each amplitude must have corresponding width")
 
