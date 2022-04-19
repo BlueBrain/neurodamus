@@ -793,12 +793,12 @@ class Extracellular(BaseStim):
                 # inject Extracellular signal
                 if stim_info["Electrode_Path"] == None:
                     es = PointSourceElectrode(self.pattern,self.delay,self.type,self.duration,
-                    self.AmpStart,self.frequency,self.width,self.x,self.y,self.z)
+                    self.AmpStart,self.frequency,self.width,self.x,self.y,self.z,self.pulse_number)
 
                     es.attach_to(sc.sec)
                 else:
                     es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
-                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos,self.rotation_angles)
+                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos,self.rotation_angles,self.pulse_number)
 
 
                 # attach source to section
@@ -814,6 +814,8 @@ class Extracellular(BaseStim):
 
 
     def parse_check_all_parameters(self, stim_info: dict):
+
+        self.pulse_number = None
 
         if stim_info["Pattern"] == None:
             raise Exception("%s pattern must be provided" % self.__class__.__name__)
@@ -973,6 +975,31 @@ class Extracellular(BaseStim):
             if len(self.AmpStart) != 2:
                 raise Exception("Each sinusoid must have amplitude")
 
+            self.width = None
+
+        if self.type = "PulseTI":
+
+            if stim_info.get("Frequency") == None:
+                raise Exception("Frequency must be provided")
+            else:
+                freqs = stim_info.get("Frequency").split(',')
+
+            if len(freqs)!=3:
+                raise Exception("Must be in the form \"carrier frequency, pulse frequency, burst frequency\" ")
+
+            self.frequency = []
+            for f in freqs:
+                self.frequency.append(float(f))
+
+            if len(self.AmpStart) != 2:
+                raise Exception("Each sinusoid must have amplitude")
+
+            if stim_info.get("Pulse Number") == None:
+                raise Exception("Pulse number must be provided")
+            else:
+                self.pulse_number = float(stim_info.get("Pulse Number"))
+
+            self.width = None
 
 
         if self.type != 'Sinusoid' and self.type != 'TI':

@@ -144,6 +144,56 @@ class SignalSource:
         self._add_point(base_amp)
         return self
 
+    def add_pulse_ti(self,amp,duration,carrier_freq,pulse_freq,pulse_number,burst_freq,delay=self.stim_delay,step=0.025):
+
+        cycle_time = 1000/burst_freq
+
+
+        n_cycles = duration/cycle_time
+
+        shift_freq = pulse_freq+carrier_freq
+
+
+        base_amp = kw.get("base_amp", self._base_amp)
+
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
+        pulse_width = 1000/pulse_freq
+
+        pulse_time = pulse_width*pulse_number
+
+        break_time = cycle_time - pulse_time
+
+        for i in range(n_cycles):
+
+            tvec = Neuron.h.Vector()
+            tvec.indgen(self._cur_t, self._cur_t + pulse_time, step)
+            pulse_tt = tvec.to_python()
+            self.time_vec.append(tvec)
+            self.delay(pulse_time)
+
+            pulse_I1 = amp[0]*np.cos(2*pi*carrier_freq*pulse_tt)
+            pulse_I2 = amp[1]*np.cos(2*pi*shift_freq*pulse_tt+np.pi)
+
+            pulse = pulseI1 + pulseI2
+            self.stim_vec.append(pulse)
+
+            tvecB = Neuron.h.Vector()
+            tvecB.indgen(self._cur_t, self._cur_t + delay_time, step)
+            break_tt = tvecB.to_python()
+            self.time_vec.append(tvecB)
+            self.delay(break_time)
+
+            break_I1 = amp[0]*np.cos(2*pi*carrier_freq*break_tt)
+            break_I2 = amp[1]*np.cos(2*pi*carrier_freq*break_tt+np.pi)
+
+            breakPulse = break_I+break_I2
+
+            self.stim_vec.append(breakPulse)
+
+
+
     def add_sin(self, amp, total_duration, freq, step=0.025, **kw):
         """ Builds a sinusoidal signal.
         Args:
@@ -163,12 +213,14 @@ class SignalSource:
 
         stim = Neuron.h.Vector(len(tvec),0)
 
-        for i in len(amp):
+
+
+        for i in range(len(amp)):
             newstim = Neuron.h.Vector(len(tvec))
             newstim.sin(freq[i], .0, step)
             newstim.mul(amp[i])
             stim.add(newstim)
-            
+
         self.stim_vec.append(stim)
 
         # Last point
@@ -577,11 +629,17 @@ class ElectrodeSource(SignalSource):
 
         if self.type == "Pulse":
             self.add_pulses_arbitrary(self.AmpStart,self.width,delay=self.stim_delay)
-
         elif self.type == "Train":
             self.add_train_arbitrary(self.AmpStart, self.width, self.frequency, self.duration,delay=self.stim_delay)
-        elif self.type == "Sinusoid":
+        elif self.type == "Sinusoid" or self.type == 'TI':
             self.add_sin(self.AmpStart, self.duration, self.frequency,delay=self.stim_delay)
+        elif self.type == "PulseTI":
+
+            carrier_freq = self.frequency[0]
+            pulse_freq = self.frequency[1]
+            burst_freq = self.frequency[2]
+
+            self.add_pulse_ti(self.AmpStart,self.duration,carrier_freq,pulse_freq,self.pulse_number,burst_freq,delay=self.stim_delay)
         else:
             raise Exception("Stimulus type not defined")
 
