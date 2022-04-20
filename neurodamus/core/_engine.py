@@ -76,6 +76,8 @@ class EngineBase(metaclass=_EngineMeta):
     InnerConnectivityCls = None
     ConnectionTypes = {}
     """A dict of the new connection types and associated Manager class"""
+    CircuitPrecedence = 1
+    """Precedence influences instantiation order. The lower the earlier setup"""
 
     @classmethod
     def new_cell_manager(cls, circuit_conf, target_parser, run_conf):

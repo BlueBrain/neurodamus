@@ -1,16 +1,17 @@
 import itertools
 import logging
 import os.path
-from abc import abstractmethod
+from abc import ABCMeta, abstractmethod
 from functools import lru_cache
 from typing import List
 
 import numpy
 
 from .core import MPI, NeurodamusCore as Nd
-from .core.configuration import ConfigurationError, GlobalConfig, find_input_file
+from .core.configuration import ConfigurationError, SimConfig, GlobalConfig, find_input_file
 from .core.nodeset import NodeSet
 from .utils import compat
+from .utils.logging import log_verbose
 
 
 class TargetError(Exception):
@@ -39,14 +40,14 @@ class TargetSpec:
 
     def __str__(self):
         return (
-            self.name
+            (self.name or "")
             if self.population is None
             else "{}:{}".format(self.population, self.name or "")
         )
 
     @property
     def simple_name(self):
-        if self.name is None:
+        if self.name is None and self.population is None:
             return self.GLOBAL_TARGET_NAME
         return self.__str__().replace(":", "_")
 
@@ -76,6 +77,21 @@ class TargetManager:
         self._nodeset_reader = self._init_nodesets(run_conf)
         if MPI.rank == 0:
             self.parser.isVerbose = 1
+        self._default_population = self._get_default_population(run_conf)  # legacy BlueConfig only
+
+    @classmethod
+    def _get_default_population(cls, run_conf):
+        ctarget = run_conf.get("CircuitTarget")
+        if not ctarget or SimConfig.is_sonata_config:
+            return None
+        tspec = TargetSpec(ctarget)
+        if tspec.population:
+            return tspec.population
+        if not ctarget.endswith(".h5"):
+            return ''  # mvd3 has unnamed population
+        # Otherwise open Sonata and inspect. Single population only
+        from .cell_distributor import CellManagerBase
+        return CellManagerBase._get_sonata_population_name(run_conf.get("CellLibraryFile"))
 
     @classmethod
     def _init_nodesets(cls, run_conf):
@@ -93,7 +109,7 @@ class TargetManager:
         instantiated, and potentially split.
         """
         if circuit.CircuitPath:
-            self._try_open_start_target(circuit.CircuitPath)
+            self._try_open_start_target(circuit)
 
         target_file = circuit.get("TargetFile")
         if target_file and not target_file.endswith(".json"):
@@ -103,10 +119,10 @@ class TargetManager:
         if nodes_file and nodes_file.endswith(".h5") and self._nodeset_reader:
             self._nodeset_reader.register_node_file(find_input_file(nodes_file))
 
-    def _try_open_start_target(self, circuit_path):
-        start_target_file = os.path.join(circuit_path, "start.target")
+    def _try_open_start_target(self, circuit):
+        start_target_file = os.path.join(circuit.CircuitPath, "start.target")
         if not os.path.isfile(start_target_file):
-            logging.warning("start.target not available! Check circuit.")
+            logging.warning("Circuit %s start.target not available! Skipping", circuit._name)
         else:
             self.parser.open(start_target_file, False)
             self._has_hoc_targets = True
@@ -122,36 +138,58 @@ class TargetManager:
                 self.parser.printCellCounts()
 
     def register_target(self, target, global_target=False):
+        if global_target and not SimConfig.is_sonata_config:
+            # In BlueConfig mode we transform the global target to a _HocTarget
+            target = _HocTarget(TargetSpec.GLOBAL_TARGET_NAME,
+                                target.get_hoc_target(),
+                                self._default_population)
         self._targets[target.name] = target
-        # no need to register hoc global target
-        if not global_target:
-            self.parser.updateTargetList(target.get_hoc_target())
+        self.parser.updateTargetList(target.get_hoc_target())
 
     def get_target(self, target_spec: TargetSpec):
+        """Retrieves a target from any .target file or Sonata nodeset files.
+
+        Targets are generic groups of cells not necessarily restricted to a population.
+        When retrieved from the source files they can be cached.
+        Targets retrieved from Sonata nodesets keep a reference to all Sonata
+        node datasets and can be asked for a sub-target of a specific population.
+        """
         if not isinstance(target_spec, TargetSpec):
             target_spec = TargetSpec(target_spec)
-        target_name = target_spec.name
-        simplename = target_spec.simple_name
-        if simplename in self._targets:
-            return self._targets[simplename]
 
-        target = self._nodeset_reader and self._nodeset_reader.get_target(target_spec)
+        target_name = target_spec.name or TargetSpec.GLOBAL_TARGET_NAME
+        target_pop = target_spec.population
+
+        def get_concrete_target(target):
+            """Get a more specific target, dependending on specified population prefix"""
+            return target if target_pop is None else target.make_subtarget(target_pop)
+
+        # Check cached
+        if target_name in self._targets:
+            target = self._targets[target_name]
+            return get_concrete_target(target)
+
+        # Check if we can get a Nodeset
+        target = self._nodeset_reader and self._nodeset_reader.read_nodeset(target_name)
         if target is not None:
-            logging.info("Retrieved gids from Sonata nodeset. Targets are Cell only")
-            # for sonata nodeset target, register and add into the hoc targetList
+            log_verbose("Retrieved `%s` from Sonata nodeset", target_spec)
             self.register_target(target)
-        elif self._has_hoc_targets:
+            return get_concrete_target(target)
+
+        if self._has_hoc_targets:
             if self.hoc is not None:
+                log_verbose("Retrieved `%s` from Hoc TargetManager", target_spec)
                 hoc_target = self.hoc.getTarget(target_name)
             else:
+                log_verbose("Retrieved `%s` from the Hoc TargetParser", target_spec)
                 hoc_target = self.parser.getTarget(target_name)
-            target = _HocTarget(target_name, target_spec.population, hoc_target)
-        else:
-            raise ConfigurationError(
-                "Target {} can't be loaded. Check target sources".format(target_name)
-            )
-        self._targets[simplename] = target
-        return target
+            target = _HocTarget(target_name, hoc_target)
+            self._targets[target_name] = target
+            return get_concrete_target(target)
+
+        raise ConfigurationError(
+            "Target {} can't be loaded. Check target sources".format(target_name)
+        )
 
     def init_hoc_manager(self, cell_manager):
         # give a TargetManager the TargetParser's completed targetList
@@ -231,7 +269,7 @@ class TargetManager:
         return self.intersecting(src1, src2) and self.intersecting(dst1, dst2)
 
     def __getattr__(self, item):
-        logging.info("Compat interface to hoc target. Calling " + item)
+        logging.debug("Compat interface to TargetManager::" + item)
         return getattr(self.hoc, item)
 
 
@@ -258,45 +296,40 @@ class NodeSetReader:
     def names(self):
         return self.nodesets.names
 
-    def get_target(self, target_spec: TargetSpec):
+    def read_nodeset(self, nodeset_name: str):
         """Build node sets capable of offsetting.
         The empty population has a special meaning in Sonata, it matches
         all populations in simulation
         """
-        nodeset_name = target_spec.name
-        pop_name = target_spec.population
+        import libsonata
         if nodeset_name not in self.nodesets.names:
             return None
-        if pop_name and pop_name not in self._population_stores:
-            raise TargetError("No loaded node file contains population " + pop_name)
 
         def _get_nodeset(pop_name):
             storage = self._population_stores.get(pop_name)
             population = storage.open_population(pop_name)
             # Create NodeSet object with 1-based gids
             try:
-                ns = NodeSet(self.nodesets.materialize(nodeset_name, population).flatten() + 1)
+                raw_gids = self.nodesets.materialize(nodeset_name, population).flatten() + 1
+            except libsonata.SonataError:
+                return None
+            if len(raw_gids):
+                logging.debug("Nodeset %s: Appending gis from %s", nodeset_name, pop_name)
+                ns = NodeSet(raw_gids)
                 ns.register_global(pop_name)
                 return ns
-            except Exception:
-                logging.warning("Target %s cannot be loaded for population %s, skip.",
-                                nodeset_name, pop_name)
-                return NodeSet()
+            return None
 
-        if pop_name:
-            nodesets = [_get_nodeset(pop_name)]
-        else:
-            nodesets = [_get_nodeset(pop_name) for pop_name in self._population_stores]
-        return NodesetTarget(target_spec.simple_name, nodesets, hoc_name=target_spec.name)
+        nodesets = (_get_nodeset(pop_name) for pop_name in self._population_stores)
+        nodesets = [ns for ns in nodesets if ns]
+
+        return NodesetTarget(nodeset_name, nodesets)
 
 
-class _TargetInterface:
+class _TargetInterface(metaclass=ABCMeta):
     """
     Methods that target/target wrappers should implement
     """
-
-    def __len__(self):
-        return self.gid_count()
 
     @abstractmethod
     def gid_count(self):
@@ -307,14 +340,39 @@ class _TargetInterface:
         return NotImplemented
 
     @abstractmethod
+    def get_raw_gids(self):
+        return NotImplemented
+
+    @abstractmethod
+    def __contains__(self, final_gid):
+        """
+        Checks if a gid (with offset) is present in this target.
+        All gids are taken into consideration, not only this ranks.
+        """
+        return NotImplemented
+
+    @abstractmethod
+    def make_subtarget(self, pop_name):
+        return NotImplemented
+
+    @abstractmethod
+    def is_void(self):
+        return NotImplemented
+
+    @abstractmethod
     def get_hoc_target(self):
         return NotImplemented
+
+    def contains_raw(self, gid):
+        return gid in self.get_raw_gids()
+
+    def getCellCount(self):
+        return self.gid_count
 
 
 class NodesetTarget(_TargetInterface):
     def __init__(self, name, nodesets: List[NodeSet], **kw):
         self.name = name
-        self.hoc_name = kw.get("hoc_name", name)
         self.nodesets = nodesets
 
     @classmethod
@@ -329,8 +387,9 @@ class NodesetTarget(_TargetInterface):
         if not self.nodesets:
             logging.warning("Nodeset '%s' can't be materialized. No node populations", self.name)
             return []
-        gids = self.nodesets[0].final_gids()
-        for extra_nodes in self.nodesets[1:]:
+        nodesets = sorted(self.nodesets, key=lambda n: n.offset)  # Get gids ascending
+        gids = nodesets[0].final_gids()
+        for extra_nodes in nodesets[1:]:
             gids = numpy.append(gids, extra_nodes.final_gids())
         return gids
 
@@ -340,23 +399,44 @@ class NodesetTarget(_TargetInterface):
             logging.warning("Nodeset '%s' can't be materialized. No node populations", self.name)
             return []
         if len(self.nodesets) > 1:
-            logging.error("Can not get raw gids for Nodeset target with multiple populations.")
             raise TargetError("Can not get raw gids for Nodeset target with multiple populations.")
         return numpy.array(self.nodesets[0].raw_gids())
+
+    def __contains__(self, gid):
+        """ Determine if a given gid is included in the gid list for this target
+        regardless of which cpu. Offsetting is taken into account
+        """
+        gids = self.get_gids()
+        pos = numpy.searchsorted(gids, gid)
+        return pos < gids.size and gids[pos] == gid
+
+    def contains_raw(self, gid):
+        return gid in self.get_raw_gids()
+
+    @property
+    def populations(self):
+        return {ns.population_name: ns for ns in self.nodesets}
+
+    def make_subtarget(self, pop_name):
+        """A nodeset subtarget contains only one given population
+        """
+        nodesets = [ns for ns in self.nodesets if ns.population_name == pop_name]
+        return NodesetTarget(f"{self.name}#{pop_name}", nodesets)
+
+    # The following methods are to keep compat with hoc routines, namely reports and stims
+
+    def is_void(self):
+        return len(self.nodesets) == 0
 
     @lru_cache()
     def get_hoc_target(self):
         gids = self.get_gids()
-        target = Nd.Target(self.hoc_name)
+        target = Nd.Target(self.name)
         target.gidMembers.append(Nd.Vector(gids))
         return target
 
-    # compat w Hoc
-
-    def getCellCount(self):
-        return self.gid_count()
-
     # always returns the original gids, independent of offsetting
+    # FIXME: verify we can drop this, because it's only for compat
     def completegids(self):
         return compat.hoc_vector(self.get_raw_gids())
 
@@ -365,17 +445,7 @@ class NodesetTarget(_TargetInterface):
         compartment_type = kw.get("compartments", "center" if section_type == "soma" else "all")
         return section_type == "soma" and compartment_type == "center"
 
-    def contains(self, gid):
-        """ Determine if a given gid is included in the gid list for this target
-        regardless of which cpu
-        """
-        return gid in self.get_gids()
-
-    def completeContains(self, gid):
-        """ For compatibility with hoc target, reuse self.contains(gid) for NodeSetTarget """
-        return self.contains(gid)
-
-    def set_offset(self, offset):
+    def set_offset(self, _offset):
         """ For compatibility with hoc target, not needed for Nodeset target """
         pass
 
@@ -391,8 +461,8 @@ class NodesetTarget(_TargetInterface):
         Returns:
             list of TPointList containing the compartment position and retrieved section references
         """
-        section_type = kw.get("sections", "soma")
-        compartment_type = kw.get("compartments", "center" if section_type == "soma" else "all")
+        section_type = kw.get("sections") or "soma"
+        compartment_type = kw.get("compartments") or ("center" if section_type == "soma" else "all")
         pointList = compat.List()
         target_gids = self.get_gids()
         local_gids = cell_manager.get_final_gids()
@@ -410,29 +480,31 @@ class NodesetTarget(_TargetInterface):
         return pointList
 
     def __getattr__(self, item):
-        logging.info("Compat interface to hoc target. Calling " + item)
+        log_verbose("Compat interface to hoc target. Calling " + item)
         return getattr(self.get_hoc_target(), item)
 
 
 class _HocTarget(_TargetInterface):
     """
-    A wrapper around Hoc targets to match interface
+    A wrapper around Hoc targets to implement _TargetInterface
     """
 
-    def __init__(self, name, default_population, hoc_target):
+    def __init__(self, name, hoc_target, pop_name=None):
         self.name = name
-        self.default_population = default_population
+        self.population_name = pop_name
         self.hoc_target = hoc_target
+        self.offset = 0
 
-    def __len__(self):
-        return self.gid_count()
+    @property
+    def populations(self):
+        return {self.population_name: NodeSet(self.get_gids())}
 
     def gid_count(self):
         return int(self.hoc_target.getCellCount())
 
     def get_gids(self):
         offset = self.hoc_target.get_offset()
-        return self.hoc_target.completegids().as_numpy().astype("uint32") + offset
+        return (self.hoc_target.completegids().as_numpy() + offset).astype("uint32")
 
     def get_raw_gids(self):
         return self.hoc_target.completegids().as_numpy().astype("uint32")
@@ -442,6 +514,27 @@ class _HocTarget(_TargetInterface):
 
     def getPointList(self, cell_manager, **kw):
         return self.hoc_target.getPointList(cell_manager)
+
+    def make_subtarget(self, pop_name):
+        if pop_name is not None:
+            # Old targets have only one population. Ensure one doesnt assign more than once
+            if self.name == TargetSpec.GLOBAL_TARGET_NAME:  # This target is special
+                return _HocTarget(pop_name + "__ALL__", Nd.Target(self.name), pop_name)
+            if self.population_name not in (None, pop_name):
+                raise ConfigurationError("Target %s cannot be reassigned population (%s->%s)"
+                                         % (self.name, self.population_name, pop_name))
+            self.population_name = pop_name
+        return self
+
+    def __contains__(self, item):
+        return self.hoc_target.completeContains(item - self.offset)
+
+    def is_void(self):
+        return False  # old targets could match with any population
+
+    def set_offset(self, offset):
+        self.hoc_target.set_offset(offset)
+        self.offset = offset
 
     def isCellTarget(self, **kw):
         return self.hoc_target.isCellTarget()

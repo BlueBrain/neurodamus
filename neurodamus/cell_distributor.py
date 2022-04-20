@@ -188,10 +188,10 @@ class CellManagerBase(object):
             pop = circuit_conf._name
             logging.warning("(Compat) Assuming population name from Circuit: %s", pop)
         self._population_name = pop
-        # Base population should be registered as "" so it doesnt do offsetting
         if not pop and not self.is_default:
             raise Exception("Only the default population can be unnamed")
-        self._local_nodes = NodeSet().register_global("" if self.is_default else pop)
+        is_base_pop = self.is_default or circuit_conf.get("no_offset")
+        self._local_nodes = NodeSet().register_global(pop, is_base_pop)
 
     @classmethod
     def _get_sonata_population_name(self, node_file):
@@ -378,7 +378,7 @@ class GlobalCellManager:
     """
 
     def __init__(self):
-        self._cell_managers = []  # [(offset, manager)}
+        self._cell_managers = []
         self._binfo = None
         self._pc = Nd.pc
 

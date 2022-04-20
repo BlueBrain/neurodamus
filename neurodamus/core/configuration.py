@@ -136,6 +136,7 @@ class _SimConfig(object):
     build_model = True
     simulate_model = True
     synapse_options = {}
+    is_sonata_config = False
 
     _validators = []
 
@@ -149,14 +150,14 @@ class _SimConfig(object):
         if not os.path.isfile(config_file):
             raise ConfigurationError("Config file not found: " + config_file)
         logging.info("Initializing Simulation Configuration and Validation")
-        is_sonata_config = config_file.endswith(".json")
+        cls.is_sonata_config = config_file.endswith(".json")
 
         log_verbose("ConfigFile: %s", config_file)
         log_verbose("CLI Options: %s", cli_options)
         cls.config_file = config_file
         cls._config_parser = cls._init_config_parser(config_file)
         cls._parsed_run = compat.Map(cls._config_parser.parsedRun)  # easy access to hoc Map
-        if not is_sonata_config:
+        if not cls.is_sonata_config:
             cls._blueconfig = BlueConfig(config_file)
         else:
             cls._blueconfig = cls._config_parser   # Please refactor me
@@ -177,7 +178,7 @@ class _SimConfig(object):
             validator(cls, run_conf)
 
         logging.info("Initializing hoc config objects")
-        if not is_sonata_config:
+        if not cls.is_sonata_config:
             cls._parsed_run.update(run_conf)  # sync hoc config
         cls._init_hoc_config_objs()
 

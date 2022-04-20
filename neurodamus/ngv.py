@@ -306,7 +306,8 @@ class NeuroGlialConnection(Connection):
             netcon.delay = 0.05
             self._netcons.append(netcon)
 
-            # Second netcon (last glut_list)
+            # Soma netcon (last glut_list)
+            logging.debug("[NGV] Conn %s linking synapse id %d to Astrocyte", self, syn_gid)
             netcon = pc.gid_connect(syn_gid, glut_list[-1])
             netcon.delay = 0.05
             self._netcons.append(netcon)
@@ -388,7 +389,8 @@ class NeuroGliaConnManager(ConnectionManagerBase):
                          base_connections=base_manager.get_population(0),
                          conn_type="NeuronGlia connections")
 
-        logging.info("Target cells coupled to: %s", NeuroGlialConnection.neurons_attached)
+        if not USE_COMPAT_SYNAPSE_ID:
+            logging.info("Target cells coupled to: %s", NeuroGlialConnection.neurons_attached)
 
         if NeuroGlialConnection.neurons_not_found:
             logging.warning("Missing cells to couple Glia to: %d",

@@ -6,8 +6,6 @@ import libsonata
 import logging
 import os.path
 
-from ..utils.logging import log_verbose
-
 
 class SonataConfig:
 
@@ -19,7 +17,6 @@ class SonataConfig:
         '_resolved_manifest',
         'circuits',
         '_circuit_networks',
-        '_default_population'
     )
 
     _config_entries = (
@@ -58,9 +55,6 @@ class SonataConfig:
 
         self.circuits = libsonata.CircuitConfig.from_file(self.network)
         self._circuit_networks = json.loads(self.circuits.expanded_json)["networks"]
-        self._default_population = [pop for pop in self.circuits.node_populations
-                                    if self.circuits.node_population_properties(pop).type
-                                    != "virtual"][0]  # the first (unvirtual) population as default
 
     @classmethod
     def _resolve(cls, entry, name, manifest: dict):
@@ -192,6 +186,7 @@ class SonataConfig:
             circuit_conf = dict(
                 CircuitPath=os.path.dirname(nodes_file) or "",
                 CellLibraryFile=nodes_file,
+                # Use the extended ":" syntax to filter the nodeset by the related population
                 CircuitTarget=node_pop_name + ":" + (self._entries.get("node_set") or ""),
                 **{
                     node_info_to_circuit.get(key, key): value
@@ -270,7 +265,6 @@ class SonataConfig:
     def parsedConnects(self):
         connections = {}
         for conn_name, conn_dict in self._sections.get("connection_overrides").items():
-            self.patch_population_to_target(conn_dict, ["source", "target"])
             connect = self._translate_dict(conn_dict, "connection_overrides")
             connect = dict_change_keys_case(connect)
             connections[conn_name] = connect
@@ -299,10 +293,8 @@ class SonataConfig:
     def parsedInjects(self):
         injects = {}
         for name, conf in self._sections["inputs"].items():
-            self.patch_population_to_target(conf, ["node_set"])
             inj = self._translate_dict(conf, "inputs")
             inj.setdefault("Stimulus", name)
-            inj.setdefault("Source", self._default_population + ":")
             injects["inject"+name] = inj
         return injects
 
@@ -345,13 +337,6 @@ class SonataConfig:
             logging.warning("Non-native Property needs conversion: " + item)
             return {}
         return self._entries.get(item_tr) or self._sections.get(item_tr) or {}
-
-    def patch_population_to_target(self, section: dict, keys: dict):
-        for key in keys:
-            if ":" not in section[key]:
-                log_verbose("Target population in '%s' not specified, prepend %s to it",
-                             key, self._default_population)
-                section[key] = self._default_population + ":" + section[key]
 
 
 def snake_to_camel(word):

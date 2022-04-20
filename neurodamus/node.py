@@ -47,6 +47,7 @@ class METypeEngine(EngineBase):
         "GapJunction": GapJunctionManager,
         "NeuroModulation": NeuroModulationManager
     }
+    CircuitPrecedence = 0
 
 
 class CircuitManager:
@@ -76,18 +77,25 @@ class CircuitManager:
         self.node_managers[pop] = cell_manager
         self.alias[cell_manager.circuit_name] = pop
         self.global_manager.register_manager(cell_manager)
-        self.global_target.nodesets.append(cell_manager.local_nodes)
+        if cell_manager.is_initialized():
+            self.global_target.nodesets.append(cell_manager.local_nodes)
+
+    def _new_virtual_node_manager(self, circuit):
+        """Instantiate a new virtual node manager explicitly."""
+        # Only happens with Sonata config files
+        import libsonata
+        storage = libsonata.NodeStorage(circuit.CellLibraryFile)
+        pop_name, _ = circuit.CircuitTarget.split(":")  # Sonata config fills population
+        node_size = storage.open_population(pop_name).size
+        gid_vec = list(range(1, node_size+1))
+        virtual_cell_manager = VirtualCellPopulation(pop_name, gid_vec)
+        self.virtual_node_managers[pop_name] = virtual_cell_manager
+        self.global_target.nodesets.append(virtual_cell_manager.local_nodes)
+        return virtual_cell_manager
 
     def new_node_manager(self, circuit, *args, **kwargs):
         if circuit.get("PopulationType") == "virtual":
-            import libsonata
-            storage = libsonata.NodeStorage(circuit.CellLibraryFile)
-            pop_name, _ = circuit.CircuitTarget.split(":")
-            node_size = storage.open_population(pop_name).size
-            gid_vec = list(range(1, node_size+1))
-            virtual_cell_manager = VirtualCellPopulation(pop_name, gid_vec)
-            self.virtual_node_managers[pop_name] = virtual_cell_manager
-            return virtual_cell_manager
+            return self._new_virtual_node_manager(circuit)
 
         engine = circuit.Engine or METypeEngine
         CellManagerCls = engine.CellManagerCls or SynapseRuleManager
@@ -140,7 +148,7 @@ class CircuitManager:
 
         src_manager = self.node_managers.get(source) or self.virtual_node_managers.get(source)
         if src_manager is None:  # src manager may not exist -> virtual
-            logging.info(" * No known population %s. Creating Virtual src for projection", source)
+            log_verbose("No known population %s. Creating Virtual src for projection", source)
             if conn_type not in (SynapseRuleManager, _ngv.GlioVascularManager):
                 raise ConfigurationError("Custom connections require instantiated source nodes")
             src_manager = VirtualCellPopulation(source)
@@ -270,6 +278,13 @@ class Node:
 
     # -
     def load_targets(self):
+        """Initialize targets. Nodesets are loaded on demand.
+        """
+        # If a base population is specified register it before targets to create on demand
+        base_population = self._run_conf.get("base_population")
+        if base_population:
+            logging.info("Default population selected: %s", base_population)
+            PopulationNodes.create_pop(base_population, is_base_pop=True)
         self._target_manager.load_targets(self._base_circuit)
         for xcircuit in self._extra_circuits.values():
             self._target_manager.load_targets(xcircuit)
@@ -364,13 +379,18 @@ class Node:
             logging.info("Load-balance object not present. Continuing Round-Robin...")
 
         # Always create a cell_distributor even if engine is disabled.
-        # Extra circuits may use it and not None is a sign of initialization done
+        # Fake CoreNeuron cells are created in it
         cell_distributor = CellDistributor(self._base_circuit, self._target_manager, self._run_conf)
         self._circuits.register_node_manager(cell_distributor)
-        cell_distributor.load_nodes(load_balance)
+        cell_distributor.load_nodes(load_balance)  # no-op if circuit is disabled
 
         # SUPPORT for extra/custom Circuits
-        for name, circuit in self._extra_circuits.items():
+        circuits_sorted = sorted(
+            self._extra_circuits.items(),
+            key=lambda x: (x[1].Engine.CircuitPrecedence if x[1].Engine else 0, x[0])
+        )
+
+        for name, circuit in circuits_sorted:
             log_stage("Circuit %s", name)
             self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
 
@@ -379,6 +399,9 @@ class Node:
         for cell_manager in self._circuits.all_node_managers():
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
             cell_manager.finalize()
+
+        # Done main targets. We can stop offsetting
+        PopulationNodes.freeze_offsets()
 
     # -
     @mpi_no_errors
@@ -419,11 +442,25 @@ class Node:
 
         log_stage("Configuring connections...")
         for conn_conf in SimConfig.connections.values():
-            src_pop = TargetSpec(conn_conf["Source"]).population
-            dst_pop = TargetSpec(conn_conf["Destination"]).population
-            for conn_manager in self._circuits.get_edge_managers(src_pop, dst_pop):
-                logging.debug("Using connection manager: %s", conn_manager)
-                conn_manager.configure_connections(conn_conf)
+            self._process_connection_configure(conn_conf)
+
+        logging.info("Done, but waiting for all ranks")
+
+    def _process_connection_configure(self, conn_conf):
+        source_t = TargetSpec(conn_conf["Source"])
+        dest_t = TargetSpec(conn_conf["Destination"])
+        source_t.population, dest_t.population = self._circuits.unalias_pop_keys(
+            source_t.population, dest_t.population
+        )
+        src_target = self.target_manager.get_target(source_t)
+        dst_target = self.target_manager.get_target(dest_t)
+        # Loop over population pairs
+        for src_pop in src_target.populations:
+            for dst_pop in dst_target.populations:
+                # Loop over all managers having connections between the populations
+                for conn_manager in self._circuits.get_edge_managers(src_pop, dst_pop):
+                    logging.debug("Using connection manager: %s", conn_manager)
+                    conn_manager.configure_connections(conn_conf)
 
     # -
     def _load_connections(self, circuit_conf, conn_manager):
@@ -454,22 +491,32 @@ class Node:
         if not os.path.exists(ppath):
             ppath = self._find_projection_file(ppath)
 
+        logging.info("Processing Edge file: %s", ppath)
         source_t = TargetSpec(projection.get("Source"))
         dest_t = TargetSpec(projection.get("Destination"))
+
+        # Update the target spec with the actual populations
         src_pop, dst_pop = edge_node_pop_names(
             ppath, edge_pop_name, source_t.population, dest_t.population
         )
-        src_pop, dst_pop = self._circuits.unalias_pop_keys(src_pop, dst_pop)  # un-alias
-        logging.info(" * %s (Type: %s, Src: %s, Dst: %s)", pname, ptype, src_pop, dst_pop)
+        source_t.population, dest_t.population = self._circuits.unalias_pop_keys(src_pop, dst_pop)
+        src_target = self.target_manager.get_target(source_t)
+        dst_target = self.target_manager.get_target(dest_t)
 
-        conn_manager = self._circuits.get_create_edge_manager(
-            ptype_cls, src_pop, dst_pop, projection, target_manager,
-            _orig_target_pop=dest_t.population
-        )
-        logging.debug("Using connection manager: %s", conn_manager)
-        proj_source = ":".join([ppath] + pop_name)
-        conn_manager.open_edge_location(proj_source, projection, src_name=src_pop)
-        conn_manager.create_connections(source_t.name, dest_t.name)
+        # If the src_pop is not a known node population, allow creating a Virtual one
+        src_populations = src_target.populations or [source_t.population]
+
+        for src_pop in src_populations:
+            for dst_pop in dst_target.populations:
+                logging.info(" * %s (Type: %s, Src: %s, Dst: %s)", pname, ptype, src_pop, dst_pop)
+                conn_manager = self._circuits.get_create_edge_manager(
+                    ptype_cls, src_pop, dst_pop, projection, target_manager,
+                    _orig_target_pop=dest_t.population
+                )
+                logging.debug("Using connection manager: %s", conn_manager)
+                proj_source = ":".join([ppath] + pop_name)
+                conn_manager.open_edge_location(proj_source, projection, src_name=src_pop)
+                conn_manager.create_connections(source_t.name, dest_t.name)
 
     # -
     def _find_projection_file(self, proj_path):
@@ -621,18 +668,20 @@ class Node:
                     log_verbose("Appending to pattern.dat")
                     with open(self._core_replay_file, "a") as f:
                         spike_manager.dump_ascii(f)
-        else:
-            ptype_cls = EngineBase.connection_types.get(connectivity_type)
-            src_target = TargetSpec(source)
-            dst_target = TargetSpec(target)
-            conn_manager = self._circuits.get_edge_manager(src_target.population,
-                                                           dst_target.population,
-                                                           ptype_cls)
-            if not conn_manager:
-                logging.error("No edge manager found among populations %s -> %s",
-                              src_target.population, dst_target.population)
-                raise ConfigurationError("Unknown replay pathway. Check Source / Target")
-            conn_manager.replay(spike_manager, src_target.name, dst_target.name, delay)
+            return
+
+        ptype_cls = EngineBase.connection_types.get(connectivity_type)
+        src_target = self.target_manager.get_target(source)
+        dst_target = self.target_manager.get_target(target)
+
+        for src_pop in src_target.populations:
+            for dst_pop in dst_target.populations:
+                conn_manager = self._circuits.get_edge_manager(src_pop, dst_pop, ptype_cls)
+                if not conn_manager:
+                    logging.error("No edge manager found among populations %s -> %s",
+                                  src_pop, dst_pop)
+                    raise ConfigurationError("Unknown replay pathway. Check Source / Target")
+                conn_manager.replay(spike_manager, source, target, delay)
 
     # -
     @mpi_no_errors
@@ -894,9 +943,13 @@ class Node:
         """Iterate over any NeuronConfigure blocks from the BlueConfig.
         These are simple hoc statements that can be executed with minimal substitutions
         """
-        logging.warning("NeuronConfigure block is deprecated")
-        logging.info("Executing neuron configures")
+        printed_warning = False
+
         for config in SimConfig.configures.values():
+            if not printed_warning:
+                logging.warning("NeuronConfigure block is deprecated")
+                printed_warning = True
+
             target_name = config.get("Target").s
             configure_str = config.get("Configure").s
             log_verbose("Apply configuration \"%s\" on target %s",

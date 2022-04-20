@@ -8,6 +8,7 @@ import numpy
 from collections import defaultdict
 from itertools import chain
 from os import path as ospath
+from typing import List, Optional
 
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
@@ -441,6 +442,12 @@ class ConnectionManagerBase(object):
         If no Connection block relates to the current population, then load all
         edges. If a single blocks exists with Weight=0, skip creation entirely.
 
+        NOTE: All connections respecting the src_target are retrieved
+        and created, even if they use src cells which are NOT instantiated.
+        This is to support replay and other stimulus which dont need the src cell.
+        If only a subset of connections is wanted, they can be filtered by specifying
+        the "source" attribute of the respective connection blocks.
+
         Args:
             src_target: Target name to restrict creating connections coming from it
             dst_target: Target name to restrict creating connections going into it
@@ -549,6 +556,11 @@ class ConnectionManagerBase(object):
         src_target = src_tname and self._target_manager.get_target(conn_source)
         dst_target = dst_tname and self._target_manager.get_target(conn_destination)
 
+        if src_target and src_target.is_void() or dst_target and dst_target.is_void():
+            logging.debug("Skip void connectivity for current connectivity: %s - %s",
+                          src_tname, dst_tname)
+            return
+
         for sgid, tgid, syns_params, extra_params, offset in \
                 self._iterate_conn_params(src_target, dst_target, mod_override=mod_override):
             if sgid == tgid:
@@ -595,25 +607,29 @@ class ConnectionManagerBase(object):
             gids: Use given gids, instead of the circuit target cells. Default: None
             show_progress: Display a progress bar as tgids are processed
         """
+        if src_target and src_target.is_void() or dst_target and dst_target.is_void():
+            return
         if gids is None:
             gids = self._raw_gids
+        else:
+            gids = numpy.intersect1d(gids, self._raw_gids)
+        if dst_target:
+            gids = numpy.intersect1d(gids, dst_target.get_raw_gids())
         if show_progress:
             gids = ProgressBar.iter(gids)
+
         created_conns_0 = self._cur_population.count()
         sgid_offset, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
 
         for base_tgid in gids:
             tgid = base_tgid + tgid_offset
-            if dst_target is not None and not dst_target.contains(tgid):
-                continue
-
             # Retrieve all synapses for tgid
             syns_params = self._synapse_reader.get_synapse_parameters(base_tgid, mod_override)
             logging.debug("GID %d Syn count: %d", tgid, len(syns_params))
             cur_i = 0
             syn_count = len(syns_params)
-
             extra_params = {}
+
             if self._load_offsets:
                 syn_index = self._synapse_reader.get_property(base_tgid, "synapse_index")
                 extra_params["synapse_index"] = syn_index.as_numpy()
@@ -631,7 +647,7 @@ class ConnectionManagerBase(object):
                 if cur_i == next_i:  # last group
                     next_i = syn_count
 
-                if src_target is None or src_target.completeContains(final_sgid):
+                if src_target is None or final_sgid in src_target:
                     if GlobalConfig.debug_conn == [base_tgid]:
                         _dbg_yielded_src_gids.append(sgid)
                     elif GlobalConfig.debug_conn == [sgid, base_tgid]:
@@ -662,35 +678,37 @@ class ConnectionManagerBase(object):
     # -
     def get_target_connections(self, src_target_name,
                                      dst_target_name,
-                                     gidvec=None,
+                                     selected_gids=None,
                                      conn_population=None):
         """Retrives the connections between src-dst cell targets
 
         Args:
-             gidvec: (optional) post gids to select (original, w/o offsetting)
+             selected_gids: (optional) post gids to select (original, w/o offsetting)
              conn_population: restrict the set of connections to be returned
         """
         src_target_spec = TargetSpec(src_target_name)
         dst_target_spec = TargetSpec(dst_target_name)
+
         src_target = self._target_manager.get_target(src_target_spec) \
             if src_target_spec.name is not None else None
         assert dst_target_spec.name, "No target specified for `get_target_connections`"
         dst_target = self._target_manager.get_target(dst_target_spec)
-        gidvec = self._raw_gids if gidvec is None else gidvec
-        _, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
+        if src_target and src_target.is_void() or dst_target.is_void():
+            return
 
-        populations = (conn_population,) if conn_population is not None \
+        _, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
+        populations: List[ConnectionSet] = (conn_population,) if conn_population is not None \
             else self._populations.values()
 
         for population in populations:
             logging.debug("Connections from population %s", population)
-            for raw_tgid in gidvec:
-                tgid = raw_tgid + tgid_offset
-                if not dst_target.contains(tgid) or tgid not in population:
-                    continue
-                for conn in population[tgid]:
-                    if src_target is None or src_target.completeContains(conn.sgid):
-                        yield conn
+            tgids = numpy.fromiter(population.target_gids(), 'uint32')
+            tgids = numpy.intersect1d(tgids, dst_target.get_gids())
+            if selected_gids:
+                tgids = numpy.intersect1d(tgids, selected_gids + tgid_offset)
+            for conn in population.get_connections(tgids):
+                if src_target is None or conn.sgid in src_target:
+                    yield conn
 
     # -
     def configure_group(self, conn_config, gidvec=None):
@@ -952,7 +970,9 @@ class ConnectionManagerBase(object):
         if reverse:
             conns = reversed(conns)
         for conn in conns:  # type: Connection
-            n_created_conns += conn.finalize(metype, base_seed, skip_disabled=sim_corenrn, **kwargs)
+            syn_count = conn.finalize(metype, base_seed, skip_disabled=sim_corenrn, **kwargs)
+            logging.debug("Instantiated conn %s: %d synapses", conn, syn_count)
+            n_created_conns += syn_count
         return n_created_conns
 
     # -
@@ -989,7 +1009,7 @@ def edge_node_pop_names(edge_file, edge_pop_name, src_pop_name=None, dst_pop_nam
 
 
 @run_only_rank0
-def _edge_meta_get_node_populations(edge_file, edge_pop_name) -> [None, tuple]:
+def _edge_meta_get_node_populations(edge_file, edge_pop_name) -> Optional[tuple]:
     import h5py
     f = h5py.File(edge_file, 'r')
     if "edges" not in f:

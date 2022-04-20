@@ -8,7 +8,7 @@ Run Default
             nrnPath /gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1/merged_circuit/ncsFunctionalAllRecipePathways
     TargetFile user.target
 
-    OutputRoot .
+    OutputRoot output
     CircuitTarget select
     RNGMode UpdatedMCell
     RunMode RR
@@ -20,7 +20,7 @@ Circuit GLIA
 {
     Engine NGV
     # circuit has both cells and glia??
-    CircuitPath /gpfs/bbp.cscs.ch/data/scratch/proj16/king/NGV-132/data
+    CircuitPath /gpfs/bbp.cscs.ch/data/scratch/proj16
     METypePath /gpfs/bbp.cscs.ch/project/proj1/entities/CCells/24.09.2014
     CellLibraryFile circuit.mvd3
 

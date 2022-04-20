@@ -21,8 +21,12 @@ class PopulationNodes:
     global, independently of the CellManager
     """
 
-    _global_populations = {}
-    """The registered global gid sets. dict{population_name -> PopulationNodes}"""
+    _global_populations = []
+    """Populations which may have offset"""
+    _has_base_population = False
+    """Select one population to be the first one, no offset"""
+    _do_offsetting = True
+    """False will freeze offsets to ensure final gids are consistent"""
 
     def __init__(self, name):
         """Ctor for a group of nodes belonging to the same population.
@@ -40,7 +44,8 @@ class PopulationNodes:
 
     def _update(self, updated_nodeset):
         updated_nodeset._offset = self.offset
-        # compute new max and update offsets if needed
+        if not self._do_offsetting:
+            return
         local_max = max(self.max_gid, updated_nodeset._max_gid)
         max_gid = int(MPI.allreduce(local_max, MPI.MAX))
         if max_gid > self.max_gid:
@@ -48,8 +53,12 @@ class PopulationNodes:
             self._update_offsets()
 
     @classmethod
-    def register(cls, population, nodeset):
-        return cls.get(population, create=True)._append(nodeset)
+    def register(cls, population, nodeset, **create_kw):
+        return cls.get(population, create=True, **create_kw)._append(nodeset)
+
+    @classmethod
+    def freeze_offsets(cls):
+        cls._do_offsetting = False
 
     @classmethod
     def reset(cls):
@@ -57,17 +66,31 @@ class PopulationNodes:
 
     @classmethod
     def all(cls):
-        return cls._global_populations.values()
+        return cls._global_populations
 
     @classmethod
-    def get(cls, population, *, create=False):
-        obj = cls._global_populations.get(population)
+    def get(cls, population_name, *, create=False, **create_kw):
+        obj = next(filter(lambda x: x.name == population_name, cls._global_populations), None)
         if not obj and create:
-            # When a set is first added it's empty, no need to update other offsets
-            obj = cls._global_populations[population] = cls(population)
-            cls._global_populations = dict(sorted(cls._global_populations.items()))  # Reorder
-            obj._compute_offset(cls._find_previous(obj))
+            obj = cls.create_pop(population_name, **create_kw)
         return obj
+
+    @classmethod
+    def create_pop(cls, population_name, *, is_base_pop=False):
+        new_population = cls(population_name)
+        if is_base_pop:
+            cls._global_populations.insert(0, new_population)
+            cls._has_base_population = True
+            return new_population
+
+        # Otherwise insert at the end and do sorting
+        cls._global_populations.append(new_population)
+        base_pop, other_pops = [], cls._global_populations
+        if cls._has_base_population:
+            base_pop, other_pops = cls._global_populations[0:1], cls._global_populations[1:]
+        cls._global_populations = base_pop + sorted(other_pops, key=lambda x: x.name)
+        new_population._compute_offset(cls._find_previous(new_population))
+        return new_population
 
     @classmethod
     def _find_previous(cls, cur_pop):
@@ -150,8 +173,16 @@ class NodeSet:
     def extend(self, other):
         return self.add_gids(other._gidvec, other._gid_info)
 
-    def register_global(self, population):
-        self._population_group = PopulationNodes.register(population, self)
+    def register_global(self, population_name, is_base_pop=False):
+        """ Registers a node set as being part of a population, potentially implying an offsett
+
+        Args:
+            population_name: The name of the population these ids belong to
+            is_base_population: In case we want this population the be the base, without offset
+        """
+        self._population_group = PopulationNodes.register(
+            population_name, self, is_base_pop=is_base_pop
+        )
         return self
 
     def __len__(self):
