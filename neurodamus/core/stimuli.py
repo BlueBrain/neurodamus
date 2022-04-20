@@ -144,12 +144,14 @@ class SignalSource:
         self._add_point(base_amp)
         return self
 
-    def add_pulse_ti(self,amp,duration,carrier_freq,pulse_freq,pulse_number,burst_freq,delay=self.stim_delay,step=0.025):
+    def add_pulse_ti(self,amp,duration,carrier_freq,pulse_freq,pulse_number,burst_freq,step=0.025,**kw):
+
+
 
         cycle_time = 1000/burst_freq
 
 
-        n_cycles = duration/cycle_time
+        n_cycles = int(duration/cycle_time)
 
         shift_freq = pulse_freq+carrier_freq
 
@@ -165,32 +167,40 @@ class SignalSource:
 
         break_time = cycle_time - pulse_time
 
+
         for i in range(n_cycles):
 
             tvec = Neuron.h.Vector()
             tvec.indgen(self._cur_t, self._cur_t + pulse_time, step)
-            pulse_tt = tvec.to_python()
+            pulse_tt = np.array(tvec.to_python())
+
+
             self.time_vec.append(tvec)
             self.delay(pulse_time)
 
-            pulse_I1 = amp[0]*np.cos(2*pi*carrier_freq*pulse_tt)
-            pulse_I2 = amp[1]*np.cos(2*pi*shift_freq*pulse_tt+np.pi)
 
-            pulse = pulseI1 + pulseI2
-            self.stim_vec.append(pulse)
+            pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq*pulse_tt)
+            pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq*pulse_tt+np.pi)
+
+            pulse = pulse_I1 + pulse_I2
+
+            svec = Neuron.h.Vector()
+            svec = svec.from_python(pulse)
+            self.stim_vec.append(svec)
 
             tvecB = Neuron.h.Vector()
-            tvecB.indgen(self._cur_t, self._cur_t + delay_time, step)
-            break_tt = tvecB.to_python()
+            tvecB.indgen(self._cur_t, self._cur_t + break_time, step)
+            break_tt = np.array(tvecB.to_python())
             self.time_vec.append(tvecB)
             self.delay(break_time)
 
-            break_I1 = amp[0]*np.cos(2*pi*carrier_freq*break_tt)
-            break_I2 = amp[1]*np.cos(2*pi*carrier_freq*break_tt+np.pi)
+            break_I1 = amp[0]*np.cos(2*np.pi*carrier_freq*break_tt)
+            break_I2 = amp[1]*np.cos(2*np.pi*carrier_freq*break_tt+np.pi)
 
-            breakPulse = break_I+break_I2
-
-            self.stim_vec.append(breakPulse)
+            breakPulse = break_I1+break_I2
+            svec = Neuron.h.Vector()
+            svec = svec.from_python(breakPulse)
+            self.stim_vec.append(svec)
 
 
 
@@ -611,7 +621,7 @@ class ConductanceSource(SignalSource):
 class ElectrodeSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,pulseNumber):
         """
         Creates a new §current source that injects a signal under IClamp
         """
@@ -626,6 +636,7 @@ class ElectrodeSource(SignalSource):
         self._all_sources.append(self)
         self.extracellulars = []
         self.axon1 = False
+        self.pulse_number = pulseNumber
 
         if self.type == "Pulse":
             self.add_pulses_arbitrary(self.AmpStart,self.width,delay=self.stim_delay)
@@ -638,6 +649,7 @@ class ElectrodeSource(SignalSource):
             carrier_freq = self.frequency[0]
             pulse_freq = self.frequency[1]
             burst_freq = self.frequency[2]
+
 
             self.add_pulse_ti(self.AmpStart,self.duration,carrier_freq,pulse_freq,self.pulse_number,burst_freq,delay=self.stim_delay)
         else:
@@ -716,9 +728,9 @@ class ElectrodeSource(SignalSource):
 
 class PointSourceElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, x, y, z, sigma=0.277):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, x, y, z, pulseNumber,sigma=0.277):
 
-        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
+        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width,pulseNumber)
         self.x = x
         self.y = y
         self.z = z
@@ -756,8 +768,8 @@ class PointSourceElectrode(ElectrodeSource):
 
 class RealElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset,current_applied,soma_position,rotation_angles):
-        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width)
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset,current_applied,soma_position,rotation_angles,pulseNumber):
+        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width,pulseNumber)
         #
         # scaleFile = h5py.File(electrode_path)
         # offset = scaleFile['offsets'][str(int(gid))][(int(sec_id))]

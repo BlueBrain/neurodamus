@@ -772,6 +772,7 @@ class Extracellular(BaseStim):
         if not self.parse_check_all_parameters(stim_info):
             return None  # nothing to do, stim is a no-op
 
+
         tpoints = target.getPointList(cell_manager)
 
         for tpoint_list in tpoints:
@@ -791,6 +792,7 @@ class Extracellular(BaseStim):
                     continue
 
                 # inject Extracellular signal
+
                 if stim_info["Electrode_Path"] == None:
                     es = PointSourceElectrode(self.pattern,self.delay,self.type,self.duration,
                     self.AmpStart,self.frequency,self.width,self.x,self.y,self.z,self.pulse_number)
@@ -977,7 +979,7 @@ class Extracellular(BaseStim):
 
             self.width = None
 
-        if self.type = "PulseTI":
+        if self.type == "PulseTI":
 
             if stim_info.get("Frequency") == None:
                 raise Exception("Frequency must be provided")
@@ -994,15 +996,15 @@ class Extracellular(BaseStim):
             if len(self.AmpStart) != 2:
                 raise Exception("Each sinusoid must have amplitude")
 
-            if stim_info.get("Pulse Number") == None:
+            if stim_info.get("PulseNumber") == None:
                 raise Exception("Pulse number must be provided")
             else:
-                self.pulse_number = float(stim_info.get("Pulse Number"))
+                self.pulse_number = float(stim_info.get("PulseNumber"))
 
             self.width = None
 
 
-        if self.type != 'Sinusoid' and self.type != 'TI':
+        if self.type != 'Sinusoid' and self.type != 'TI' and self.type != 'PulseTI':
             if len(self.AmpStart) != len(self.width):
                 raise Exception("Each amplitude must have corresponding width")
 
