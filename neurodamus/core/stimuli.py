@@ -144,8 +144,39 @@ class SignalSource:
         self._add_point(base_amp)
         return self
 
-    def add_pulse_ti(self,amp,duration,carrier_freq,pulse_freq,pulse_number,burst_freq,step=0.025,**kw):
+    def add_ti(self,amp,duration,carrier_freq,pulse_freq,step=0.025,**kw):
 
+
+        shift_freq = pulse_freq+carrier_freq
+
+
+        base_amp = kw.get("base_amp", self._base_amp)
+
+        delay = kw.get("delay",0)
+        self.delay(delay)
+
+        self.field1 = np.array([])
+        self.field2 = np.array([])
+
+
+        tvec = Neuron.h.Vector()
+        tvec.indgen(self._cur_t, self._cur_t + duration, step)
+        pulse_tt = np.array(tvec.to_python())
+
+
+        self.time_vec.append(tvec)
+        self.delay(duration)
+
+
+        pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq*pulse_tt)
+        pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq*pulse_tt+np.pi)
+
+
+        self.field1 = np.hstack((self.field1,pulse_I1))
+        self.field2 = np.hstack((self.field2,pulse_I2))
+
+
+    def add_pulse_ti(self,amp,duration,carrier_freq,pulse_freq,pulse_number,burst_freq,step=0.025,**kw):
 
 
         cycle_time = 1000/burst_freq
@@ -167,6 +198,9 @@ class SignalSource:
 
         break_time = cycle_time - pulse_time
 
+        self.field1 = np.array([])
+        self.field2 = np.array([])
+
 
         for i in range(n_cycles):
 
@@ -182,11 +216,9 @@ class SignalSource:
             pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq*pulse_tt)
             pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq*pulse_tt+np.pi)
 
-            pulse = pulse_I1 + pulse_I2
 
-            svec = Neuron.h.Vector()
-            svec = svec.from_python(pulse)
-            self.stim_vec.append(svec)
+            self.field1 = np.hstack((self.field1,pulse_I1))
+            self.field2 = np.hstack((self.field2,pulse_I2))
 
             tvecB = Neuron.h.Vector()
             tvecB.indgen(self._cur_t, self._cur_t + break_time, step)
@@ -197,10 +229,9 @@ class SignalSource:
             break_I1 = amp[0]*np.cos(2*np.pi*carrier_freq*break_tt)
             break_I2 = amp[1]*np.cos(2*np.pi*carrier_freq*break_tt+np.pi)
 
-            breakPulse = break_I1+break_I2
-            svec = Neuron.h.Vector()
-            svec = svec.from_python(breakPulse)
-            self.stim_vec.append(svec)
+
+            self.field1 = np.hstack((self.field1,break_I1))
+            self.field2 = np.hstack((self.field2,break_I2))
 
 
 
@@ -639,11 +670,24 @@ class ElectrodeSource(SignalSource):
         self.pulse_number = pulseNumber
 
         if self.type == "Pulse":
+
             self.add_pulses_arbitrary(self.AmpStart,self.width,delay=self.stim_delay)
+
         elif self.type == "Train":
+
             self.add_train_arbitrary(self.AmpStart, self.width, self.frequency, self.duration,delay=self.stim_delay)
-        elif self.type == "Sinusoid" or self.type == 'TI':
+
+        elif self.type == "Sinusoid":
+
             self.add_sin(self.AmpStart, self.duration, self.frequency,delay=self.stim_delay)
+            
+        elif self.type =='TI':
+
+            carrier_freq = self.frequency[0]
+            pulse_freq = self.frequency[1]
+
+            self.add_ti(self.AmpStart, self.duration, carrier_freq,pulse_freq,delay=self.stim_delay)
+
         elif self.type == "PulseTI":
 
             carrier_freq = self.frequency[0]
@@ -838,33 +882,37 @@ class RealElectrode(ElectrodeSource):
         path_to_positions is the path to the output from the position-finding script
         '''
 
+        outputs = []
+
+        for numFile, file in enumerate(self.electrode_path):
+
         # Get new output file potential field
 
-        with h5py.File(self.electrode_path, 'r') as f:
-            for i in f['FieldGroups']:
-                tmp = 'FieldGroups/' + i + '/AllFields/EM Potential(x,y,z,f0)/_Object/Snapshots/0/'
-            pot = self.geth5Dataset(self.electrode_path, tmp, 'comp0')
-            for i in f['Meshes']:
-                tmp = 'Meshes/' + i
-                break
-            x = self.geth5Dataset(self.electrode_path, tmp, 'axis_x')
-            y = self.geth5Dataset(self.electrode_path, tmp, 'axis_y')
-            z = self.geth5Dataset(self.electrode_path, tmp, 'axis_z')
+            with h5py.File(file, 'r') as f:
+                for i in f['FieldGroups']:
+                    tmp = 'FieldGroups/' + i + '/AllFields/EM Potential(x,y,z,f0)/_Object/Snapshots/0/'
+                pot = self.geth5Dataset(self.electrode_path, tmp, 'comp0')
+                for i in f['Meshes']:
+                    tmp = 'Meshes/' + i
+                    break
+                x = self.geth5Dataset(file, tmp, 'axis_x')
+                y = self.geth5Dataset(file, tmp, 'axis_y')
+                z = self.geth5Dataset(file, tmp, 'axis_z')
 
 
 
-        if self.rotation_angles is not None:
-            segpositions = self.rotate(segpositions)
+            if self.rotation_angles is not None:
+                segpositions = self.rotate(segpositions)
 
-        segpositions *= 1e-6  # Converts to m
+            segpositions *= 1e-6  # Converts to m
 
-        InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear')
+            InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear')
 
-        out2rat = InterpFcn(segpositions)
+            out2rat = InterpFcn(segpositions)
 
-        print('potential is '+str(out2rat)+' V')
+            outputs.append(out2rat[0]/self.current_applied[numFile])
 
-        return out2rat[0]/self.current_applied
+        return outputs
 
 
     def attach_to(self,section):
@@ -898,12 +946,22 @@ class RealElectrode(ElectrodeSource):
             scaleFac = self.interpolate_potentials(segpositions)*1e3 #(1e3 to go from V to mV)
 
 
+            if 'TI' in self.type:
 
+                self.field1 *= scaleFac[0]
+                self.field2 *= scaleFac[1]
 
-            segVec = h.Vector()
-            segVec.copy(self.stim_vec)
+                field = self.field1 + self.field2
 
-            segVec.mul(scaleFac)
+                segVec = h.Vector()
+                segVec = segVec.from_python(field)
+
+            else:
+
+                segVec = h.Vector()
+                segVec.copy(self.stim_vec)
+
+                segVec.mul(scaleFac)
 
             out = segVec.play(seg.extracellular._ref_e,self.time_vec)
             self.extracellulars.append(out)

@@ -846,11 +846,24 @@ class Extracellular(BaseStim):
 
 
         else:
-            self.electrode_path = stim_info["Electrode_Path"]
+            self.electrode_path = stim_info["Electrode_Path"].split(',')
 
             self.electrode_name = stim_info["Electrode_Name"]
 
-            self.current_applied = float(stim_info["Current"])
+            if len(self.electrode_path) == 1:
+
+                self.current_applied = float(stim_info["Current"])
+            else:
+
+                currents = stim_info["Current"].split(',')
+
+                if len(currents) != len(electrode_path):
+                    raise Exception("Must have same number of currents as electrodes")
+
+                self.current_applied = []
+
+                for c in currents:
+                    self.current_applied.append(currents)
 
             if stim_info.get('RotX') == None or stim_info.get('RotY') == None or stim_info.get('RotZ') == None:
                 self.rotation_angles = None
