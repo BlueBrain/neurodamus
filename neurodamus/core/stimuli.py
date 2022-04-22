@@ -247,6 +247,8 @@ class SignalSource:
             freq: The wave frequency, in Hz
             step: The step, in ms (default: 0.025)
         """
+
+
         base_amp = kw.get("base_amp", self._base_amp)
         delay = kw.get("delay",0)
         self.delay(delay)
@@ -256,20 +258,17 @@ class SignalSource:
         self.time_vec.append(tvec)
         self.delay(total_duration)
 
-        stim = Neuron.h.Vector(len(tvec),0)
+        stim = Neuron.h.Vector(len(tvec))
 
 
-
-        for i in range(len(amp)):
-            newstim = Neuron.h.Vector(len(tvec))
-            newstim.sin(freq[i], .0, step)
-            newstim.mul(amp[i])
-            stim.add(newstim)
+        stim.sin(freq, 0.0, step)
+        stim.mul(amp[0])
 
         self.stim_vec.append(stim)
 
         # Last point
         self._add_point(base_amp)
+
         return self
 
     def add_sinspec(self, start, dur):
@@ -657,6 +656,7 @@ class ElectrodeSource(SignalSource):
     _all_sources = []
 
     def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,pulseNumber):
+
         """
         Creates a new §current source that injects a signal under IClamp
         """
@@ -682,6 +682,7 @@ class ElectrodeSource(SignalSource):
             self.add_train_arbitrary(self.AmpStart, self.width, self.frequency, self.duration,delay=self.stim_delay)
 
         elif self.type == "Sinusoid":
+
 
             self.add_sin(self.AmpStart, self.duration, self.frequency,delay=self.stim_delay)
 
@@ -936,11 +937,13 @@ class RealElectrode(ElectrodeSource):
 
         if ramp_up_number is not None:
 
+
             vector[:ramp_up_number] *= ramp_up
 
         if ramp_down_number is not None:
 
-            vector[len(field)-ramp_down_number:] *= ramp_down
+
+            vector[len(vector)-ramp_down_number:] *= ramp_down
 
         return vector
 
@@ -980,6 +983,8 @@ class RealElectrode(ElectrodeSource):
             scaleFac = self.interpolate_potentials(segpositions)*1e3 #(1e3 to go from V to mV)
 
 
+
+
             if 'TI' in self.type:
 
 
@@ -993,16 +998,27 @@ class RealElectrode(ElectrodeSource):
                 segVec = h.Vector()
                 segVec = segVec.from_python(field)
 
-            else:
+            elif self.type == 'Sinusoid':
 
                 segVec = h.Vector()
+
                 newstimVec = self.stim_vec.to_python()
+
 
                 newstimVec = self.apply_ramp(newstimVec,ramp_up_number,ramp_down_number)
 
-                segVec = segVec.from_python(newstimVec)
+                for v in newstimVec:
+                    segVec.append(v)
 
-                segVec.mul(scaleFac)
+
+                segVec.mul(scaleFac[0])
+
+
+            else:
+
+                segVec = h.Vector()
+                segVec.copy(self.stim_vec)
+                segVec.mul(scaleFac[0])
 
             out = segVec.play(seg.extracellular._ref_e,self.time_vec)
             self.extracellulars.append(out)

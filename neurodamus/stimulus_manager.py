@@ -804,6 +804,7 @@ class Extracellular(BaseStim):
                     es.attach_to(sc.sec)
                 else:
 
+
                     es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
                      self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos,self.rotation_angles,self.pulse_number)
 
@@ -938,10 +939,6 @@ class Extracellular(BaseStim):
             self.AmpStart = [float(stim_info.get("Amp"))]
 
 
-
-
-
-
         if stim_info.get("Type") == None:
             raise Exception("Type must be provided")
         else:
@@ -987,6 +984,7 @@ class Extracellular(BaseStim):
                 raise Exception("Frequency must be provided")
             else:
                 self.frequency = float(stim_info.get("Frequency"))
+
 
             self.width = None
 
@@ -1053,6 +1051,9 @@ class Extracellular(BaseStim):
 
         if ramp_up_time+ramp_down_time>self.duration:
             raise Exception("Ramps must be shorter than the duration")
+
+        if (self.ramp_up_number is not None or self.ramp_down_number is not None) and not ('TI' in self.type or self.type == 'Sinusoid'):
+            raise Exception("ramp only works with TI or sinusoids")
 
 
 
