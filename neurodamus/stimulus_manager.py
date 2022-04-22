@@ -1041,19 +1041,18 @@ class Extracellular(BaseStim):
         self.ramp_up_number = None
         self.ramp_down_number = None
 
-        if 'TI' in self.type:
-            if stim_info.get("RampUpTime") is not None:
-                ramp_up_time = float(stim_info.get("RampUpTime"))
-                self.ramp_up_number = int(ramp_up_time/0.025) # Hardcoded dt of 0.025 ms
+        if stim_info.get("RampUpTime") is not None:
+            ramp_up_time = float(stim_info.get("RampUpTime"))
+            self.ramp_up_number = int(ramp_up_time/0.025) # Hardcoded dt of 0.025 ms
 
 
-            if stim_info.get("RampDownTime") is not None:
-                ramp_down_time = float(stim_info.get("RampDownTime"))
-                self.ramp_down_number = int(ramp_down_time/0.025) # Hardcoded dt of 0.025 ms
+        if stim_info.get("RampDownTime") is not None:
+            ramp_down_time = float(stim_info.get("RampDownTime"))
+            self.ramp_down_number = int(ramp_down_time/0.025) # Hardcoded dt of 0.025 ms
 
 
-            if ramp_up_time+ramp_down_time>self.duration:
-                raise Exception("Ramps must be shorter than the duration")
+        if ramp_up_time+ramp_down_time>self.duration:
+            raise Exception("Ramps must be shorter than the duration")
 
 
 

@@ -926,6 +926,25 @@ class RealElectrode(ElectrodeSource):
 
         return np.array(outputs)
 
+    def apply_ramp(self,vector,ramp_up_number,ramp_down_number):
+
+
+        if ramp_up_number is not None:
+            ramp_up = np.linspace(0,1,ramp_up_number)
+        if ramp_down_number is not None:
+            ramp_down = np.linspace(1,0,ramp_down_number)
+
+        if ramp_up_number is not None:
+
+            vector[:ramp_up_number] *= ramp_up
+
+        if ramp_down_number is not None:
+
+            vector[len(field)-ramp_down_number:] *= ramp_down
+
+        return vector
+
+
 
     def attach_to(self,section,**kw):
 
@@ -934,10 +953,6 @@ class RealElectrode(ElectrodeSource):
         ramp_up_number = kw.get("ramp_up_number",None)
         ramp_down_number = kw.get("ramp_down_number",None)
 
-        if ramp_up_number is not None:
-            ramp_up = np.linspace(0,1,ramp_up_number)
-        if ramp_down_number is not None:
-            ramp_down = np.linspace(1,0,ramp_down_number)
 
         for i,seg in enumerate(section):
 
@@ -973,8 +988,7 @@ class RealElectrode(ElectrodeSource):
 
                 field = field1 + field2
 
-                field[:ramp_up_number] *= ramp_up
-                field[len(field)-ramp_down_number:] *= ramp_down
+                field = self.apply_ramp(field,ramp_up_number,ramp_down_number)
 
                 segVec = h.Vector()
                 segVec = segVec.from_python(field)
@@ -982,7 +996,11 @@ class RealElectrode(ElectrodeSource):
             else:
 
                 segVec = h.Vector()
-                segVec.copy(self.stim_vec)
+                newstimVec = self.stim_vec.to_python()
+
+                newstimVec = self.apply_ramp(newstimVec,ramp_up_number,ramp_down_number)
+
+                segVec = segVec.from_python(newstimVec)
 
                 segVec.mul(scaleFac)
 
