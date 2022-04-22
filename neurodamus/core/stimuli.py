@@ -169,6 +169,7 @@ class SignalSource:
 
 
         pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq*pulse_tt)
+
         pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq*pulse_tt+np.pi)
 
 
@@ -232,6 +233,7 @@ class SignalSource:
 
             self.field1 = np.hstack((self.field1,break_I1))
             self.field2 = np.hstack((self.field2,break_I2))
+
 
 
 
@@ -957,10 +959,11 @@ class RealElectrode(ElectrodeSource):
 
             if 'TI' in self.type:
 
-                self.field1 *= scaleFac[0]
-                self.field2 *= scaleFac[-1]
 
-                field = self.field1 + self.field2
+                field1 = self.field1 * scaleFac[0]
+                field2 = self.field2 * scaleFac[-1]
+
+                field = field1 + field2
 
                 segVec = h.Vector()
                 segVec = segVec.from_python(field)
