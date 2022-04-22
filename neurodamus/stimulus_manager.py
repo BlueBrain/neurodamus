@@ -764,7 +764,9 @@ class Extracellular(BaseStim):
     stimCount = 0  # global count for seeding
 
     def __init__(self, target, stim_info: dict, cell_manager):
+
         super().__init__(target, stim_info, cell_manager)
+
 
         self.stimList = []  # sources go here
 
@@ -783,7 +785,9 @@ class Extracellular(BaseStim):
 
             somaPos = None
 
+
             for sec_id, sc in enumerate(tpoint_list.sclst):
+
 
 
 
@@ -799,6 +803,7 @@ class Extracellular(BaseStim):
 
                     es.attach_to(sc.sec)
                 else:
+
                     es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
                      self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos,self.rotation_angles,self.pulse_number)
 
@@ -807,7 +812,9 @@ class Extracellular(BaseStim):
                 #     numSegs += es.attach_to(sc.sec)
                     es.attach_to(sc.sec)
 
+
                     somaPos = es.soma_position
+
 
 
                 self.stimList.append(es)  # save source
@@ -823,6 +830,7 @@ class Extracellular(BaseStim):
             raise Exception("%s pattern must be provided" % self.__class__.__name__)
         else:
             self.pattern = stim_info["Pattern"]
+
 
         if stim_info["Electrode_Path"] is None:
 
@@ -848,26 +856,29 @@ class Extracellular(BaseStim):
         else:
             self.electrode_path = stim_info["Electrode_Path"].split(',')
 
-            self.electrode_name = stim_info["Electrode_Name"]
+
 
             if len(self.electrode_path) == 1:
 
-                self.current_applied = float(stim_info["Current"])
+                self.current_applied = [float(stim_info["Current"])]
+
             else:
 
                 currents = stim_info["Current"].split(',')
 
-                if len(currents) != len(electrode_path):
+                if len(currents) != len(self.electrode_path):
                     raise Exception("Must have same number of currents as electrodes")
 
                 self.current_applied = []
 
+
                 for c in currents:
-                    self.current_applied.append(currents)
+                    self.current_applied.append(float(c))
 
             if stim_info.get('RotX') == None or stim_info.get('RotY') == None or stim_info.get('RotZ') == None:
                 self.rotation_angles = None
             else:
+
 
                 self.rotation_angles = [float(stim_info["RotZ"]),float(stim_info["RotY"]),float(stim_info["RotX"])]
 
@@ -881,14 +892,15 @@ class Extracellular(BaseStim):
                 self.offset = []
                 pos = stim_info["Offset"].split(',')
 
+
                 if len(pos)!=3:
                     raise Exception("Offset must have three coordinates")
 
                 for p in pos:
+
                     self.offset.append(float(p))
 
                 self.offset = np.array(self.offset)
-
         # parse and check stimulus-specific parameters
         if not self.parse_check_stim_parameters(stim_info):
             return False  # nothing to do, stim is a no-op
@@ -896,6 +908,7 @@ class Extracellular(BaseStim):
         return True
 
     def parse_check_stim_parameters(self, stim_info):
+
 
         if stim_info.get("Delay") == None:
             raise Exception("Delay must be provided")
@@ -913,6 +926,7 @@ class Extracellular(BaseStim):
                 raise Exception("Duration must be non-negative")
 
 
+
         if stim_info.get("Amp") == None:
             raise Exception("AmpStart must be provided")
         elif ',' in stim_info.get("Amp"):
@@ -922,6 +936,8 @@ class Extracellular(BaseStim):
                 self.AmpStart.append(float(amp))
         else:
             self.AmpStart = [float(stim_info.get("Amp"))]
+
+
 
 
 
@@ -1013,6 +1029,7 @@ class Extracellular(BaseStim):
                 raise Exception("Pulse number must be provided")
             else:
                 self.pulse_number = float(stim_info.get("PulseNumber"))
+
 
             self.width = None
 

@@ -217,6 +217,7 @@ class SignalSource:
             pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq*pulse_tt+np.pi)
 
 
+
             self.field1 = np.hstack((self.field1,pulse_I1))
             self.field2 = np.hstack((self.field2,pulse_I2))
 
@@ -228,7 +229,6 @@ class SignalSource:
 
             break_I1 = amp[0]*np.cos(2*np.pi*carrier_freq*break_tt)
             break_I2 = amp[1]*np.cos(2*np.pi*carrier_freq*break_tt+np.pi)
-
 
             self.field1 = np.hstack((self.field1,break_I1))
             self.field2 = np.hstack((self.field2,break_I2))
@@ -680,7 +680,7 @@ class ElectrodeSource(SignalSource):
         elif self.type == "Sinusoid":
 
             self.add_sin(self.AmpStart, self.duration, self.frequency,delay=self.stim_delay)
-            
+
         elif self.type =='TI':
 
             carrier_freq = self.frequency[0]
@@ -694,8 +694,8 @@ class ElectrodeSource(SignalSource):
             pulse_freq = self.frequency[1]
             burst_freq = self.frequency[2]
 
-
             self.add_pulse_ti(self.AmpStart,self.duration,carrier_freq,pulse_freq,self.pulse_number,burst_freq,delay=self.stim_delay)
+
         else:
             raise Exception("Stimulus type not defined")
 
@@ -785,8 +785,6 @@ class PointSourceElectrode(ElectrodeSource):
 
         section.insert('extracellular')
 
-        print(section.name(),flush=True)
-
         for seg in section:
 
             if 'soma' in section.name():
@@ -813,7 +811,10 @@ class PointSourceElectrode(ElectrodeSource):
 class RealElectrode(ElectrodeSource):
 
     def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset,current_applied,soma_position,rotation_angles,pulseNumber):
+
+
         super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width,pulseNumber)
+
         #
         # scaleFile = h5py.File(electrode_path)
         # offset = scaleFile['offsets'][str(int(gid))][(int(sec_id))]
@@ -851,6 +852,10 @@ class RealElectrode(ElectrodeSource):
 
     def rotate(self,segpositions):
 
+
+
+        newsegs = segpositions.copy()
+
         alpha = np.radians(self.rotation_angles[0])
         beta = np.radians(self.rotation_angles[1])
         gamma = np.radians(self.rotation_angles[2])
@@ -864,11 +869,11 @@ class RealElectrode(ElectrodeSource):
 
 
 
-        segpositions -= self.new_soma_pos
+        newsegs -= self.new_soma_pos
 
 
 
-        newpositions = np.matmul(R,segpositions)
+        newpositions = np.matmul(R,newsegs)
 
         newpositions += self.new_soma_pos
 
@@ -877,12 +882,20 @@ class RealElectrode(ElectrodeSource):
 
     def interpolate_potentials(self, segpositions):
 
+
+        if self.rotation_angles is not None:
+            newsegpositions = self.rotate(segpositions)
+        else:
+            newsegpositions = segpositions.copy()
+
+
         '''
         path_to_input is the path to the h5 file containing the potential field, outputted from Sim4Life
         path_to_positions is the path to the output from the position-finding script
         '''
 
         outputs = []
+
 
         for numFile, file in enumerate(self.electrode_path):
 
@@ -891,7 +904,7 @@ class RealElectrode(ElectrodeSource):
             with h5py.File(file, 'r') as f:
                 for i in f['FieldGroups']:
                     tmp = 'FieldGroups/' + i + '/AllFields/EM Potential(x,y,z,f0)/_Object/Snapshots/0/'
-                pot = self.geth5Dataset(self.electrode_path, tmp, 'comp0')
+                pot = self.geth5Dataset(file, tmp, 'comp0')
                 for i in f['Meshes']:
                     tmp = 'Meshes/' + i
                     break
@@ -900,19 +913,14 @@ class RealElectrode(ElectrodeSource):
                 z = self.geth5Dataset(file, tmp, 'axis_z')
 
 
-
-            if self.rotation_angles is not None:
-                segpositions = self.rotate(segpositions)
-
-            segpositions *= 1e-6  # Converts to m
-
             InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear')
 
-            out2rat = InterpFcn(segpositions)
+
+            out2rat = InterpFcn(newsegpositions*1e-6)
 
             outputs.append(out2rat[0]/self.current_applied[numFile])
 
-        return outputs
+        return np.array(outputs)
 
 
     def attach_to(self,section):
@@ -920,13 +928,15 @@ class RealElectrode(ElectrodeSource):
         section.insert('extracellular')
 
 
+
         for i,seg in enumerate(section):
 
 
             if 'soma' in section.name():
+
                 segpositions = self.get_soma_position(section)
 
-                self.soma_position = segpositions
+                self.soma_position = segpositions.copy()
             else:
                 segpositions = self.interp_seg_positions(section,seg.x)
 
@@ -934,12 +944,11 @@ class RealElectrode(ElectrodeSource):
 
             if isinstance(self.offset,np.ndarray):
 
+                segpositions -= self.soma_position.copy()
 
-                segpositions -= self.soma_position
 
 
                 segpositions += self.offset * 1e3 # offset in mm converted to um
-
                 self.new_soma_pos = self.offset *1e3
 
 
@@ -949,7 +958,7 @@ class RealElectrode(ElectrodeSource):
             if 'TI' in self.type:
 
                 self.field1 *= scaleFac[0]
-                self.field2 *= scaleFac[1]
+                self.field2 *= scaleFac[-1]
 
                 field = self.field1 + self.field2
 
