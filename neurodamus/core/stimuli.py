@@ -159,6 +159,7 @@ class SignalSource:
         self.field2 = np.array([])
 
 
+
         tvec = Neuron.h.Vector()
         tvec.indgen(self._cur_t, self._cur_t + duration, step)
         pulse_tt = np.array(tvec.to_python())
@@ -175,6 +176,7 @@ class SignalSource:
 
         self.field1 = np.hstack((self.field1,pulse_I1))
         self.field2 = np.hstack((self.field2,pulse_I2))
+
 
 
     def add_pulse_ti(self,amp,duration,carrier_freq,pulse_freq,pulse_number,burst_freq,step=0.025,**kw):
@@ -925,11 +927,17 @@ class RealElectrode(ElectrodeSource):
         return np.array(outputs)
 
 
-    def attach_to(self,section):
+    def attach_to(self,section,**kw):
 
         section.insert('extracellular')
 
+        ramp_up_number = kw.get("ramp_up_number",None)
+        ramp_down_number = kw.get("ramp_down_number",None)
 
+        if ramp_up_number is not None:
+            ramp_up = np.linspace(0,1,ramp_up_number)
+        if ramp_down_number is not None:
+            ramp_down = np.linspace(1,0,ramp_down_number)
 
         for i,seg in enumerate(section):
 
@@ -964,6 +972,9 @@ class RealElectrode(ElectrodeSource):
                 field2 = self.field2 * scaleFac[-1]
 
                 field = field1 + field2
+
+                field[:ramp_up_number] *= ramp_up
+                field[len(field)-ramp_down_number:] *= ramp_down
 
                 segVec = h.Vector()
                 segVec = segVec.from_python(field)
