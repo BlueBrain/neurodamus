@@ -25,6 +25,7 @@ from .core.configuration import SimConfig
 from .core.stimuli import CurrentSource, ConductanceSource, RealElectrode, PointSourceElectrode
 from .core import random
 import numpy as np
+from sklearn.decomposition import PCA
 
 class StimulusManager:
 
@@ -765,6 +766,7 @@ class Extracellular(BaseStim):
 
     def __init__(self, target, stim_info: dict, cell_manager):
 
+
         super().__init__(target, stim_info, cell_manager)
 
 
@@ -775,21 +777,41 @@ class Extracellular(BaseStim):
             return None  # nothing to do, stim is a no-op
 
 
+
         tpoints = target.getPointList(cell_manager)
 
         for tpoint_list in tpoints:
             gid = tpoint_list.gid
+
             cell = cell_manager.getMEType(gid)
 
             numSegs = 0
 
             somaPos = None
 
+            if self.rotation_angles is not None: # Finds major axis of cell to redine rotations
+
+                points = []
+
+                for sec_id, sc in enumerate(tpoint_list.sclst):
+
+                    if not sc.exists():
+                        continue
+
+                    for i in range(sc.sec.n3d()):
+                        points.append([sc.sec.x3d(i),sc.sec.y3d(i),sc.sec.z3d(i)])
+
+                pca = PCA()
+                pca.fit(points)
+
+                axes = pca.components_
+
+            else:
+                axes = None
+
+
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
-
-
-
 
                 # skip sections not in this split
                 if not sc.exists():
@@ -805,13 +827,16 @@ class Extracellular(BaseStim):
                 else:
 
 
+
                     es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
-                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos,self.rotation_angles,self.pulse_number)
+                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos,self.rotation_angles,self.pulse_number,axes)
 
 
                 # attach source to section
                 #     numSegs += es.attach_to(sc.sec)
+
                     es.attach_to(sc.sec,ramp_up_number=self.ramp_up_number,ramp_down_number=self.ramp_down_number)
+
 
 
                     somaPos = es.soma_position
@@ -1008,6 +1033,7 @@ class Extracellular(BaseStim):
 
         if self.type == "PulseTI":
 
+
             if stim_info.get("Frequency") == None:
                 raise Exception("Frequency must be provided")
             else:
@@ -1032,6 +1058,7 @@ class Extracellular(BaseStim):
             self.width = None
 
 
+
         if self.type != 'Sinusoid' and self.type != 'TI' and self.type != 'PulseTI':
             if len(self.AmpStart) != len(self.width):
                 raise Exception("Each amplitude must have corresponding width")
@@ -1039,21 +1066,30 @@ class Extracellular(BaseStim):
         self.ramp_up_number = None
         self.ramp_down_number = None
 
+
+
         if stim_info.get("RampUpTime") is not None:
             ramp_up_time = float(stim_info.get("RampUpTime"))
             self.ramp_up_number = int(ramp_up_time/0.025) # Hardcoded dt of 0.025 ms
+            if ramp_up_time>self.duration:
+                raise Exception('Ramp up time must be smaller than duration')
+
 
 
         if stim_info.get("RampDownTime") is not None:
             ramp_down_time = float(stim_info.get("RampDownTime"))
             self.ramp_down_number = int(ramp_down_time/0.025) # Hardcoded dt of 0.025 ms
+            if ramp_down_time>self.duration:
+                raise Exception('Ramp down time must be smaller than duration')
 
+            if stim_info.get("RampUpTime") is not None:
+                if ramp_up_time+ramp_down_time>self.duration:
+                    raise Exception("Ramps must be shorter than the duration")
 
-        if ramp_up_time+ramp_down_time>self.duration:
-            raise Exception("Ramps must be shorter than the duration")
 
         if (self.ramp_up_number is not None or self.ramp_down_number is not None) and not ('TI' in self.type or self.type == 'Sinusoid'):
             raise Exception("ramp only works with TI or sinusoids")
+
 
 
 

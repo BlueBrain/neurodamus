@@ -10,6 +10,7 @@ import h5py
 import numpy as np
 from scipy.interpolate import interp1d, RegularGridInterpolator
 from neuron import h
+from scipy.spatial.transform import Rotation as R
 
 class SignalSource:
 
@@ -815,7 +816,7 @@ class PointSourceElectrode(ElectrodeSource):
 
 class RealElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset,current_applied,soma_position,rotation_angles,pulseNumber):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset,current_applied,soma_position,rotation_angles,pulseNumber,axes):
 
 
         super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width,pulseNumber)
@@ -835,6 +836,7 @@ class RealElectrode(ElectrodeSource):
         self.current_applied = current_applied
         self.soma_position = soma_position
         self.rotation_angles = rotation_angles
+        self.rotation_axes = axes
 
     def geth5Dataset(self, h5f, group_name, dataset_name):
         """
@@ -861,16 +863,20 @@ class RealElectrode(ElectrodeSource):
 
         newsegs = segpositions.copy()
 
-        alpha = np.radians(self.rotation_angles[0])
-        beta = np.radians(self.rotation_angles[1])
-        gamma = np.radians(self.rotation_angles[2])
+        rotations = []
 
+        for i, r in enumerate(self.rotation_angles[:2]):
+            q0 = np.cos(r/2)
+            q1 = np.sin(r/2)*self.rotation_axes[2-i][0]
+            q2 = np.sin(r/2)*self.rotation_axes[2-i][1]
+            q3 = np.sin(r/2)*self.rotation_axes[2-i][2]
 
-        Rz = np.array([[np.cos(alpha),-np.sin(alpha),0],[np.sin(alpha),np.cos(alpha),0],[0,0,1]])
-        Ry = np.array([[np.cos(beta),0, np.sin(beta)], [0,1,0], [-np.sin(beta),0,np.cos(beta)]])
-        Rx = np.array([[1,0,0],[0,np.cos(gamma),-np.sin(gamma)],[0,np.sin(gamma),np.cos(gamma)]])
+            rotation = R.from_quat([q0,q1,q2,q3])
 
-        R = np.matmul(np.matmul(Rz,Ry),Rx)
+            rotations.append(rotation)
+
+        finalrotation = R.concatenate(rotations)
+
 
 
 
@@ -878,7 +884,7 @@ class RealElectrode(ElectrodeSource):
 
 
 
-        newpositions = np.matmul(R,newsegs)
+        newpositions = finalrotation.apply(newsegs)
 
         newpositions += self.new_soma_pos
 
@@ -985,6 +991,8 @@ class RealElectrode(ElectrodeSource):
 
 
 
+
+
             if 'TI' in self.type:
 
 
@@ -994,6 +1002,7 @@ class RealElectrode(ElectrodeSource):
                 field = field1 + field2
 
                 field = self.apply_ramp(field,ramp_up_number,ramp_down_number)
+
 
                 segVec = h.Vector()
                 segVec = segVec.from_python(field)
