@@ -17,6 +17,7 @@ class SonataConfig:
         '_resolved_manifest',
         'circuits',
         '_circuit_networks',
+        '_sim_conf'
     )
 
     _config_entries = (
@@ -35,6 +36,7 @@ class SonataConfig:
 
     def __init__(self, config_path):
         self._config_dir = os.path.abspath(os.path.dirname(config_path))
+        self._sim_conf = libsonata.SimulationConfig.from_file(config_path)
         self._entries = {}
         self._sections = {}
 
@@ -107,10 +109,10 @@ class SonataConfig:
         "run": {
             # Mandatory
             "tstop": "Duration",
-            "tstart": "Start",
             "dt": "Dt",
             "random_seed": "BaseSeed",
             # Optional
+            "tstart": "Start",
             "spike_threshold": "SpikeThreshold",
             "spike_location": "SpikeLocation",
             "integration_method": "SecondOrder",
@@ -134,11 +136,16 @@ class SonataConfig:
         "reports": {
             "type": "Type",
             "cells": "Target",
+            "sections": "Sections",
+            "scaling": "Scaling",
+            "compartments": "Compartments",
             "variable_name": "ReportOn",
             "unit": "Unit",
             "dt": "Dt",
             "start_time": "StartTime",
             "end_time": "EndTime",
+            "file_name": "FileName",
+            "enabled": "Enabled"
         }
     }
 
@@ -147,8 +154,10 @@ class SonataConfig:
         def copy_config_if_valid(value, dst, key):
             if value:
                 dst[key] = value
-        parsed_run = self._translate_dict(self._sections["run"], "run")
+        parsed_run = self._translate_dict(self._sections["run"], "run", self._sim_conf.run)
         parsed_run["CircuitPath"] = "<NONE>"  # Sonata doesnt have default circuit
+        # "OutputRoot" and "SpikesFile" will be read from self._sim_conf.output
+        # once libsonata resolves the manifest info
         parsed_run["OutputRoot"] = self.output.get("output_dir", "output")
         parsed_run["TargetFile"] = self.circuits.node_sets_path
         parsed_run["SpikesFile"] = self.output.get("spikes_file", "out")
@@ -266,7 +275,6 @@ class SonataConfig:
         connections = {}
         for conn_name, conn_dict in self._sections.get("connection_overrides").items():
             connect = self._translate_dict(conn_dict, "connection_overrides")
-            connect = dict_change_keys_case(connect)
             connections[conn_name] = connect
         return connections
 
@@ -276,13 +284,13 @@ class SonataConfig:
             "spikes": "Current",
             "current_clamp": "Current",
             "voltage_clamp": "Voltage",
-            "extracellular_stimulation": "Extracellular"
+            "extracellular_stimulation": "Extracellular",
+            "condunctance": "Conductance"
         }
 
         stimuli = {}
         for name, conf in self._sections["inputs"].items():
             stimulus = self._translate_dict(conf, "inputs")
-            stimulus = dict_change_keys_case(stimulus)
             stimulus["Pattern"] = "SEClamp" if stimulus["Pattern"] == "seclamp" \
                 else snake_to_camel(stimulus["Pattern"])
             stimulus["Mode"] = _input_type_translation.get(stimulus["Mode"], stimulus["Mode"])
@@ -302,17 +310,9 @@ class SonataConfig:
     def parsedReports(self):
         reports = {}
         for name, conf in self._sections["reports"].items():
-            if "cells" not in conf:
-                logging.error("BBP accepts only report configuration with 'cells' provided")
-                raise Exception("BBP accepts only report configuration with 'cells' provided")
-            rep = self._translate_dict(dict_change_keys_case(conf,
-                                       filtered_keys=self._translation["reports"].keys()),
-                                       "reports")
+            rep = self._translate_dict(conf, "reports", self._sim_conf.report(name))
             # Some entries now have defaults. Introduce them here
-            rep.setdefault("Type", "compartment")
             rep.setdefault("Format", "SONATA")
-            rep.setdefault("Dt", self.run.get("dt"))
-            rep.setdefault("StartTime", 0)
             rep.setdefault("Unit", "mV")
             rep.setdefault("Sections", "soma")
             default_compartments = "center" if rep.get("Sections") == "soma" else "all"
@@ -320,9 +320,11 @@ class SonataConfig:
             reports[name] = rep
         return reports
 
-    def _translate_dict(self, d, section_name) -> dict:
+    def _translate_dict(self, d, section_name, libsonata_obj=None) -> dict:
         item_translation = self._translation[section_name]
-        return {item_translation.get(sonata_name, sonata_name): value
+        return {item_translation.get(sonata_name, snake_to_camel(sonata_name)):
+                getattr(libsonata_obj, sonata_name)
+                if libsonata_obj and hasattr(libsonata_obj, sonata_name) else value
                 for sonata_name, value in d.items()}
 
     def __getattr__(self, item):
@@ -341,7 +343,3 @@ class SonataConfig:
 
 def snake_to_camel(word):
     return ''.join(x.capitalize() or '_' for x in word.split('_'))
-
-
-def dict_change_keys_case(d, filtered_keys=()):
-    return {snake_to_camel(k) if k not in filtered_keys else k: v for k, v in d.items()}

@@ -281,7 +281,7 @@ class Node:
         """Initialize targets. Nodesets are loaded on demand.
         """
         # If a base population is specified register it before targets to create on demand
-        base_population = self._run_conf.get("base_population")
+        base_population = self._run_conf.get("BasePopulation")
         if base_population:
             logging.info("Default population selected: %s", base_population)
             PopulationNodes.create_pop(base_population, is_base_pop=True)
