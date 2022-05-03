@@ -859,35 +859,23 @@ class RealElectrode(ElectrodeSource):
 
     def rotate(self,segpositions):
 
-
-
         newsegs = segpositions.copy()
-
-        rotations = []
-
-        for i, r in enumerate(self.rotation_angles[:2]):
-            q0 = np.cos(r/2)
-            q1 = np.sin(r/2)*self.rotation_axes[2-i][0]
-            q2 = np.sin(r/2)*self.rotation_axes[2-i][1]
-            q3 = np.sin(r/2)*self.rotation_axes[2-i][2]
-
-            rotation = R.from_quat([q0,q1,q2,q3])
-
-            rotations.append(rotation)
-
-        finalrotation = R.concatenate(rotations)
-
-
-
 
         newsegs -= self.new_soma_pos
 
+        for i, r in enumerate(self.rotation_angles[:2]):
+            q0 = np.cos(r/2*np.pi/180)
+            q1 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][0]
+            q2 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][1]
+            q3 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][2]
 
+            rotation = [q1,q2,q3,q0]
 
-        newpositions = finalrotation.apply(newsegs)
+            finalrotation = R.from_quat(rotation)
 
-        newpositions += self.new_soma_pos
+            newsegs = finalrotation.apply(newsegs)
 
+        newpositions = newsegs + self.new_soma_pos
 
         return newpositions
 

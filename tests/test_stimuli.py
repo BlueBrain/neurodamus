@@ -104,3 +104,10 @@ class TestStimuli(object):
         self.stim.add_train_arbitrary([1,-1],[200,300],1,2000)
         assert list(self.stim.stim_vec) == [0.0, 0.0, 1.0, 1.0,  -1, -1, 0,  0.0, 0.0, 1.0, 1.0, -1, -1,   0,   0.0]
         assert list(self.stim.time_vec) == [0.0, 0.0, 0.0, 200.0,200,500,500,1000,1000,1000,1200,1200,1500,1500,2000]
+
+    def test_rotate(self):
+
+        self.stim.rotation_angles=[90,0,0]
+        self.stim.rotation_axes=[[1,2,3],[4,5,6],[1,0,0]]
+        self.new_soma_pos = [0,0,1]
+        assert self.stim.rotate([0,0,0]) == pytest.approx([0,1,1])
