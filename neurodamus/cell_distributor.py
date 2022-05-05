@@ -85,16 +85,20 @@ class VirtualCellPopulation:
     """
     _total_count = 0
 
-    def __init__(self, population_name, gids=None):
-        self._population_name = population_name
-        self._local_nodes = NodeSet(gids).register_global(population_name or '')
+    def __init__(self, population_name, gids=None, circuit_target=None):
+        """Initializes a VirtualCellPopulation
+
+        A virtual manager will have minimal set of attributes, namely
+        the population name, the target name and the NodeSet
+        """
+        self.population_name = population_name
+        self.circuit_target = circuit_target
+        self.local_nodes = NodeSet(gids).register_global(population_name or '')
         VirtualCellPopulation._total_count += 1
         if VirtualCellPopulation._total_count > 1:
             logging.warning("For non-sonata circuit, "
                             "only a single Virtual Cell Population works with REPLAY")
 
-    local_nodes = property(lambda self: self._local_nodes)
-    population_name = property(lambda self: self._population_name)
     is_default = property(lambda self: False)
     is_virtual = property(lambda self: True)
 
@@ -188,8 +192,10 @@ class CellManagerBase(object):
             pop = circuit_conf._name
             logging.warning("(Compat) Assuming population name from Circuit: %s", pop)
         self._population_name = pop
-        if not pop and not self.is_default:
-            raise Exception("Only the default population can be unnamed")
+        if not pop:
+            logging.warning("Could not discover population name. Assuming '' (empty)")
+            if not self.is_default:
+                raise Exception("Only the default population can be unnamed")
         is_base_pop = self.is_default or circuit_conf.get("no_offset")
         self._local_nodes = NodeSet().register_global(pop, is_base_pop)
 

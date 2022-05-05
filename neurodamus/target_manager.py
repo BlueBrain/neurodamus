@@ -5,6 +5,7 @@ from abc import ABCMeta, abstractmethod
 from functools import lru_cache
 from typing import List
 
+import libsonata
 import numpy
 
 from .core import MPI, NeurodamusCore as Nd
@@ -45,6 +46,9 @@ class TargetSpec:
             else "{}:{}".format(self.population, self.name or "")
         )
 
+    def __repr__(self):
+        return "<TargetSpec: " + str(self) + ">"
+
     @property
     def simple_name(self):
         if self.name is None and self.population is None:
@@ -59,8 +63,23 @@ class TargetSpec:
         """Check if it matches a given target. Mosaic and (empty) are equivalent"""
         return pop == self.population and (target_name or "Mosaic") == (self.name or "Mosaic")
 
-    def match_filter(self, pop, target_name):
-        return self.population == pop and (target_name or "Mosaic") in ("Mosaic", self.name)
+    def disjoint_populations(self, other):
+        # When a population is None we cannot draw conclusions
+        #  - In Sonata there's no filtering and target may have multiple
+        #  - In BCs it's the base population, but the specified one may be the same
+        if self.population is None or other.population is None:
+            return False
+        # We are only sure if both are specified and different
+        return self.population != other.population
+
+    def overlap_byname(self, other):
+        return self.is_full or other.is_full or self.name == other.name
+
+    def overlap(self, other):
+        """Are these target specs bound to overlap?
+        If not, they still might be overlap, but Target gids need to be inspected
+        """
+        return self.population == other.population and self.overlap_byname(other)
 
     def __eq__(self, other):
         return self.matches(other.population, other.name)
@@ -77,21 +96,6 @@ class TargetManager:
         self._nodeset_reader = self._init_nodesets(run_conf)
         if MPI.rank == 0:
             self.parser.isVerbose = 1
-        self._default_population = self._get_default_population(run_conf)  # legacy BlueConfig only
-
-    @classmethod
-    def _get_default_population(cls, run_conf):
-        ctarget = run_conf.get("CircuitTarget")
-        if not ctarget or SimConfig.is_sonata_config:
-            return None
-        tspec = TargetSpec(ctarget)
-        if tspec.population:
-            return tspec.population
-        if not ctarget.endswith(".h5"):
-            return ''  # mvd3 has unnamed population
-        # Otherwise open Sonata and inspect. Single population only
-        from .cell_distributor import CellManagerBase
-        return CellManagerBase._get_sonata_population_name(run_conf.get("CellLibraryFile"))
 
     @classmethod
     def _init_nodesets(cls, run_conf):
@@ -137,16 +141,19 @@ class TargetManager:
             if GlobalConfig.verbosity >= 3:
                 self.parser.printCellCounts()
 
-    def register_target(self, target, global_target=False):
-        if global_target and not SimConfig.is_sonata_config:
-            # In BlueConfig mode we transform the global target to a _HocTarget
-            target = _HocTarget(TargetSpec.GLOBAL_TARGET_NAME,
-                                target.get_hoc_target(),
-                                self._default_population)
-        self._targets[target.name] = target
-        self.parser.updateTargetList(target.get_hoc_target())
+    @classmethod
+    def create_global_target(cls):
+        # In blueconfig mode the _ALL_ target refers to base single population)
+        if not SimConfig.is_sonata_config:
+            return _HocTarget(TargetSpec.GLOBAL_TARGET_NAME, None)
+        return NodesetTarget(TargetSpec.GLOBAL_TARGET_NAME, [])
 
-    def get_target(self, target_spec: TargetSpec):
+    def register_target(self, target):
+        self._targets[target.name] = target
+        if hoc_target := target.get_hoc_target():
+            self.parser.updateTargetList(hoc_target)
+
+    def get_target(self, target_spec: TargetSpec, target_pop=None):
         """Retrieves a target from any .target file or Sonata nodeset files.
 
         Targets are generic groups of cells not necessarily restricted to a population.
@@ -156,7 +163,8 @@ class TargetManager:
         """
         if not isinstance(target_spec, TargetSpec):
             target_spec = TargetSpec(target_spec)
-
+        if target_pop:
+            target_spec.population = target_pop
         target_name = target_spec.name or TargetSpec.GLOBAL_TARGET_NAME
         target_pop = target_spec.population
 
@@ -248,18 +256,22 @@ class TargetManager:
         """Checks whether two targets intersect"""
         target1_spec = TargetSpec(target1)
         target2_spec = TargetSpec(target2)
-        if target1_spec.population != target2_spec.population:
+        if target1_spec.disjoint_populations(target2_spec):
             return False
-        if (
-            target1_spec.is_full
-            or target2_spec.is_full
-            or target1_spec.name == target2_spec.name
-        ):
+        if target1_spec.overlap(target2_spec):
             return True
-        # From this point, both are sub targets (and not the same)
-        cells1 = self.get_target(target1_spec).get_gids()
-        cells2 = self.get_target(target2_spec).get_gids()
-        return not set(cells1).isdisjoint(cells2)
+
+        # Couldn't get any conclusion from bare target spec
+        # Obtain the targets to analyze
+        t1, t2 = self.get_target(target1_spec), self.get_target(target2_spec)
+
+        # Check for Sonata nodesets, they might have the same population and overlap
+        if set(t1.populations) == set(t2.populations):
+            if target1_spec.overlap_byname(target2_spec):
+                return True
+
+        # TODO: Investigate this might yield different results depending on the rank.
+        return t1.intersects(t2)  # Otherwise go with full gid intersection
 
     def pathways_overlap(self, conn1, conn2, equal_only=False):
         src1, dst1 = conn1["Source"], conn1["Destination"]
@@ -279,12 +291,10 @@ class NodeSetReader:
     """
 
     def __init__(self, nodeset_file):
-        import libsonata
         self.nodesets = libsonata.NodeSets.from_file(nodeset_file)
         self._population_stores = {}
 
     def register_node_file(self, node_file):
-        import libsonata
         storage = libsonata.NodeStorage(node_file)
         for pop_name in storage.population_names:
             self._population_stores[pop_name] = storage
@@ -301,7 +311,6 @@ class NodeSetReader:
         The empty population has a special meaning in Sonata, it matches
         all populations in simulation
         """
-        import libsonata
         if nodeset_name not in self.nodesets.names:
             return None
 
@@ -322,7 +331,6 @@ class NodeSetReader:
 
         nodesets = (_get_nodeset(pop_name) for pop_name in self._population_stores)
         nodesets = [ns for ns in nodesets if ns]
-
         return NodesetTarget(nodeset_name, nodesets)
 
 
@@ -363,21 +371,37 @@ class _TargetInterface(metaclass=ABCMeta):
     def get_hoc_target(self):
         return NotImplemented
 
+    @abstractmethod
+    def append_nodeset(self, nodeset: NodeSet):
+        """Add a nodeset to the current target"""
+        return NotImplemented
+
     def contains_raw(self, gid):
         return gid in self.get_raw_gids()
 
     def getCellCount(self):
         return self.gid_count
 
+    def intersects(self, other):
+        """ Check if two targets intersect. At least one common population has to intersect
+        """
+        if self.population_names.isdisjoint(other.population_names):
+            return False
+
+        other_pops = other.populations  # may be created on the fly
+        # We loop over one target populations and check the other existence and intersection
+        for pop, nodeset in self.populations.items():
+            if pop not in other_pops:
+                continue
+            if nodeset.intersects(other_pops[pop]):
+                return True
+        return False
+
 
 class NodesetTarget(_TargetInterface):
     def __init__(self, name, nodesets: List[NodeSet], **kw):
         self.name = name
         self.nodesets = nodesets
-
-    @classmethod
-    def create_global_target(cls):
-        return cls(TargetSpec.GLOBAL_TARGET_NAME, [])
 
     def gid_count(self):
         return sum(len(ns) for ns in self.nodesets)
@@ -412,6 +436,13 @@ class NodesetTarget(_TargetInterface):
 
     def contains_raw(self, gid):
         return gid in self.get_raw_gids()
+
+    def append_nodeset(self, nodeset: NodeSet):
+        self.nodesets.append(nodeset)
+
+    @property
+    def population_names(self):
+        return {ns.population_name for ns in self.nodesets}
 
     @property
     def populations(self):
@@ -494,20 +525,27 @@ class _HocTarget(_TargetInterface):
         self.population_name = pop_name
         self.hoc_target = hoc_target
         self.offset = 0
+        self._raw_gids = None
+
+    @property
+    def population_names(self):
+        return {self.population_name}
 
     @property
     def populations(self):
         return {self.population_name: NodeSet(self.get_gids())}
 
     def gid_count(self):
-        return int(self.hoc_target.getCellCount())
+        return len(self.get_raw_gids())
 
     def get_gids(self):
-        offset = self.hoc_target.get_offset()
-        return (self.hoc_target.completegids().as_numpy() + offset).astype("uint32")
+        return (self.get_raw_gids() + self.offset).astype("uint32")
 
     def get_raw_gids(self):
-        return self.hoc_target.completegids().as_numpy().astype("uint32")
+        if self._raw_gids is None:
+            assert self.hoc_target
+            self._raw_gids = self.hoc_target.completegids().as_numpy().astype("uint32")
+        return self._raw_gids
 
     def get_hoc_target(self):
         return self.hoc_target
@@ -526,11 +564,23 @@ class _HocTarget(_TargetInterface):
             self.population_name = pop_name
         return self
 
+    def append_nodeset(self, nodeset: NodeSet):
+        # Not very common but we may want to set the nodes later (e.g. the _ALL_ target)
+        if self.population_name is not None:
+            logging.warning("[Compat] Skipping adding population %s to HOC target %s",
+                            nodeset.population_name, self.name)
+            return
+        self.population_name = nodeset.population_name
+        self.offset = nodeset.offset
+        self._raw_gids = numpy.asarray(nodeset.raw_gids())
+        hoc_gids = compat.hoc_vector(self._raw_gids)
+        self.hoc_target = Nd.Target(self.name, hoc_gids, self.population_name)
+
     def __contains__(self, item):
         return self.hoc_target.completeContains(item - self.offset)
 
     def is_void(self):
-        return False  # old targets could match with any population
+        return not bool(self.hoc_target)  # old targets could match with any population
 
     def set_offset(self, offset):
         self.hoc_target.set_offset(offset)

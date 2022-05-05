@@ -192,12 +192,24 @@ class NodeSet:
         return self._gidvec
 
     def final_gids(self):
-        return numpy.array(self._gidvec) + self._offset
+        # int64 auto-converts to double on addition
+        return (numpy.asarray(self._gidvec) + self._offset).astype("uint32")
 
     def items(self, final_gid=False):
         offset_add = self._offset if final_gid else 0
         for gid in self._gidvec:
             yield gid + offset_add, self._gid_info.get(gid)
+
+    def intersects(self, other):
+        """Check if the current nodeset intersects another
+
+        For nodesets to intersect they must belong to the same population and
+        have common gids
+        """
+        if self.population_name != other.population_name:
+            return False
+        intersection = numpy.intersect1d(numpy.asarray(self._gidvec), numpy.asarray(other._gidvec))
+        return len(intersection) > 0
 
     def clear_cell_info(self):
         self._gid_info = None

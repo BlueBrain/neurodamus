@@ -29,7 +29,7 @@ from .replay import SpikeManager
 from .stimulus_manager import StimulusManager
 from .modification_manager import ModificationManager
 from .neuromodulation_manager import NeuroModulationManager
-from .target_manager import NodesetTarget, TargetSpec, TargetManager
+from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.timeit import TimerManager, timeit, timeit_rank0
@@ -65,7 +65,7 @@ class CircuitManager:
         self.edge_managers = defaultdict(list)  # dict {(src_pop, dst_pop) -> list[synapse_manager]}
         self.alias = {}          # dict {name -> pop_name}
         self.global_manager = GlobalCellManager()
-        self.global_target = NodesetTarget.create_global_target()
+        self.global_target = TargetManager.create_global_target()
 
     def initialized(self):
         return bool(self.node_managers)
@@ -78,7 +78,7 @@ class CircuitManager:
         self.alias[cell_manager.circuit_name] = pop
         self.global_manager.register_manager(cell_manager)
         if cell_manager.is_initialized():
-            self.global_target.nodesets.append(cell_manager.local_nodes)
+            self.global_target.append_nodeset(cell_manager.local_nodes)
 
     def _new_virtual_node_manager(self, circuit):
         """Instantiate a new virtual node manager explicitly."""
@@ -90,7 +90,7 @@ class CircuitManager:
         gid_vec = list(range(1, node_size+1))
         virtual_cell_manager = VirtualCellPopulation(pop_name, gid_vec)
         self.virtual_node_managers[pop_name] = virtual_cell_manager
-        self.global_target.nodesets.append(virtual_cell_manager.local_nodes)
+        self.global_target.append_nodeset(virtual_cell_manager.local_nodes)
         return virtual_cell_manager
 
     def new_node_manager(self, circuit, *args, **kwargs):
@@ -100,8 +100,8 @@ class CircuitManager:
         engine = circuit.Engine or METypeEngine
         CellManagerCls = engine.CellManagerCls or SynapseRuleManager
         cell_manager = CellManagerCls(circuit, *args, **kwargs)
-        self.register_node_manager(cell_manager)
         cell_manager.load_nodes()
+        self.register_node_manager(cell_manager)
         return cell_manager
 
     def get_node_manager(self, name):
@@ -124,9 +124,8 @@ class CircuitManager:
                     if type(manager) == conn_type]
         return managers[0] if managers else None
 
-    def get_create_edge_manager(self, conn_type, source, destination, *args,
-                                _orig_target_pop=None,
-                                **kw):
+    def get_create_edge_manager(self, conn_type, source, destination, src_target,
+                                manager_args=(), **kw):
         source, destination = self.unalias_pop_keys(source, destination)
         manager = self.get_edge_manager(source, destination, conn_type)
         if manager:
@@ -134,7 +133,7 @@ class CircuitManager:
 
         if not self.has_population(destination):
             # This is likely an error, except...
-            if _orig_target_pop is None and self.has_population(''):
+            if src_target.population == '' and self.has_population(''):
                 logging.warning("Sonata Edges target population %s was not found. "
                                 "Since base population is unknown, assuming that's the target.\n"
                                 "To silence this warning please switch to Sonata nodes or specify "
@@ -151,11 +150,11 @@ class CircuitManager:
             log_verbose("No known population %s. Creating Virtual src for projection", source)
             if conn_type not in (SynapseRuleManager, _ngv.GlioVascularManager):
                 raise ConfigurationError("Custom connections require instantiated source nodes")
-            src_manager = VirtualCellPopulation(source)
+            src_manager = VirtualCellPopulation(source, None, src_target.name)
 
         target_cell_manager = kw["cell_manager"] = self.node_managers[destination]
         kw["src_cell_manager"] = src_manager
-        manager = conn_type(*args, **kw)
+        manager = conn_type(*manager_args, **kw)
         self.edge_managers[(source, destination)].append(manager)
         target_cell_manager.register_connection_manager(manager)
         return manager
@@ -288,7 +287,8 @@ class Node:
         self._target_manager.load_targets(self._base_circuit)
         for xcircuit in self._extra_circuits.values():
             self._target_manager.load_targets(xcircuit)
-        self._target_manager.register_target(self._circuits.global_target, global_target=True)
+        # Register the global target
+        self._target_manager.register_target(self._circuits.global_target)
 
     # -
     @mpi_no_errors
@@ -305,10 +305,13 @@ class Node:
         # Info about the cells to be distributed
         target_spec = self._target_spec
         target = self.target_manager.get_target(target_spec)
-        cell_count = target.gid_count()
-        if cell_count > 100 * MPI.size:
-            logging.warning("Your simulation has a very high count of cells per CPU. "
-                            "Please consider launching it in a larger MPI cluster")
+        cell_count = None
+
+        if not target.is_void():
+            cell_count = target.gid_count()
+            if cell_count > 100 * MPI.size:
+                logging.warning("Your simulation has a very high count of cells per CPU. "
+                                "Please consider launching it in a larger MPI cluster")
 
         # Check / set load balance mode
         lb_mode = LoadBalanceMode.parse(self._run_conf.get("RunMode"))
@@ -323,8 +326,11 @@ class Node:
             logging.info("Load Balancing ENABLED. Mode: WholeCell")
 
         elif lb_mode is None:
-            lb_mode, reason = LoadBalanceMode.auto_select(SimConfig.use_neuron, cell_count,
-                                                          self._run_conf["Duration"])
+            if cell_count is None:
+                lb_mode, reason = LoadBalanceMode.RoundRobin, "No target set, unknown cell count"
+            else:
+                lb_mode, reason = LoadBalanceMode.auto_select(SimConfig.use_neuron, cell_count,
+                                                              self._run_conf["Duration"])
             if lb_mode != LoadBalanceMode.RoundRobin:
                 logging.warning("Load Balance AUTO-SELECTED: %s. Reason: %s", lb_mode.name, reason)
 
@@ -381,15 +387,14 @@ class Node:
         # Always create a cell_distributor even if engine is disabled.
         # Fake CoreNeuron cells are created in it
         cell_distributor = CellDistributor(self._base_circuit, self._target_manager, self._run_conf)
-        self._circuits.register_node_manager(cell_distributor)
         cell_distributor.load_nodes(load_balance)  # no-op if circuit is disabled
+        self._circuits.register_node_manager(cell_distributor)
 
         # SUPPORT for extra/custom Circuits
         circuits_sorted = sorted(
             self._extra_circuits.items(),
             key=lambda x: (x[1].Engine.CircuitPrecedence if x[1].Engine else 0, x[0])
         )
-
         for name, circuit in circuits_sorted:
             log_stage("Circuit %s", name)
             self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
@@ -415,26 +420,36 @@ class Node:
         target_manager = self._target_manager
         SimConfig.update_connection_blocks(self._circuits.alias)
 
-        def create_synapase_manager(ctype, conf, *args, population=None, **kwargs):
+        def create_synapase_manager(ctype, conf, *args, **kwargs):
+            """Create a synapse manager for intra-circuit connectivity"""
             log_stage("Circuit %s", conf._name or "(default)")
             if not conf.get("nrnPath"):
                 logging.info(" => Circuit internal connectivity has been DISABLED")
                 return
-            src, dst = population, population
-            if not population:
-                edge_file, *pop = conf.get("nrnPath").split(":")
-                src, dst = edge_node_pop_names(edge_file, pop[0] if pop else None)
-            kwargs["_orig_target_pop"] = population
-            manager = self._circuits.get_create_edge_manager(ctype, src, dst, conf, *args, **kwargs)
+
+            c_target = TargetSpec(conf.get("CircuitTarget"))
+            if c_target.population is None:
+                c_target.population = self._circuits.alias.get(conf._name)
+            edge_file, *pop = conf.get("nrnPath").split(":")
+            if not os.path.isabs(edge_file):
+                edge_file = find_input_file(edge_file)
+            src, dst = edge_node_pop_names(edge_file, pop[0] if pop else None)
+
+            if src and dst and src != dst:
+                raise ConfigurationError("Inner connectivity with different populations")
+
+            manager = self._circuits.get_create_edge_manager(
+                ctype, src, dst, c_target, (conf, *args), **kwargs
+            )
             self._load_connections(conf, manager)  # load internal connections right away
 
         create_synapase_manager(SynapseRuleManager, self._base_circuit, target_manager,
                                 load_offsets=self._is_ngv_run)
 
-        for c_name, circuit in self._extra_circuits.items():
+        for circuit in self._extra_circuits.values():
             Engine = circuit.Engine or METypeEngine
             SynManagerCls = Engine.InnerConnectivityCls
-            create_synapase_manager(SynManagerCls, circuit, target_manager, population=c_name)
+            create_synapase_manager(SynManagerCls, circuit, target_manager)
 
         log_stage("Handling projections...")
         for pname, projection in SimConfig.projections.items():
@@ -476,6 +491,7 @@ class Node:
             conn_manager.create_connections()
 
     # -
+    @mpi_no_errors
     def _load_projections(self, pname, projection):
         """Check for Projection blocks
         """
@@ -510,8 +526,8 @@ class Node:
             for dst_pop in dst_target.populations:
                 logging.info(" * %s (Type: %s, Src: %s, Dst: %s)", pname, ptype, src_pop, dst_pop)
                 conn_manager = self._circuits.get_create_edge_manager(
-                    ptype_cls, src_pop, dst_pop, projection, target_manager,
-                    _orig_target_pop=dest_t.population
+                    ptype_cls, src_pop, dst_pop, source_t,
+                    (projection, target_manager)  # args to ptype_cls if creating
                 )
                 logging.debug("Using connection manager: %s", conn_manager)
                 proj_source = ":".join([ppath] + pop_name)
@@ -1559,13 +1575,25 @@ class Neurodamus(Node):
     # -
     def _instantiate_simulation(self):
         self.load_targets()
-        target: NodesetTarget = self._target_manager.get_target(self._target_spec)
-        cell_count = target.gid_count()
-        logging.info("Simulation target: %s, Cell count: %d", target.name, cell_count)
+
+        # Check connection block configuration and raise warnings for overriding parameters
+        SimConfig.check_connections_configure(self._target_manager)
 
         # Check if user wants to build the model in several steps (only for CoreNeuron)
-        target = TargetSpec(self._run_conf.get("CircuitTarget", "Mosaic")).name
         n_cycles = SimConfig.modelbuilding_steps
+
+        # Without multi-cycle, it's a trivial model build. sub_targets is False
+        if n_cycles == 1:
+            self._build_model()
+            return
+
+        if self._run_conf["CircuitPath"] in (None, False):
+            raise ConfigurationError("Multi building steps requires a base circuit")
+
+        target = self._target_manager.get_target(self._target_spec)
+        target_name = self._target_spec.name
+        cell_count = target.gid_count()
+        logging.info("Simulation target: %s, Cell count: %d", target_name, cell_count)
 
         if SimConfig.use_coreneuron and cell_count/n_cycles < MPI.size and cell_count > 0:
             # coreneuron with no. ranks >> no. cells
@@ -1579,17 +1607,12 @@ class Neurodamus(Node):
                                 max_num_cycles)
                 n_cycles = max_num_cycles
 
-        sub_targets = self._target_manager.generate_subtargets(target, n_cycles)
-
-        # Check connection block configuration and raise warnings for overriding parameters
-        SimConfig.check_connections_configure(self._target_manager)
-
-        # Without multi-cycle, it's a trivial model build. sub_targets is False
         if n_cycles == 1:
             self._build_model()
             return
 
         logging.info("MULTI-CYCLE RUN: {} Cycles".format(n_cycles))
+        sub_targets = self._target_manager.generate_subtargets(target_name, n_cycles)
 
         tmp_target_spec = TargetSpec(self._run_conf["CircuitTarget"])
         TimerManager.archive(archive_name="Before Cycle Loop")

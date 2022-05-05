@@ -17,6 +17,7 @@ from .core.configuration import GlobalConfig, SimConfig, ConfigurationError, fin
 from .connection import Connection, ReplayMode
 from .io.cell_readers import TargetSpec
 from .io.synapse_reader import SynapseReader
+from .target_manager import TargetManager
 from .utils import compat, bin_search, dict_filter_map
 from .utils.logging import log_verbose, log_all
 from .utils.timeit import timeit
@@ -258,7 +259,7 @@ class ConnectionManagerBase(object):
             load_offsets: Whether to load synapse offsets
 
         """
-        self._target_manager = target_manager
+        self._target_manager: TargetManager = target_manager
         self._cell_manager = cell_manager
         self._src_cell_manager = src_cell_manager or cell_manager
 
@@ -341,7 +342,7 @@ class ConnectionManagerBase(object):
         cur_pop.dst_name = dst_pop_name
         cur_pop.virtual_source = (self._src_cell_manager.is_virtual
                                   or src_pop_name != self._src_cell_manager.population_name
-                                  or pop_id_override and not src_pop_name)
+                                  or bool(pop_id_override) and not src_pop_name)
         logging.info("Loading connections to population: %s", cur_pop)
 
     def _compute_pop_ids(self, src_pop, dst_pop, src_pop_id=None):
@@ -452,14 +453,18 @@ class ConnectionManagerBase(object):
             src_target: Target name to restrict creating connections coming from it
             dst_target: Target name to restrict creating connections going into it
         """
-        conn_src_pop = self.current_population.src_name
-        conn_dst_pop = self.current_population.dst_name
+        conn_src_spec = TargetSpec(src_target)  # instantiate all from src
+        conn_src_spec.population = self.current_population.src_name
+        conn_dst_spec = TargetSpec(dst_target or self.cell_manager.circuit_target)
+        conn_dst_spec.population = self.current_population.dst_name
+        this_pathway = {
+            "Source": str(conn_src_spec),
+            "Destination": str(conn_dst_spec)
+        }
         matching_conns = [
             conn for conn in SimConfig.connections.values()
-            if TargetSpec(conn.get("Source")).match_filter(conn_src_pop, src_target)
-            and TargetSpec(conn.get("Destination")).match_filter(conn_dst_pop, dst_target)
+            if self._target_manager.pathways_overlap(conn, this_pathway)
         ]
-
         if not matching_conns:
             logging.info("No matching Connection blocks. Loading all synapses...")
             self.connect_all()
