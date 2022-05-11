@@ -95,7 +95,7 @@ VERBATIM
         // Invoke low-level artcell_net_send, since generic NMODL net_send is only
         // available in INITIAL and NET_RECEIVE blocks. It takes an ABSOLUTE time instead
         debug_printf("[VecStim] restartEvent(): index=%d, etime=%g, t=%g\n", (int)index - 1, etime, t);
-        artcell_net_send(_tqitem, (double*)0, _ppvar[1]._pvoid, etime, 1.0);
+        artcell_net_send(_tqitem, (double*)0, (Point_process*)_ppvar[1]._pvoid, etime, 1.0);
     }
 #endif
 ENDVERBATIM
@@ -103,9 +103,11 @@ ENDVERBATIM
 
 
 VERBATIM
+#ifndef NRN_VERSION_GTEQ_8_2_0
 extern double* vector_vec();
 extern int vector_capacity();
 extern void* vector_arg();
+#endif
 ENDVERBATIM
 
 
@@ -122,7 +124,7 @@ ENDCOMMENT
 FUNCTION element() {
 VERBATIM
     const int i = (int)index;
-    void* const vv = *((void**)(&space));
+    IvocVect* const vv = *((IvocVect**)(&space));
     int size; double* px;
     if (i < 0 || vv == NULL)
         return 0;

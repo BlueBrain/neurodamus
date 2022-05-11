@@ -27,9 +27,14 @@ INITIAL {
 VERBATIM
 
 #ifndef CORENEURON_BUILD
+#ifndef NRN_VERSION_GTEQ_8_2_0
 extern double* hoc_pgetarg(int iarg);
 extern double* getarg(int iarg);
 extern int ifarg(int iarg);
+extern void nrn_register_recalc_ptr_callback(void (*f)());
+extern Point_process* ob2pntproc(Object*);
+extern double* nrn_recalc_ptr(double*);
+#endif
 
 typedef struct {
     //! list of pointers to hoc variables
@@ -53,9 +58,6 @@ typedef struct {
 #define INFOCAST Info** ip = (Info**)(&(_p_ptr))
 
 #define dp double*
-extern void nrn_register_recalc_ptr_callback(void (*f)());
-extern Point_process* ob2pntproc(Object*);
-extern double* nrn_recalc_ptr(double*);
 
 static void recalcptr(Info* info, int cnt, double** old_vp, double* new_v) {
     int i;
@@ -70,7 +72,11 @@ static void recalc_ptr_callback() {
     /*printf("ASCIIrecord.mod recalc_ptr_callback\n");*/
     /* hoc has a list of the ASCIIRecord instances */
     sym = hoc_lookup("ALU");
+    #ifndef NRN_VERSION_GTEQ_8_2_0
     instances = sym->u.template->olist;
+    #else
+    instances = sym->u.ctemplate->olist;
+    #endif
     ITERATE(q, instances) {
         Info* InfoPtr;
         Point_process* pnt;
@@ -151,7 +157,7 @@ PROCEDURE restartEvent() {
 VERBATIM
 #ifndef CORENEURON_BUILD
     const double etime = *getarg(1);
-    net_send(_tqitem, (double*)0, _ppvar[1]._pvoid, etime, 1.0);
+    net_send(_tqitem, (double*)0, (Point_process*)_ppvar[1]._pvoid, etime, 1.0);
 #endif
 ENDVERBATIM
 }

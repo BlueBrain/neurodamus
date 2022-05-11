@@ -43,13 +43,14 @@ VERBATIM
 #ifndef DISABLE_REPORTINGLIB
 #include <stdint.h>
 #include <bbp/sonata/reports.h>
-
+#ifndef NRN_VERSION_GTEQ_8_2_0
 extern double* hoc_pgetarg(int iarg);
 extern double* getarg(int iarg);
 extern char* gargstr(int iarg);
 extern int hoc_is_str_arg(int iarg);
 extern int ifarg(int iarg);
 extern double chkarg(int iarg, double low, double high);
+#endif
 
 typedef struct {
     char neuronName_[256];
@@ -103,7 +104,7 @@ VERBATIM {
 
     }
 #else
-        static warning_shown = 0;
+        static int warning_shown = 0;
         if (ifarg(2) && hoc_is_str_arg(2))
         {
             if (warning_shown == 0)

@@ -16,9 +16,11 @@ VERBATIM
 #include <mpi.h>
 #endif
 
+#ifndef NRN_VERSION_GTEQ_8_2_0
 extern double* vector_vec();
 extern int vector_capacity();
 extern void* vector_arg();
+#endif
 
 extern int nrnmpi_myid;
 
@@ -35,14 +37,14 @@ PROCEDURE write() {
 
         // first vector is time of spikes
         if (ifarg(1)) {
-            void *v = vector_arg(1);
+            IvocVect *v = vector_arg(1);
             time = vector_vec(v);
             num_spikes = vector_capacity(v);
         }
 
         // second vector is associated gids
         if (ifarg(2)) {
-            void *v = vector_arg(2);
+            IvocVect *v = vector_arg(2);
             gid = vector_vec(v);
         }
 

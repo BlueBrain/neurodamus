@@ -42,12 +42,15 @@ VERBATIM
 
 #endif  // defined(ENABLE_CORENEURON)
 
+#ifndef NRN_VERSION_GTEQ_8_2_0
 extern double* vector_vec();
 extern int vector_capacity();
 extern void* vector_arg();
-extern int nrnmpi_myid;
 extern int hoc_is_str_arg(int iarg);
 extern double* hoc_val_pointer(const char*);
+#endif
+
+extern int nrnmpi_myid;
 extern double celsius;
 
 // name of config files
@@ -129,7 +132,7 @@ VERBATIM
     }
 
     printf("Adding report %s for CoreNEURON with %d gids\n", hoc_gargstr(1), num_gids);
-    char* reportConf = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
+    char* reportConf = (char*)alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(reportConf, "%s/%s", outputdir, REPORT_CONFIG_FILE);
 
     // write report information
@@ -202,7 +205,7 @@ VERBATIM
     if(nrnmpi_myid > 0) {
         return 0;
     }
-    char* filename = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
+    char* filename = (char*)alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(filename, "%s/%s", outputdir, REPORT_CONFIG_FILE);
     FILE *fp = open_file(filename, "w");
     fprintf(fp, "%d\n", (int)*getarg(1));
@@ -218,7 +221,7 @@ VERBATIM
     if(nrnmpi_myid > 0) {
         return 0;
     }
-    char* filename = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
+    char* filename = (char*)alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(filename, "%s/%s", outputdir, REPORT_CONFIG_FILE);
     FILE *fp = open_file(filename, "a");
     fprintf(fp, "%d\n", (int)*getarg(1));
@@ -234,7 +237,7 @@ VERBATIM
     if(nrnmpi_myid > 0) {
         return 0;
     }
-    char* filename = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
+    char* filename = (char*)alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(filename, "%s/%s", outputdir, REPORT_CONFIG_FILE);
     FILE *fp = open_file(filename, "a");
     fprintf(fp, "%s", hoc_gargstr(1));
@@ -254,7 +257,7 @@ VERBATIM
     if(nrnmpi_myid > 0) {
         return 0;
     }
-    char* filename = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
+    char* filename = (char*)alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(filename, "%s/%s", outputdir, REPORT_CONFIG_FILE);
     FILE *fp = open_file(filename, "a");
     fprintf(fp, "%s\n", hoc_gargstr(1));
@@ -266,7 +269,7 @@ ENDVERBATIM
 PROCEDURE psolve_core() {
 VERBATIM
 #if defined(ENABLE_CORENEURON)
-    char* simConf = alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
+    char* simConf = (char*)alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(simConf, "%s/%s", outputdir, SIM_CONFIG_FILE);
 # if CORENRN_CLI11
     char *argv[] = {"", "--read-config", simConf, "--skip-mpi-finalize", "--mpi", NULL, NULL, NULL, NULL};

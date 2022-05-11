@@ -10,14 +10,15 @@ VERBATIM
 #include <stdint.h>
 #include <bbp/sonata/reports.h>
 #include <mpi.h>
+#ifndef NRN_VERSION_GTEQ_8_2_0
     extern int ifarg(int iarg);
     extern double* getarg(int iarg);
-    extern double* nrn_recalc_ptr(double*);
-    extern void nrn_register_recalc_ptr_callback(void (*f)(void));
     extern double* vector_vec();
     extern int vector_capacity();
     extern void* vector_arg(int);
-
+    extern void nrn_register_recalc_ptr_callback(void (*f)(void));
+    extern double* nrn_recalc_ptr(double*);
+#endif
     void sonataRefreshPointers() { //callback function to update data locations before runtime
         sonata_refresh_pointers(nrn_recalc_ptr); //tell bin report library to update its pointers using nrn_recalc_ptr function
     }
@@ -213,8 +214,8 @@ VERBATIM
     double *time = NULL, *gid = NULL;
     int num_spikes = 0;
     int num_gids = 0;
-    void* v1;
-    void* v2;
+    IvocVect* v1;
+    IvocVect* v2;
 
     // first vector is time of spikes
     if (ifarg(1)) {
@@ -239,7 +240,7 @@ VERBATIM
         sprintf(population_name,"%s", gargstr(4));
     }
 
-    int* int_gid = malloc(num_gids * sizeof(int));
+    int* int_gid = (int*)malloc(num_gids * sizeof(int));
     int i;
     for(i=0; i<num_spikes; ++i) {
         int_gid[i] = (int)gid[i];
@@ -264,8 +265,8 @@ VERBATIM
     double *time = NULL, *gid = NULL;
     int num_spikes = 0;
     int num_gids = 0;
-    void* v1;
-    void* v2;
+    IvocVect* v1;
+    IvocVect* v2;
 
     // first vector is time of spikes
     if (ifarg(1)) {
@@ -289,7 +290,7 @@ VERBATIM
         population_offset = (int) *getarg(4);
     }
 
-    int* int_gid = malloc(num_gids * sizeof(int));
+    int* int_gid = (int*)malloc(num_gids * sizeof(int));
     int i;
     for(i=0; i<num_spikes; ++i) {
         int_gid[i] = (int)gid[i];

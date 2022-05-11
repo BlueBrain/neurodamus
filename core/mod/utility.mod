@@ -20,10 +20,12 @@ VERBATIM
 #include <unistd.h>
 #include <errno.h>
 
+#ifndef NRN_VERSION_GTEQ_8_2_0
 extern char* gargstr();
 extern char** hoc_pgargstr();
 extern void hoc_assign_str();
 extern double chkarg();
+#endif
 
 ENDVERBATIM
 

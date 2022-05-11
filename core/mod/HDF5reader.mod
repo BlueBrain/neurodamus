@@ -49,20 +49,21 @@ VERBATIM
 #endif
 
 #include <stdlib.h>
-
+#ifndef NRN_VERSION_GTEQ_8_2_0
 /// NEURON utility functions we want to use
 extern double* hoc_pgetarg(int iarg);
 extern double* getarg(int iarg);
 extern char* gargstr(int iarg);
 extern int hoc_is_str_arg(int iarg);
-extern int nrnmpi_numprocs;
-extern int nrnmpi_myid;
 extern int ifarg(int iarg);
 extern double chkarg(int iarg, double low, double high);
 extern double* vector_vec(void* vv);
 extern int vector_capacity(void* vv);
 extern void* vector_arg(int);
+#endif
 
+extern int nrnmpi_numprocs;
+extern int nrnmpi_myid;
 /**
  * During synapse loading initialization, the h5 files with synapse data are catalogged
  * such that each cpu looks at a subset of what's available and gets ready to report to
@@ -1128,7 +1129,7 @@ VERBATIM {
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
-    void* pdVec = NULL;
+    IvocVect* pdVec = NULL;
     double* pd  = NULL;
     int i = 0;
     int nStart, nEnd, count;
@@ -1188,7 +1189,7 @@ VERBATIM {
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
-    void* pdVec = NULL;
+    IvocVect* pdVec = NULL;
     double* pd  = NULL;
     int i = 0;
     if(info->file_>=0&& ifarg(1) && hoc_is_str_arg(1) && ifarg(2) )
@@ -1310,7 +1311,7 @@ VERBATIM
     INFOCAST;
     Info* info = *ip;
 
-    void* vv = vector_arg(1);
+    IvocVect* vv = vector_arg(1);
     int gidCount = vector_capacity(vv);
     double *gidList = vector_vec(vv);
 

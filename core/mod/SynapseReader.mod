@@ -71,19 +71,20 @@ VERBATIM
 #define CONN_REQUIRE_UHILL (1<<18)
 #define CONN_REQUIRE_CONDUCTANCE (1<<19)
 
-
+#ifndef NRN_VERSION_GTEQ_8_2_0
 /// NEURON utility functions we want to use
 extern double* hoc_pgetarg(int iarg);
 extern double* getarg(int iarg);
 extern char* gargstr(int iarg);
 extern int hoc_is_str_arg(int iarg);
-extern int nrnmpi_numprocs;
-extern int nrnmpi_myid;
 extern int ifarg(int iarg);
 extern double chkarg(int iarg, double low, double high);
 extern double* vector_vec(void* vv);
 extern int vector_capacity(void* vv);
 extern void* vector_arg(int);
+#endif
+extern int nrnmpi_numprocs;
+extern int nrnmpi_myid;
 
 
 typedef struct {
@@ -654,7 +655,7 @@ VERBATIM
 
     int i, dst_i;
     const unsigned int row = *getarg(1);
-    void* const xd = vector_arg(2);
+    IvocVect* const xd = vector_arg(2);
     const int fill_mode = ifarg(3)? (int)*getarg(3): 0;
 
 
@@ -725,7 +726,7 @@ VERBATIM
     ReaderState* const state_ptr = getStatePtr();
     const int loaded_conn_type = state_ptr->conn_type & 0xffff;
     const unsigned int column = *getarg(1);
-    void* const xd = vector_arg(2);
+    IvocVect* const xd = vector_arg(2);
 
     const int * const field_pos = CONN_TYPE_POSITIONS(loaded_conn_type);
     const int field_i = (field_pos != NULL)? field_pos[column] : column;
