@@ -145,7 +145,7 @@ class SignalSource:
         self._add_point(base_amp)
         return self
 
-    def add_ti(self,amp,duration,carrier_freq,pulse_freq,step=0.025,**kw):
+    def add_ti(self,amp,duration,carrier_freq,pulse_freq,step=0.01,**kw):
 
 
         shift_freq = pulse_freq+carrier_freq
@@ -170,9 +170,9 @@ class SignalSource:
         self.delay(duration)
 
 
-        pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq*pulse_tt)
+        pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq/1000*pulse_tt)
 
-        pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq*pulse_tt+np.pi)
+        pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq/1000*pulse_tt+np.pi)
 
 
         self.field1 = np.hstack((self.field1,pulse_I1))
@@ -180,7 +180,7 @@ class SignalSource:
 
 
 
-    def add_pulse_ti(self,amp,duration,carrier_freq,pulse_freq,pulse_number,burst_freq,step=0.025,**kw):
+    def add_pulse_ti(self,amp,duration,carrier_freq,pulse_freq,pulse_number,burst_freq,step=0.01,**kw):
 
 
         cycle_time = 1000/burst_freq
@@ -217,8 +217,8 @@ class SignalSource:
             self.delay(pulse_time)
 
 
-            pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq*pulse_tt)
-            pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq*pulse_tt+np.pi)
+            pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq/1000*pulse_tt)
+            pulse_I2 = amp[1]*np.cos(2*np.pi*shift_freq/1000*pulse_tt+np.pi)
 
 
 
@@ -231,8 +231,8 @@ class SignalSource:
             self.time_vec.append(tvecB)
             self.delay(break_time)
 
-            break_I1 = amp[0]*np.cos(2*np.pi*carrier_freq*break_tt)
-            break_I2 = amp[1]*np.cos(2*np.pi*carrier_freq*break_tt+np.pi)
+            break_I1 = amp[0]*np.cos(2*np.pi*carrier_freq/1000*break_tt)
+            break_I2 = amp[1]*np.cos(2*np.pi*carrier_freq/1000*break_tt+np.pi)
 
             self.field1 = np.hstack((self.field1,break_I1))
             self.field2 = np.hstack((self.field2,break_I2))
@@ -838,6 +838,8 @@ class RealElectrode(ElectrodeSource):
         self.rotation_angles = rotation_angles
         self.rotation_axes = axes
 
+        self.points = []
+
     def geth5Dataset(self, h5f, group_name, dataset_name):
         """
         Find and get dataset from h5 file.
@@ -884,6 +886,7 @@ class RealElectrode(ElectrodeSource):
 
         if self.rotation_angles is not None:
             newsegpositions = self.rotate(segpositions)
+
         else:
             newsegpositions = segpositions.copy()
 
@@ -919,6 +922,8 @@ class RealElectrode(ElectrodeSource):
 
             outputs.append(out2rat[0]/self.current_applied[numFile])
 
+            self.points.append(outputs)
+
         return np.array(outputs)
 
     def apply_ramp(self,vector,ramp_up_number,ramp_down_number):
@@ -950,6 +955,9 @@ class RealElectrode(ElectrodeSource):
         ramp_up_number = kw.get("ramp_up_number",None)
         ramp_down_number = kw.get("ramp_down_number",None)
 
+        posList = []
+        maxList = []
+
 
         for i,seg in enumerate(section):
 
@@ -973,6 +981,8 @@ class RealElectrode(ElectrodeSource):
                 segpositions += self.offset * 1e3 # offset in mm converted to um
                 self.new_soma_pos = self.offset *1e3
 
+                posList.append(segpositions)
+
 
             scaleFac = self.interpolate_potentials(segpositions)*1e3 #(1e3 to go from V to mV)
 
@@ -987,13 +997,22 @@ class RealElectrode(ElectrodeSource):
                 field1 = self.field1 * scaleFac[0]
                 field2 = self.field2 * scaleFac[-1]
 
+
+
                 field = field1 + field2
+
+
 
                 field = self.apply_ramp(field,ramp_up_number,ramp_down_number)
 
 
                 segVec = h.Vector()
                 segVec = segVec.from_python(field)
+
+                # if 'soma' in section.name():
+
+
+                    # np.save('field.npy',field)
 
             elif self.type == 'Sinusoid':
 
@@ -1020,7 +1039,15 @@ class RealElectrode(ElectrodeSource):
             out = segVec.play(seg.extracellular._ref_e,self.time_vec)
             self.extracellulars.append(out)
 
+            max = np.max(np.abs(segVec.to_python()))
 
+            maxList.append(max)
+
+            if i > 0:
+
+                maxAmp = (maxList[i]-maxList[i-1])/np.linalg.norm(posList[i]-posList[i-1])*1e3
+            else:
+                maxAmp = np.nan
 
 
             # return numNewSegs

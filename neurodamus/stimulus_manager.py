@@ -783,6 +783,8 @@ class Extracellular(BaseStim):
         for tpoint_list in tpoints:
             gid = tpoint_list.gid
 
+            allpoints = []
+
             cell = cell_manager.getMEType(gid)
 
             numSegs = 0
@@ -837,6 +839,8 @@ class Extracellular(BaseStim):
 
                     es.attach_to(sc.sec,ramp_up_number=self.ramp_up_number,ramp_down_number=self.ramp_down_number)
 
+                    allpoints.append(es.points)
+
 
 
                     somaPos = es.soma_position
@@ -844,6 +848,8 @@ class Extracellular(BaseStim):
 
 
                 self.stimList.append(es)  # save source
+
+            # np.save('allVOrig.npy',allpoints)
 
         Extracellular.stimCount += 1  # increment global count
 
