@@ -729,6 +729,8 @@ class ElectrodeSource(SignalSource):
 
     def interp_seg_positions(self,section,x):
 
+        print('x is '+str(x))
+
 
         n3d = section.n3d()
 
@@ -757,11 +759,14 @@ class ElectrodeSource(SignalSource):
         else:
 
             for n in range(n3d):
+
                 xpos.append(section.x3d(n))
                 ypos.append(section.y3d(n))
                 zpos.append(section.z3d(n))
                 lens.append(section.arc3d(n)/section.L)
 
+        print('xpos is')
+        print(xpos)
         fX = interp1d(lens,xpos)
         segX = fX(x)
         fY = interp1d(lens,ypos)
@@ -838,7 +843,7 @@ class RealElectrode(ElectrodeSource):
         self.rotation_angles = rotation_angles
         self.rotation_axes = axes
 
-        self.points = []
+
 
     def geth5Dataset(self, h5f, group_name, dataset_name):
         """
@@ -922,7 +927,6 @@ class RealElectrode(ElectrodeSource):
 
             outputs.append(out2rat[0]/self.current_applied[numFile])
 
-            self.points.append(outputs)
 
         return np.array(outputs)
 
@@ -958,8 +962,15 @@ class RealElectrode(ElectrodeSource):
         posList = []
         maxList = []
 
+        i = 0
+        for seg in section:
 
-        for i,seg in enumerate(section):
+            print(section.name())
+            print(section.nseg)
+
+            print('i is '+str(i))
+
+
 
 
             if 'soma' in section.name():
@@ -968,7 +979,11 @@ class RealElectrode(ElectrodeSource):
 
                 self.soma_position = segpositions.copy()
             else:
-                segpositions = self.interp_seg_positions(section,seg.x)
+                segpositions = self.interp_seg_positions(section,float(i)/float(section.nseg))
+
+            i += 1
+
+            print('i is '+str(i))
 
 
 
@@ -1043,11 +1058,16 @@ class RealElectrode(ElectrodeSource):
 
             maxList.append(max)
 
-            if i > 0:
+            # if len(maxList) > 1:
+            #
+            #     maxAmp = (maxList[-1]-maxList[-2])/np.linalg.norm(posList[-1]-posList[-2])*1e3
+            # else:
+            #     maxAmp = np.nan
+            #
+            # return np.abs(maxAmp)
 
-                maxAmp = (maxList[i]-maxList[i-1])/np.linalg.norm(posList[i]-posList[i-1])*1e3
-            else:
-                maxAmp = np.nan
+            print(segpositions)
 
+            return max,segpositions
 
             # return numNewSegs
