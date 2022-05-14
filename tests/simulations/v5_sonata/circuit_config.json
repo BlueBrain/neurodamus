@@ -7,7 +7,7 @@
   },
   "components": {
     "morphologies_dir": "$MORPHOLOGIES",
-    "biophysical_neuron_models_dir": "$BASE_DIR/components/biophysical_neuron_models"
+    "biophysical_neuron_models_dir": "$BASE_DIR/components/biophysical_model_templates"
   },
   "node_sets_file": "$BASE_DIR/node_sets.json",
   "networks": {
@@ -17,8 +17,6 @@
         "node_types_file": null,
         "populations": {
            "default": {
-              "morphologies_dir": "$MORPHOLOGIES",
-              "biophysical_neuron_models_dir": "$BASE_DIR/components/biophysical_model_templates",
               "alternate_morphologies": {
                  "neurolucida-asc": "$MORPHOLOGIES/ascii",
                  "h5v1": "$MORPHOLOGIES/h5v1"

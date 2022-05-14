@@ -163,7 +163,8 @@ class PointNeuronManager(CellManagerBase):
         gids = self.target_manager.get_target(target_spec).get_gids()
         for gid in gids:
             if gid in self.gid2cell:
-                report_conf.addPointReport(self.gid2cell[gid].section_ref, gid, use_coreneuron)
+                report_conf.addPointReport(self.gid2cell[gid].section_ref, gid, use_coreneuron,
+                                           self._population_name, self._local_nodes.offset)
 
 
 class PointNeuronConnection(ConnectionBase):

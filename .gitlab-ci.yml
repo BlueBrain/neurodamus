@@ -35,14 +35,27 @@ py38-full-spack:
       unstable:neurodamus-neocortex
       unstable:py-neurodamus  # needed for dependencies
 
+set_alt_branches:
+  script:
+    - grep '^[[:alnum:]_]*_BRANCH=' <<< "$CI_COMMIT_MESSAGE" > branch_variables.env || touch branch_variables.env
+    - . branch_variables.env
+    - echo "BLUECONFIGS_PIPELINE_BRANCH=$BLUECONFIGS_BRANCH" >> branch_variables.env
+    - cat branch_variables.env
+  artifacts:
+    reports:
+      dotenv: branch_variables.env
+
 blueconfig_tests:
   variables:
     bb5_build_dir: pipeline
-    PYNEURODAMUS_BRANCH: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    PY_NEURODAMUS_BRANCH: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    PARENT_COMMIT_MESSAGE: $CI_COMMIT_MESSAGE
   trigger:
     project: hpc/sim/blueconfigs
-    branch: $BLUECONFIGS_BRANCH
+    branch: $BLUECONFIGS_PIPELINE_BRANCH
     strategy: depend
+  needs:
+    - set_alt_branches
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:

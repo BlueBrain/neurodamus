@@ -12,6 +12,7 @@ from scipy.interpolate import interp1d, RegularGridInterpolator
 from neuron import h
 from scipy.spatial.transform import Rotation as R
 
+
 class SignalSource:
 
     def __init__(self, base_amp=0.0, rng=None):

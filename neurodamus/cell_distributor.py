@@ -85,15 +85,20 @@ class VirtualCellPopulation:
     """
     _total_count = 0
 
-    def __init__(self, population_name):
-        self._population_name = population_name
-        self._local_nodes = NodeSet().register_global(population_name or '')
+    def __init__(self, population_name, gids=None, circuit_target=None):
+        """Initializes a VirtualCellPopulation
+
+        A virtual manager will have minimal set of attributes, namely
+        the population name, the target name and the NodeSet
+        """
+        self.population_name = population_name
+        self.circuit_target = circuit_target
+        self.local_nodes = NodeSet(gids).register_global(population_name or '')
         VirtualCellPopulation._total_count += 1
         if VirtualCellPopulation._total_count > 1:
-            logging.warning("At the moment only a single Virtual Cell Population works with REPLAY")
+            logging.warning("For non-sonata circuit, "
+                            "only a single Virtual Cell Population works with REPLAY")
 
-    local_nodes = property(lambda self: self._local_nodes)
-    population_name = property(lambda self: self._population_name)
     is_default = property(lambda self: False)
     is_virtual = property(lambda self: True)
 
@@ -171,11 +176,10 @@ class CellManagerBase(object):
     # Compatibility with neurodamus-core (used by TargetManager, CompMapping)
     # Create hoc vector from numpy.array
     def getGidListForProcessor(self):
-        local_gids = self.local_nodes.final_gids()
-        from neuron import h
-        vec = h.Vector(local_gids.size)
-        vec.as_numpy()[:] = local_gids
-        return vec
+        return compat.hoc_vector(self.local_nodes.final_gids())
+
+    def get_final_gids(self):
+        return numpy.array(self.local_nodes.final_gids())
 
     def _init_config(self, circuit_conf, pop):
         if self._node_format == NodeFormat.SONATA:
@@ -188,10 +192,12 @@ class CellManagerBase(object):
             pop = circuit_conf._name
             logging.warning("(Compat) Assuming population name from Circuit: %s", pop)
         self._population_name = pop
-        # Base population should be registered as "" so it doesnt do offsetting
-        if not pop and not self.is_default:
-            raise Exception("Only the default population can be unnamed")
-        self._local_nodes = NodeSet().register_global("" if self.is_default else pop)
+        if not pop:
+            logging.warning("Could not discover population name. Assuming '' (empty)")
+            if not self.is_default:
+                raise Exception("Only the default population can be unnamed")
+        is_base_pop = self.is_default or circuit_conf.get("no_offset")
+        self._local_nodes = NodeSet().register_global(pop, is_base_pop)
 
     @classmethod
     def _get_sonata_population_name(self, node_file):
@@ -225,7 +231,7 @@ class CellManagerBase(object):
 
         if target_spec.name:
             logging.info(" -> Distributing '%s' target cells Round-Robin", target_spec)
-            target_gids = self._target_manager.get_target(target_spec).get_gids()
+            target_gids = self._target_manager.get_target(target_spec).get_raw_gids()
             gidvec, me_infos, full_size = loader_f(conf, target_gids, MPI.size, MPI.rank)
             total_cells = len(target_gids)
         else:
@@ -378,7 +384,7 @@ class GlobalCellManager:
     """
 
     def __init__(self):
-        self._cell_managers = []  # [(offset, manager)}
+        self._cell_managers = []
         self._binfo = None
         self._pc = Nd.pc
 
@@ -398,6 +404,9 @@ class GlobalCellManager:
 
         from functools import reduce
         return reduce(_hoc_append, (man.getGidListForProcessor() for man in self._cell_managers))
+
+    def get_final_gids(self):
+        return numpy.concatenate([man.get_final_gids() for man in self._cell_managers])
 
     def getMEType(self, gid):
         cell_managers_iter = iter(self._cell_managers)
@@ -431,6 +440,15 @@ class GlobalCellManager:
         if self._binfo:
             return self._binfo.thishost_gid(gid)
         return gid
+
+    def getPopulationInfo(self, gid):
+        cell_managers_iter = iter(self._cell_managers)
+        prev_manager = next(cell_managers_iter)  # base cell manager
+        for manager in cell_managers_iter:
+            if manager.local_nodes.offset > gid:
+                break
+            prev_manager = manager
+        return prev_manager.population_name, prev_manager.local_nodes.offset
 
 
 class CellDistributor(CellManagerBase):

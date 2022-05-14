@@ -15,6 +15,9 @@ from ..utils import compat
 from ..utils.logging import log_verbose
 from ..utils.pyutils import ConfigT
 
+EXCEPTION_NODE_FILENAME = ".exception_node"
+"""A file which controls which rank shows exception"""
+
 
 class LogLevel:
     ERROR_ONLY = 0
@@ -133,6 +136,7 @@ class _SimConfig(object):
     build_model = True
     simulate_model = True
     synapse_options = {}
+    is_sonata_config = False
 
     _validators = []
 
@@ -146,14 +150,14 @@ class _SimConfig(object):
         if not os.path.isfile(config_file):
             raise ConfigurationError("Config file not found: " + config_file)
         logging.info("Initializing Simulation Configuration and Validation")
-        is_sonata_config = config_file.endswith(".json")
+        cls.is_sonata_config = config_file.endswith(".json")
 
         log_verbose("ConfigFile: %s", config_file)
         log_verbose("CLI Options: %s", cli_options)
         cls.config_file = config_file
         cls._config_parser = cls._init_config_parser(config_file)
         cls._parsed_run = compat.Map(cls._config_parser.parsedRun)  # easy access to hoc Map
-        if not is_sonata_config:
+        if not cls.is_sonata_config:
             cls._blueconfig = BlueConfig(config_file)
         else:
             cls._blueconfig = cls._config_parser   # Please refactor me
@@ -174,7 +178,7 @@ class _SimConfig(object):
             validator(cls, run_conf)
 
         logging.info("Initializing hoc config objects")
-        if not is_sonata_config:
+        if not cls.is_sonata_config:
             cls._parsed_run.update(run_conf)  # sync hoc config
         cls._init_hoc_config_objs()
 
@@ -215,6 +219,8 @@ class _SimConfig(object):
 
         cls.rng_info = h.RNGSettings()
         cls.rng_info.interpret(parsed_run)
+        if parsed_run.exists("BaseSeed"):
+            logging.info("User-defined RNG base seed %s", parsed_run.valueOf("BaseSeed"))
 
         if cls._simconf.coreNeuronUsed():
             cls.coreneuron = h.CoreConfig(cls.output_root)
@@ -368,13 +374,21 @@ def _stimulus_params(config: _SimConfig, run_conf):
     non_negatives = ("Duration", "Delay", "Rate", "Width", "Lambda", "Weight",
                      "NumOfSynapses", "Seed",)
     valid_values = {
+<<<<<<< HEAD
         "Mode": ("Current", "Voltage", "Conductance","Extracellular"),
+=======
+        "Mode": ("Current", "Voltage", "Conductance", "spikes"),
+>>>>>>> main
         "Pattern": {
             "Hyperpolarizing", "Linear", "Noise", "Pulse", "RelativeLinear",
             "RelativeShotNoise", "SEClamp", "ShotNoise", "Sinusoidal",
             "SubThreshold", "SynapseReplay", "OrnsteinUhlenbeck",
             "NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace",
+<<<<<<< HEAD
             "AbsoluteShotNoise", "RelativeOrnsteinUhlenbeck","Extracellular"
+=======
+            "AbsoluteShotNoise", "RelativeOrnsteinUhlenbeck"
+>>>>>>> main
         }
     }
     deprecated_values = {

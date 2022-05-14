@@ -50,6 +50,7 @@ class StimulusManager:
         python_only_stims = ('ShotNoise', 'RelativeShotNoise', 'AbsoluteShotNoise',
                              'OrnsteinUhlenbeck', 'RelativeOrnsteinUhlenbeck','Extracellular') # Adds extracellular
 
+
         if SimConfig.cli_options.experimental_stims or \
                 (stim_t and stim_t.__name__ in python_only_stims):
             # New style Stim, in Python
@@ -75,6 +76,7 @@ class StimulusManager:
         Noise.stimCount = 0
         OrnsteinUhlenbeck.stimCount = 0
         Extracellular.stimCount = 0
+
 
     @classmethod
     def register_type(cls, stim_class):
@@ -126,16 +128,15 @@ class OrnsteinUhlenbeck(BaseStim):
                     continue
 
                 rng = random.Random123(seed1, seed2, seed3(gid))  # setup RNG
+
+                ou_args = (self.tau, self.sigma, self.mean, self.duration)
+                ou_kwargs = {'dt': self.dt, 'delay': self.delay, 'rng': rng}
                 # inject Ornstein-Uhlenbeck signal
                 if stim_info["Mode"] == "Conductance":
-                    cs = ConductanceSource.ornstein_uhlenbeck(self.tau, self.sigma, self.mean,
-                                                              self.duration, dt=self.dt,
-                                                              delay=self.delay, rng=rng,
+                    cs = ConductanceSource.ornstein_uhlenbeck(*ou_args, **ou_kwargs,
                                                               base_amp=self.reversal)
                 else:
-                    cs = CurrentSource.ornstein_uhlenbeck(self.tau, self.sigma, self.mean,
-                                                          self.duration, dt=self.dt,
-                                                          delay=self.delay, rng=rng)
+                    cs = CurrentSource.ornstein_uhlenbeck(*ou_args, **ou_kwargs)
                 # attach source to section
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
                 self.stimList.append(cs)  # save source
@@ -197,11 +198,16 @@ class RelativeOrnsteinUhlenbeck(OrnsteinUhlenbeck):
         self.mean_perc = float(stim_info["MeanPercent"])
         self.sigma_perc = float(stim_info["SDPercent"])
 
+
+        self.invRin_scaling = float(stim_info.get("InvRinScaling", 0.04))
+
+
         return True
 
     def compute_parameters(self, cell):
         threshold = cell.getThreshold()  # cell threshold current [nA]
-        invRin = 0.04 * threshold        # proxy for inverse input resistance [MOhm]
+
+        invRin = self.invRin_scaling * threshold       # proxy for inverse input resistance [MOhm]
 
         self.sigma = (self.sigma_perc / 100) * invRin  # signal stdev [uS]
         if self.sigma <= 0:
@@ -249,16 +255,16 @@ class ShotNoise(BaseStim):
                     continue
 
                 rng = random.Random123(seed1, seed2, seed3(gid))  # setup RNG
+                shotnoise_args = (self.tau_D, self.tau_R, self.rate,
+                                  self.amp_mean, self.amp_var, self.duration)
+                shotnoise_kwargs = {'dt': self.dt, 'delay': self.delay, 'rng': rng}
                 # generate shot noise current source
                 if stim_info["Mode"] == "Conductance":
-                    cs = ConductanceSource.shot_noise(self.tau_D, self.tau_R, self.rate,
-                                                      self.amp_mean, self.amp_var, self.duration,
-                                                      dt=self.dt, delay=self.delay, rng=rng,
+
+                    cs = ConductanceSource.shot_noise(*shotnoise_args, **shotnoise_kwargs,
                                                       base_amp=self.reversal)
                 else:
-                    cs = CurrentSource.shot_noise(self.tau_D, self.tau_R, self.rate,
-                                                  self.amp_mean, self.amp_var, self.duration,
-                                                  dt=self.dt, delay=self.delay, rng=rng)
+                    cs = CurrentSource.shot_noise(*shotnoise_args, **shotnoise_kwargs)
                 # attach current source to section
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
                 self.stimList.append(cs)  # save CurrentSource

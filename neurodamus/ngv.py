@@ -306,7 +306,8 @@ class NeuroGlialConnection(Connection):
             netcon.delay = 0.05
             self._netcons.append(netcon)
 
-            # Second netcon (last glut_list)
+            # Soma netcon (last glut_list)
+            logging.debug("[NGV] Conn %s linking synapse id %d to Astrocyte", self, syn_gid)
             netcon = pc.gid_connect(syn_gid, glut_list[-1])
             netcon.delay = 0.05
             self._netcons.append(netcon)
@@ -388,7 +389,8 @@ class NeuroGliaConnManager(ConnectionManagerBase):
                          base_connections=base_manager.get_population(0),
                          conn_type="NeuronGlia connections")
 
-        logging.info("Target cells coupled to: %s", NeuroGlialConnection.neurons_attached)
+        if not USE_COMPAT_SYNAPSE_ID:
+            logging.info("Target cells coupled to: %s", NeuroGlialConnection.neurons_attached)
 
         if NeuroGlialConnection.neurons_not_found:
             logging.warning("Missing cells to couple Glia to: %d",
@@ -479,8 +481,10 @@ class GlioVascularManager(ConnectionManagerBase):
         # sonata files can have multiple populations. In building we only use one
         # per file, hence this two lines below to access the first and only pop in
         # the file
-        storage = libsonata.EdgeStorage(circuit_conf["Path"])
-        self._gliovascular = storage.open_population(list(storage.population_names)[0])
+        edge_file, *pop = sonata_source.split(":")
+        storage = libsonata.EdgeStorage(edge_file)
+        pop_name = pop[0] if pop else list(storage.population_names)[0]
+        self._gliovascular = storage.open_population(pop_name)
 
     def create_connections(self, *_, **__):
         logging.info("Creating GlioVascular virtual connections")

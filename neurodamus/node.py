@@ -29,7 +29,7 @@ from .replay import SpikeManager
 from .stimulus_manager import StimulusManager
 from .modification_manager import ModificationManager
 from .neuromodulation_manager import NeuroModulationManager
-from .target_manager import NodesetTarget, TargetSpec, TargetManager
+from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.timeit import TimerManager, timeit, timeit_rank0
@@ -47,6 +47,7 @@ class METypeEngine(EngineBase):
         "GapJunction": GapJunctionManager,
         "NeuroModulation": NeuroModulationManager
     }
+    CircuitPrecedence = 0
 
 
 class CircuitManager:
@@ -64,7 +65,7 @@ class CircuitManager:
         self.edge_managers = defaultdict(list)  # dict {(src_pop, dst_pop) -> list[synapse_manager]}
         self.alias = {}          # dict {name -> pop_name}
         self.global_manager = GlobalCellManager()
-        self.global_target = NodesetTarget.create_global_target()
+        self.global_target = TargetManager.create_global_target()
 
     def initialized(self):
         return bool(self.node_managers)
@@ -76,14 +77,31 @@ class CircuitManager:
         self.node_managers[pop] = cell_manager
         self.alias[cell_manager.circuit_name] = pop
         self.global_manager.register_manager(cell_manager)
-        self.global_target.nodesets.append(cell_manager.local_nodes)
+        if cell_manager.is_initialized():
+            self.global_target.append_nodeset(cell_manager.local_nodes)
+
+    def _new_virtual_node_manager(self, circuit):
+        """Instantiate a new virtual node manager explicitly."""
+        # Only happens with Sonata config files
+        import libsonata
+        storage = libsonata.NodeStorage(circuit.CellLibraryFile)
+        pop_name, _ = circuit.CircuitTarget.split(":")  # Sonata config fills population
+        node_size = storage.open_population(pop_name).size
+        gid_vec = list(range(1, node_size+1))
+        virtual_cell_manager = VirtualCellPopulation(pop_name, gid_vec)
+        self.virtual_node_managers[pop_name] = virtual_cell_manager
+        self.global_target.append_nodeset(virtual_cell_manager.local_nodes)
+        return virtual_cell_manager
 
     def new_node_manager(self, circuit, *args, **kwargs):
+        if circuit.get("PopulationType") == "virtual":
+            return self._new_virtual_node_manager(circuit)
+
         engine = circuit.Engine or METypeEngine
         CellManagerCls = engine.CellManagerCls or SynapseRuleManager
         cell_manager = CellManagerCls(circuit, *args, **kwargs)
-        self.register_node_manager(cell_manager)
         cell_manager.load_nodes()
+        self.register_node_manager(cell_manager)
         return cell_manager
 
     def get_node_manager(self, name):
@@ -106,9 +124,8 @@ class CircuitManager:
                     if type(manager) == conn_type]
         return managers[0] if managers else None
 
-    def get_create_edge_manager(self, conn_type, source, destination, *args,
-                                _orig_target_pop=None,
-                                **kw):
+    def get_create_edge_manager(self, conn_type, source, destination, src_target,
+                                manager_args=(), **kw):
         source, destination = self.unalias_pop_keys(source, destination)
         manager = self.get_edge_manager(source, destination, conn_type)
         if manager:
@@ -116,7 +133,7 @@ class CircuitManager:
 
         if not self.has_population(destination):
             # This is likely an error, except...
-            if _orig_target_pop is None and self.has_population(''):
+            if src_target.population == '' and self.has_population(''):
                 logging.warning("Sonata Edges target population %s was not found. "
                                 "Since base population is unknown, assuming that's the target.\n"
                                 "To silence this warning please switch to Sonata nodes or specify "
@@ -128,16 +145,16 @@ class CircuitManager:
             else:
                 raise ConfigurationError("Can't find projection Node population: %s", destination)
 
-        src_manager = self.node_managers.get(source)
+        src_manager = self.node_managers.get(source) or self.virtual_node_managers.get(source)
         if src_manager is None:  # src manager may not exist -> virtual
-            logging.info(" * No known population %s. Creating Virtual src for projection", source)
+            log_verbose("No known population %s. Creating Virtual src for projection", source)
             if conn_type not in (SynapseRuleManager, _ngv.GlioVascularManager):
                 raise ConfigurationError("Custom connections require instantiated source nodes")
-            src_manager = VirtualCellPopulation(source)
+            src_manager = VirtualCellPopulation(source, None, src_target.name)
 
         target_cell_manager = kw["cell_manager"] = self.node_managers[destination]
         kw["src_cell_manager"] = src_manager
-        manager = conn_type(*args, **kw)
+        manager = conn_type(*manager_args, **kw)
         self.edge_managers[(source, destination)].append(manager)
         target_cell_manager.register_connection_manager(manager)
         return manager
@@ -260,10 +277,18 @@ class Node:
 
     # -
     def load_targets(self):
+        """Initialize targets. Nodesets are loaded on demand.
+        """
+        # If a base population is specified register it before targets to create on demand
+        base_population = self._run_conf.get("BasePopulation")
+        if base_population:
+            logging.info("Default population selected: %s", base_population)
+            PopulationNodes.create_pop(base_population, is_base_pop=True)
         self._target_manager.load_targets(self._base_circuit)
         for xcircuit in self._extra_circuits.values():
             self._target_manager.load_targets(xcircuit)
-        self._target_manager.register_target(self._circuits.global_target, global_target=True)
+        # Register the global target
+        self._target_manager.register_target(self._circuits.global_target)
 
     # -
     @mpi_no_errors
@@ -280,10 +305,13 @@ class Node:
         # Info about the cells to be distributed
         target_spec = self._target_spec
         target = self.target_manager.get_target(target_spec)
-        cell_count = target.gid_count()
-        if cell_count > 100 * MPI.size:
-            logging.warning("Your simulation has a very high count of cells per CPU. "
-                            "Please consider launching it in a larger MPI cluster")
+        cell_count = None
+
+        if not target.is_void():
+            cell_count = target.gid_count()
+            if cell_count > 100 * MPI.size:
+                logging.warning("Your simulation has a very high count of cells per CPU. "
+                                "Please consider launching it in a larger MPI cluster")
 
         # Check / set load balance mode
         lb_mode = LoadBalanceMode.parse(self._run_conf.get("RunMode"))
@@ -298,8 +326,11 @@ class Node:
             logging.info("Load Balancing ENABLED. Mode: WholeCell")
 
         elif lb_mode is None:
-            lb_mode, reason = LoadBalanceMode.auto_select(SimConfig.use_neuron, cell_count,
-                                                          self._run_conf["Duration"])
+            if cell_count is None:
+                lb_mode, reason = LoadBalanceMode.RoundRobin, "No target set, unknown cell count"
+            else:
+                lb_mode, reason = LoadBalanceMode.auto_select(SimConfig.use_neuron, cell_count,
+                                                              self._run_conf["Duration"])
             if lb_mode != LoadBalanceMode.RoundRobin:
                 logging.warning("Load Balance AUTO-SELECTED: %s. Reason: %s", lb_mode.name, reason)
 
@@ -354,13 +385,17 @@ class Node:
             logging.info("Load-balance object not present. Continuing Round-Robin...")
 
         # Always create a cell_distributor even if engine is disabled.
-        # Extra circuits may use it and not None is a sign of initialization done
+        # Fake CoreNeuron cells are created in it
         cell_distributor = CellDistributor(self._base_circuit, self._target_manager, self._run_conf)
+        cell_distributor.load_nodes(load_balance)  # no-op if circuit is disabled
         self._circuits.register_node_manager(cell_distributor)
-        cell_distributor.load_nodes(load_balance)
 
         # SUPPORT for extra/custom Circuits
-        for name, circuit in self._extra_circuits.items():
+        circuits_sorted = sorted(
+            self._extra_circuits.items(),
+            key=lambda x: (x[1].Engine.CircuitPrecedence if x[1].Engine else 0, x[0])
+        )
+        for name, circuit in circuits_sorted:
             log_stage("Circuit %s", name)
             self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
 
@@ -369,6 +404,9 @@ class Node:
         for cell_manager in self._circuits.all_node_managers():
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
             cell_manager.finalize()
+
+        # Done main targets. We can stop offsetting
+        PopulationNodes.freeze_offsets()
 
     # -
     @mpi_no_errors
@@ -382,26 +420,36 @@ class Node:
         target_manager = self._target_manager
         SimConfig.update_connection_blocks(self._circuits.alias)
 
-        def create_synapase_manager(ctype, conf, *args, population=None, **kwargs):
+        def create_synapase_manager(ctype, conf, *args, **kwargs):
+            """Create a synapse manager for intra-circuit connectivity"""
             log_stage("Circuit %s", conf._name or "(default)")
             if not conf.get("nrnPath"):
                 logging.info(" => Circuit internal connectivity has been DISABLED")
                 return
-            src, dst = population, population
-            if not population:
-                edge_file, *pop = conf.get("nrnPath").split(":")
-                src, dst = edge_node_pop_names(edge_file, pop[0] if pop else None)
-            kwargs["_orig_target_pop"] = population
-            manager = self._circuits.get_create_edge_manager(ctype, src, dst, conf, *args, **kwargs)
+
+            c_target = TargetSpec(conf.get("CircuitTarget"))
+            if c_target.population is None:
+                c_target.population = self._circuits.alias.get(conf._name)
+            edge_file, *pop = conf.get("nrnPath").split(":")
+            if not os.path.isabs(edge_file):
+                edge_file = find_input_file(edge_file)
+            src, dst = edge_node_pop_names(edge_file, pop[0] if pop else None)
+
+            if src and dst and src != dst:
+                raise ConfigurationError("Inner connectivity with different populations")
+
+            manager = self._circuits.get_create_edge_manager(
+                ctype, src, dst, c_target, (conf, *args), **kwargs
+            )
             self._load_connections(conf, manager)  # load internal connections right away
 
         create_synapase_manager(SynapseRuleManager, self._base_circuit, target_manager,
                                 load_offsets=self._is_ngv_run)
 
-        for c_name, circuit in self._extra_circuits.items():
+        for circuit in self._extra_circuits.values():
             Engine = circuit.Engine or METypeEngine
             SynManagerCls = Engine.InnerConnectivityCls
-            create_synapase_manager(SynManagerCls, circuit, target_manager, population=c_name)
+            create_synapase_manager(SynManagerCls, circuit, target_manager)
 
         log_stage("Handling projections...")
         for pname, projection in SimConfig.projections.items():
@@ -409,11 +457,25 @@ class Node:
 
         log_stage("Configuring connections...")
         for conn_conf in SimConfig.connections.values():
-            src_pop = TargetSpec(conn_conf["Source"]).population
-            dst_pop = TargetSpec(conn_conf["Destination"]).population
-            for conn_manager in self._circuits.get_edge_managers(src_pop, dst_pop):
-                logging.debug("Using connection manager: %s", conn_manager)
-                conn_manager.configure_connections(conn_conf)
+            self._process_connection_configure(conn_conf)
+
+        logging.info("Done, but waiting for all ranks")
+
+    def _process_connection_configure(self, conn_conf):
+        source_t = TargetSpec(conn_conf["Source"])
+        dest_t = TargetSpec(conn_conf["Destination"])
+        source_t.population, dest_t.population = self._circuits.unalias_pop_keys(
+            source_t.population, dest_t.population
+        )
+        src_target = self.target_manager.get_target(source_t)
+        dst_target = self.target_manager.get_target(dest_t)
+        # Loop over population pairs
+        for src_pop in src_target.populations:
+            for dst_pop in dst_target.populations:
+                # Loop over all managers having connections between the populations
+                for conn_manager in self._circuits.get_edge_managers(src_pop, dst_pop):
+                    logging.debug("Using connection manager: %s", conn_manager)
+                    conn_manager.configure_connections(conn_conf)
 
     # -
     def _load_connections(self, circuit_conf, conn_manager):
@@ -429,6 +491,7 @@ class Node:
             conn_manager.create_connections()
 
     # -
+    @mpi_no_errors
     def _load_projections(self, pname, projection):
         """Check for Projection blocks
         """
@@ -444,22 +507,32 @@ class Node:
         if not os.path.exists(ppath):
             ppath = self._find_projection_file(ppath)
 
+        logging.info("Processing Edge file: %s", ppath)
         source_t = TargetSpec(projection.get("Source"))
         dest_t = TargetSpec(projection.get("Destination"))
+
+        # Update the target spec with the actual populations
         src_pop, dst_pop = edge_node_pop_names(
             ppath, edge_pop_name, source_t.population, dest_t.population
         )
-        src_pop, dst_pop = self._circuits.unalias_pop_keys(src_pop, dst_pop)  # un-alias
-        logging.info(" * %s (Type: %s, Src: %s, Dst: %s)", pname, ptype, src_pop, dst_pop)
+        source_t.population, dest_t.population = self._circuits.unalias_pop_keys(src_pop, dst_pop)
+        src_target = self.target_manager.get_target(source_t)
+        dst_target = self.target_manager.get_target(dest_t)
 
-        conn_manager = self._circuits.get_create_edge_manager(
-            ptype_cls, src_pop, dst_pop, projection, target_manager,
-            _orig_target_pop=dest_t.population
-        )
-        logging.debug("Using connection manager: %s", conn_manager)
-        proj_source = ":".join([ppath] + pop_name)
-        conn_manager.open_edge_location(proj_source, projection, src_name=src_pop)
-        conn_manager.create_connections(source_t.name, dest_t.name)
+        # If the src_pop is not a known node population, allow creating a Virtual one
+        src_populations = src_target.populations or [source_t.population]
+
+        for src_pop in src_populations:
+            for dst_pop in dst_target.populations:
+                logging.info(" * %s (Type: %s, Src: %s, Dst: %s)", pname, ptype, src_pop, dst_pop)
+                conn_manager = self._circuits.get_create_edge_manager(
+                    ptype_cls, src_pop, dst_pop, source_t,
+                    (projection, target_manager)  # args to ptype_cls if creating
+                )
+                logging.debug("Using connection manager: %s", conn_manager)
+                proj_source = ":".join([ppath] + pop_name)
+                conn_manager.open_edge_location(proj_source, projection, src_name=src_pop)
+                conn_manager.create_connections(source_t.name, dest_t.name)
 
     # -
     def _find_projection_file(self, proj_path):
@@ -614,18 +687,20 @@ class Node:
                     log_verbose("Appending to pattern.dat")
                     with open(self._core_replay_file, "a") as f:
                         spike_manager.dump_ascii(f)
-        else:
-            ptype_cls = EngineBase.connection_types.get(connectivity_type)
-            src_target = TargetSpec(source)
-            dst_target = TargetSpec(target)
-            conn_manager = self._circuits.get_edge_manager(src_target.population,
-                                                           dst_target.population,
-                                                           ptype_cls)
-            if not conn_manager:
-                logging.error("No edge manager found among populations %s -> %s",
-                              src_target.population, dst_target.population)
-                raise ConfigurationError("Unknown replay pathway. Check Source / Target")
-            conn_manager.replay(spike_manager, src_target.name, dst_target.name, delay)
+            return
+
+        ptype_cls = EngineBase.connection_types.get(connectivity_type)
+        src_target = self.target_manager.get_target(source)
+        dst_target = self.target_manager.get_target(target)
+
+        for src_pop in src_target.populations:
+            for dst_pop in dst_target.populations:
+                conn_manager = self._circuits.get_edge_manager(src_pop, dst_pop, ptype_cls)
+                if not conn_manager:
+                    logging.error("No edge manager found among populations %s -> %s",
+                                  src_pop, dst_pop)
+                    raise ConfigurationError("Unknown replay pathway. Check Source / Target")
+                conn_manager.replay(spike_manager, source, target, delay)
 
     # -
     @mpi_no_errors
@@ -708,18 +783,15 @@ class Node:
                 continue
 
             target_population = rep_target.population or self._target_spec.population
-            population_offset = 0
             cell_manager = self._circuits.get_node_manager(target_population)
             offset = pop_offsets[target_population] if target_population in pop_offsets \
                      else pop_offsets[alias_pop[target_population]]
             if offset > 0:  # dont reset if not needed (recent hoc API)
                 target.set_offset(offset)
-                population_offset = offset
 
             report_on = rep_conf["ReportOn"]
             rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
-                                    "start, end, output_dir, electrode, scaling, isc, "
-                                    "population_name, population_offset")(
+                                    "start, end, output_dir, electrode, scaling, isc")(
                 rep_name,
                 rep_type,  # rep type is case sensitive !!
                 report_on,
@@ -731,9 +803,7 @@ class Node:
                 SimConfig.output_root,
                 electrode,
                 Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
-                rep_conf.get("ISC", ""),
-                population_name,
-                population_offset
+                rep_conf.get("ISC", "")
             )
 
             if SimConfig.use_coreneuron and MPI.rank == 0:
@@ -779,11 +849,29 @@ class Node:
                     else:
                         target_type = 0
 
+                # for sonata config, compute target_type from user inputs
+                if "Sections" in rep_conf and "Compartments" in rep_conf:
+                    def _compute_corenrn_target_type(section_type, compartment_type):
+                        sections = ["all", "soma", "axon", "dend", "apic"]
+                        compartments = ["center", "all"]
+                        if section_type not in sections:
+                            raise ConfigurationError("Report: invalid section type '%s'",
+                                                     section_type)
+                        if compartment_type not in compartments:
+                            raise ConfigurationError("Report: invalid compartment type '%s'",
+                                                     compartment_type)
+                        if section_type == "all":  # for "all sections", support only target_type=0
+                            return 0
+                        return sections.index(section_type)+1+4*compartments.index(compartment_type)
+
+                    section_type = rep_conf.get("Sections")
+                    compartment_type = rep_conf.get("Compartments")
+                    target_type = _compute_corenrn_target_type(section_type, compartment_type)
+
                 core_report_params = (
                     (rep_name, rep_target.name, rep_type, report_on.replace(" ", ","))
                     + rep_params[3:5] + (target_type,) + rep_params[5:8]
-                    + (target.completegids(), SimConfig.corenrn_buff_size, population_name)
-                    + (population_offset,)
+                    + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
                 )
                 SimConfig.coreneuron.write_report_config(*core_report_params)
 
@@ -798,21 +886,30 @@ class Node:
                 # For summation targets - check if we were given a Cell target because we really
                 # want all points of the cell which will ultimately be collapsed to a single value
                 # on the soma. Otherwise, get target points as normal.
+                sections = rep_conf.get("Sections")
+                compartments = rep_conf.get("Compartments")
+                is_cell_target = target.isCellTarget(sections=sections, compartments=compartments)
                 points = self._target_manager.get_target_points(target, global_manager,
-                                                                rep_type.lower() == "summation")
+                                                                rep_type.lower() == "summation",
+                                                                sections=sections,
+                                                                compartments=compartments)
                 for point in points:
                     gid = point.gid
+                    pop_name, pop_offset = global_manager.getPopulationInfo(gid)
                     cell = global_manager.getCell(gid)
                     spgid = global_manager.getSpGid(gid)
 
                     # may need to take different actions based on report type
                     if rep_type.lower() == "compartment":
-                        report.addCompartmentReport(cell, point, spgid, SimConfig.use_coreneuron)
+                        report.addCompartmentReport(
+                            cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
                     elif rep_type.lower() == "summation":
                         report.addSummationReport(
-                            cell, point, target.isCellTarget(), spgid, SimConfig.use_coreneuron)
+                            cell, point, is_cell_target, spgid, SimConfig.use_coreneuron,
+                            pop_name, pop_offset)
                     elif rep_type.lower() == "synapse":
-                        report.addSynapseReport(cell, point, spgid, SimConfig.use_coreneuron)
+                        report.addSynapseReport(
+                            cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
 
             # Custom reporting. TODO: Move above processing to SynRuleManager.enable_report
             cell_manager.enable_report(report, rep_target, SimConfig.use_coreneuron)
@@ -829,11 +926,19 @@ class Node:
         if SimConfig.use_coreneuron:
             # write spike populations
             if hasattr(SimConfig.coreneuron, "write_population_count"):
-                SimConfig.coreneuron.write_population_count(len(pop_offsets))
-            for key, value in pop_offsets.items():
-                population_name = key or "All"
-                population_offset = value
-                SimConfig.coreneuron.write_spike_population(population_name, population_offset)
+                # Do not count populations with None pop_name
+                pop_count = (len(pop_offsets) - 1 if None in pop_offsets else len(pop_offsets))
+                SimConfig.coreneuron.write_population_count(pop_count)
+            for pop_name, offset in pop_offsets.items():
+                if pop_name is not None:
+                    SimConfig.coreneuron.write_spike_population(pop_name or "All", offset)
+            spike_path = self._run_conf.get("SpikesFile")
+            if spike_path is not None:
+                # Get only the spike file name
+                file_name = spike_path.split('/')[-1]
+            else:
+                file_name = "out.h5"
+            SimConfig.coreneuron.write_spike_filename(file_name)
 
         if not SimConfig.use_coreneuron:
             # Report Buffer Size hint in MB.
@@ -857,15 +962,21 @@ class Node:
         """Iterate over any NeuronConfigure blocks from the BlueConfig.
         These are simple hoc statements that can be executed with minimal substitutions
         """
-        logging.info("Executing neuron configures")
+        printed_warning = False
+
         for config in SimConfig.configures.values():
+            if not printed_warning:
+                logging.warning("NeuronConfigure block is deprecated")
+                printed_warning = True
+
             target_name = config.get("Target").s
             configure_str = config.get("Configure").s
             log_verbose("Apply configuration \"%s\" on target %s",
                         config.get("Configure").s, target_name)
 
             points = self._target_manager.get_target_points(target_name,
-                                                            self._circuits.base_cell_manager)
+                                                            self._circuits.base_cell_manager,
+                                                            cell_use_compartment_cast=True)
             # iterate the pointlist and execute the command on the section
             for tpoint_list in points:
                 for sec_i, sc in enumerate(tpoint_list.sclst):
@@ -965,10 +1076,11 @@ class Node:
         # create a spike_id vector which stores the pairs for spikes and timings for
         # every engine
         for cell_manager in self._circuits.all_node_managers():
-            self._spike_populations.append(
-                (cell_manager.population_name, cell_manager.local_nodes.offset))
-            self._spike_vecs.append(cell_manager.record_spikes() if cell_manager.record_spikes()
-                                    else (Nd.Vector(), Nd.Vector()))
+            if cell_manager.population_name is not None:
+                self._spike_populations.append(
+                    (cell_manager.population_name, cell_manager.local_nodes.offset))
+                self._spike_vecs.append(cell_manager.record_spikes() if cell_manager.record_spikes()
+                                        else (Nd.Vector(), Nd.Vector()))
 
         self._pc.timeout(200)  # increase by 10x
 
@@ -1255,8 +1367,14 @@ class Node:
         # SONATA SPIKES
         if hasattr(self._sonatareport_helper, "create_spikefile"):
             # Write spike report for multiple populations if exist
+            spike_path = self._run_conf.get("SpikesFile")
+            if spike_path is not None:
+                # Get only the spike file name
+                file_name = spike_path.split('/')[-1]
+            else:
+                file_name = "out.h5"
             # create a sonata spike file
-            self._sonatareport_helper.create_spikefile(output_root)
+            self._sonatareport_helper.create_spikefile(output_root, file_name)
             # write spikes per population
             for (population, population_offset), (spikevec, idvec) in zip(self._spike_populations,
                                                                           self._spike_vecs):
@@ -1460,13 +1578,25 @@ class Neurodamus(Node):
     # -
     def _instantiate_simulation(self):
         self.load_targets()
-        target: NodesetTarget = self._target_manager.get_target(self._target_spec)
-        cell_count = target.gid_count()
-        logging.info("Simulation target: %s, Cell count: %d", target.name, cell_count)
+
+        # Check connection block configuration and raise warnings for overriding parameters
+        SimConfig.check_connections_configure(self._target_manager)
 
         # Check if user wants to build the model in several steps (only for CoreNeuron)
-        target = TargetSpec(self._run_conf.get("CircuitTarget", "Mosaic")).name
         n_cycles = SimConfig.modelbuilding_steps
+
+        # Without multi-cycle, it's a trivial model build. sub_targets is False
+        if n_cycles == 1:
+            self._build_model()
+            return
+
+        if self._run_conf["CircuitPath"] in (None, False):
+            raise ConfigurationError("Multi building steps requires a base circuit")
+
+        target = self._target_manager.get_target(self._target_spec)
+        target_name = self._target_spec.name
+        cell_count = target.gid_count()
+        logging.info("Simulation target: %s, Cell count: %d", target_name, cell_count)
 
         if SimConfig.use_coreneuron and cell_count/n_cycles < MPI.size and cell_count > 0:
             # coreneuron with no. ranks >> no. cells
@@ -1480,17 +1610,12 @@ class Neurodamus(Node):
                                 max_num_cycles)
                 n_cycles = max_num_cycles
 
-        sub_targets = self._target_manager.generate_subtargets(target, n_cycles)
-
-        # Check connection block configuration and raise warnings for overriding parameters
-        SimConfig.check_connections_configure(self._target_manager)
-
-        # Without multi-cycle, it's a trivial model build. sub_targets is False
         if n_cycles == 1:
             self._build_model()
             return
 
         logging.info("MULTI-CYCLE RUN: {} Cycles".format(n_cycles))
+        sub_targets = self._target_manager.generate_subtargets(target_name, n_cycles)
 
         tmp_target_spec = TargetSpec(self._run_conf["CircuitTarget"])
         TimerManager.archive(archive_name="Before Cycle Loop")

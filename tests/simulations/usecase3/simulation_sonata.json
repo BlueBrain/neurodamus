@@ -5,7 +5,8 @@
         "$INPUT_DIR": "./"
     },
     "node_sets_file": "nodesets.json",
-    "node_set": "l4mc",
+    "target_simulator": "NEURON",
+    "node_set": "l4pc",
     "run": {
         "tstart": 0,
         "tstop": 50.0,
@@ -15,17 +16,26 @@
     "output": {
         "output_dir": "$OUTPUT_DIR",
         "spikes_file": "spikes.h5",
-        "spikes_sort_order": "time"
+        "spikes_sort_order": "by_time"
     },
     "reports": {
         "soma_report": {
-            "cells": "l4mc",
+            "type": "compartment",
+            "cells": "l4pc",
             "variable_name": "v",
-            "sections": "soma"
+            "sections": "soma",
+            "dt": 0.1,
+            "start_time": 0.0,
+            "end_time": 50.0
         },
         "compartment_report": {
+            "type": "compartment",
+            "cells": "l4pc",
             "variable_name": "v",
-            "sections": "all"
+            "sections": "all",
+            "dt": 0.1,
+            "start_time": 0.0,
+            "end_time": 10.0
         }
     }
 }

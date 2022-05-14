@@ -6,13 +6,14 @@ from __future__ import absolute_import
 import logging
 import os
 import sys
+import time
 from docopt import docopt
 from os.path import abspath
-from pprint import pprint
+from pathlib import Path
 
 from . import Neurodamus
-from .core import MPI
-from .core.configuration import ConfigurationError, LogLevel
+from .core import MPI, OtherRankError
+from .core.configuration import ConfigurationError, LogLevel, EXCEPTION_NODE_FILENAME
 from .hocify import Hocify
 from .utils.pyutils import docopt_sanitize
 
@@ -58,10 +59,11 @@ def neurodamus(args=None):
         if MPI._rank == 0:           # Use _rank so that we avoid init
             logging.error(str(e))
         return 1
+    except OtherRankError:
+        return 1  # no need for _mpi_abort, error is being handled by all ranks
     except Exception:
-        logging.critical("Unhandled Exception. Terminating...", exc_info=(MPI._rank == 0))
-        _mpi_abort()
-
+        show_exception_abort("Unhandled Exception. Terminating...", sys.exc_info())
+        return 1  # some ranks don't mpi_abort
     return 0
 
 
@@ -100,8 +102,34 @@ def _pop_log_level(options):
     elif options.pop("verbose", False):
         log_level = LogLevel.VERBOSE
     if log_level >= 3:
+        from pprint import pprint
         pprint(options)
     return log_level
+
+
+def show_exception_abort(err_msg, exc_info):
+    """Show an exception info in only one rank
+
+    Several ranks are likely to be in sync so a simple touch wont work.
+    Processes that dont see any file will register (append) their rank id
+    First one is elected to print
+    """
+    err_file = Path(EXCEPTION_NODE_FILENAME)
+    ALL_RANKS_SYNC_WINDOW = 5
+
+    if err_file.exists():
+        return 1  # Dont mpi_abort here, otherwise other ranks wont process the code below
+
+    with open(err_file, 'a') as f:
+        f.write(str(MPI.rank) + "\n")
+    time.sleep(ALL_RANKS_SYNC_WINDOW)  # give time for all ranks, avoid split-brain
+
+    with open(err_file, 'r') as f:
+        line0 = open(err_file).readline().strip()
+    if str(MPI.rank) == line0:
+        logging.critical(err_msg, exc_info=exc_info)
+
+    _mpi_abort()  # abort all ranks which have waited. Seems to help avoiding MPT stack
 
 
 def _attempt_launch_special(config_file):
