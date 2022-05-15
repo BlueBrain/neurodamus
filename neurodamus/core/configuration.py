@@ -374,21 +374,15 @@ def _stimulus_params(config: _SimConfig, run_conf):
     non_negatives = ("Duration", "Delay", "Rate", "Width", "Lambda", "Weight",
                      "NumOfSynapses", "Seed",)
     valid_values = {
-<<<<<<< HEAD
-        "Mode": ("Current", "Voltage", "Conductance","Extracellular"),
-=======
-        "Mode": ("Current", "Voltage", "Conductance", "spikes"),
->>>>>>> main
+        "Mode": ("Current", "Voltage", "Conductance","Extracellular","spikes"),
+
         "Pattern": {
             "Hyperpolarizing", "Linear", "Noise", "Pulse", "RelativeLinear",
             "RelativeShotNoise", "SEClamp", "ShotNoise", "Sinusoidal",
             "SubThreshold", "SynapseReplay", "OrnsteinUhlenbeck",
             "NPoisson", "NPoissonInhomogeneous", "ReplayVoltageTrace",
-<<<<<<< HEAD
             "AbsoluteShotNoise", "RelativeOrnsteinUhlenbeck","Extracellular"
-=======
-            "AbsoluteShotNoise", "RelativeOrnsteinUhlenbeck"
->>>>>>> main
+
         }
     }
     deprecated_values = {

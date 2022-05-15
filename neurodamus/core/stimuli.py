@@ -730,8 +730,6 @@ class ElectrodeSource(SignalSource):
 
     def interp_seg_positions(self,section,x):
 
-        print('x is '+str(x))
-
 
         n3d = section.n3d()
 
@@ -766,8 +764,7 @@ class ElectrodeSource(SignalSource):
                 zpos.append(section.z3d(n))
                 lens.append(section.arc3d(n)/section.L)
 
-        print('xpos is')
-        print(xpos)
+
         fX = interp1d(lens,xpos)
         segX = fX(x)
         fY = interp1d(lens,ypos)
@@ -953,7 +950,7 @@ class RealElectrode(ElectrodeSource):
 
 
 
-    def attach_to(self,section,**kw):
+    def attach_to(self,section,x,**kw):
 
         section.insert('extracellular')
 
@@ -963,112 +960,104 @@ class RealElectrode(ElectrodeSource):
         posList = []
         maxList = []
 
-        i = 0
-        for seg in section:
+        # for seg in section:
 
-            print(section.name())
-            print(section.nseg)
-
-            print('i is '+str(i))
+        seg = section(x)
 
 
 
+        if 'soma' in section.name():
 
-            if 'soma' in section.name():
+            segpositions = self.get_soma_position(section)
 
-                segpositions = self.get_soma_position(section)
-
-                self.soma_position = segpositions.copy()
-            else:
-                segpositions = self.interp_seg_positions(section,float(i)/float(section.nseg))
-
-            i += 1
-
-            print('i is '+str(i))
+            self.soma_position = segpositions.copy()
+        else:
+            segpositions = self.interp_seg_positions(section,x)
 
 
 
-            if isinstance(self.offset,np.ndarray):
-
-                segpositions -= self.soma_position.copy()
 
 
+        if isinstance(self.offset,np.ndarray):
 
-                segpositions += self.offset * 1e3 # offset in mm converted to um
-                self.new_soma_pos = self.offset *1e3
-
-                posList.append(segpositions)
+            segpositions -= self.soma_position.copy()
 
 
-            scaleFac = self.interpolate_potentials(segpositions)*1e3 #(1e3 to go from V to mV)
+
+            segpositions += self.offset * 1e3 # offset in mm converted to um
+            self.new_soma_pos = self.offset *1e3
+
+            posList.append(segpositions)
+
+
+        scaleFac = self.interpolate_potentials(segpositions)*1e3 #(1e3 to go from V to mV)
 
 
 
 
 
 
-            if 'TI' in self.type:
+        if 'TI' in self.type:
 
 
-                field1 = self.field1 * scaleFac[0]
-                field2 = self.field2 * scaleFac[-1]
-
-
-
-                field = field1 + field2
+            field1 = self.field1 * scaleFac[0]
+            field2 = self.field2 * scaleFac[-1]
 
 
 
-                field = self.apply_ramp(field,ramp_up_number,ramp_down_number)
+            field = field1 + field2
 
 
-                segVec = h.Vector()
-                segVec = segVec.from_python(field)
 
-                # if 'soma' in section.name():
+            field = self.apply_ramp(field,ramp_up_number,ramp_down_number)
 
 
-                    # np.save('field.npy',field)
+            segVec = h.Vector()
+            segVec = segVec.from_python(field)
 
-            elif self.type == 'Sinusoid':
-
-                segVec = h.Vector()
-
-                newstimVec = self.stim_vec.to_python()
+            # if 'soma' in section.name():
 
 
-                newstimVec = self.apply_ramp(newstimVec,ramp_up_number,ramp_down_number)
+                # np.save('field.npy',field)
 
-                for v in newstimVec:
-                    segVec.append(v)
+        elif self.type == 'Sinusoid':
+
+            segVec = h.Vector()
+
+            newstimVec = self.stim_vec.to_python()
 
 
-                segVec.mul(scaleFac[0])
+            newstimVec = self.apply_ramp(newstimVec,ramp_up_number,ramp_down_number)
+
+            for v in newstimVec:
+                segVec.append(v)
 
 
-            else:
+            segVec.mul(scaleFac[0])
 
-                segVec = h.Vector()
-                segVec.copy(self.stim_vec)
-                segVec.mul(scaleFac[0])
 
-            out = segVec.play(seg.extracellular._ref_e,self.time_vec)
-            self.extracellulars.append(out)
+        else:
 
-            max = np.max(np.abs(segVec.to_python()))
+            segVec = h.Vector()
+            segVec.copy(self.stim_vec)
+            segVec.mul(scaleFac[0])
 
-            maxList.append(max)
+        out = segVec.play(seg.extracellular._ref_e,self.time_vec)
+        self.extracellulars.append(out)
 
-            # if len(maxList) > 1:
-            #
-            #     maxAmp = (maxList[-1]-maxList[-2])/np.linalg.norm(posList[-1]-posList[-2])*1e3
-            # else:
-            #     maxAmp = np.nan
-            #
-            # return np.abs(maxAmp)
+        max = np.max(np.abs(segVec.to_python()))
 
-            print(segpositions)
+        maxList.append(max)
 
-            return max,segpositions
+        # if len(maxList) > 1:
+        #
+        #     maxAmp = (maxList[-1]-maxList[-2])/np.linalg.norm(posList[-1]-posList[-2])*1e3
+        # else:
+        #     maxAmp = np.nan
+        #
+        # return np.abs(maxAmp)
 
-            # return numNewSegs
+
+        return max,segpositions
+
+        # return numNewSegs

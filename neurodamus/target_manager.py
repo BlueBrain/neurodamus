@@ -481,6 +481,7 @@ class NodesetTarget(_TargetInterface):
         pass
 
     def getPointList(self, cell_manager, **kw):
+
         """ Retrieve a TPointList containing compartments (based on section type and compartment type)
         of any local cells on the cpu.
         Args:
@@ -551,6 +552,7 @@ class _HocTarget(_TargetInterface):
         return self.hoc_target
 
     def getPointList(self, cell_manager, **kw):
+        print('getting hoc point list')
         return self.hoc_target.getPointList(cell_manager)
 
     def make_subtarget(self, pop_name):

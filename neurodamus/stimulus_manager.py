@@ -824,8 +824,9 @@ class Extracellular(BaseStim):
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
 
-                print('starting section')
-                print(sc.sec.name())
+
+                x = tpoint_list.x[sec_id]
+
 
                 # skip sections not in this split
                 if not sc.exists():
@@ -849,14 +850,14 @@ class Extracellular(BaseStim):
                 # attach source to section
                 #     numSegs += es.attach_to(sc.sec)
 
-                    maxA, pos = es.attach_to(sc.sec,ramp_up_number=self.ramp_up_number,ramp_down_number=self.ramp_down_number)
+                    maxA, pos = es.attach_to(sc.sec,x,ramp_up_number=self.ramp_up_number,ramp_down_number=self.ramp_down_number)
 
                     maxList.append(maxA)
                     posList.append(pos)
 
                     if len(maxList) > 1:
                         mA = (maxList[-1] - maxList[-2]) / np.linalg.norm(posList[-1] - posList[-2]) * 1e3
-                        print('max amp is '+str(mA))
+
 
                     somaPos = es.soma_position
 
