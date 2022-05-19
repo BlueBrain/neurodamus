@@ -2,6 +2,32 @@
 Change Log
 ==========
 
+Version 2.11.2
+==============
+**12 May 2022**
+
+*Improvements*
+ * Improved target intersection for nodesets addressed in BBPBGLIB-823
+
+
+Version 2.11.1
+==============
+**2 May 2022**
+
+*Improvements*
+ * Use libsonata API parser for sonata config
+
+
+Version 2.11.0
+==============
+**28 Apr 2022**
+
+*Improvements*
+ * No eager caching of synaptic parameters
+ * Sonata nodesets to be able to cross multiple populations
+ * Adding test with patched delays after ModOverride
+
+
 Version 2.8.0
 =============
 **October 21, 2021**
