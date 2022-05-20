@@ -285,7 +285,7 @@ class SonataConfig:
             "current_clamp": "Current",
             "voltage_clamp": "Voltage",
             "extracellular_stimulation": "Extracellular",
-            "condunctance": "Conductance"
+            "conductance": "Conductance"
         }
 
         stimuli = {}

@@ -35,21 +35,25 @@ class StimulusManager:
 
     _stim_types = {}  # stimulus handled in Python
 
-    def __init__(self, target_manager, elec_manager=None, *args):
-        self._hoc = Nd.StimulusManager(target_manager, elec_manager, *args)
+    def __init__(self, target_manager, elec_manager=None):
+        base_seed = SimConfig.run_conf.get("BaseSeed")
+        xargs = () if base_seed is None else (base_seed,)
+        self._hoc = Nd.StimulusManager(target_manager, elec_manager, *xargs)
         self._target_manager = target_manager
+        self._stim_seed = SimConfig.run_conf.get("StimulusSeed")
         self._stimulus = []
         self.reset_helpers()  # reset helpers for multi-cycle builds
 
     def interpret(self, target_spec, stim_info):
         stim_t = self._stim_types.get(stim_info["Pattern"])
+        if self._stim_seed is None and getattr(stim_t, 'IsNoise', False):
+            logging.warning("StimulusSeed unset (default %d), "
+                            "set explicitly to vary noisy stimuli across runs",
+                            SimConfig.rng_info.getStimulusSeed())
         # Get either hoc target or sonata node_set, needed for python and hoc interpret
         # If sonata node_set, internally register the target and add to hoc TargetList
         target = self._target_manager.get_target(target_spec)
-        python_only_stims = ('ShotNoise', 'RelativeShotNoise', 'AbsoluteShotNoise',
-                             'OrnsteinUhlenbeck', 'RelativeOrnsteinUhlenbeck')
-        if SimConfig.cli_options.experimental_stims or \
-                (stim_t and stim_t.__name__ in python_only_stims):
+        if SimConfig.cli_options.experimental_stims or stim_t and stim_t.IsPythonOnly:
             # New style Stim, in Python
             log_verbose("Using new-gen stimulus")
             cell_manager = self._target_manager.hoc.cellDistributor
@@ -83,6 +87,10 @@ class BaseStim:
     """
     Barebones stimulus class
     """
+
+    IsPythonOnly = False
+    IsNoise = False
+
     def __init__(self, target, stim_info: dict, cell_manager):
         self.duration = float(stim_info["Duration"])  # duration [ms]
         self.delay = float(stim_info["Delay"])        # start time [ms]
@@ -93,6 +101,8 @@ class OrnsteinUhlenbeck(BaseStim):
     """
     Ornstein-Uhlenbeck process, injected as current or conductance
     """
+    IsPythonOnly = True
+    IsNoise = True
     stimCount = 0  # global count for seeding
 
     def __init__(self, target, stim_info: dict, cell_manager):
@@ -181,8 +191,10 @@ class OrnsteinUhlenbeck(BaseStim):
 class RelativeOrnsteinUhlenbeck(OrnsteinUhlenbeck):
     """
     Ornstein-Uhlenbeck process, injected as current or conductance,
-    relative to cell threshold current (as proxy for input resistance)
+    relative to cell threshold current or inverse input resistance
     """
+    IsPythonOnly = True
+    IsNoise = True
 
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
@@ -191,19 +203,22 @@ class RelativeOrnsteinUhlenbeck(OrnsteinUhlenbeck):
         self.mean_perc = float(stim_info["MeanPercent"])
         self.sigma_perc = float(stim_info["SDPercent"])
 
-        self.invRin_scaling = float(stim_info.get("InvRinScaling", 0.04))
+        if stim_info["Mode"] == "Current":
+            self.get_relative = lambda x: x.getThreshold()
+        else:
+            self.get_relative = lambda x: 1.0 / x.input_resistance
 
         return True
 
     def compute_parameters(self, cell):
-        threshold = cell.getThreshold()  # cell threshold current [nA]
-        invRin = self.invRin_scaling * threshold       # proxy for inverse input resistance [MOhm]
+        # threshold current [nA] or inverse input resistance [uS]
+        rel_prop = self.get_relative(cell)
 
-        self.sigma = (self.sigma_perc / 100) * invRin  # signal stdev [uS]
+        self.sigma = (self.sigma_perc / 100) * rel_prop  # signal stdev [nA or uS]
         if self.sigma <= 0:
             raise Exception("%s standard deviation must be positive" % self.__class__.__name__)
 
-        self.mean = (self.mean_perc / 100) * invRin    # signal mean [uS]
+        self.mean = (self.mean_perc / 100) * rel_prop    # signal mean [nA or uS]
         if self.mean < 0 and abs(self.mean) > 2 * self.sigma:
             logging.warning("%s signal is mostly zero" % self.__class__.__name__)
 
@@ -216,6 +231,8 @@ class ShotNoise(BaseStim):
     ShotNoise stimulus handler implementing Poisson shot noise
     with bi-exponential response and gamma-distributed amplitudes
     """
+    IsPythonOnly = True
+    IsNoise = True
     stimCount = 0  # global count for seeding
 
     def __init__(self, target, stim_info: dict, cell_manager):
@@ -301,13 +318,13 @@ class ShotNoise(BaseStim):
         # event rate of Poisson process [Hz]
         self.rate = float(stim_info["Rate"])
 
-        # mean amplitude of shots [nA]
+        # mean amplitude of shots [nA or uS]
         # when negative we invert the sign of the current
         self.amp_mean = float(stim_info["AmpMean"])
         if self.amp_mean == 0:
             raise Exception("%s amplitude mean must be non-zero" % self.__class__.__name__)
 
-        # variance of amplitude of shots [nA^2]
+        # variance of amplitude of shots [nA^2 or uS^2]
         self.amp_var = float(stim_info["AmpVar"])
         if self.amp_var <= 0:
             raise Exception("%s amplitude variance must be positive" % self.__class__.__name__)
@@ -341,9 +358,11 @@ class ShotNoise(BaseStim):
 @StimulusManager.register_type
 class RelativeShotNoise(ShotNoise):
     """
-    RelativeShotNoise stimulus handler, same as shotNoise
-    but parameters relative to cell threshold
+    RelativeShotNoise stimulus handler, same as ShotNoise
+    but parameters relative to cell threshold current or inverse input resistance
     """
+    IsPythonOnly = True
+    IsNoise = True
 
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
@@ -370,25 +389,30 @@ class RelativeShotNoise(ShotNoise):
             raise Exception("%s amplitude CV must be positive" % self.__class__.__name__)
         self.cv_square = cv * cv
 
-        if stim_info["Mode"] == "Conductance":
-            raise Exception("%s only supported as Current injection" % self.__class__.__name__)
+        if stim_info["Mode"] == "Current":
+            self.get_relative = lambda x: x.getThreshold()
+        else:
+            self.get_relative = lambda x: 1.0 / x.input_resistance
 
         return self.mean_perc != 0  # no-op if mean_perc == 0
 
     def compute_parameters(self, cell):
-        threshold = cell.getThreshold()          # cell threshold current [nA]
-        mean = self.mean_perc / 100 * threshold  # desired mean [nA]
-        sd = self.sd_perc / 100 * threshold      # desired standard deviation [nA]
-        var = sd * sd                            # variance [nA^2]
+        # threshold current [nA] or inverse input resistance [uS]
+        rel_prop = self.get_relative(cell)
+        mean = self.mean_perc / 100 * rel_prop  # desired mean [nA or uS]
+        sd = self.sd_perc / 100 * rel_prop      # desired standard deviation [nA or uS]
+        var = sd * sd                           # variance [nA^2 or uS^2]
         super().params_from_mean_var(mean, var)
 
 
 @StimulusManager.register_type
 class AbsoluteShotNoise(ShotNoise):
     """
-    AbsoluteShotNoise stimulus handler, same as shotNoise
+    AbsoluteShotNoise stimulus handler, same as ShotNoise
     but parameters from given mean and std. dev.
     """
+    IsPythonOnly = True
+    IsNoise = True
 
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
@@ -530,6 +554,7 @@ class Noise(BaseStim):
     """
     Inject a noisy (gaussian) current step, relative to cell threshold or not.
     """
+    IsNoise = True
     stimCount = 0  # global count for seeding
 
     def __init__(self, target, stim_info: dict, cell_manager):

@@ -16,7 +16,7 @@ from .connection_manager import ConnectionManagerBase
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
-from .core.configuration import find_input_file
+from .core.configuration import find_input_file, SimConfig
 from .core.nodeset import NodeSet
 from .io import cell_readers
 from .metype import Cell_V5, Cell_V6, EmptyCell
@@ -201,18 +201,19 @@ class CellManagerBase(object):
 
     @classmethod
     def _get_sonata_population_name(self, node_file):
-        import h5py  # only for Sonata
-        ds = h5py.File(node_file, "r")["nodes"]
-        assert len(ds) == 1  # single population
-        return next(iter(ds.keys()))
+        import libsonata  # only for SONATA
+        pop_names = libsonata.NodeStorage(node_file).population_names
+        assert len(pop_names) == 1
+        return next(iter(pop_names), None)
 
-    def load_nodes(self, load_balancer=None, *, _loader=None):
+    def load_nodes(self, load_balancer=None, *, _loader=None, loader_opts=None):
         """Top-level loader of nodes.
         """
         if self._local_nodes is None:
             return
         conf = self._circuit_conf
-        loader_f = _loader or self._node_loader
+        _loader = _loader or self._node_loader
+        loader_f = (lambda *args: _loader(*args, **loader_opts)) if loader_opts else _loader
 
         logging.info("Reading Nodes (METype) info from '%s'", conf.CellLibraryFile)
         if not load_balancer:
@@ -482,13 +483,25 @@ class CellDistributor(CellManagerBase):
     def load_nodes(self, load_balancer=None, **kw):
         """gets gids from target, splits and returns a GidSet with all metadata
         """
-        if self._node_format == NodeFormat.SONATA and self._sonata_with_extra_attrs:
-            loader = lambda *args, **kw: cell_readers.load_nodes(*args, **kw, has_extra_data=True)
+        loader_opts = kw.pop("loader_opts", {})
+        all_cell_requirements = SimConfig.cell_requirements
+        cell_requirements = all_cell_requirements.get(self._population_name) or (
+            self.is_default and all_cell_requirements.get(None)
+        )
+
+        if self._node_format == NodeFormat.SONATA:
+            loader = cell_readers.load_sonata
+            loader_opts["node_population"] = self._population_name  # mandatory in Sonata
+            loader_opts["load_dynamic_props"] = cell_requirements
+            loader_opts["has_extra_data"] = self._sonata_with_extra_attrs
         else:
-            loader = self._cell_loaders.get(self._circuit_conf.CellLibraryFile,
-                                            cell_readers.load_nodes)
+            if cell_requirements:
+                raise Exception('Additional cell properties only available with SONATA')
+            nodes_filename = self._circuit_conf.CellLibraryFile
+            loader = self._cell_loaders.get(nodes_filename, cell_readers.load_nodes)
+
         log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader.__name__)
-        return super().load_nodes(load_balancer, _loader=loader, **kw)
+        return super().load_nodes(load_balancer, _loader=loader, loader_opts=loader_opts)
 
     def _instantiate_cells(self, *_):
         if self.CellType is not NotImplemented:

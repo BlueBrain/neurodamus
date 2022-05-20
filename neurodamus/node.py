@@ -564,12 +564,7 @@ class Node:
         self._enable_electrodes()
 
         # for each stimulus defined in the config file, request the stimmanager to instantiate
-        add_args = []
-        if "BaseSeed" in self._run_conf:
-            add_args.append(self._run_conf["BaseSeed"])
-        self._stim_manager = StimulusManager(self._target_manager, self._elec_manager, *add_args)
-        # Nd.StimulusManager(
-        #     self._target_manager.hoc, self._elec_manager, *extra_params)
+        self._stim_manager = StimulusManager(self._target_manager, self._elec_manager)
 
         # build a dictionary of stims for faster lookup : useful when applying 10k+ stims
         # while we are at it, check if any stims are using extracellular
@@ -603,13 +598,7 @@ class Node:
             if stim_pattern == "SynapseReplay":
                 continue  # Handled by enable_replay
 
-            logging.info(" * [STIM] %s: %s (%s) -> %s",
-                         name, stim_name, stim_pattern, target_spec)
-            if stim_pattern in ["Noise", "ShotNoise", "RelativeShotNoise"] and \
-                    SimConfig.run_conf.get("StimulusSeed") is None:
-                logging.warning("StimulusSeed unset (default %d), "
-                                "set explicitly to vary noisy stimuli across runs",
-                                SimConfig.rng_info.getStimulusSeed())
+            logging.info(" * [STIM] %s: %s (%s) -> %s", name, stim_name, stim_pattern, target_spec)
             self._stim_manager.interpret(target_spec, stim)
 
     # -

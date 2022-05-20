@@ -73,6 +73,8 @@ class SynapseReader(object):
                 mod_override_params = self._read_extra_fields_from_mod_override(mod_override, gid)
                 if mod_override_params is not None:
                     syn_params = SynapseParameters.concatenate(syn_params, mod_override_params)
+
+            # Modify parameters
             self._patch_delay_fp_inaccuracies(syn_params)
             if self._uhill_property_avail:
                 self._scale_U_param(syn_params, self._ca_concentration, mod_override)
