@@ -2,6 +2,18 @@
 Change Log
 ==========
 
+Version 2.11.3
+==============
+**25 May 2022**
+
+*New Features*
+ * Load extended cell properties from SONATA [BBPBGLIB-806]
+
+*Improvements*
+ * Core mods compatibility across Nrn8.0..9.x
+ * Added synapses test [BBPBGLIB-826]
+
+
 Version 2.11.2
 ==============
 **12 May 2022**
