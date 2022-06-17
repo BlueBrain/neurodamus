@@ -786,39 +786,50 @@ class Extracellular(BaseStim):
 
         tpoints = target.getPointList(cell_manager)
 
+        posList = []
+        amps = []
+        maxList = []
+        isAxon = []
+
         for tpoint_list in tpoints:
             gid = tpoint_list.gid
+
+            print('gid is '+ str(gid))
 
 
             cell = cell_manager.getMEType(gid)
 
             numSegs = 0
 
-            maxList = []
-            posList = []
+
+
 
 
             somaPos = None
 
             if self.rotation_angles is not None: # Finds major axis of cell to redine rotations
 
-                points = []
+                axes = None
 
-                for sec_id, sc in enumerate(tpoint_list.sclst):
-
-                    if not sc.exists():
-                        continue
-
-                    for i in range(sc.sec.n3d()):
-                        points.append([sc.sec.x3d(i),sc.sec.y3d(i),sc.sec.z3d(i)])
-
-                pca = PCA()
-                pca.fit(points)
-
-                axes = pca.components_
+                # points = []
+                #
+                # for sec_id, sc in enumerate(tpoint_list.sclst):
+                #
+                #     if not sc.exists():
+                #         continue
+                #
+                #     for i in range(sc.sec.n3d()):
+                #         points.append([sc.sec.x3d(i),sc.sec.y3d(i),sc.sec.z3d(i)])
+                #
+                # pca = PCA()
+                # pca.fit(points)
+                #
+                # axes = pca.components_
 
             else:
                 axes = None
+
+            firstOne = True
 
 
 
@@ -826,6 +837,8 @@ class Extracellular(BaseStim):
 
 
                 x = tpoint_list.x[sec_id]
+
+
 
 
                 # skip sections not in this split
@@ -844,7 +857,7 @@ class Extracellular(BaseStim):
 
 
                     es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
-                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos,self.rotation_angles,self.pulse_number,axes)
+                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos,self.rotation_angles,self.pulse_number,axes,self.isConstant,self.constantAxis)
 
 
                 # attach source to section
@@ -852,11 +865,24 @@ class Extracellular(BaseStim):
 
                     maxA, pos = es.attach_to(sc.sec,x,ramp_up_number=self.ramp_up_number,ramp_down_number=self.ramp_down_number)
 
-                    maxList.append(maxA)
-                    posList.append(pos)
+                    # maxList.append(maxA)
+                    # posList.append(pos)
+                    #
+                    if 'axon' in sc.sec.name():
+                        isAxon.append(1)
+                    elif 'myelin' in sc.sec.name():
+                        isAxon.append(2)
+                    elif 'node' in sc.sec.name():
+                        isAxon.append(3)
+                    elif 'AIS' in sc.sec.name():
+                        isAxon.append(4)
+                    else:
+                        isAxon.append(0)
 
-                    if len(maxList) > 1:
-                        mA = (maxList[-1] - maxList[-2]) / np.linalg.norm(posList[-1] - posList[-2]) * 1e3
+
+                    # if len(maxList) > 1:
+                    #     mA = (maxList[-1] - maxList[-2]) / np.linalg.norm(posList[-1] - posList[-2]) * 1e3
+                    #     amps.append(mA)
 
 
                     somaPos = es.soma_position
@@ -868,6 +894,10 @@ class Extracellular(BaseStim):
 
         Extracellular.stimCount += 1  # increment global count
 
+        # np.save('posRot.npy',posList)
+        # np.save('PhiField.npy',maxList)
+        np.save('isAxon.npy',isAxon)
+
 
     def parse_check_all_parameters(self, stim_info: dict):
 
@@ -877,6 +907,13 @@ class Extracellular(BaseStim):
             raise Exception("%s pattern must be provided" % self.__class__.__name__)
         else:
             self.pattern = stim_info["Pattern"]
+
+        if stim_info["IsConstant"] is None:
+            self.isConstant = False
+            self.constantAxis = None
+        else:
+            self.isConstant = True
+            self.constantAxis = stim_info.get("IsConstant")
 
 
         if stim_info["Electrode_Path"] is None:
@@ -932,20 +969,14 @@ class Extracellular(BaseStim):
                 self.rotation_angles = np.array(self.rotation_angles)
 
 
-            if stim_info.get("Offset") == None:
+            if stim_info.get("OffsetX") == None or stim_info.get("OffsetY") == None or stim_info.get("OffsetZ") == None:
                 self.offset = None
             else:
 
-                self.offset = []
-                pos = stim_info["Offset"].split(',')
+                self.offset = [float(stim_info["OffsetX"]),float(stim_info["OffsetX"]),float(stim_info["OffsetZ"])]
 
-
-                if len(pos)!=3:
+                if len(self.offset)!=3:
                     raise Exception("Offset must have three coordinates")
-
-                for p in pos:
-
-                    self.offset.append(float(p))
 
                 self.offset = np.array(self.offset)
         # parse and check stimulus-specific parameters
@@ -1038,14 +1069,15 @@ class Extracellular(BaseStim):
             if stim_info.get("Frequency") == None:
                 raise Exception("Frequency must be provided")
             else:
-                freqs = stim_info.get("Frequency").split(',')
+                freq = float(stim_info.get("Frequency"))
 
-            if len(freqs)!=2:
-                raise Exception("Must have exactly two Sinusoids")
+            if stim_info.get("OffsetFreq") == None:
+                raise Exception("Offset frequency must be provided")
+            else:
+                freqOff = float(stim_info.get("OffsetFreq"))
 
-            self.frequency = []
-            for f in freqs:
-                self.frequency.append(float(f))
+
+            self.frequency = [freq,freqOff]
 
             if len(self.AmpStart) != 2:
                 raise Exception("Each sinusoid must have amplitude")
@@ -1054,18 +1086,22 @@ class Extracellular(BaseStim):
 
         if self.type == "PulseTI":
 
-
             if stim_info.get("Frequency") == None:
                 raise Exception("Frequency must be provided")
             else:
-                freqs = stim_info.get("Frequency").split(',')
+                freq = float(stim_info.get("Frequency"))
 
-            if len(freqs)!=3:
-                raise Exception("Must be in the form \"carrier frequency, pulse frequency, burst frequency\" ")
+            if stim_info.get("OffsetFreq") == None:
+                raise Exception("Offset frequency must be provided")
+            else:
+                freqOff = float(stim_info.get("OffsetFreq"))
 
-            self.frequency = []
-            for f in freqs:
-                self.frequency.append(float(f))
+            if stim_info.get("BurstFreq") == None:
+                raise Exception("Burst frequency must be provided")
+            else:
+                freqPulse = float(stim_info.get("BurstFreq"))
+
+            self.frequency = [freq, freqOff, freqPulse]
 
             if len(self.AmpStart) != 2:
                 raise Exception("Each sinusoid must have amplitude")

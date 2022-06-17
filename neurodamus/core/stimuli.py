@@ -146,7 +146,7 @@ class SignalSource:
         self._add_point(base_amp)
         return self
 
-    def add_ti(self,amp,duration,carrier_freq,pulse_freq,step=0.01,**kw):
+    def add_ti(self,amp,duration,carrier_freq,pulse_freq,step=0.001,**kw):
 
 
         shift_freq = pulse_freq+carrier_freq
@@ -170,6 +170,21 @@ class SignalSource:
         self.time_vec.append(tvec)
         self.delay(duration)
 
+        # stim1 = Neuron.h.Vector(len(tvec))
+        #
+        #
+        # stim1.sin(carrier_freq, np.pi, step)
+        # stim1.mul(amp[0])
+        #
+        # stim2 = Neuron.h.Vector(len(tvec))
+        #
+        #
+        # stim2.sin(shift_freq, 0.0, step)
+        # stim2.mul(amp[1])
+        #
+        # stim = Neuron.h.Vector(len(tvec))
+        # stim = stim1.add(stim2)
+
 
         pulse_I1 = amp[0]*np.cos(2*np.pi*carrier_freq/1000*pulse_tt)
 
@@ -178,6 +193,11 @@ class SignalSource:
 
         self.field1 = np.hstack((self.field1,pulse_I1))
         self.field2 = np.hstack((self.field2,pulse_I2))
+
+        # self.stim_vec.append(stim)
+        #
+        # # Last point
+        # self._add_point(base_amp)
 
 
 
@@ -759,6 +779,7 @@ class ElectrodeSource(SignalSource):
 
             for n in range(n3d):
 
+
                 xpos.append(section.x3d(n))
                 ypos.append(section.y3d(n))
                 zpos.append(section.z3d(n))
@@ -819,7 +840,7 @@ class PointSourceElectrode(ElectrodeSource):
 
 class RealElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset,current_applied,soma_position,rotation_angles,pulseNumber,axes):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset,current_applied,soma_position,rotation_angles,pulseNumber,axes,constant,constantAxis):
 
 
         super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width,pulseNumber)
@@ -840,6 +861,8 @@ class RealElectrode(ElectrodeSource):
         self.soma_position = soma_position
         self.rotation_angles = rotation_angles
         self.rotation_axes = axes
+        self.constant = constant
+        self.constantAxis = constantAxis
 
 
 
@@ -862,23 +885,46 @@ class RealElectrode(ElectrodeSource):
             k = f[group_name].visit(find_dataset)
             return f[group_name + '/' + k][()]
 
+    # def rotate(self,segpositions):
+    #
+    #     newsegs = segpositions.copy()
+    #
+    #     newsegs -= self.new_soma_pos
+    #
+    #     for i, r in enumerate(self.rotation_angles[:2]):
+    #         q0 = np.cos(r/2*np.pi/180)
+    #         q1 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][0]
+    #         q2 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][1]
+    #         q3 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][2]
+    #
+    #         rotation = [q1,q2,q3,q0]
+    #
+    #         finalrotation = R.from_quat(rotation)
+    #
+    #         newsegs = finalrotation.apply(newsegs)
+    #
+    #     newpositions = newsegs + self.new_soma_pos
+    #
+    #     return newpositions
+
     def rotate(self,segpositions):
 
         newsegs = segpositions.copy()
 
+
         newsegs -= self.new_soma_pos
 
-        for i, r in enumerate(self.rotation_angles[:2]):
-            q0 = np.cos(r/2*np.pi/180)
-            q1 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][0]
-            q2 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][1]
-            q3 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][2]
 
-            rotation = [q1,q2,q3,q0]
+        alpha = self.rotation_angles[2]*np.pi/180
+        beta = self.rotation_angles[1]*np.pi/180
+        gamma = self.rotation_angles[0]*np.pi/180
 
-            finalrotation = R.from_quat(rotation)
+        R = np.array([[np.cos(beta)*np.cos(gamma),np.sin(alpha)*np.sin(beta)*np.cos(gamma)-np.cos(alpha)*np.sin(gamma),np.cos(alpha)*np.sin(beta)*np.cos(gamma)+np.sin(alpha)*np.sin(gamma)],\
+        [np.cos(beta)*np.sin(gamma),np.sin(alpha)*np.sin(beta)*np.sin(gamma)+np.cos(alpha)*np.cos(gamma),np.cos(alpha)*np.sin(beta)*np.sin(gamma)-np.sin(alpha)*np.cos(gamma)],\
+        [-np.sin(beta),np.sin(alpha)*np.cos(beta),np.cos(alpha)*np.cos(beta)]])
 
-            newsegs = finalrotation.apply(newsegs)
+
+        newsegs = np.matmul(R,newsegs)
 
         newpositions = newsegs + self.new_soma_pos
 
@@ -925,8 +971,30 @@ class RealElectrode(ElectrodeSource):
 
             outputs.append(out2rat[0]/self.current_applied[numFile])
 
+            return np.array(outputs), newsegpositions
 
-        return np.array(outputs)
+    def constant_potentials(self,segpositions):
+
+
+
+        if self.rotation_angles is not None:
+            newsegpositions = self.rotate(segpositions)
+
+        else:
+            newsegpositions = segpositions.copy()
+
+
+        if self.constantAxis == 'x':
+            outputs = newsegpositions[0]-self.new_soma_pos[0]
+        elif self.constantAxis == 'y':
+            outputs = newsegpositions[1] - self.new_soma_pos[1]
+        else:
+            outputs = newsegpositions[2] - self.new_soma_pos[2]
+        outputs *= 1e-6
+
+
+
+        return np.array(outputs),newsegpositions
 
     def apply_ramp(self,vector,ramp_up_number,ramp_down_number):
 
@@ -964,8 +1032,6 @@ class RealElectrode(ElectrodeSource):
 
         seg = section(x)
 
-
-
         if 'soma' in section.name():
 
             segpositions = self.get_soma_position(section)
@@ -973,9 +1039,6 @@ class RealElectrode(ElectrodeSource):
             self.soma_position = segpositions.copy()
         else:
             segpositions = self.interp_seg_positions(section,x)
-
-
-
 
 
         if isinstance(self.offset,np.ndarray):
@@ -987,14 +1050,16 @@ class RealElectrode(ElectrodeSource):
             segpositions += self.offset * 1e3 # offset in mm converted to um
             self.new_soma_pos = self.offset *1e3
 
-            posList.append(segpositions)
+        else:
+            self.new_soma_pos = self.soma_position.copy()
 
+        if not self.constant:
+            scaleFac, newsegpositions = self.interpolate_potentials(segpositions) #(1e3 to go from V to mV)
+            scaleFac *= 1e3
+        else:
+            s, newsegpositions = self.constant_potentials(segpositions)
 
-        scaleFac = self.interpolate_potentials(segpositions)*1e3 #(1e3 to go from V to mV)
-
-
-
-
+            scaleFac = [s*1e3]
 
 
         if 'TI' in self.type:
@@ -1015,10 +1080,14 @@ class RealElectrode(ElectrodeSource):
             segVec = h.Vector()
             segVec = segVec.from_python(field)
 
-            # if 'soma' in section.name():
+            # if 'dend[1]' in section.name():
+            #
+            #
+            #     np.save('fieldConstantDend1.npy',field1)
+            #     np.save('fieldConstantDend2.npy',field2)
 
 
-                # np.save('field.npy',field)
+
 
         elif self.type == 'Sinusoid':
 
@@ -1042,6 +1111,8 @@ class RealElectrode(ElectrodeSource):
             segVec.copy(self.stim_vec)
             segVec.mul(scaleFac[0])
 
+
+
         out = segVec.play(seg.extracellular._ref_e,self.time_vec)
         self.extracellulars.append(out)
 
@@ -1058,6 +1129,6 @@ class RealElectrode(ElectrodeSource):
         # return np.abs(maxAmp)
 
 
-        return max,segpositions
+        return max,newsegpositions
 
         # return numNewSegs

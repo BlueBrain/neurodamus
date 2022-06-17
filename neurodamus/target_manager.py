@@ -552,7 +552,6 @@ class _HocTarget(_TargetInterface):
         return self.hoc_target
 
     def getPointList(self, cell_manager, **kw):
-        print('getting hoc point list')
         return self.hoc_target.getPointList(cell_manager)
 
     def make_subtarget(self, pop_name):
