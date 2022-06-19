@@ -50,12 +50,12 @@ class TestStimuli(object):
         assert list(self.stim.stim_vec) == [0, 1.2, 1.2, 0] * 4 + [0]
 
     def test_sin(self):
-        self.stim.add_sin(1, 0.1, 10000)
+        self.stim.add_sin([1], 0.1, 10000)
         assert list(self.stim.time_vec) == pytest.approx([0, 0.025, 0.05, 0.075, 0.1, 0.1])
         assert list(self.stim.stim_vec) == pytest.approx([0, 1, 0, -1, 0, 0])
 
     def test_sin_long(self):
-        self.stim.add_sin(1, 200, 10, 25)
+        self.stim.add_sin([1], 200, 10, 25)
         assert list(self.stim.time_vec) == pytest.approx([0, 25, 50, 75, 100, 125, 150,
                                                           175, 200, 200])
         assert list(self.stim.stim_vec) == pytest.approx([0, 1, 0, -1] * 2 + [0, 0])
@@ -91,23 +91,25 @@ class TestStimuli(object):
                                                             0.0])
 
     def test_pulses_arbitrary(self):
-        self.stim.add_pulses_arbitrary([1],[1])
+        self.stim.add_pulses_arbitrary([1], [1])
         assert list(self.stim.time_vec) == [0.0, 0.0, 0.0, 1.0, 1.0]
         assert list(self.stim.stim_vec) == [0.0, 0.0, 1.0, 1.0, 0.0]
 
     def test_pulses_arbitrary_complex(self):
-        self.stim.add_pulses_arbitrary([1,2],[10,20],delay=100)
+        self.stim.add_pulses_arbitrary([1, 2], [10, 20], delay=100)
         assert list(self.stim.time_vec) == [0.0, 100.0, 100.0, 110.0, 110.0, 130, 130]
         assert list(self.stim.stim_vec) == [0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 0]
 
     def test_train_arbitrary(self):
-        self.stim.add_train_arbitrary([1,-1],[200,300],1,2000)
-        assert list(self.stim.stim_vec) == [0.0, 0.0, 1.0, 1.0,  -1, -1, 0,  0.0, 0.0, 1.0, 1.0, -1, -1,   0,   0.0]
-        assert list(self.stim.time_vec) == [0.0, 0.0, 0.0, 200.0,200,500,500,1000,1000,1000,1200,1200,1500,1500,2000]
+        self.stim.add_train_arbitrary([1, -1], [200, 300], 1, 2000)
+        assert list(self.stim.stim_vec) == [0.0, 0.0, 1.0, 1.0, -1, -1, 0, 0.0, 0.0, 1.0,
+                                            1.0, -1, -1, 0, 0.0]
+        assert list(self.stim.time_vec) == [0.0, 0.0, 0.0, 200.0, 200, 500, 500, 1000, 1000,
+                                            1000, 1200, 1200, 1500, 1500, 2000]
 
-    def test_rotate(self):
-
-        self.stim.rotation_angles=[90,0,0]
-        self.stim.rotation_axes=[[1,2,3],[4,5,6],[1,0,0]]
-        self.new_soma_pos = [0,0,1]
-        assert self.stim.rotate([0,0,0]) == pytest.approx([0,1,1])
+    # def test_rotate(self):
+    #
+    #     self.stim.rotation_angles = [90, 0, 0]
+    #     self.stim.rotation_axes = [[1, 2, 3], [4, 5, 6], [1, 0, 0]]
+    #     self.new_soma_pos = [0, 0, 1]
+    #     assert self.stim.rotate([0, 0, 0]) == pytest.approx([0, 1, 1])

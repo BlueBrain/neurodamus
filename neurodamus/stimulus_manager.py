@@ -25,10 +25,12 @@ from .core.configuration import SimConfig
 from .core.stimuli import CurrentSource, ConductanceSource, RealElectrode, PointSourceElectrode
 from .core import random
 import numpy as np
-from sklearn.decomposition import PCA
+
+
+# from sklearn.decomposition import PCA
+
 
 class StimulusManager:
-
     """
     A manager for synaptic artificial Stimulus.
     Old stimulus resort to hoc implementation
@@ -44,12 +46,14 @@ class StimulusManager:
 
     def interpret(self, target_spec, stim_info):
         stim_t = self._stim_types.get(stim_info["Pattern"])
+
         # Get either hoc target or sonata node_set, needed for python and hoc interpret
         # If sonata node_set, internally register the target and add to hoc TargetList
+
         target = self._target_manager.get_target(target_spec)
         python_only_stims = ('ShotNoise', 'RelativeShotNoise', 'AbsoluteShotNoise',
-                             'OrnsteinUhlenbeck', 'RelativeOrnsteinUhlenbeck','Extracellular') # Adds extracellular
-
+                             'OrnsteinUhlenbeck', 'RelativeOrnsteinUhlenbeck',
+                             'Extracellular')  # Adds extracellular
 
         if SimConfig.cli_options.experimental_stims or \
                 (stim_t and stim_t.__name__ in python_only_stims):
@@ -77,7 +81,6 @@ class StimulusManager:
         OrnsteinUhlenbeck.stimCount = 0
         Extracellular.stimCount = 0
 
-
     @classmethod
     def register_type(cls, stim_class):
         """ Registers a new class as a handler for a new stim type """
@@ -89,9 +92,10 @@ class BaseStim:
     """
     Barebones stimulus class
     """
+
     def __init__(self, target, stim_info: dict, cell_manager):
         self.duration = float(stim_info["Duration"])  # duration [ms]
-        self.delay = float(stim_info["Delay"])        # start time [ms]
+        self.delay = float(stim_info["Delay"])  # start time [ms]
 
 
 @StimulusManager.register_type
@@ -173,7 +177,7 @@ class OrnsteinUhlenbeck(BaseStim):
         if self.sigma <= 0:
             raise Exception("%s standard deviation must be positive" % self.__class__.__name__)
 
-        self.mean = float(stim_info["Mean"])    # signal mean [uS]
+        self.mean = float(stim_info["Mean"])  # signal mean [uS]
         if self.mean < 0 and abs(self.mean) > 2 * self.sigma:
             logging.warning("%s signal is mostly zero" % self.__class__.__name__)
 
@@ -198,22 +202,20 @@ class RelativeOrnsteinUhlenbeck(OrnsteinUhlenbeck):
         self.mean_perc = float(stim_info["MeanPercent"])
         self.sigma_perc = float(stim_info["SDPercent"])
 
-
         self.invRin_scaling = float(stim_info.get("InvRinScaling", 0.04))
-
 
         return True
 
     def compute_parameters(self, cell):
         threshold = cell.getThreshold()  # cell threshold current [nA]
 
-        invRin = self.invRin_scaling * threshold       # proxy for inverse input resistance [MOhm]
+        invRin = self.invRin_scaling * threshold  # proxy for inverse input resistance [MOhm]
 
         self.sigma = (self.sigma_perc / 100) * invRin  # signal stdev [uS]
         if self.sigma <= 0:
             raise Exception("%s standard deviation must be positive" % self.__class__.__name__)
 
-        self.mean = (self.mean_perc / 100) * invRin    # signal mean [uS]
+        self.mean = (self.mean_perc / 100) * invRin  # signal mean [uS]
         if self.mean < 0 and abs(self.mean) > 2 * self.sigma:
             logging.warning("%s signal is mostly zero" % self.__class__.__name__)
 
@@ -279,7 +281,7 @@ class ShotNoise(BaseStim):
         self.reversal = float(stim_info.get("Reversal", 0.0))  # reversal potential [mV]
 
         # time parameters
-        self.dt = float(stim_info.get("Dt", 0.25))    # stimulus timestep [ms]
+        self.dt = float(stim_info.get("Dt", 0.25))  # stimulus timestep [ms]
         if self.dt <= 0:
             raise Exception("%s time-step must be positive" % self.__class__.__name__)
 
@@ -288,8 +290,8 @@ class ShotNoise(BaseStim):
             return False  # nothing to do, stim is a no-op
 
         # bi-exponential parameters
-        self.tau_R = float(stim_info["RiseTime"])     # rise time [ms]
-        self.tau_D = float(stim_info["DecayTime"])    # decay time [ms]
+        self.tau_R = float(stim_info["RiseTime"])  # rise time [ms]
+        self.tau_D = float(stim_info["DecayTime"])  # decay time [ms]
         if self.tau_R >= self.tau_D:
             raise Exception("%s bi-exponential rise time must be smaller than decay time"
                             % self.__class__.__name__)
@@ -387,10 +389,10 @@ class RelativeShotNoise(ShotNoise):
         return self.mean_perc != 0  # no-op if mean_perc == 0
 
     def compute_parameters(self, cell):
-        threshold = cell.getThreshold()          # cell threshold current [nA]
+        threshold = cell.getThreshold()  # cell threshold current [nA]
         mean = self.mean_perc / 100 * threshold  # desired mean [nA]
-        sd = self.sd_perc / 100 * threshold      # desired standard deviation [nA]
-        var = sd * sd                            # variance [nA^2]
+        sd = self.sd_perc / 100 * threshold  # desired standard deviation [nA]
+        var = sd * sd  # variance [nA^2]
         super().params_from_mean_var(mean, var)
 
 
@@ -433,6 +435,7 @@ class Linear(BaseStim):
     """
     Injects a linear current ramp.
     """
+
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
 
@@ -479,6 +482,7 @@ class Hyperpolarizing(Linear):
     """
     Injects a constant step with a cell's hyperpolarizing current.
     """
+
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
 
@@ -496,6 +500,7 @@ class RelativeLinear(Linear):
     """
     Injects a linear current ramp relative to cell threshold.
     """
+
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
 
@@ -520,6 +525,7 @@ class SubThreshold(Linear):
     """
     Injects a current step at some percent below a cell's threshold.
     """
+
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
 
@@ -660,6 +666,7 @@ class Pulse(BaseStim):
     """
     Inject a pulse train with given amplitude, frequency and width.
     """
+
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
 
@@ -696,6 +703,7 @@ class Sinusoidal(BaseStim):
     """
     Inject a sinusoidal current with given amplitude and frequency.
     """
+
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
 
@@ -735,6 +743,7 @@ class SEClamp(BaseStim):
     """
     Apply a single electrode voltage clamp.
     """
+
     def __init__(self, target, stim_info: dict, cell_manager):
         super().__init__(target, stim_info, cell_manager)
 
@@ -763,6 +772,7 @@ class SEClamp(BaseStim):
         if self.delay > 0:
             logging.warning("%s ignores delay" % self.__class__.__name__)
 
+
 @StimulusManager.register_type
 class Extracellular(BaseStim):
     """
@@ -772,42 +782,30 @@ class Extracellular(BaseStim):
 
     def __init__(self, target, stim_info: dict, cell_manager):
 
-
         super().__init__(target, stim_info, cell_manager)
 
-
         self.stimList = []  # sources go here
-
 
         if not self.parse_check_all_parameters(stim_info):
             return None  # nothing to do, stim is a no-op
 
-
-
         tpoints = target.getPointList(cell_manager)
 
-        posList = []
-        amps = []
-        maxList = []
-        isAxon = []
+        # posList = []
+        # amps = []
+        # maxList = []
+        # isAxon = []
 
         for tpoint_list in tpoints:
             gid = tpoint_list.gid
 
-            print('gid is '+ str(gid))
+            print('gid is ' + str(gid))
 
-
-            cell = cell_manager.getMEType(gid)
-
-            numSegs = 0
-
-
-
-
+            # cell = cell_manager.getMEType(gid)
 
             somaPos = None
 
-            if self.rotation_angles is not None: # Finds major axis of cell to redine rotations
+            if self.rotation_angles is not None:  # Finds major axis of cell to redine rotations
 
                 axes = None
 
@@ -829,17 +827,11 @@ class Extracellular(BaseStim):
             else:
                 axes = None
 
-            firstOne = True
-
-
+            # firstOne = True
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
 
-
                 x = tpoint_list.x[sec_id]
-
-
-
 
                 # skip sections not in this split
                 if not sc.exists():
@@ -847,63 +839,65 @@ class Extracellular(BaseStim):
 
                 # inject Extracellular signal
 
-                if stim_info["Electrode_Path"] == None:
-                    es = PointSourceElectrode(self.pattern,self.delay,self.type,self.duration,
-                    self.AmpStart,self.frequency,self.width,self.x,self.y,self.z,self.pulse_number)
+                if stim_info["Electrode_Path"] is None:
+                    es = PointSourceElectrode(self.pattern, self.delay, self.type, self.duration,
+                                              self.AmpStart, self.frequency, self.width,
+                                              self.x, self.y, self.z,
+                                              self.pulse_number)
 
                     es.attach_to(sc.sec)
                 else:
 
+                    es = RealElectrode(self.pattern, self.delay, self.type, self.duration,
+                                       self.AmpStart, self.frequency, self.width,
+                                       self.electrode_path, self.offset,
+                                       self.current_applied, somaPos,
+                                       self.rotation_angles, self.pulse_number, axes,
+                                       self.isConstant, self.constantAxis)
 
+                    # attach source to section
+                    #     numSegs += es.attach_to(sc.sec)
 
-                    es = RealElectrode(self.pattern,self.delay,self.type,self.duration,
-                     self.AmpStart,self.frequency,self.width,self.electrode_path,self.offset,self.current_applied,somaPos,self.rotation_angles,self.pulse_number,axes,self.isConstant,self.constantAxis)
+                    es.attach_to(sc.sec, x, ramp_up_number=self.ramp_up_number,
+                                 ramp_down_number=self.ramp_down_number)
 
-
-                # attach source to section
-                #     numSegs += es.attach_to(sc.sec)
-
-                    maxA, pos = es.attach_to(sc.sec,x,ramp_up_number=self.ramp_up_number,ramp_down_number=self.ramp_down_number)
+                    # print(sc.sec.name())
+                    # print(maxA)
 
                     # maxList.append(maxA)
                     # posList.append(pos)
                     #
-                    if 'axon' in sc.sec.name():
-                        isAxon.append(1)
-                    elif 'myelin' in sc.sec.name():
-                        isAxon.append(2)
-                    elif 'node' in sc.sec.name():
-                        isAxon.append(3)
-                    elif 'AIS' in sc.sec.name():
-                        isAxon.append(4)
-                    else:
-                        isAxon.append(0)
-
+                    # if 'axon' in sc.sec.name():
+                    #     isAxon.append(1)
+                    # elif 'myelin' in sc.sec.name():
+                    #     isAxon.append(2)
+                    # elif 'node' in sc.sec.name():
+                    #     isAxon.append(3)
+                    # elif 'AIS' in sc.sec.name():
+                    #     isAxon.append(4)
+                    # else:
+                    #     isAxon.append(0)
 
                     # if len(maxList) > 1:
-                    #     mA = (maxList[-1] - maxList[-2]) / np.linalg.norm(posList[-1] - posList[-2]) * 1e3
+                    #     mA = (maxList[-1] - maxList[-2]) / np.linalg.norm(posList[-1]
+                    #     - posList[-2]) * 1e3
                     #     amps.append(mA)
-
 
                     somaPos = es.soma_position
 
-
-
                 self.stimList.append(es)  # save source
-
 
         Extracellular.stimCount += 1  # increment global count
 
         # np.save('posRot.npy',posList)
         # np.save('PhiField.npy',maxList)
-        np.save('isAxon.npy',isAxon)
-
+        # np.save('isAxon.npy', isAxon)
 
     def parse_check_all_parameters(self, stim_info: dict):
 
         self.pulse_number = None
 
-        if stim_info["Pattern"] == None:
+        if stim_info["Pattern"] is None:
             raise Exception("%s pattern must be provided" % self.__class__.__name__)
         else:
             self.pattern = stim_info["Pattern"]
@@ -915,32 +909,31 @@ class Extracellular(BaseStim):
             self.isConstant = True
             self.constantAxis = stim_info.get("IsConstant")
 
-
         if stim_info["Electrode_Path"] is None:
 
-            if stim_info.get("x") == None:
-                raise Exception("%s electrode x position must be provided" % self.__class__.__name__)
+            if stim_info.get("x") is None:
+                raise Exception("%s electrode x position must be provided" %
+                                self.__class__.__name__)
             else:
 
                 self.x = float(stim_info.get("x"))  # electrode x position
 
-            if stim_info.get("y") == None:
-                raise Exception("%s electrode y position must be provided" % self.__class__.__name__)
+            if stim_info.get("y") is None:
+                raise Exception("%s electrode y position must be provided" %
+                                self.__class__.__name__)
             else:
 
                 self.y = float(stim_info.get("y"))  # electrode y position
 
-            if stim_info.get("z") == None:
-                raise Exception("%s electrode z position must be provided" % self.__class__.__name__)
+            if stim_info.get("z") is None:
+                raise Exception("%s electrode z position must be provided" %
+                                self.__class__.__name__)
             else:
 
                 self.z = float(stim_info.get("z"))  # electrode z position
 
-
         else:
             self.electrode_path = stim_info["Electrode_Path"].split(',')
-
-
 
             if len(self.electrode_path) == 1:
 
@@ -955,27 +948,28 @@ class Extracellular(BaseStim):
 
                 self.current_applied = []
 
-
                 for c in currents:
                     self.current_applied.append(float(c))
 
-            if stim_info.get('RotX') == None or stim_info.get('RotY') == None or stim_info.get('RotZ') == None:
+            if stim_info.get('RotX') is None or stim_info.get('RotY') is None \
+                    or stim_info.get('RotZ') is None:
                 self.rotation_angles = None
             else:
 
-
-                self.rotation_angles = [float(stim_info["RotZ"]),float(stim_info["RotY"]),float(stim_info["RotX"])]
+                self.rotation_angles = [float(stim_info["RotZ"]), float(stim_info["RotY"]),
+                                        float(stim_info["RotX"])]
 
                 self.rotation_angles = np.array(self.rotation_angles)
 
-
-            if stim_info.get("OffsetX") == None or stim_info.get("OffsetY") == None or stim_info.get("OffsetZ") == None:
+            if stim_info.get("OffsetX") is None or stim_info.get("OffsetY") is None \
+                    or stim_info.get("OffsetZ") is None:
                 self.offset = None
             else:
 
-                self.offset = [float(stim_info["OffsetX"]),float(stim_info["OffsetX"]),float(stim_info["OffsetZ"])]
+                self.offset = [float(stim_info["OffsetX"]), float(stim_info["OffsetY"]),
+                               float(stim_info["OffsetZ"])]
 
-                if len(self.offset)!=3:
+                if len(self.offset) != 3:
                     raise Exception("Offset must have three coordinates")
 
                 self.offset = np.array(self.offset)
@@ -987,25 +981,21 @@ class Extracellular(BaseStim):
 
     def parse_check_stim_parameters(self, stim_info):
 
-
-        if stim_info.get("Delay") == None:
+        if stim_info.get("Delay") is None:
             raise Exception("Delay must be provided")
         else:
             self.delay = float(stim_info.get("Delay"))
             if self.delay < 0:
                 raise Exception("Delay must be non-negative")
 
-
-        if stim_info.get("Duration") == None:
+        if stim_info.get("Duration") is None:
             raise Exception("Delay must be provided")
         else:
             self.duration = float(stim_info.get("Duration"))
             if self.delay < 0:
                 raise Exception("Duration must be non-negative")
 
-
-
-        if stim_info.get("Amp") == None:
+        if stim_info.get("Amp") is None:
             raise Exception("AmpStart must be provided")
         elif ',' in stim_info.get("Amp"):
             amps = stim_info.get("Amp").split(',')
@@ -1015,8 +1005,7 @@ class Extracellular(BaseStim):
         else:
             self.AmpStart = [float(stim_info.get("Amp"))]
 
-
-        if stim_info.get("Type") == None:
+        if stim_info.get("Type") is None:
             raise Exception("Type must be provided")
         else:
             self.type = stim_info.get("Type")
@@ -1025,59 +1014,54 @@ class Extracellular(BaseStim):
 
             self.frequency = None
 
-            if stim_info.get("StimWidth") == None:
+            if stim_info.get("Width") is None:
                 self.width = [self.duration]
-            elif ',' in stim_info.get("StimWidth"):
-                ws = stim_info.get("StimWidth").split(',')
+            elif ',' in stim_info.get("Width"):
+                ws = stim_info.get("Width").split(',')
                 self.width = []
                 for w in ws:
                     self.width.append(float(w))
             else:
-                self.width = [float(stim_info.get("StimWidth"))]
-
-
+                self.width = [float(stim_info.get("Width"))]
 
         if self.type == "Train":
 
-            if stim_info.get("Frequency") == None:
+            if stim_info.get("Frequency") is None:
                 raise Exception("Frequency must be provided")
             else:
                 self.frequency = float(stim_info.get("Frequency"))
 
-            if stim_info.get("StimWidth") == None:
+            if stim_info.get("Width") is None:
                 self.width = self.duration
-            elif ',' in stim_info.get("StimWidth"):
-                ws = stim_info.get("StimWidth").split(',')
+            elif ',' in stim_info.get("Width"):
+                ws = stim_info.get("Width").split(',')
                 self.width = []
                 for w in ws:
                     self.width.append(float(w))
             else:
-                self.width = float(stim_info.get("StimWidth"))
-
+                self.width = float(stim_info.get("Width"))
 
         if self.type == 'Sinusoid':
 
-            if stim_info.get("Frequency") == None:
+            if stim_info.get("Frequency") is None:
                 raise Exception("Frequency must be provided")
             else:
                 self.frequency = float(stim_info.get("Frequency"))
-
 
             self.width = None
 
         if self.type == 'TI':
-            if stim_info.get("Frequency") == None:
+            if stim_info.get("Frequency") is None:
                 raise Exception("Frequency must be provided")
             else:
                 freq = float(stim_info.get("Frequency"))
 
-            if stim_info.get("OffsetFreq") == None:
+            if stim_info.get("OffsetFreq") is None:
                 raise Exception("Offset frequency must be provided")
             else:
                 freqOff = float(stim_info.get("OffsetFreq"))
 
-
-            self.frequency = [freq,freqOff]
+            self.frequency = [freq, freqOff]
 
             if len(self.AmpStart) != 2:
                 raise Exception("Each sinusoid must have amplitude")
@@ -1086,17 +1070,17 @@ class Extracellular(BaseStim):
 
         if self.type == "PulseTI":
 
-            if stim_info.get("Frequency") == None:
+            if stim_info.get("Frequency") is None:
                 raise Exception("Frequency must be provided")
             else:
                 freq = float(stim_info.get("Frequency"))
 
-            if stim_info.get("OffsetFreq") == None:
+            if stim_info.get("OffsetFreq") is None:
                 raise Exception("Offset frequency must be provided")
             else:
                 freqOff = float(stim_info.get("OffsetFreq"))
 
-            if stim_info.get("BurstFreq") == None:
+            if stim_info.get("BurstFreq") is None:
                 raise Exception("Burst frequency must be provided")
             else:
                 freqPulse = float(stim_info.get("BurstFreq"))
@@ -1106,15 +1090,12 @@ class Extracellular(BaseStim):
             if len(self.AmpStart) != 2:
                 raise Exception("Each sinusoid must have amplitude")
 
-            if stim_info.get("PulseNumber") == None:
+            if stim_info.get("PulseNumber") is None:
                 raise Exception("Pulse number must be provided")
             else:
                 self.pulse_number = float(stim_info.get("PulseNumber"))
 
-
             self.width = None
-
-
 
         if self.type != 'Sinusoid' and self.type != 'TI' and self.type != 'PulseTI':
             if len(self.AmpStart) != len(self.width):
@@ -1123,32 +1104,24 @@ class Extracellular(BaseStim):
         self.ramp_up_number = None
         self.ramp_down_number = None
 
-
-
         if stim_info.get("RampUpTime") is not None:
             ramp_up_time = float(stim_info.get("RampUpTime"))
-            self.ramp_up_number = int(ramp_up_time/0.025) # Hardcoded dt of 0.025 ms
-            if ramp_up_time>self.duration:
+            self.ramp_up_number = int(ramp_up_time / 0.025)  # Hardcoded dt of 0.025 ms
+            if ramp_up_time > self.duration:
                 raise Exception('Ramp up time must be smaller than duration')
-
-
 
         if stim_info.get("RampDownTime") is not None:
             ramp_down_time = float(stim_info.get("RampDownTime"))
-            self.ramp_down_number = int(ramp_down_time/0.025) # Hardcoded dt of 0.025 ms
-            if ramp_down_time>self.duration:
+            self.ramp_down_number = int(ramp_down_time / 0.025)  # Hardcoded dt of 0.025 ms
+            if ramp_down_time > self.duration:
                 raise Exception('Ramp down time must be smaller than duration')
 
             if stim_info.get("RampUpTime") is not None:
-                if ramp_up_time+ramp_down_time>self.duration:
+                if ramp_up_time + ramp_down_time > self.duration:
                     raise Exception("Ramps must be shorter than the duration")
 
-
-        if (self.ramp_up_number is not None or self.ramp_down_number is not None) and not ('TI' in self.type or self.type == 'Sinusoid'):
+        if (self.ramp_up_number is not None or self.ramp_down_number is not None) and not (
+                'TI' in self.type or self.type == 'Sinusoid'):
             raise Exception("ramp only works with TI or sinusoids")
-
-
-
-
 
         return True

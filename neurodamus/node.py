@@ -567,21 +567,21 @@ class Node:
         add_args = []
         if "BaseSeed" in self._run_conf:
             add_args.append(self._run_conf["BaseSeed"])
-        self._stim_manager = StimulusManager(self._target_manager, None, *add_args) # Does not use hoc electrode manager
+        self._stim_manager = StimulusManager(
+            self._target_manager, None, *add_args)  # Does not use hoc electrode manager
+
         # Nd.StimulusManager(
         #     self._target_manager.hoc, self._elec_manager, *extra_params)
 
         # build a dictionary of stims for faster lookup : useful when applying 10k+ stims
         # while we are at it, check if any stims are using extracellular
-        has_extra_cellular = False
         stim_dict = {}
         for stim_name, stim in SimConfig.stimuli.items():
             stim = compat.Map(stim)
             if stim_name in stim_dict:
                 raise ConfigurationError("Stimulus declared more than once: %s", stim_name)
             stim_dict[stim_name] = stim
-            if stim.get("Mode") == "Extracellular":
-                has_extra_cellular = True
+            # if stim.get("Mode") == "Extracellular":
 
         # Treat extracellular stimuli along with all other stimuli
         # if has_extra_cellular:
@@ -614,10 +614,7 @@ class Node:
 
     # -
     def _enable_electrodes(self):
-        #if SimConfig.use_coreneuron:
-            # Coreneuron doesnt support electrodes
-        # Maybe it does with Joe's modification?
-            #return False
+
         electrode_path = self._run_conf.get("ElectrodesPath")
         if electrode_path is not None:
             logging.info("ElectrodeManager using electrodes from %s", electrode_path)

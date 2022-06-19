@@ -840,10 +840,13 @@ class PointSourceElectrode(ElectrodeSource):
 
 class RealElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, electrode_path,offset,current_applied,soma_position,rotation_angles,pulseNumber,axes,constant,constantAxis):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,
+                 electrode_path, offset, current_applied, soma_position, rotation_angles,
+                 pulseNumber, axes, constant, constantAxis):
 
 
-        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width,pulseNumber)
+        super().__init__(pattern, delay, type, duration,  AmpStart,
+                         frequency, width,pulseNumber)
 
         #
         # scaleFile = h5py.File(electrode_path)
@@ -952,16 +955,16 @@ class RealElectrode(ElectrodeSource):
 
         # Get new output file potential field
 
-            with h5py.File(file, 'r') as f:
-                for i in f['FieldGroups']:
-                    tmp = 'FieldGroups/' + i + '/AllFields/EM Potential(x,y,z,f0)/_Object/Snapshots/0/'
-                pot = self.geth5Dataset(file, tmp, 'comp0')
-                for i in f['Meshes']:
-                    tmp = 'Meshes/' + i
-                    break
-                x = self.geth5Dataset(file, tmp, 'axis_x')
-                y = self.geth5Dataset(file, tmp, 'axis_y')
-                z = self.geth5Dataset(file, tmp, 'axis_z')
+            f =  h5py.File(file, 'r')
+            for i in f['FieldGroups']:
+                tmp = 'FieldGroups/' + i + '/AllFields/EM Potential(x,y,z,f0)/_Object/Snapshots/0/'
+            pot = self.geth5Dataset(file, tmp, 'comp0')
+            for i in f['Meshes']:
+                tmp = 'Meshes/' + i
+                break
+            x = self.geth5Dataset(file, tmp, 'axis_x')
+            y = self.geth5Dataset(file, tmp, 'axis_y')
+            z = self.geth5Dataset(file, tmp, 'axis_z')
 
 
             InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear')
