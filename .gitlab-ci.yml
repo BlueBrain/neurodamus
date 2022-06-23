@@ -81,7 +81,7 @@ docs:
     TOXENV: docs
   artifacts:
     paths:
-      - docs/_build/"
+      - docs/_build
 
 publish-docs:
   variables:
