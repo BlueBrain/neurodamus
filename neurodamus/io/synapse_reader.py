@@ -11,6 +11,12 @@ from ..core import NeurodamusCore as Nd, MPI
 from ..utils.logging import log_verbose
 
 
+def _constrained_hill(K_half, y):
+    K_half_fourth = K_half**4
+    y_fourth = y**4
+    return (K_half_fourth + 16) / 16 * y_fourth / (K_half_fourth + y_fourth)
+
+
 class _SynParametersMeta(type):
     def __init__(cls, name, bases, attrs):
         type.__init__(cls, name, bases, attrs)
@@ -100,16 +106,8 @@ class SynapseReader(object):
         if extra_cellular_calcium is None:
             return
 
-        def hill(ca_conc, y, K_half):
-            return y*ca_conc**4/(K_half**4 + ca_conc**4)
-
-        def constrained_hill(K_half):
-            y_max = (K_half**4 + 16) / 16
-            return lambda x: hill(x, y_max, K_half)
-
-        f_scale = lambda x, y: constrained_hill(x)(y)
-        scale_factors = np.vectorize(f_scale)(syn_params.u_hill_coefficient,
-                                              extra_cellular_calcium)
+        scale_factors = _constrained_hill(syn_params.u_hill_coefficient,
+                                          extra_cellular_calcium)
         syn_params.U *= scale_factors
 
         if mod_override is not None:

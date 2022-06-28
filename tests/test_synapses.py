@@ -4,10 +4,12 @@ import subprocess
 from tempfile import NamedTemporaryFile
 import numpy as np
 
+import numpy.testing as npt
+
 from neurodamus.node import Node
 from neurodamus.core import NeurodamusCore as Nd
 from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
-from neurodamus.io.synapse_reader import SynapseReader
+from neurodamus.io.synapse_reader import SynapseReader, _constrained_hill
 from neurodamus.utils import compat
 from neurodamus.utils.logging import log_verbose
 
@@ -286,9 +288,31 @@ def exec_test_synapses():
                 assert(info[prop] == pytest.approx(dfs[stype][dfcol].iloc[i]))
 
 
+def test__constrained_hill():
+    # original functions
+    def hill(ca_conc, y, K_half):
+        return y*ca_conc**4/(K_half**4 + ca_conc**4)
+
+    def constrained_hill(K_half):
+        y_max = (K_half**4 + 16) / 16
+        return lambda x: hill(x, y_max, K_half)
+
+    f_scale = lambda x, y: constrained_hill(x)(y)
+    scale_factors = np.vectorize(f_scale)
+
+    rng = np.random.default_rng(seed=42)
+    a = 10 * rng.random(100)
+    b = 10 * rng.random(100)
+
+    npt.assert_allclose(scale_factors(a, 2), _constrained_hill(a, 2))
+    npt.assert_allclose(scale_factors(a, 2.2), _constrained_hill(a, 2.2))
+    npt.assert_allclose(scale_factors(a, b), _constrained_hill(a, b))
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
         exec('exec_{}()'.format(sys.argv[1]))
     else:
         test_sim_feature()
+        test__constrained_hill()
