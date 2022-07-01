@@ -31,15 +31,26 @@ def neurodamus(args=None):
         --disable-reports       Disable all reports [default: False]
         --build-model=[AUTO, ON, OFF]
                                 Shall it build and eventually overwrite? [default: AUTO]
-                                AUTO: build model if doesn't exist and simulator is coreneuron
-                                ON: always build and eventually overwrite the model
-                                OFF: Don't build the model. Simulation may fail to start
-        --simulate-model=[ON, OFF]     Shall the simulation start automatically? [default: ON]
+                                - AUTO: build model if doesn't exist and simulator is coreneuron
+                                - ON: always build and eventually overwrite the model
+                                - OFF: Don't build the model. Simulation may fail to start
+        --simulate-model=[ON, OFF]
+                                Shall the simulation start automatically? [default: ON]
         --output-path=PATH      Alternative output directory, overriding BlueConfigs
         --keep-build            Keep coreneuron intermediate data. Otherwise deleted at the end
-        --modelbuilding-steps=<number> Set the number of ModelBuildingSteps for the CoreNeuron sim
-        --experimental-stims=[ON, OFF] Shall use only Python stimuli? [default: OFF]
-
+        --modelbuilding-steps=<number>
+                                Set the number of ModelBuildingSteps for the CoreNeuron sim
+        --experimental-stims    Shall use only Python stimuli? [default: False]
+        --lb-mode=[RoundRobin, WholeCell, MultiSplit]
+                                The Load Balance mode.
+                                - RoundRobin: Disable load balancing. Good for quick simulations
+                                - WholeCell: Does a first pass to compute load balancing and
+                                    redistributes cells so that CPU load is similar among ranks
+                                - MultiSplit: Allows splitting cells into pieces for distribution.
+                                    WARNING: This mode is incompatible with CoreNeuron
+        --save=<PATH>           - Path to create a save point to enable resume.
+        --save-time=<TIME>      - The simulation time [ms] to save the state. (Default:at the end)
+        --restore=<PATH>        - Restore and resume simulation from a save point on disk
     """
     options = docopt_sanitize(docopt(neurodamus.__doc__, args))
     config_file = options.pop("BlueConfig")

@@ -2,12 +2,10 @@
 # Copyright 2018 - Blue Brain Project, EPFL
 
 from __future__ import absolute_import
-import functools
 import glob
 import itertools
 import logging
 import math
-import operator
 import os
 import subprocess
 from os import path as ospath
@@ -314,7 +312,7 @@ class Node:
                                 "Please consider launching it in a larger MPI cluster")
 
         # Check / set load balance mode
-        lb_mode = LoadBalanceMode.parse(self._run_conf.get("RunMode"))
+        lb_mode = SimConfig.loadbal_mode
         if lb_mode == LoadBalanceMode.MultiSplit:
             if not SimConfig.use_coreneuron:
                 logging.info("Load Balancing ENABLED. Mode: MultiSplit")
@@ -1020,7 +1018,7 @@ class Node:
             spike_compress: The spike_compress() parameters (tuple or int)
         """
         logging.info("Preparing to run simulation...")
-        is_save_state = any(c in self._run_conf for c in ("SaveTime", "Save", "Restore"))
+        is_save_state = SimConfig.save or SimConfig.restore
         self._pc.setup_transfer()
 
         if spike_compress and not is_save_state and not self._is_ngv_run:
@@ -1045,7 +1043,7 @@ class Node:
     # -
     def _sim_init_neuron(self):
         # === Neuron specific init ===
-        restore_path = self._run_conf.get("Restore")
+        restore_path = SimConfig.restore
         fwd_skip = self._run_conf.get("ForwardSkip", 0)
 
         if fwd_skip and not restore_path:
@@ -1181,15 +1179,15 @@ class Node:
     # -
     def _run_coreneuron(self):
         logging.info("Launching simulation with CoreNEURON")
-        neurodamus2core = {"Save": "--checkpoint",
-                           "Restore": "--restore"}
-        opts = [(core_opt, self._run_conf[opt])
-                for opt, core_opt in neurodamus2core.items()
-                if opt in self._run_conf]
-        opts_expanded = functools.reduce(operator.iconcat, opts, [])
+        core_nrn_opts = ()
 
-        log_verbose("solve_core(..., %s)", ", ".join(opts_expanded))
-        SimConfig.coreneuron.psolve_core(*opts_expanded)
+        for opt, core_opt in {"save": "--checkpoint", "restore": "--restore"}.items():
+            opt_value = getattr(SimConfig, opt)
+            if opt_value is not None:
+                core_nrn_opts = core_nrn_opts + (core_opt, opt_value)
+
+        log_verbose("solve_core(..., %s)", ", ".join(core_nrn_opts))
+        SimConfig.coreneuron.psolve_core(*core_nrn_opts)
 
     #
     def _sim_event_handlers(self, tstart, tstop):
@@ -1198,46 +1196,38 @@ class Node:
         """
         events = defaultdict(list)  # each key (time) points to a list of handlers
 
-        # Handle Save
-        save_time_config = self._run_conf.get("SaveTime")
-
-        if "Save" in self._run_conf:
-            tsave = tstop
-            if save_time_config is not None:
-                tsave = save_time_config
-                if tsave > tstop:
-                    tsave = tstop
-                    logging.warning("SaveTime specified beyond Simulation Duration. "
-                                    "Setting SaveTime to tstop.")
-
-            @timeit(name="savetime")
-            def save_f():
-                logging.info("Saving State... (t=%f)", tsave)
-                bbss = Nd.BBSaveState()
-                MPI.barrier()
-                self._stim_manager.saveStatePreparation(bbss)
-                bbss.ignore(self._binreport_helper)
-                self._binreport_helper.pre_savestate(self._run_conf["Save"])
-                log_verbose("SaveState Initialization Done")
-
-                # If event at the end of the sim we can actually clearModel() before savestate()
-                if save_time_config is None:
-                    log_verbose("Clearing model prior to final save")
-                    self._binreport_helper.flush()
-                    self._sonatareport_helper.flush()
-                    self.clear_model()
-
-                self.dump_cell_config()
-                self._binreport_helper.savestate()
-                logging.info(" => Save done successfully")
-
+        if SimConfig.save:
+            tsave = SimConfig.save_time or SimConfig.tstop  # Consider 0 as the end too!
+            save_f = self._create_save_handler(tsave)
             events[tsave].append(save_f)
-
-        elif save_time_config is not None:
-            logging.warning("SaveTime IGNORED. Reason: no 'Save' config entry")
 
         event_list = [(t, events[t]) for t in sorted(events)]
         return event_list
+
+    # -
+    def _create_save_handler(self, tsave):
+        @timeit(name="savetime")
+        def save_f():
+            logging.info("Saving State... (t=%f)", tsave)
+            bbss = Nd.BBSaveState()
+            MPI.barrier()
+            self._stim_manager.saveStatePreparation(bbss)
+            bbss.ignore(self._binreport_helper)
+            self._binreport_helper.pre_savestate(SimConfig.save)
+            log_verbose("SaveState Initialization Done")
+
+            # If event at the end of the sim we can actually clearModel() before savestate()
+            if SimConfig.save_time is None:
+                log_verbose("Clearing model prior to final save")
+                self._binreport_helper.flush()
+                self._sonatareport_helper.flush()
+                self.clear_model()
+
+            self.dump_cell_config()
+            self._binreport_helper.savestate()
+            logging.info(" => Save done successfully")
+
+        return save_f
 
     # -
     @mpi_no_errors
@@ -1279,7 +1269,7 @@ class Node:
     # finish spike exchange. As a work-around, periodically halt simulation and flush reports
     # Default is 25 ms / cycle
     def _psolve_loop(self, tstop):
-        cur_t = Nd.t
+        cur_t = round(Nd.t, 2)  # fp innnacuracies could lead to infinitesimal loops
         buffer_t = SimConfig.buffer_time
         for _ in range(math.ceil((tstop - cur_t) / buffer_t)):
             next_flush = min(tstop, cur_t + buffer_t)
@@ -1482,7 +1472,7 @@ class Neurodamus(Node):
         self._run_conf["EnableReports"] = enable_reports
         self._run_conf["AutoInit"] = auto_init
 
-        if SimConfig.coreneuron and "Restore" in self._run_conf:
+        if SimConfig.restore_coreneuron:
             self._coreneuron_restore()
         elif SimConfig.build_model:
             self._instantiate_simulation()
@@ -1554,6 +1544,7 @@ class Neurodamus(Node):
 
     # -
     def _coreneuron_restore(self):
+        log_stage(" =============== CORENEURION RESTORE ===============")
         self.load_targets()
         self.enable_replay()
         if self._run_conf["EnableReports"]:

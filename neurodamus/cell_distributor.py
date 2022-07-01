@@ -16,59 +16,13 @@ from .connection_manager import ConnectionManagerBase
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
-from .core.configuration import find_input_file, SimConfig
+from .core.configuration import LoadBalanceMode, find_input_file, SimConfig
 from .core.nodeset import NodeSet
 from .io import cell_readers
 from .metype import Cell_V5, Cell_V6, EmptyCell
 from .target_manager import TargetSpec
 from .utils import compat
 from .utils.logging import log_verbose
-
-
-class LoadBalanceMode(Enum):
-    """An enumeration, inc parser, of the load balance modes.
-    """
-    RoundRobin = 0
-    WholeCell = 1
-    MultiSplit = 2
-
-    @classmethod
-    def parse(cls, lb_mode):
-        """Parses the load balancing mode from a string.
-        Options other than WholeCell or MultiSplit are considered RR
-        """
-        if lb_mode is None:
-            return None
-        _modes = {
-            "rr": cls.RoundRobin,
-            "roundrobin": cls.RoundRobin,
-            "wholecell": cls.WholeCell,
-            "loadbalance": cls.MultiSplit,
-            "multisplit": cls.MultiSplit
-        }
-        return _modes[lb_mode.lower()]
-
-    class AutoBalanceModeParams:
-        """Parameters for auto-selecting a load-balance mode"""
-        multisplit_cpu_cell_ratio = 1.5
-        cell_count = 1000
-        duration = 1000
-        mpi_ranks = 200
-
-    @classmethod
-    def auto_select(cls, use_neuron, cell_count, duration, auto_params=AutoBalanceModeParams):
-        """Simple heuristics for auto selecting load balance"""
-        lb_mode = LoadBalanceMode.RoundRobin
-        reason = ""
-        if use_neuron and MPI.size > auto_params.multisplit_cpu_cell_ratio * cell_count:
-            lb_mode = LoadBalanceMode.MultiSplit
-            reason = "CPU-Cell ratio"
-        elif (cell_count > auto_params.cell_count
-              and duration > auto_params.duration
-              and MPI.size > auto_params.mpi_ranks):
-            lb_mode = LoadBalanceMode.WholeCell
-            reason = 'Simulation size'
-        return lb_mode, reason
 
 
 class NodeFormat(Enum):

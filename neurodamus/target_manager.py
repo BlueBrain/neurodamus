@@ -150,7 +150,8 @@ class TargetManager:
 
     def register_target(self, target):
         self._targets[target.name] = target
-        if hoc_target := target.get_hoc_target():
+        hoc_target = target.get_hoc_target()
+        if hoc_target:
             self.parser.updateTargetList(hoc_target)
 
     def get_target(self, target_spec: TargetSpec, target_pop=None):
