@@ -145,7 +145,7 @@ class TargetManager:
     def create_global_target(cls):
         # In blueconfig mode the _ALL_ target refers to base single population)
         if not SimConfig.is_sonata_config:
-            return _HocTarget(TargetSpec.GLOBAL_TARGET_NAME, None)
+            return _HocTarget(TargetSpec.GLOBAL_TARGET_NAME, None)  # None population -> generic
         return NodesetTarget(TargetSpec.GLOBAL_TARGET_NAME, [])
 
     def register_target(self, target):
@@ -170,7 +170,7 @@ class TargetManager:
         target_pop = target_spec.population
 
         def get_concrete_target(target):
-            """Get a more specific target, dependending on specified population prefix"""
+            """Get a more specific target, depending on specified population prefix"""
             return target if target_pop is None else target.make_subtarget(target_pop)
 
         # Check cached
@@ -556,12 +556,12 @@ class _HocTarget(_TargetInterface):
 
     def make_subtarget(self, pop_name):
         if pop_name is not None:
-            # Old targets have only one population. Ensure one doesnt assign more than once
+            # Old targets have only one population. Ensure one doesn't assign more than once
             if self.name == TargetSpec.GLOBAL_TARGET_NAME:  # This target is special
                 return _HocTarget(pop_name + "__ALL__", Nd.Target(self.name), pop_name)
             if self.population_name not in (None, pop_name):
-                raise ConfigurationError("Target %s cannot be reassigned population (%s->%s)"
-                                         % (self.name, self.population_name, pop_name))
+                raise ConfigurationError("Target %s cannot be reassigned population %s (cur: %s)"
+                                         % (self.name, pop_name, self.population_name))
             self.population_name = pop_name
         return self
 
@@ -578,7 +578,7 @@ class _HocTarget(_TargetInterface):
         self.hoc_target = Nd.Target(self.name, hoc_gids, self.population_name)
 
     def __contains__(self, item):
-        return self.hoc_target.completeContains(item - self.offset)
+        return self.hoc_target.completeContains(item)
 
     def is_void(self):
         return not bool(self.hoc_target)  # old targets could match with any population

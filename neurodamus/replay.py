@@ -128,13 +128,16 @@ class SpikeManager(object):
         """Returns a raw dict of pre_gid->spikes for the given pre gids."""
         return {key: self._gid_fire_events[key] for key in pre_gids}
 
-    def dump_ascii(self, f):
+    def dump_ascii(self, f, gid_offset=None):
         """Writes the spikes out, in compat ascii format.
 
         Args:
             f: The file name or handle
         """
         gids, times = self._gid_fire_events.flatten().data()
+        if gid_offset:
+            log_verbose("dump_ascii: add offset %d to gids", gid_offset)
+            gids += gid_offset
         expanded_ds = numpy.stack((times, gids), axis=-1)
 
         if isinstance(f, str):

@@ -211,13 +211,13 @@ def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *,
     return gidvec, meinfo, total_cells
 
 
-def load_sonata(circuit_conf, gidvec, stride=1, stride_offset=0, *,
+def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
                 node_population, load_dynamic_props=(), **kw):
     """
     A reader supporting additional dynamic properties from Sonata files.
     """
     load_nodes_base_info = lambda: load_nodes(
-        circuit_conf, gidvec, stride, stride_offset, node_population=node_population, **kw
+        circuit_conf, all_gids, stride, stride_offset, node_population=node_population, **kw
     )
     # If dynamic properties are not specified simply return early
     if not load_dynamic_props:
@@ -227,7 +227,6 @@ def load_sonata(circuit_conf, gidvec, stride=1, stride_offset=0, *,
     node_file = circuit_conf.CellLibraryFile
     node_store = libsonata.NodeStorage(node_file)
     node_pop = node_store.open_population(node_population)
-    node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
     attr_names = node_pop.attribute_names
     dynamics_attr_names = node_pop.dynamics_attribute_names
 
@@ -244,6 +243,7 @@ def load_sonata(circuit_conf, gidvec, stride=1, stride_offset=0, *,
 
     # All good. Lets start reading!
     gidvec, meinfos, fullsize = load_nodes_base_info()
+    node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
 
     for prop_name in load_dynamic_props:
         log_verbose("Loading extra property: %s ", prop_name)

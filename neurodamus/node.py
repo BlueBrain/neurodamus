@@ -468,8 +468,8 @@ class Node:
         src_target = self.target_manager.get_target(source_t)
         dst_target = self.target_manager.get_target(dest_t)
         # Loop over population pairs
-        for src_pop in src_target.populations:
-            for dst_pop in dst_target.populations:
+        for src_pop in src_target.population_names:
+            for dst_pop in dst_target.population_names:
                 # Loop over all managers having connections between the populations
                 for conn_manager in self._circuits.get_edge_managers(src_pop, dst_pop):
                     logging.debug("Using connection manager: %s", conn_manager)
@@ -518,10 +518,10 @@ class Node:
         dst_target = self.target_manager.get_target(dest_t)
 
         # If the src_pop is not a known node population, allow creating a Virtual one
-        src_populations = src_target.populations or [source_t.population]
+        src_populations = src_target.population_names or [source_t.population]
 
         for src_pop in src_populations:
-            for dst_pop in dst_target.populations:
+            for dst_pop in dst_target.population_names:
                 logging.info(" * %s (Type: %s, Src: %s, Dst: %s)", pname, ptype, src_pop, dst_pop)
                 conn_manager = self._circuits.get_create_edge_manager(
                     ptype_cls, src_pop, dst_pop, source_t,
@@ -657,34 +657,49 @@ class Node:
                        connectivity_type=None):
         spike_filepath = find_input_file(stim_conf["SpikeFile"])
         spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
-
-        # For CoreNeuron, we should put the replays into a single file to be used as PatternStim
-        if SimConfig.use_coreneuron:
-            # Initialize file if non-existing
-            if not self._core_replay_file:
-                self._core_replay_file = ospath.join(SimConfig.output_root, 'pattern.dat')
-                if MPI.rank == 0:
-                    log_verbose("Creating pattern.dat file for CoreNEURON")
-                    spike_manager.dump_ascii(self._core_replay_file)
-            else:
-                if MPI.rank == 0:
-                    log_verbose("Appending to pattern.dat")
-                    with open(self._core_replay_file, "a") as f:
-                        spike_manager.dump_ascii(f)
-            return
-
         ptype_cls = EngineBase.connection_types.get(connectivity_type)
         src_target = self.target_manager.get_target(source)
         dst_target = self.target_manager.get_target(target)
 
-        for src_pop in src_target.populations:
-            for dst_pop in dst_target.populations:
-                conn_manager = self._circuits.get_edge_manager(src_pop, dst_pop, ptype_cls)
-                if not conn_manager:
-                    logging.error("No edge manager found among populations %s -> %s",
-                                  src_pop, dst_pop)
-                    raise ConfigurationError("Unknown replay pathway. Check Source / Target")
-                conn_manager.replay(spike_manager, source, target, delay)
+        if SimConfig.restore_coreneuron:
+            pop_offsets, alias_pop = CircuitManager.read_population_offsets()
+
+        for src_pop in src_target.population_names:
+            for dst_pop in dst_target.population_names:
+                src_pop_str, dst_pop_str = src_pop or "(base)", dst_pop or "(base)"
+
+                if SimConfig.restore_coreneuron:  # Node and Edges managers not initialized
+                    src_pop_offset = pop_offsets[src_pop] if src_pop in pop_offsets \
+                        else pop_offsets[alias_pop[src_pop]]
+                else:
+                    conn_manager = self._circuits.get_edge_manager(src_pop, dst_pop, ptype_cls)
+                    if not conn_manager:
+                        logging.error("No edge manager found among populations %s -> %s",
+                                      src_pop_str, dst_pop_str)
+                        raise ConfigurationError("Unknown replay pathway. Check Source / Target")
+                    src_pop_offset = conn_manager.src_pop_offset
+
+                logging.info("=> Population pathway %s -> %s. Source offset: %d",
+                             src_pop_str, dst_pop_str, src_pop_offset)
+                if SimConfig.use_coreneuron:
+                    self._coreneuron_replay_append(spike_manager, src_pop_offset)
+                else:
+                    conn_manager.replay(spike_manager, source, target, delay)
+
+    def _coreneuron_replay_append(self, spike_manager, gid_offset=None):
+        """Write replay spikes in single file for CoreNeuron"""
+        # To be loaded as PatternStim, requires final gids (with offset)
+        # Initialize file if non-existing
+        if not self._core_replay_file:
+            self._core_replay_file = ospath.join(SimConfig.output_root, 'pattern.dat')
+            if MPI.rank == 0:
+                log_verbose("Creating pattern.dat file for CoreNEURON. Gid offset: %d", gid_offset)
+                spike_manager.dump_ascii(self._core_replay_file, gid_offset)
+        else:
+            if MPI.rank == 0:
+                log_verbose("Appending to pattern.dat. Gid offset: %d", gid_offset)
+                with open(self._core_replay_file, "a") as f:
+                    spike_manager.dump_ascii(f, gid_offset)
 
     # -
     @mpi_no_errors

@@ -57,7 +57,7 @@ class VirtualCellPopulation:
     is_virtual = property(lambda self: True)
 
     def __str__(self):
-        return "([VIRT] {:s})".format(self._population_name)
+        return "([VIRT] {:s})".format(self.population_name)
 
 
 class CellManagerBase(object):
