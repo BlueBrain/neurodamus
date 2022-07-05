@@ -54,6 +54,11 @@ class TestStimuli(object):
         assert list(self.stim.time_vec) == pytest.approx([0, 0.025, 0.05, 0.075, 0.1, 0.1])
         assert list(self.stim.stim_vec) == pytest.approx([0, 1, 0, -1, 0, 0])
 
+    def test_ti(self):
+        self.stim.add_ti([1,0], 0.1, 10000,10)
+        assert list(self.stim.time_vec) == pytest.approx([0, 0.025, 0.05, 0.075, 0.1])
+        assert list(self.stim.field1) == pytest.approx([1, 0, -1, 0, 1])
+
     def test_sin_long(self):
         self.stim.add_sin([1], 200, 10, 25)
         assert list(self.stim.time_vec) == pytest.approx([0, 25, 50, 75, 100, 125, 150,

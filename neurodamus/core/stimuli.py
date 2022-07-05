@@ -94,6 +94,7 @@ class SignalSource:
             base_amp: The base amplitude
         """
         base_amp = kw.get("base_amp", self._base_amp)
+
         tau = 1000 / frequency
         delay = tau - pulse_duration
         number_pulses = int(total_duration / tau)
@@ -146,7 +147,7 @@ class SignalSource:
         self._add_point(base_amp)
         return self
 
-    def add_ti(self,amp,duration,carrier_freq,pulse_freq,step=0.001,**kw):
+    def add_ti(self,amp,duration,carrier_freq,pulse_freq,step=0.025,**kw):
 
 
         shift_freq = pulse_freq+carrier_freq
@@ -331,6 +332,7 @@ class SignalSource:
         """
         # First and last are base_amp
         base_amp = kw.get("base_amp", self._base_amp)
+
         self._add_point(base_amp)
 
         delay = kw.get("delay",0)
@@ -677,10 +679,11 @@ class ConductanceSource(SignalSource):
 class ElectrodeSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,pulseNumber):
+    def __init__(self, pattern, delay, type, duration, AmpStart, frequency, width, rotationAngles, pulseNumber, stepSize):
+
 
         """
-        Creates a new §current source that injects a signal under IClamp
+        Creates a new source that injects a signal under e_extracellular
         """
         super().__init__()
         self.pattern  = pattern
@@ -693,7 +696,9 @@ class ElectrodeSource(SignalSource):
         self._all_sources.append(self)
         self.extracellulars = []
         self.axon1 = False
+        self.rotation_angles = rotationAngles
         self.pulse_number = pulseNumber
+        self.stepSize = stepSize
 
         if self.type == "Pulse":
 
@@ -701,19 +706,20 @@ class ElectrodeSource(SignalSource):
 
         elif self.type == "Train":
 
+
             self.add_train_arbitrary(self.AmpStart, self.width, self.frequency, self.duration,delay=self.stim_delay)
 
         elif self.type == "Sinusoid":
 
 
-            self.add_sin(self.AmpStart, self.duration, self.frequency,delay=self.stim_delay)
+            self.add_sin(self.AmpStart, self.duration, self.frequency,delay=self.stim_delay, step=self.stepSize)
 
         elif self.type =='TI':
 
             carrier_freq = self.frequency[0]
             pulse_freq = self.frequency[1]
 
-            self.add_ti(self.AmpStart, self.duration, carrier_freq,pulse_freq,delay=self.stim_delay)
+            self.add_ti(self.AmpStart, self.duration, carrier_freq,pulse_freq,delay=self.stim_delay, step=self.stepSize)
 
         elif self.type == "PulseTI":
 
@@ -721,7 +727,7 @@ class ElectrodeSource(SignalSource):
             pulse_freq = self.frequency[1]
             burst_freq = self.frequency[2]
 
-            self.add_pulse_ti(self.AmpStart,self.duration,carrier_freq,pulse_freq,self.pulse_number,burst_freq,delay=self.stim_delay)
+            self.add_pulse_ti(self.AmpStart,self.duration,carrier_freq,pulse_freq,self.pulse_number,burst_freq,delay=self.stim_delay, step=self.stepSize)
 
         else:
             raise Exception("Stimulus type not defined")
@@ -798,76 +804,225 @@ class ElectrodeSource(SignalSource):
 
         return segpos
 
+    def rotate(self,segpositions):
 
+        # Rotates segment positions about x, y, or z axis
+
+        newsegs = segpositions.copy()
+
+
+        newsegs -= self.new_soma_pos
+
+        alpha = self.rotation_angles[2]*np.pi/180
+        beta = self.rotation_angles[1]*np.pi/180
+        gamma = self.rotation_angles[0]*np.pi/180
+
+        R = np.array([[np.cos(beta)*np.cos(gamma),np.sin(alpha)*np.sin(beta)*np.cos(gamma)-np.cos(alpha)*np.sin(gamma),np.cos(alpha)*np.sin(beta)*np.cos(gamma)+np.sin(alpha)*np.sin(gamma)],\
+        [np.cos(beta)*np.sin(gamma),np.sin(alpha)*np.sin(beta)*np.sin(gamma)+np.cos(alpha)*np.cos(gamma),np.cos(alpha)*np.sin(beta)*np.sin(gamma)-np.sin(alpha)*np.cos(gamma)],\
+        [-np.sin(beta),np.sin(alpha)*np.cos(beta),np.cos(alpha)*np.cos(beta)]])
+
+        newsegs = np.matmul(R,newsegs)
+
+        newpositions = newsegs + self.new_soma_pos
+
+        return newpositions
+
+    def rotate_about_axis(self, segpositions):
+
+        # Rotates segment positions about arbitrary axis
+
+        newsegs = segpositions.copy()
+
+        newsegs -= self.new_soma_pos
+
+        for i, r in enumerate(self.rotation_angles[:2]):
+            q0 = np.cos(r/2*np.pi/180)
+            q1 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][0]
+            q2 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][1]
+            q3 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][2]
+
+            rotation = [q1,q2,q3,q0]
+
+            finalrotation = R.from_quat(rotation)
+
+            newsegs = finalrotation.apply(newsegs)
+
+        newpositions = newsegs + self.new_soma_pos
+
+        return newpositions
+
+
+    def apply_ramp(self, vector, ramp_up_number, ramp_down_number):
+
+        if ramp_up_number is not None:
+            ramp_up = np.linspace(0, 1, ramp_up_number)
+        if ramp_down_number is not None:
+            ramp_down = np.linspace(1, 0, ramp_down_number)
+
+        if ramp_up_number is not None:
+            vector[:ramp_up_number] *= ramp_up
+
+        if ramp_down_number is not None:
+            vector[len(vector) - ramp_down_number:] *= ramp_down
+
+        return vector
+
+    def attach_to(self, section, x, **kw):
+
+
+        section.insert('extracellular')
+
+        ramp_up_number = kw.get("ramp_up_number", None)
+        ramp_down_number = kw.get("ramp_down_number", None)
+
+        scaleFac, newpos = self.get_scale_factor(section, x)
+
+        if 'TI' in self.type:
+
+            field1 = self.field1 * scaleFac[0]
+            field2 = self.field2 * scaleFac[-1]
+
+            field = field1 + field2
+
+            field = self.apply_ramp(field,ramp_up_number,ramp_down_number)
+
+            segVec = h.Vector()
+            segVec = segVec.from_python(field)
+
+
+        elif self.type == 'Sinusoid':
+
+            segVec = h.Vector()
+
+            newstimVec = self.stim_vec.to_python()
+
+            newstimVec = self.apply_ramp(newstimVec, ramp_up_number, ramp_down_number)
+
+            for v in newstimVec:
+                segVec.append(v)
+
+            segVec.mul(scaleFac[0])
+
+        else:
+
+            segVec = h.Vector()
+            segVec.copy(self.stim_vec)
+            segVec.mul(scaleFac[0])
+
+        out = segVec.play(seg.extracellular._ref_e, self.time_vec)
+        self.extracellulars.append(out)
+
+        return segVec.to_python(), newpos
 
 class PointSourceElectrode(ElectrodeSource):
 
-    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width, x, y, z, pulseNumber,sigma=0.277):
+    def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,
+                 rotationAngles, pulseNumber, stepSize, x, y, z, sigma=0.277):
 
-        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width,pulseNumber)
+        super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width,
+                         rotationAngles, pulseNumber, stepSize)
+
+        # x,y,z positions of electrode, sigma is extracellular conductivity
         self.x = x
         self.y = y
         self.z = z
         self.sigma = sigma
 
+    def get_scale_factor(self, section, x):
 
-    def attach_to(self,section):
+        if 'soma' in section.name():
 
-        section.insert('extracellular')
+            segpositions = self.get_soma_position(section)
 
-        for seg in section:
+            self.soma_position = segpositions.copy()
+        else:
+            segpositions = self.interp_seg_positions(section, x)
 
-            if 'soma' in section.name():
+        if isinstance(self.offset, np.ndarray):
 
-                segpositions = self.get_soma_position(section)
-            else:
-                segpositions = self.interp_seg_positions(section,seg.x)
+            segpositions -= self.soma_position.copy()
 
-            distance = np.linalg.norm(np.array([self.x,self.y,self.z])-segpositions)
+            segpositions += self.offset * 1e3  # offset in mm converted to um
+            self.new_soma_pos = self.offset * 1e3
 
-            scaleFactor = 1 / (4 * np.pi * self.sigma * distance)*1e3
+        else:
+            self.new_soma_pos = self.soma_position.copy()
+
+        distance = np.linalg.norm(np.array([self.x, self.y, self.z])-segpositions)
+
+        scaleFactor = 1 / (4 * np.pi * self.sigma * distance)*1e3
+
+        return [scaleFactor], newsegpositions
+
+class ConstantEfield(ElectrodeSource):
+
+    def __init__(self, pattern, delay, type, duration, AmpStart, frequency, width,
+                 rotationAngles, pulseNumber, stepSize, offset, constantAxis, somaPosition):
+
+        super().__init__(pattern, delay, type, duration, AmpStart, frequency, width,
+                         rotationAngles, pulseNumber, stepSize)
+        self.constantAxis = constantAxis
+        self.soma_position = somaPosition
+        self.offset = offset
 
 
-            segVec = h.Vector()
-            segVec.copy(self.stim_vec)
-            segVec.mul(scaleFactor)
+    def constant_potentials(self, segpositions):
 
-            out = segVec.play(seg.extracellular._ref_e,self.time_vec,1)
+        # Calculates distance between soma and each segment, since the ground is assumed to be at the soma
 
-            self.extracellulars.append(out)
+        if self.rotation_angles is not None:
+            newsegpositions = self.rotate(segpositions)
+
+        else:
+            newsegpositions = segpositions.copy()
+
+        if self.constantAxis == 'x':
+            outputs = newsegpositions[0] - self.soma_position[0]
+        elif self.constantAxis == 'y':
+            outputs = newsegpositions[1] - self.soma_position[1]
+        else:
+            outputs = newsegpositions[2] - self.soma_position[2]
+
+        outputs *= 1e-6 # Returns value in meters
+
+        return np.array([outputs]), newsegpositions
+
+    def get_scale_factor(self, section, x):
+
+        if 'soma' in section.name():
+
+            segpositions = self.get_soma_position(section)
+
+            self.soma_position = segpositions.copy()
+        else:
+            segpositions = self.interp_seg_positions(section, x)
+
+        if isinstance(self.offset, np.ndarray):
+
+            segpositions += self.offset * 1e3  # offset in mm converted to um
+
+        self.new_soma_pos = self.soma_position.copy()
 
 
+        scaleFactor, newpositions = self.constant_potentials(segpositions)
+
+        return scaleFactor * 1e3, newpositions # multiplies scale factor by 1e3 to get potential in mV
 
 class RealElectrode(ElectrodeSource):
 
     def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,
-                 electrode_path, offset, current_applied, soma_position, rotation_angles,
-                 pulseNumber, axes, constant, constantAxis):
+                 rotationAngles, pulseNumber, stepSize,
+                 electrode_path, offset, current_applied, soma_position, axes):
 
 
         super().__init__(pattern, delay, type, duration,  AmpStart,
-                         frequency, width,pulseNumber)
-
-        #
-        # scaleFile = h5py.File(electrode_path)
-        # offset = scaleFile['offsets'][str(int(gid))][(int(sec_id))]
-        # endOffset = scaleFile['offsets'][str(int(gid))][(int(sec_id+1))]
-        #
-        # self.scaleFactor = scaleFile['electrodes'][electrode_name][str(int(gid))][offset:endOffset]
-
-
-        # self.numSegs = numSegs
+                         frequency, width, rotationAngles, pulseNumber, stepSize)
 
         self.electrode_path = electrode_path
         self.offset = offset
         self.current_applied = current_applied
         self.soma_position = soma_position
-        self.rotation_angles = rotation_angles
         self.rotation_axes = axes
-        self.constant = constant
-        self.constantAxis = constantAxis
-
-
 
     def geth5Dataset(self, h5f, group_name, dataset_name):
         """
@@ -888,60 +1043,13 @@ class RealElectrode(ElectrodeSource):
             k = f[group_name].visit(find_dataset)
             return f[group_name + '/' + k][()]
 
-    # def rotate(self,segpositions):
-    #
-    #     newsegs = segpositions.copy()
-    #
-    #     newsegs -= self.new_soma_pos
-    #
-    #     for i, r in enumerate(self.rotation_angles[:2]):
-    #         q0 = np.cos(r/2*np.pi/180)
-    #         q1 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][0]
-    #         q2 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][1]
-    #         q3 = np.sin(r/2*np.pi/180)*self.rotation_axes[2-i][2]
-    #
-    #         rotation = [q1,q2,q3,q0]
-    #
-    #         finalrotation = R.from_quat(rotation)
-    #
-    #         newsegs = finalrotation.apply(newsegs)
-    #
-    #     newpositions = newsegs + self.new_soma_pos
-    #
-    #     return newpositions
-
-    def rotate(self,segpositions):
-
-        newsegs = segpositions.copy()
-
-
-        newsegs -= self.new_soma_pos
-
-
-        alpha = self.rotation_angles[2]*np.pi/180
-        beta = self.rotation_angles[1]*np.pi/180
-        gamma = self.rotation_angles[0]*np.pi/180
-
-        R = np.array([[np.cos(beta)*np.cos(gamma),np.sin(alpha)*np.sin(beta)*np.cos(gamma)-np.cos(alpha)*np.sin(gamma),np.cos(alpha)*np.sin(beta)*np.cos(gamma)+np.sin(alpha)*np.sin(gamma)],\
-        [np.cos(beta)*np.sin(gamma),np.sin(alpha)*np.sin(beta)*np.sin(gamma)+np.cos(alpha)*np.cos(gamma),np.cos(alpha)*np.sin(beta)*np.sin(gamma)-np.sin(alpha)*np.cos(gamma)],\
-        [-np.sin(beta),np.sin(alpha)*np.cos(beta),np.cos(alpha)*np.cos(beta)]])
-
-
-        newsegs = np.matmul(R,newsegs)
-
-        newpositions = newsegs + self.new_soma_pos
-
-        return newpositions
-
     def interpolate_potentials(self, segpositions):
-
 
         if self.rotation_angles is not None:
             newsegpositions = self.rotate(segpositions)
 
         else:
             newsegpositions = segpositions.copy()
-
 
         '''
         path_to_input is the path to the h5 file containing the potential field, outputted from Sim4Life
@@ -950,10 +1058,9 @@ class RealElectrode(ElectrodeSource):
 
         outputs = []
 
-
         for numFile, file in enumerate(self.electrode_path):
 
-        # Get new output file potential field
+        # Get potential field from output of finite element simulation
 
             f =  h5py.File(file, 'r')
             for i in f['FieldGroups']:
@@ -966,9 +1073,7 @@ class RealElectrode(ElectrodeSource):
             y = self.geth5Dataset(file, tmp, 'axis_y')
             z = self.geth5Dataset(file, tmp, 'axis_z')
 
-
             InterpFcn = RegularGridInterpolator((x, y, z), pot[:, :, :, 0], method='linear')
-
 
             out2rat = InterpFcn(newsegpositions*1e-6)
 
@@ -976,64 +1081,7 @@ class RealElectrode(ElectrodeSource):
 
             return np.array(outputs), newsegpositions
 
-    def constant_potentials(self,segpositions):
-
-
-
-        if self.rotation_angles is not None:
-            newsegpositions = self.rotate(segpositions)
-
-        else:
-            newsegpositions = segpositions.copy()
-
-
-        if self.constantAxis == 'x':
-            outputs = newsegpositions[0]-self.new_soma_pos[0]
-        elif self.constantAxis == 'y':
-            outputs = newsegpositions[1] - self.new_soma_pos[1]
-        else:
-            outputs = newsegpositions[2] - self.new_soma_pos[2]
-        outputs *= 1e-6
-
-
-
-        return np.array(outputs),newsegpositions
-
-    def apply_ramp(self,vector,ramp_up_number,ramp_down_number):
-
-
-        if ramp_up_number is not None:
-            ramp_up = np.linspace(0,1,ramp_up_number)
-        if ramp_down_number is not None:
-            ramp_down = np.linspace(1,0,ramp_down_number)
-
-        if ramp_up_number is not None:
-
-
-            vector[:ramp_up_number] *= ramp_up
-
-        if ramp_down_number is not None:
-
-
-            vector[len(vector)-ramp_down_number:] *= ramp_down
-
-        return vector
-
-
-
-    def attach_to(self,section,x,**kw):
-
-        section.insert('extracellular')
-
-        ramp_up_number = kw.get("ramp_up_number",None)
-        ramp_down_number = kw.get("ramp_down_number",None)
-
-        posList = []
-        maxList = []
-
-        # for seg in section:
-
-        seg = section(x)
+    def get_scale_factor(self, section, x):
 
         if 'soma' in section.name():
 
@@ -1041,97 +1089,19 @@ class RealElectrode(ElectrodeSource):
 
             self.soma_position = segpositions.copy()
         else:
-            segpositions = self.interp_seg_positions(section,x)
+            segpositions = self.interp_seg_positions(section, x)
 
-
-        if isinstance(self.offset,np.ndarray):
+        if isinstance(self.offset, np.ndarray):
 
             segpositions -= self.soma_position.copy()
 
-
-
-            segpositions += self.offset * 1e3 # offset in mm converted to um
-            self.new_soma_pos = self.offset *1e3
+            segpositions += self.offset * 1e3  # offset in mm converted to um
+            self.new_soma_pos = self.offset * 1e3
 
         else:
             self.new_soma_pos = self.soma_position.copy()
 
-        if not self.constant:
-            scaleFac, newsegpositions = self.interpolate_potentials(segpositions) #(1e3 to go from V to mV)
-            scaleFac *= 1e3
-        else:
-            s, newsegpositions = self.constant_potentials(segpositions)
+        scaleFac, newsegpositions = self.interpolate_potentials(segpositions)
+        scaleFac *= 1e3 # (1e3 to go from V to mV)
 
-            scaleFac = [s*1e3]
-
-
-        if 'TI' in self.type:
-
-
-            field1 = self.field1 * scaleFac[0]
-            field2 = self.field2 * scaleFac[-1]
-
-
-
-            field = field1 + field2
-
-
-
-            field = self.apply_ramp(field,ramp_up_number,ramp_down_number)
-
-
-            segVec = h.Vector()
-            segVec = segVec.from_python(field)
-
-            # if 'dend[1]' in section.name():
-            #
-            #
-            #     np.save('fieldConstantDend1.npy',field1)
-            #     np.save('fieldConstantDend2.npy',field2)
-
-
-
-
-        elif self.type == 'Sinusoid':
-
-            segVec = h.Vector()
-
-            newstimVec = self.stim_vec.to_python()
-
-
-            newstimVec = self.apply_ramp(newstimVec,ramp_up_number,ramp_down_number)
-
-            for v in newstimVec:
-                segVec.append(v)
-
-
-            segVec.mul(scaleFac[0])
-
-
-        else:
-
-            segVec = h.Vector()
-            segVec.copy(self.stim_vec)
-            segVec.mul(scaleFac[0])
-
-
-
-        out = segVec.play(seg.extracellular._ref_e,self.time_vec)
-        self.extracellulars.append(out)
-
-        max = np.max(np.abs(segVec.to_python()))
-
-        maxList.append(max)
-
-        # if len(maxList) > 1:
-        #
-        #     maxAmp = (maxList[-1]-maxList[-2])/np.linalg.norm(posList[-1]-posList[-2])*1e3
-        # else:
-        #     maxAmp = np.nan
-        #
-        # return np.abs(maxAmp)
-
-
-        return max,newsegpositions
-
-        # return numNewSegs
+        return scaleFac, newsegpositions

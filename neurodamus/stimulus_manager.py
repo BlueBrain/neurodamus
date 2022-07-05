@@ -22,7 +22,7 @@ import logging
 from .core import NeurodamusCore as Nd
 from .utils.logging import log_verbose
 from .core.configuration import SimConfig
-from .core.stimuli import CurrentSource, ConductanceSource, RealElectrode, PointSourceElectrode
+from .core.stimuli import CurrentSource, ConductanceSource, RealElectrode, PointSourceElectrode, ConstantEfield
 from .core import random
 import numpy as np
 
@@ -791,10 +791,9 @@ class Extracellular(BaseStim):
 
         tpoints = target.getPointList(cell_manager)
 
-        # posList = []
-        # amps = []
-        # maxList = []
-        # isAxon = []
+        posList = []
+
+        fields = []
 
         for tpoint_list in tpoints:
             gid = tpoint_list.gid
@@ -805,31 +804,29 @@ class Extracellular(BaseStim):
 
             somaPos = None
 
-            if self.rotation_angles is not None:  # Finds major axis of cell to redine rotations
+            if self.rotation_angles is not None and self.aboutMainAxis:  # Finds major axis of cell to refine rotations
 
-                axes = None
+                points = []
 
-                # points = []
-                #
-                # for sec_id, sc in enumerate(tpoint_list.sclst):
-                #
-                #     if not sc.exists():
-                #         continue
-                #
-                #     for i in range(sc.sec.n3d()):
-                #         points.append([sc.sec.x3d(i),sc.sec.y3d(i),sc.sec.z3d(i)])
-                #
-                # pca = PCA()
-                # pca.fit(points)
-                #
-                # axes = pca.components_
+                for sec_id, sc in enumerate(tpoint_list.sclst):
+
+                    if not sc.exists():
+                        continue
+
+                    for i in range(sc.sec.n3d()):
+                        points.append([sc.sec.x3d(i),sc.sec.y3d(i),sc.sec.z3d(i)])
+
+                pca = PCA()
+                pca.fit(points)
+
+                axes = pca.components_
 
             else:
                 axes = None
 
-            # firstOne = True
-
             for sec_id, sc in enumerate(tpoint_list.sclst):
+
+                print(sc.sec.name(),flush=True)
 
                 x = tpoint_list.x[sec_id]
 
@@ -840,48 +837,42 @@ class Extracellular(BaseStim):
                 # inject Extracellular signal
 
                 if stim_info["Electrode_Path"] is None:
-                    es = PointSourceElectrode(self.pattern, self.delay, self.type, self.duration,
-                                              self.AmpStart, self.frequency, self.width,
-                                              self.x, self.y, self.z,
-                                              self.pulse_number)
+                    if self.isConstant:
+                        es = ConstantEfield(self.pattern, self.delay, self.type, self.duration,
+                                            self.AmpStart, self.frequency, self.width,
+                                            self.rotation_angles, self.pulse_number,
+                                            self.stepSize, self.offset, self.constantAxis, somaPos)
 
-                    es.attach_to(sc.sec)
+                        phi, pos = es.attach_to(sc.sec, x, ramp_up_number=self.ramp_up_number,
+                                 ramp_down_number=self.ramp_down_number)
+
+                        somaPos = es.soma_position
+
+                        posList.append(pos)
+                        fields.append(phi)
+
+                    else:
+
+                        es = PointSourceElectrode(self.pattern, self.delay, self.type, self.duration,
+                                                  self.AmpStart, self.frequency, self.width,
+                                                  self.rotation_angles, self.pulse_number, self.stepSize,
+                                                  self.x, self.y, self.z, sigma=0.207)
+
+                        phi, pos = es.attach_to(sc.sec, x, ramp_up_number=self.ramp_up_number,
+                                 ramp_down_number=self.ramp_down_number)
+
+                        posList.append(pos)
+                        fields.append(phi)
                 else:
 
                     es = RealElectrode(self.pattern, self.delay, self.type, self.duration,
                                        self.AmpStart, self.frequency, self.width,
+                                       self.rotation_angles, self.pulse_number, self.stepSize,
                                        self.electrode_path, self.offset,
-                                       self.current_applied, somaPos,
-                                       self.rotation_angles, self.pulse_number, axes,
-                                       self.isConstant, self.constantAxis)
-
-                    # attach source to section
-                    #     numSegs += es.attach_to(sc.sec)
+                                       self.current_applied, somaPos, axes)
 
                     es.attach_to(sc.sec, x, ramp_up_number=self.ramp_up_number,
                                  ramp_down_number=self.ramp_down_number)
-
-                    # print(sc.sec.name())
-                    # print(maxA)
-
-                    # maxList.append(maxA)
-                    # posList.append(pos)
-                    #
-                    # if 'axon' in sc.sec.name():
-                    #     isAxon.append(1)
-                    # elif 'myelin' in sc.sec.name():
-                    #     isAxon.append(2)
-                    # elif 'node' in sc.sec.name():
-                    #     isAxon.append(3)
-                    # elif 'AIS' in sc.sec.name():
-                    #     isAxon.append(4)
-                    # else:
-                    #     isAxon.append(0)
-
-                    # if len(maxList) > 1:
-                    #     mA = (maxList[-1] - maxList[-2]) / np.linalg.norm(posList[-1]
-                    #     - posList[-2]) * 1e3
-                    #     amps.append(mA)
 
                     somaPos = es.soma_position
 
@@ -889,46 +880,45 @@ class Extracellular(BaseStim):
 
         Extracellular.stimCount += 1  # increment global count
 
-        # np.save('posRot.npy',posList)
-        # np.save('PhiField.npy',maxList)
-        # np.save('isAxon.npy', isAxon)
 
     def parse_check_all_parameters(self, stim_info: dict):
 
         self.pulse_number = None
 
+        self.aboutMainAxis = False # Not yet implemented
+
         if stim_info["Pattern"] is None:
             raise Exception("%s pattern must be provided" % self.__class__.__name__)
         else:
-            self.pattern = stim_info["Pattern"]
+            self.pattern = stim_info["Pattern"] # Is always Extracellular for extracellular stimuli
 
-        if stim_info["IsConstant"] is None:
+        if stim_info["IsConstant"] is None: # Applies constant e field to cell
             self.isConstant = False
             self.constantAxis = None
         else:
             self.isConstant = True
             self.constantAxis = stim_info.get("IsConstant")
 
-        if stim_info["Electrode_Path"] is None:
+        if stim_info["Electrode_Path"] is None: # Location of E field from FEM simulation
 
-            if stim_info.get("x") is None:
+            if not self.isConstant and stim_info.get("x") is None: # X is position of point source electrode
                 raise Exception("%s electrode x position must be provided" %
                                 self.__class__.__name__)
-            else:
+            elif not self.isConstant:
 
                 self.x = float(stim_info.get("x"))  # electrode x position
 
-            if stim_info.get("y") is None:
+            if not self.isConstant and stim_info.get("y") is None:
                 raise Exception("%s electrode y position must be provided" %
                                 self.__class__.__name__)
-            else:
+            elif not self.isConstant:
 
                 self.y = float(stim_info.get("y"))  # electrode y position
 
-            if stim_info.get("z") is None:
+            if not self.isConstant and stim_info.get("z") is None:
                 raise Exception("%s electrode z position must be provided" %
                                 self.__class__.__name__)
-            else:
+            elif not self.isConstant:
 
                 self.z = float(stim_info.get("z"))  # electrode z position
 
@@ -937,7 +927,7 @@ class Extracellular(BaseStim):
 
             if len(self.electrode_path) == 1:
 
-                self.current_applied = [float(stim_info["Current"])]
+                self.current_applied = [float(stim_info["Current"])] # Current applied in fem simulation
 
             else:
 
@@ -951,28 +941,28 @@ class Extracellular(BaseStim):
                 for c in currents:
                     self.current_applied.append(float(c))
 
-            if stim_info.get('RotX') is None or stim_info.get('RotY') is None \
-                    or stim_info.get('RotZ') is None:
-                self.rotation_angles = None
-            else:
+        if stim_info.get('RotX') is None or stim_info.get('RotY') is None \
+                or stim_info.get('RotZ') is None: # Defines rotation about x, y, and z axes
+            self.rotation_angles = None
+        else:
 
-                self.rotation_angles = [float(stim_info["RotZ"]), float(stim_info["RotY"]),
-                                        float(stim_info["RotX"])]
+            self.rotation_angles = [float(stim_info["RotZ"]), float(stim_info["RotY"]),
+                                    float(stim_info["RotX"])]
 
-                self.rotation_angles = np.array(self.rotation_angles)
+            self.rotation_angles = np.array(self.rotation_angles)
 
-            if stim_info.get("OffsetX") is None or stim_info.get("OffsetY") is None \
-                    or stim_info.get("OffsetZ") is None:
-                self.offset = None
-            else:
+        if stim_info.get("OffsetX") is None or stim_info.get("OffsetY") is None \
+                or stim_info.get("OffsetZ") is None: # Offset moves cell
+            self.offset = None
+        else:
 
-                self.offset = [float(stim_info["OffsetX"]), float(stim_info["OffsetY"]),
-                               float(stim_info["OffsetZ"])]
+            self.offset = [float(stim_info["OffsetX"]), float(stim_info["OffsetY"]),
+                           float(stim_info["OffsetZ"])]
 
-                if len(self.offset) != 3:
-                    raise Exception("Offset must have three coordinates")
+            if len(self.offset) != 3:
+                raise Exception("Offset must have three coordinates")
 
-                self.offset = np.array(self.offset)
+            self.offset = np.array(self.offset)
         # parse and check stimulus-specific parameters
         if not self.parse_check_stim_parameters(stim_info):
             return False  # nothing to do, stim is a no-op
@@ -995,7 +985,7 @@ class Extracellular(BaseStim):
             if self.delay < 0:
                 raise Exception("Duration must be non-negative")
 
-        if stim_info.get("Amp") is None:
+        if stim_info.get("Amp") is None: # Amp is a single value for most stimuli, or a list for pulsed stimuli or interfering waves
             raise Exception("AmpStart must be provided")
         elif ',' in stim_info.get("Amp"):
             amps = stim_info.get("Amp").split(',')
@@ -1014,7 +1004,7 @@ class Extracellular(BaseStim):
 
             self.frequency = None
 
-            if stim_info.get("Width") is None:
+            if stim_info.get("Width") is None: # Width of pulse, in ms
                 self.width = [self.duration]
             elif ',' in stim_info.get("Width"):
                 ws = stim_info.get("Width").split(',')
@@ -1039,7 +1029,7 @@ class Extracellular(BaseStim):
                 for w in ws:
                     self.width.append(float(w))
             else:
-                self.width = float(stim_info.get("Width"))
+                self.width = [float(stim_info.get("Width"))]
 
         if self.type == 'Sinusoid':
 
@@ -1050,7 +1040,7 @@ class Extracellular(BaseStim):
 
             self.width = None
 
-        if self.type == 'TI':
+        if self.type == 'TI': # Temporal interference stimulation
             if stim_info.get("Frequency") is None:
                 raise Exception("Frequency must be provided")
             else:
@@ -1101,18 +1091,23 @@ class Extracellular(BaseStim):
             if len(self.AmpStart) != len(self.width):
                 raise Exception("Each amplitude must have corresponding width")
 
+        if stim_info.get("StepSize") is not None:
+            self.stepSize = float(stim_info.get("StepSize"))
+        else:
+            self.stepSize = 0.025
+
         self.ramp_up_number = None
         self.ramp_down_number = None
 
         if stim_info.get("RampUpTime") is not None:
             ramp_up_time = float(stim_info.get("RampUpTime"))
-            self.ramp_up_number = int(ramp_up_time / 0.025)  # Hardcoded dt of 0.025 ms
+            self.ramp_up_number = int(ramp_up_time / self.stepSize)
             if ramp_up_time > self.duration:
                 raise Exception('Ramp up time must be smaller than duration')
 
         if stim_info.get("RampDownTime") is not None:
             ramp_down_time = float(stim_info.get("RampDownTime"))
-            self.ramp_down_number = int(ramp_down_time / 0.025)  # Hardcoded dt of 0.025 ms
+            self.ramp_down_number = int(ramp_down_time / self.stepSize)
             if ramp_down_time > self.duration:
                 raise Exception('Ramp down time must be smaller than duration')
 
