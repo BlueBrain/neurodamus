@@ -8,10 +8,9 @@
     "target_simulator": "NEURON",
     "node_set": "l4pc",
     "run": {
-        "tstart": 0,
         "tstop": 50.0,
         "dt": 0.1,
-        "seed": 1122
+        "random_seed": 1122
     },
     "output": {
         "output_dir": "$OUTPUT_DIR",

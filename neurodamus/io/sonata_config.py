@@ -123,7 +123,8 @@ class SonataConfig:
         "projection": {
         },
         "connection_overrides": {
-            "target": "Destination"
+            "target": "Destination",
+            "modoverride": "ModOverride"
         },
         "inputs": {
             "module": "Pattern",
@@ -151,25 +152,23 @@ class SonataConfig:
 
     @property
     def parsedRun(self):
-        def copy_config_if_valid(value, dst, key):
-            if value:
-                dst[key] = value
         parsed_run = self._translate_dict(self._sections["run"], "run", self._sim_conf.run)
+        self._adapt_libsonata_fields(parsed_run)
         parsed_run["CircuitPath"] = "<NONE>"  # Sonata doesnt have default circuit
         # "OutputRoot" and "SpikesFile" will be read from self._sim_conf.output
         # once libsonata resolves the manifest info
-        parsed_run["OutputRoot"] = self.output.get("output_dir", "output")
+        parsed_run["OutputRoot"] = self._sim_conf.output.output_dir
         parsed_run["TargetFile"] = self.circuits.node_sets_path
-        parsed_run["SpikesFile"] = self.output.get("spikes_file", "out")
-        copy_config_if_valid(self._entries.get("target_simulator"), parsed_run, "Simulator")
-        copy_config_if_valid(self._entries.get("node_sets_file"), parsed_run, "TargetFile")
-        copy_config_if_valid(self._entries.get("node_set"), parsed_run, "CircuitTarget")
+        parsed_run["SpikesFile"] = self._sim_conf.output.spikes_file
+        parsed_run["SpikesSortOrder"] = self._sim_conf.output.spikes_sort_order.name
+        parsed_run["Simulator"] = self._sim_conf.target_simulator.name
+        parsed_run["TargetFile"] = self._sim_conf.node_sets_file
+        parsed_run["CircuitTarget"] = self._sim_conf.node_set
         conditions = self._sections.get("conditions")
         if conditions:
-            copy_config_if_valid(conditions.get("celsius"), parsed_run, "Celsius")
-            copy_config_if_valid(conditions.get("v_init"), parsed_run, "V_Init")
-            copy_config_if_valid(conditions.get("extracellular_calcium"), parsed_run,
-                                 "ExtracellularCalcium")
+            parsed_run["Celsius"] = self._sim_conf.conditions.celsius
+            parsed_run["V_Init"] = self._sim_conf.conditions.v_init
+            parsed_run["ExtracellularCalcium"] = self._sim_conf.conditions.extracellular_calcium
         return parsed_run
 
     @property
@@ -274,7 +273,8 @@ class SonataConfig:
     def parsedConnects(self):
         connections = {}
         for conn_name, conn_dict in self._sections.get("connection_overrides").items():
-            connect = self._translate_dict(conn_dict, "connection_overrides")
+            connect = self._translate_dict(conn_dict, "connection_overrides",
+                                           self._sim_conf.connection_override(conn_name))
             connections[conn_name] = connect
         return connections
 
@@ -290,7 +290,8 @@ class SonataConfig:
 
         stimuli = {}
         for name, conf in self._sections["inputs"].items():
-            stimulus = self._translate_dict(conf, "inputs")
+            stimulus = self._translate_dict(conf, "inputs", self._sim_conf.input(name))
+            self._adapt_libsonata_fields(stimulus)
             stimulus["Pattern"] = "SEClamp" if stimulus["Pattern"] == "seclamp" \
                 else snake_to_camel(stimulus["Pattern"])
             stimulus["Mode"] = _input_type_translation.get(stimulus["Mode"], stimulus["Mode"])
@@ -301,31 +302,55 @@ class SonataConfig:
     def parsedInjects(self):
         injects = {}
         for name, conf in self._sections["inputs"].items():
-            inj = self._translate_dict(conf, "inputs")
+            inj = self._translate_dict(conf, "inputs", self._sim_conf.input(name))
             inj.setdefault("Stimulus", name)
             injects["inject"+name] = inj
         return injects
 
     @property
     def parsedReports(self):
+        _report_type_translation = {
+            "summation": "Summation",
+            "synapse": "Synapse",
+            "point_neuron": "PointType"
+        }
         reports = {}
         for name, conf in self._sections["reports"].items():
             rep = self._translate_dict(conf, "reports", self._sim_conf.report(name))
-            # Some entries now have defaults. Introduce them here
-            rep.setdefault("Format", "SONATA")
-            rep.setdefault("Unit", "mV")
-            rep.setdefault("Sections", "soma")
-            default_compartments = "center" if rep.get("Sections") == "soma" else "all"
-            rep.setdefault("Compartments", default_compartments)
+            # Adapt enums and variable names read from libsonata
+            self._adapt_libsonata_fields(rep)
+            # Format is SONATA with sonata_config
+            rep["Format"] = "SONATA"
+            rep["Type"] = _report_type_translation.get(rep["Type"], rep["Type"])
             reports[name] = rep
         return reports
 
+    def _dir(self, obj):
+        return [x for x in dir(obj) if not x.startswith('__') and not callable(x)]
+
+    def _adapt_libsonata_fields(self, rep):
+        for key in rep:
+            # Convert enums to its string representation
+            if key in ("Type", "Sections", "Scaling", "Compartments", "Mode", "Pattern",
+                       "SpikeLocation"):
+                if not isinstance(rep[key], str):
+                    rep[key] = rep[key].name
+            # Convert comma separated variable names to space separated
+            if key == "ReportOn":
+                rep[key] = rep[key].replace(",", " ")
+            # Get the int value of the enum
+            elif key == "SecondOrder":
+                rep[key] = int(rep[key])
+
     def _translate_dict(self, d, section_name, libsonata_obj=None) -> dict:
         item_translation = self._translation[section_name]
-        return {item_translation.get(sonata_name, snake_to_camel(sonata_name)):
-                getattr(libsonata_obj, sonata_name)
-                if libsonata_obj and hasattr(libsonata_obj, sonata_name) else value
-                for sonata_name, value in d.items()}
+        result = {}
+        for att in self._dir(libsonata_obj):
+            key = item_translation.get(att, snake_to_camel(att))
+            parsed_value = getattr(libsonata_obj, att)
+            if parsed_value is not None:
+                result[key] = parsed_value
+        return result
 
     def __getattr__(self, item):
         # Immediately return native items

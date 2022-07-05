@@ -748,7 +748,7 @@ class Node:
             end_time = rep_conf.get("EndTime", sim_end)
             logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
 
-            if rep_type.lower() not in ("compartment", "summation", "synapse", "pointtype"):
+            if rep_type not in ("compartment", "Summation", "Synapse", "PointType"):
                 if MPI.rank == 0:
                     logging.error("Unsupported report type: %s.", rep_type)
                 n_errors += 1
@@ -880,7 +880,7 @@ class Node:
             report = Nd.Report(*rep_params)
             global_manager = self._circuits.global_manager
 
-            if rep_type.lower() in ("compartment", "summation", "synapse"):
+            if rep_type in ("compartment", "Summation", "Synapse"):
                 # Go through the target members, one cell at a time. We give a cell reference
                 # For summation targets - check if we were given a Cell target because we really
                 # want all points of the cell which will ultimately be collapsed to a single value
@@ -889,7 +889,7 @@ class Node:
                 compartments = rep_conf.get("Compartments")
                 is_cell_target = target.isCellTarget(sections=sections, compartments=compartments)
                 points = self._target_manager.get_target_points(target, global_manager,
-                                                                rep_type.lower() == "summation",
+                                                                rep_type == "Summation",
                                                                 sections=sections,
                                                                 compartments=compartments)
                 for point in points:
@@ -899,14 +899,14 @@ class Node:
                     spgid = global_manager.getSpGid(gid)
 
                     # may need to take different actions based on report type
-                    if rep_type.lower() == "compartment":
+                    if rep_type == "compartment":
                         report.addCompartmentReport(
                             cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
-                    elif rep_type.lower() == "summation":
+                    elif rep_type == "Summation":
                         report.addSummationReport(
                             cell, point, is_cell_target, spgid, SimConfig.use_coreneuron,
                             pop_name, pop_offset)
-                    elif rep_type.lower() == "synapse":
+                    elif rep_type == "Synapse":
                         report.addSynapseReport(
                             cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
 

@@ -10,7 +10,7 @@
     "run": {
         "tstop":100,
         "dt": 0.025,
-        "seed": 767740,
+        "random_seed": 767740,
         "run_mode" : "WholeCell"
     },
     "conditions": {
@@ -31,7 +31,7 @@
         },
         "ThresholdExc": {
             "module": "noise",
-            "input_type": "Current",
+            "input_type": "current_clamp",
             "mean_percent": 100.457136089,
             "variance": 0.001,
             "delay": 0.0,
@@ -40,7 +40,7 @@
         },
         "ThresholdInh": {
             "module": "noise",
-            "input_type": "Current",
+            "input_type": "current_clamp",
             "mean_percent": 100.457136089,
             "variance": 0.001,
             "delay": 0.0,
@@ -49,7 +49,7 @@
         },
         "hypamp_mosaic": {
             "module": "hyperpolarizing",
-            "input_type": "Current",
+            "input_type": "current_clamp",
             "delay": 0.0,
             "duration": 30000,
             "node_set": "Mosaic"
