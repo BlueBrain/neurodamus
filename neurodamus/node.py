@@ -17,7 +17,7 @@ from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, SimConfig
 from .core._engine import EngineBase
-from .core.configuration import ConfigurationError, find_input_file
+from .core.configuration import ConfigurationError, find_input_file, get_debug_cell_gid
 from .core.nodeset import PopulationNodes
 from .cell_distributor import CellDistributor, VirtualCellPopulation, GlobalCellManager
 from .cell_distributor import LoadBalance, LoadBalanceMode
@@ -242,7 +242,7 @@ class Node:
                 self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True)
             self._base_circuit = SimConfig.base_circuit
             self._extra_circuits = SimConfig.extra_circuits
-            self._pr_cell_gid = self._run_conf.get("prCellGid")
+            self._pr_cell_gid = get_debug_cell_gid(options)
             self._core_replay_file = ""
             self._is_ngv_run = any(c.Engine.__name__ == "NGVEngine"
                                    for c in self._extra_circuits.values() if c.Engine)

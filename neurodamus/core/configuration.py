@@ -892,6 +892,18 @@ def _report_vars(config: _SimConfig, run_conf):
                                 " are still not fully supported (CoreNeuron)")
 
 
+def get_debug_cell_gid(cli_options):
+    gid = cli_options and cli_options.get("dump_cell_state")
+    try:
+        gid = int(gid) if gid is not None else SimConfig.run_conf.get("prCellGid")
+    except ValueError as e:
+        raise ConfigurationError("Cannot parse Gid for dump-cell-state: " + gid) from e
+    if gid and SimConfig.is_sonata_config:
+        # In sonata mode, user will provide a 0-based, add 1.
+        gid += 1
+    return gid
+
+
 def check_connections_configure(SimConfig, target_manager):
     """Check connection block configuration and raise warnings for:
     1. Global variable should be set in the Conditions block,

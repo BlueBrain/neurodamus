@@ -48,9 +48,10 @@ def neurodamus(args=None):
                                     redistributes cells so that CPU load is similar among ranks
                                 - MultiSplit: Allows splitting cells into pieces for distribution.
                                     WARNING: This mode is incompatible with CoreNeuron
-        --save=<PATH>           - Path to create a save point to enable resume.
+        --save=<PATH>           - Path to create a save point to enable resume
         --save-time=<TIME>      - The simulation time [ms] to save the state. (Default:at the end)
         --restore=<PATH>        - Restore and resume simulation from a save point on disk
+        --dump-cell-state=<GID> - Dump cell state debug files on start, save-restore and at the end
     """
     options = docopt_sanitize(docopt(neurodamus.__doc__, args))
     config_file = options.pop("BlueConfig")
