@@ -191,6 +191,8 @@ class SonataConfig:
         network = self._circuit_networks
 
         def make_circuit(nodes_file, node_pop_name, population_info):
+            if not os.path.isabs(nodes_file):
+                nodes_file = os.path.join(os.path.dirname(self.network), nodes_file)
             circuit_conf = dict(
                 CircuitPath=os.path.dirname(nodes_file) or "",
                 CellLibraryFile=nodes_file,
@@ -222,7 +224,10 @@ class SonataConfig:
                     edge_type = self.circuits.edge_population_properties(edge_pop_name).type
                     if edge_storage.source == edge_storage.target == node_pop_name and \
                             edge_type == "chemical":
-                        circuit_conf["nrnPath"] = edge_config["edges_file"] + ":" + edge_pop_name
+                        edges_file = edge_config["edges_file"]
+                        if not os.path.isabs(edges_file):
+                            edges_file = os.path.join(os.path.dirname(self.network), edges_file)
+                        circuit_conf["nrnPath"] = edges_file + ":" + edge_pop_name
             return circuit_conf
 
         return {
@@ -251,9 +256,12 @@ class SonataConfig:
                         (edge_pop.source == edge_pop.target and pop_type == "chemical"):
                     logging.warning("Unhandled synapse type: " + pop_type)
                     continue
+                edges_file = edge_config["edges_file"]
+                if not os.path.isabs(edges_file):
+                    edges_file = os.path.join(os.path.dirname(self.network), edges_file)
                 # projection
                 projection = dict(
-                    Path=edge_config["edges_file"] + ":" + population_name,
+                    Path=edges_file + ":" + population_name,
                     Source=edge_pop.source + ":",
                     Destination=edge_pop.target + ":",
                     Type=projection_type_convert.get(pop_type)
