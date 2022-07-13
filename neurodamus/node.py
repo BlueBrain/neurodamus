@@ -1177,11 +1177,14 @@ class Node:
         timings = None
         if SimConfig.use_neuron:
             timings = self._run_neuron()
-            self.spike2file("out.dat")
+            if not SimConfig.is_sonata_config:
+                self.spike2file("out.dat")
+            self.sonata_spikes()
         if SimConfig.use_coreneuron:
             self.clear_model()
             self._run_coreneuron()
-            self.adapt_spikes("out.dat")
+            if not SimConfig.is_sonata_config:
+                self.adapt_spikes("out.dat")
         return timings
 
     # -
@@ -1355,7 +1358,10 @@ class Node:
         spikewriter = Nd.SpikeWriter()
         spikewriter.write(spikevec, idvec, outfile)
 
-        # SONATA SPIKES
+    def sonata_spikes(self):
+        """ Write the spike events that occured on each node into a single output SONATA file.
+        """
+        output_root = SimConfig.output_root
         if hasattr(self._sonatareport_helper, "create_spikefile"):
             # Write spike report for multiple populations if exist
             spike_path = self._run_conf.get("SpikesFile")
@@ -1494,6 +1500,10 @@ class Neurodamus(Node):
 
         # In case an exception occurs we must prevent the destructor from cleaning
         self._init_ok = True
+
+        # Remove .SUCCESS file if exists
+        self._success_file = SimConfig.config_file + ".SUCCESS"
+        self._remove_file(self._success_file)
 
     # -
     def _build_model(self):
@@ -1646,7 +1656,21 @@ class Neurodamus(Node):
         else:
             log_stage("======================= SIMULATION =======================")
             self.run_all()
+        # Create SUCCESS file if the simulation finishes successfully
+        self._touch_file(self._success_file)
+        logging.info("Creating .SUCCESS file: '%s'", self._success_file)
 
     def __del__(self):
         if self._init_ok:
             self.cleanup()
+
+    @run_only_rank0
+    def _remove_file(self, file_name):
+        import contextlib
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(file_name)
+
+    @run_only_rank0
+    def _touch_file(self, file_name):
+        with open(file_name, 'a'):
+            os.utime(file_name, None)
