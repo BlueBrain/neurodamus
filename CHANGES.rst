@@ -2,6 +2,26 @@
 Change Log
 ==========
 
+Version 2.12.0
+==============
+**15 Jul 2022**
+
+*New Features*
+  * [BBPBGLIB-816] Complete Baseline support for SONATA configuration
+  * New CLI options for save-restore, run mode and dump cell state
+  * Documentation for running a SONATA simulation
+
+*Improvements*
+  * Avoid creating out.dat when running simulations with SONATA config file
+  * Read sonata config parameters from libsonata parser
+  * Replace calculation of U scale_factors calculation by a single function
+
+*Bug fixes*
+  * Resolve nodes and edges paths according to circuit_config.json location
+  * [BBPBGLIB-856] Fixes for hoc targets w offset and nodes extra properties
+  * Expect same behavior when connection delay is not present and when is 0
+
+
 Version 2.11.3
 ==============
 **25 May 2022**
@@ -38,6 +58,41 @@ Version 2.11.0
  * No eager caching of synaptic parameters
  * Sonata nodesets to be able to cross multiple populations
  * Adding test with patched delays after ModOverride
+
+
+Version 2.10.3
+==============
+**30 Mar 2022**
+
+*New Features*
+ * Support sonata configurations for ngv
+
+*Improvements*
+ * BBPBGLIB-805 Allow independent scaling fields
+ * Configurable scaling between I_thresh and invRin
+
+*Bug fixes*
+ * Summation report fixes
+
+
+Version 2.10.2
+==============
+**4 Mar 2022**
+
+*New Features*
+ * Suport multi-population compartment report
+ * Suport sonata configuration and sonata NodeSetTarget
+ * Implement RelativeOrnsteinUhlenbeck stimulus
+ * New-gen stimuli injected as Current or Conductance
+ * Implement StochasticConductance stimulus
+ * Implement ConductanceSource(SignalSource) using an SEClamp
+ * Implement Ornstein-Uhlenbeck process signal generation
+
+*Improvements*
+ * Control display of unhandled exceptions
+
+*Bug fixes*
+ * Store reference to rs-driving signal (fix CELLS-79)
 
 
 Version 2.8.0
