@@ -804,7 +804,6 @@ class Node:
                 Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
                 rep_conf.get("ISC", "")
             )
-
             if SimConfig.use_coreneuron and MPI.rank == 0:
                 corenrn_target = target
 
@@ -867,8 +866,9 @@ class Node:
                     compartment_type = rep_conf.get("Compartments")
                     target_type = _compute_corenrn_target_type(section_type, compartment_type)
 
+                reporton_comma_separated = ",".join(report_on.split())
                 core_report_params = (
-                    (rep_name, rep_target.name, rep_type, report_on.replace(" ", ","))
+                    (rep_name, rep_target.name, rep_type, reporton_comma_separated)
                     + rep_params[3:5] + (target_type,) + rep_params[5:8]
                     + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
                 )
