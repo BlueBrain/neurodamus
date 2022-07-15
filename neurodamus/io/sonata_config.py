@@ -47,9 +47,8 @@ class SonataConfig:
             self._config_dir
         )
         for entry_name in self._config_entries:
-            value = self._config_json.get(entry_name, self._defaults.get(entry_name))
-            self._entries[entry_name] = value and \
-                self._resolve(value, entry_name, self._resolved_manifest)
+            value = getattr(self._sim_conf, entry_name)
+            self._entries[entry_name] = value
         for section_name in self._config_sections:
             section_value = self._config_json.get(section_name, {})
             self._sections[section_name] = self._resolve_section(section_value,
@@ -119,6 +118,8 @@ class SonataConfig:
             "forward_skip": "ForwardSkip",
         },
         "conditions": {
+            "randomize_gaba_rise_time": "randomize_Gaba_risetime",
+            "synapses_init_depleted": "SYNAPSES__init_depleted"
         },
         "projection": {
         },
@@ -152,7 +153,7 @@ class SonataConfig:
 
     @property
     def parsedRun(self):
-        parsed_run = self._translate_dict(self._sections["run"], "run", self._sim_conf.run)
+        parsed_run = self._translate_dict("run", self._sim_conf.run)
         self._adapt_libsonata_fields(parsed_run)
         parsed_run["CircuitPath"] = "<NONE>"  # Sonata doesnt have default circuit
         # "OutputRoot" and "SpikesFile" will be read from self._sim_conf.output
@@ -169,14 +170,21 @@ class SonataConfig:
             parsed_run["Celsius"] = self._sim_conf.conditions.celsius
             parsed_run["V_Init"] = self._sim_conf.conditions.v_init
             parsed_run["ExtracellularCalcium"] = self._sim_conf.conditions.extracellular_calcium
+            parsed_run["MinisSingleVesicle"] = self._sim_conf.conditions.minis_single_vesicle
         return parsed_run
 
     @property
     def Conditions(self):
         conditions = {}
-        for k, v in self._sections["conditions"].items():
-            if k not in ("celsius", "v_init", "extracellular_calcium"):
-                conditions[k] = v
+        for key, value in self._translate_dict("conditions", self._sim_conf.conditions).items():
+            if key not in ["Celsius", "VInit", "ExtracellularCalcium", "MinisSingleVesicle"]:
+                if key == "Mechanisms":
+                    for suffix, dict_var in value.items():
+                        for name, val in dict_var.items():
+                            conditions[name+"_"+suffix] = val
+                else:
+                    conditions[key] = value
+        conditions["randomize_Gaba_risetime"] = str(conditions["randomize_Gaba_risetime"])
         return {"Conditions": conditions}
 
     @property
@@ -280,8 +288,8 @@ class SonataConfig:
     @property
     def parsedConnects(self):
         connections = {}
-        for conn_name, conn_dict in self._sections.get("connection_overrides").items():
-            connect = self._translate_dict(conn_dict, "connection_overrides",
+        for conn_name in self._sections.get("connection_overrides").keys():
+            connect = self._translate_dict("connection_overrides",
                                            self._sim_conf.connection_override(conn_name))
             connections[conn_name] = connect
         return connections
@@ -297,8 +305,8 @@ class SonataConfig:
         }
 
         stimuli = {}
-        for name, conf in self._sections["inputs"].items():
-            stimulus = self._translate_dict(conf, "inputs", self._sim_conf.input(name))
+        for name in self._sections["inputs"].keys():
+            stimulus = self._translate_dict("inputs", self._sim_conf.input(name))
             self._adapt_libsonata_fields(stimulus)
             stimulus["Pattern"] = "SEClamp" if stimulus["Pattern"] == "seclamp" \
                 else snake_to_camel(stimulus["Pattern"])
@@ -309,8 +317,8 @@ class SonataConfig:
     @property
     def parsedInjects(self):
         injects = {}
-        for name, conf in self._sections["inputs"].items():
-            inj = self._translate_dict(conf, "inputs", self._sim_conf.input(name))
+        for name in self._sections["inputs"].keys():
+            inj = self._translate_dict("inputs", self._sim_conf.input(name))
             inj.setdefault("Stimulus", name)
             injects["inject"+name] = inj
         return injects
@@ -323,8 +331,8 @@ class SonataConfig:
             "point_neuron": "PointType"
         }
         reports = {}
-        for name, conf in self._sections["reports"].items():
-            rep = self._translate_dict(conf, "reports", self._sim_conf.report(name))
+        for name in self._sections["reports"].keys():
+            rep = self._translate_dict("reports", self._sim_conf.report(name))
             # Adapt enums and variable names read from libsonata
             self._adapt_libsonata_fields(rep)
             # Format is SONATA with sonata_config
@@ -350,7 +358,7 @@ class SonataConfig:
             elif key == "SecondOrder":
                 rep[key] = int(rep[key])
 
-    def _translate_dict(self, d, section_name, libsonata_obj=None) -> dict:
+    def _translate_dict(self, section_name, libsonata_obj=None) -> dict:
         item_translation = self._translation[section_name]
         result = {}
         for att in self._dir(libsonata_obj):

@@ -17,6 +17,21 @@
         "spikes_file": "spikes.h5",
         "spikes_sort_order": "by_time"
     },
+    "conditions": {
+        "celsius": 35.0,
+        "v_init": -75,
+        "minis_single_vesicle": true,
+        "mechanisms": {
+          "ProbAMPANMDA_EMS": {
+            "init_depleted": false,
+            "minis_single_vesicle": true
+          },
+          "GluSynapse" : {
+            "init_depleted": true,
+            "minis_single_vesicle": false
+          }
+        }
+    },
     "reports": {
         "soma_report": {
             "type": "compartment",

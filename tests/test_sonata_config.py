@@ -25,6 +25,9 @@ def fork_test_SimConfig_from_sonata():
     assert SimConfig.run_conf['Simulator'] == 'NEURON'
     assert SimConfig.run_conf['Duration'] == 50.0
     assert SimConfig.run_conf['Dt'] == 0.1
+    assert SimConfig.run_conf['Celsius'] == 35
+    assert SimConfig.run_conf['V_Init'] == -75
+    assert SimConfig.run_conf['MinisSingleVesicle'] is True
 
     # output section
     assert SimConfig.run_conf['SpikesFile'] == 'spikes.h5'
@@ -53,6 +56,14 @@ def fork_test_SimConfig_from_sonata():
     assert compartment_report['EndTime'] == 10.0
     assert compartment_report['Dt'] == 0.1
     assert compartment_report['Enabled']
+
+    # conditions section
+    conditions = list(SimConfig._blueconfig.Conditions.values())[0]
+    assert conditions['init_depleted_ProbAMPANMDA_EMS'] is False
+    assert conditions['minis_single_vesicle_ProbAMPANMDA_EMS'] is True
+    assert conditions['init_depleted_GluSynapse'] is True
+    assert conditions['minis_single_vesicle_GluSynapse'] is False
+    assert conditions['randomize_Gaba_risetime'] == 'False'
 
 
 @pytest.mark.skipif(
