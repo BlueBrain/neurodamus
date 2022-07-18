@@ -893,15 +893,13 @@ proc distributePoissonSynapses() { local nCreated, nNeeded, iteration, baseSeed,
 
             nc = new NetCon( nil, stimHelper,10,1,weight )  //has nil source
 
-            //why do we register an init handler if we are just going to call the function anyways?
-            // do we end up with twice the events?
+            // register FInitializeHandler for our FillSpikeTrain
             sprint(tstr,"FillSpikeTrain(%s,%f,%f,%f,%d)", nc, lambda, del, dur, baseSeed+iteration )
             synapseEventGenerator.append( new String(tstr) )
             fih = new FInitializeHandler(tstr, this)
             //print tstr
-            execute1(tstr, this)
         } else {
-            tstr = "print \"Jim broke this!\""
+            tstr = "print \"fillFunctionOverride not implemented.\""
         }
 
         //keep variables so they don't get deleted
