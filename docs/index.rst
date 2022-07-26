@@ -16,6 +16,7 @@ Contents
    Examples <examples>
    Changelog <changes>
    Module Reference <api/modules>
+   Developer Documentation <architecture>
 
 
 Indices and tables
