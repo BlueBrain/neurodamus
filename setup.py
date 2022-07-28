@@ -21,6 +21,7 @@ package_info = dict(
         'h5py',
         'docopt',
         'libsonata',
+        'psutil',
     ],
     setup_requires=(["pytest-runner"] if "test" in sys.argv else []),
     tests_require=["pytest"],

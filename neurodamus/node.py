@@ -17,6 +17,7 @@ from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, SimConfig
 from .core._engine import EngineBase
+from .core._utils import SHMUtil
 from .core.configuration import ConfigurationError, find_input_file, get_debug_cell_gid
 from .core.nodeset import PopulationNodes
 from .cell_distributor import CellDistributor, VirtualCellPopulation, GlobalCellManager
@@ -30,7 +31,7 @@ from .neuromodulation_manager import NeuroModulationManager
 from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
-from .utils.timeit import TimerManager, timeit, timeit_rank0
+from .utils.timeit import TimerManager, timeit
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
 from . import point_neuron as _point # NOQA
@@ -246,6 +247,10 @@ class Node:
             self._core_replay_file = ""
             self._is_ngv_run = any(c.Engine.__name__ == "NGVEngine"
                                    for c in self._extra_circuits.values() if c.Engine)
+            self._initial_rss = 0
+            self._cycle_i = 0
+            self._n_cycles = 1
+            self._shm_enabled = False
         self._circuits = CircuitManager()
         self._stim_list = None
         self._report_list = None
@@ -1139,12 +1144,67 @@ class Node:
                 dummyfile.write("%s\n0\n" % coredata_version)
 
     # -
+    def _sim_corenrn_configure_datadir(self, corenrn_restore):
+        corenrn_datadir = SimConfig.coreneuron_datadir
+        corenrn_datadir_shm = SHMUtil.get_datadir_shm(corenrn_datadir)
+
+        # Ensure that we have a folder in /dev/shm (i.e., 'SHMDIR' ENV variable)
+        if SimConfig.cli_options.enable_shm and not corenrn_datadir_shm:
+            logging.warning("Unknown SHM directory for model file transfer in CoreNEURON.")
+        # Try to configure the /dev/shm folder as the output directory for the files
+        elif self._cycle_i == 0 and not corenrn_restore and \
+                (SimConfig.cli_options.enable_shm and SimConfig.delete_corenrn_data):
+            # Clean-up any previous simulations in the same output directory
+            subprocess.call(['/bin/rm', '-rf', corenrn_datadir_shm])
+
+            # Check for the available memory in /dev/shm and estimate the RSS by multiplying
+            # the number of cycles in the multi-step model build with an approximate factor
+            shm_avail = SHMUtil.get_shm_avail()
+            initial_rss = self._initial_rss
+            current_rss = SHMUtil.get_rss()
+            factor = SHMUtil.get_shm_factor()
+            rss_diff = (current_rss - initial_rss) if initial_rss < current_rss else current_rss
+            rss_req = int(rss_diff * self._n_cycles * factor)  # 'rss_diff' prevents <0 estimates
+
+            # Sync condition value with all ranks to ensure that all of them can use /dev/shm
+            if MPI.allreduce(int(shm_avail > rss_req), MPI.SUM) == MPI.nhost_world():
+                logging.info("SHM file transfer mode for CoreNEURON enabled")
+
+                # Create SHM folder and links to GPFS for the global data structures
+                os.makedirs(corenrn_datadir_shm, exist_ok=True)
+
+                # Important: These three files must be available on every node, as they are shared
+                #            across all of the processes. The trick here is to fool NEURON into
+                #            thinking that the files are written in /dev/shm, but they are actually
+                #            written on GPFS. The workflow is identical, meaning that rank 0 writes
+                #            the content and every other rank reads it afterwards in CoreNEURON.
+                for filename in {"bbcore_mech.dat", "files.dat", "globals.dat"}:
+                    path = os.path.join(corenrn_datadir, filename)
+                    path_shm = os.path.join(corenrn_datadir_shm, filename)
+
+                    try:
+                        os.close(os.open(path, os.O_CREAT))
+                        os.symlink(path, path_shm)
+                    except FileExistsError:
+                        pass  # Ignore if other process has already created it
+
+                # Update the flag to confirm the configuration
+                self._shm_enabled = True
+            else:
+                logging.warning("Unable to utilize SHM for model file transfer in CoreNEURON. "
+                                "Increase the number of nodes to reduce the memory footprint "
+                                "(Current use per node: %d MB / Limit: %d MB)",
+                                (rss_req >> 20), (shm_avail >> 20))
+
+        return corenrn_datadir if not self._shm_enabled else corenrn_datadir_shm
+
+    # -
     @timeit(name="corewrite")
     def _sim_corenrn_write_config(self, corenrn_restore=False):
         log_stage("Dataset generation for CoreNEURON")
 
-        corenrn_output = SimConfig.coreneuron_ouputdir
-        corenrn_data = SimConfig.coreneuron_datadir
+        corenrn_output = SimConfig.coreneuron_outputdir
+        corenrn_data = self._sim_corenrn_configure_datadir(corenrn_restore)
         fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
         if not corenrn_restore:
@@ -1310,7 +1370,7 @@ class Node:
 
         logging.info("Clearing model")
         self._pc.gid_clear()
-        self._target_manager.parser.updateTargets(Nd.Vector())  # reset targets local cells
+        self._target_manager.parser.updateTargets(Nd.Vector())  # Reset targets local cells
         self._target_manager.init_hoc_manager(None)  # Init/release cell manager
 
         if not avoid_creating_objs:
@@ -1442,7 +1502,7 @@ class Node:
             data_folder = SimConfig.coreneuron_datadir
             logging.info("Deleting intermediate data in %s", data_folder)
 
-            with timeit_rank0(name="Delete corenrn data"):
+            with timeit(name="Delete corenrn data"):
                 if MPI.rank == 0:
                     if ospath.islink(data_folder):
                         # in restore, coreneuron data is a symbolic link
@@ -1451,6 +1511,13 @@ class Node:
                         subprocess.call(['/bin/rm', '-rf', data_folder])
                     os.remove(ospath.join(SimConfig.output_root, "sim.conf"))
                     os.remove(ospath.join(SimConfig.output_root, "report.conf"))
+
+                # Delete the SHM folder if it was used
+                if self._shm_enabled:
+                    data_folder_shm = SHMUtil.get_datadir_shm(data_folder)
+                    logging.info("Deleting intermediate SHM data in %s", data_folder_shm)
+                    subprocess.call(['/bin/rm', '-rf', data_folder_shm])
+
             MPI.barrier()
 
         logging.info("Finished")
@@ -1569,7 +1636,7 @@ class Neurodamus(Node):
 
     # -
     def _coreneuron_restore(self):
-        log_stage(" =============== CORENEURION RESTORE ===============")
+        log_stage(" =============== CORENEURON RESTORE ===============")
         self.load_targets()
         self.enable_replay()
         if self._run_conf["EnableReports"]:
@@ -1579,6 +1646,9 @@ class Neurodamus(Node):
 
     # -
     def _instantiate_simulation(self):
+        # Keep the initial RSS for the SHM file transfer calculations
+        self._initial_rss = SHMUtil.get_rss()  # TODO: MPI-SHM communicator to estimate
+
         self.load_targets()
 
         # Check connection block configuration and raise warnings for overriding parameters
@@ -1618,6 +1688,7 @@ class Neurodamus(Node):
 
         logging.info("MULTI-CYCLE RUN: {} Cycles".format(n_cycles))
         sub_targets = self._target_manager.generate_subtargets(target_name, n_cycles)
+        self._n_cycles = n_cycles
 
         tmp_target_spec = TargetSpec(self._run_conf["CircuitTarget"])
         TimerManager.archive(archive_name="Before Cycle Loop")
@@ -1630,6 +1701,7 @@ class Neurodamus(Node):
             self.clear_model()
             tmp_target_spec.name = cur_target.name
             self._base_circuit.CircuitTarget = str(tmp_target_spec)  # FQN
+            self._cycle_i = cycle_i
             self._build_model()
 
             # Move generated files aside (to be merged later)

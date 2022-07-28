@@ -56,6 +56,7 @@ class CliOptions(ConfigT):
     save = False
     save_time = None
     restore = None
+    enable_shm = False
 
 
 class CircuitConfig(ConfigT):
@@ -188,7 +189,7 @@ class _SimConfig(object):
     use_coreneuron = False
     use_neuron = True
     coreneuron_datadir = None
-    coreneuron_ouputdir = None
+    coreneuron_outputdir = None
     corenrn_buff_size = 8
     delete_corenrn_data = False
     modelbuilding_steps = 1
@@ -779,7 +780,7 @@ def _coreneuron_params(config: _SimConfig, run_conf):
         config.corenrn_buff_size = int(buffer_size)
 
     # Set defaults for CoreNeuron dirs since SimConfig init/verification happens after
-    config.coreneuron_ouputdir = config.output_root
+    config.coreneuron_outputdir = config.output_root
     coreneuron_datadir = os.path.join(config.output_root, "coreneuron_input")
 
     if config.use_coreneuron and config.restore:

@@ -12,6 +12,7 @@ __pycache__/*
 .*.swp
 */.ipynb_checkpoints/*
 .vscode
+spack-*
 
 # Project files
 .ropeproject
