@@ -51,7 +51,9 @@ extern double* hoc_val_pointer(const char*);
 #endif
 
 extern int nrnmpi_myid;
+#ifndef CORENEURON_BUILD
 extern double celsius;
+#endif
 
 // name of config files
 #define CONFIG_FILENAME_TOTAL_LEN_MAX 32  // Include margin for extra / and \0
