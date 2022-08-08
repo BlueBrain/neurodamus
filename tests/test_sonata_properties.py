@@ -158,7 +158,7 @@ def exec_test_input_resistance():
 
     # check spikes
     nspike = sum(len(spikes) for spikes, _ in n._spike_vecs)
-    assert(nspike == 9)
+    assert (nspike == 9)
 
     # remove temporary files
     os.unlink(bc_file.name)
@@ -219,7 +219,7 @@ def exec_test_input_resistance_2():
 
     # check spikes
     nspike = sum(len(spikes) for spikes, _ in n._spike_vecs)
-    assert(nspike == 12)
+    assert (nspike == 12)
 
     # remove temporary files
     os.unlink(bc_file.name)

@@ -482,8 +482,8 @@ class NodesetTarget(_TargetInterface):
         pass
 
     def getPointList(self, cell_manager, **kw):
-        """ Retrieve a TPointList containing compartments (based on section type and compartment type)
-        of any local cells on the cpu.
+        """ Retrieve a TPointList containing compartments (based on section type and
+        compartment type) of any local cells on the cpu.
         Args:
             cell_manager: a cell manager or global cell manager
             sections: section type, such as "soma", "axon", "dend", "apic" and "all",

@@ -143,7 +143,7 @@ def exec_test_eager_caching():
     delays = [nc.delay for nc in Nd.h.cvode.netconlist('', post_cell, '')
               if nc.precell() is not None]
     patch_delays = [int(x / Nd.dt + 1E-5) * Nd.dt for x in delays]
-    assert(delays == patch_delays)
+    assert (delays == patch_delays)
 
     os.unlink(bc_file.name)
     os.unlink(tgt_file.name)

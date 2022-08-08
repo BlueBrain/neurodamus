@@ -149,7 +149,7 @@ def exec_test_TTX_modification():
     nspike_TTX = sum(len(spikes) for spikes, _ in n._spike_vecs)
 
     log_verbose("spikes without TTX = %s, with TTX = %s", nspike_noTTX, nspike_TTX)
-    assert(nspike_noTTX > 0 and nspike_TTX == 0)
+    assert (nspike_noTTX > 0 and nspike_TTX == 0)
     os.unlink(bc_file.name)
     os.unlink(tgt_file.name)
 
@@ -199,7 +199,7 @@ def exec_test_ConfigureAllSections_modification():
 
     log_verbose("spikes without ConfigureAllSections = %s, with ConfigureAllSections = %s",
                 nspike_ConfigureAllSections, nspike_noConfigureAllSections)
-    assert(nspike_ConfigureAllSections > nspike_noConfigureAllSections)
+    assert (nspike_ConfigureAllSections > nspike_noConfigureAllSections)
     os.unlink(bc_file.name)
     os.unlink(tgt_file.name)
 

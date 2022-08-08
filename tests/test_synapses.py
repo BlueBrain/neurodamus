@@ -196,7 +196,7 @@ def exec_test_synapses():
         def __init__(self, a, b):
             self.U = np.array(a)
             self.u_hill_coefficient = np.array(b)
-            assert(self.U.size == self.u_hill_coefficient.size)
+            assert (self.U.size == self.u_hill_coefficient.size)
 
         def __len__(self):
             return self.U.size
@@ -285,7 +285,7 @@ def exec_test_synapses():
             for prop, dfcol in properties[stype].items():
                 log_verbose("    %12s %12.6f ~= %-12.6f %s" %
                             (prop, info[prop], dfs[stype][dfcol].iloc[i], dfcol))
-                assert(info[prop] == pytest.approx(dfs[stype][dfcol].iloc[i]))
+                assert (info[prop] == pytest.approx(dfs[stype][dfcol].iloc[i]))
 
 
 def test__constrained_hill():
