@@ -732,9 +732,6 @@ class Node:
     def enable_reports(self):
         """Iterate over reports defined in BlueConfig and instantiate them.
         """
-        if SimConfig.restore_coreneuron:
-            return  # we dont even need to initialize reports
-
         log_stage("Reports Enabling")
         n_errors = 0
         sim_end = self._run_conf["Duration"]
@@ -882,6 +879,9 @@ class Node:
                     + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
                 )
                 SimConfig.coreneuron.write_report_config(*core_report_params)
+
+            if SimConfig.restore_coreneuron:
+                continue  # we dont even need to initialize reports
 
             report = Nd.Report(*rep_params)
             if not SimConfig.use_coreneuron:
