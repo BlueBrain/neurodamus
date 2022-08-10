@@ -1226,6 +1226,8 @@ class Node:
             self._core_replay_file,
             *optional_params
         )
+        # Wait for rank0 to write the sim config file
+        MPI.barrier()
 
         logging.info(" => Dataset written to '{}'".format(corenrn_data))
 
