@@ -766,6 +766,9 @@ def _check_restore(config: _SimConfig, run_conf):
     restore = config.cli_options.restore or run_conf.get("Restore")
     if not restore:
         return
+    # sync restore settings to hoc, otherwise we end up with an empty coreneuron_input dir
+    run_conf["Restore"] = restore
+
     restore_path = os.path.join(config.current_dir, restore)
     assert os.path.isdir(os.path.dirname(restore_path))
     config.restore = restore_path
