@@ -884,7 +884,7 @@ class Node:
                 continue  # we dont even need to initialize reports
 
             report = Nd.Report(*rep_params)
-            if not SimConfig.use_coreneuron:
+            if not SimConfig.use_coreneuron or rep_type == "Synapse":
                 global_manager = self._circuits.global_manager
 
                 if rep_type in ("compartment", "Summation", "Synapse"):
