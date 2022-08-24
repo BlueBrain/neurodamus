@@ -173,6 +173,7 @@ class SynReaderSynTool(SynapseReader):
     """
     SYNREADER_MOD_NFIELDS_DEFAULT = 14
     _has_warned_field_count_mismatch = False
+    _is_sonata_circuit = False
 
     def _open_file(self, syn_src, population, verbose=False):
         if not self.is_syntool_enabled():
@@ -186,6 +187,19 @@ class SynReaderSynTool(SynapseReader):
         reader = self._syn_reader = Nd.SynapseReader(syn_src, verbose)
         if population:
             reader.selectPopulation(population)
+
+        def _is_sonata_circuit(syn_src):
+            if ospath.isdir(syn_src):
+                return ospath.exists(ospath.join(syn_src, "edges.sonata"))
+            elif syn_src.endswith(".sonata"):
+                return True
+            elif syn_src.endswith(".h5"):
+                import h5py
+                f = h5py.File(syn_src, 'r')
+                return "edges" in f
+            else:
+                return False
+        self._is_sonata_circuit = _is_sonata_circuit(syn_src)
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader
@@ -217,6 +231,8 @@ class SynReaderSynTool(SynapseReader):
         """ Load synapse data from reader,
             to be overridden in derived class for different SynapseParameters and data fields.
         """
+        if self._is_sonata_circuit:
+            self._check_sonata_required_fields(["n_rrp_vesicles"])
         nrow = int(reader.loadSynapses(gid))
         if nrow < 1:
             return nrow, 0, 0, SynapseParameters.empty
@@ -271,6 +287,13 @@ class SynReaderSynTool(SynapseReader):
             syn_params_mtx[syn_i] = tmpParams.as_numpy()
 
         return conn_syn_params
+
+    def _check_sonata_required_fields(self, fields=[]):
+        for name in fields:
+            if not self.has_property(name):
+                logging.error("Synapse parameter '" + name + "' is required in the edges file")
+                raise SynToolNotAvail("Synapse parameter '" + name +
+                                      "' is required in the edges file")
 
 
 class SynReaderNRN(SynapseReader):
