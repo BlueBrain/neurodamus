@@ -2,6 +2,40 @@
 Change Log
 ==========
 
+Version 2.12.3
+==============
+**29 Aug 2022**
+
+*New Features*
+  * Bump submodule past hpc/sim/neurodamus-core!12
+
+*Bug fixes*
+  * [BBPBGLIB-887] Protect synapse reading: n_rrp_vesicles is required for SONATA circuits
+  * [REP-80] Call hoc in report initialization for synapse reports in CoreNEURON
+  * [BBPBGLIB-901] Fix corenrn input dir w sonata
+
+
+Version 2.12.2
+==============
+**17 Aug 2022**
+
+*Improvements*
+  * CoreNEURON: Skip report initialization after creating report.conf in save/restore
+  * Improve report initialization time with CoreNEURON
+
+*Bug fixes*
+  * Fix for race-condition when reading sim.conf
+  * [BBPBGLIB-894] Fix spike train handling
+
+
+Version 2.12.1
+==============
+**28 Jul 2022**
+
+*New Features*
+  * Add support for SHM file transfer in CoreNEURON
+
+
 Version 2.12.0
 ==============
 **15 Jul 2022**
