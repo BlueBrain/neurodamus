@@ -188,7 +188,12 @@ class CircuitManager:
     def read_population_offsets(cls):
         pop_offsets = {}
         alias_pop = {}
-        with open(cls._pop_offset_file(), "r") as f:
+        pop_offset_file = cls._pop_offset_file()
+        if SimConfig.restore and not os.path.exists(pop_offset_file):
+            # RESTORE: link to populations_offset.dat besides save directory
+            os.symlink(os.path.join(SimConfig.restore, "../populations_offset.dat"),
+                       pop_offset_file)
+        with open(pop_offset_file, "r") as f:
             offsets = [line.strip().split("::") for line in f]
             for entry in offsets:
                 pop_offsets[entry[0] or None] = int(entry[1])
@@ -197,7 +202,7 @@ class CircuitManager:
 
     @classmethod
     def _pop_offset_file(self, create=False):
-        outdir = ospath.join(SimConfig.current_dir, "sim_conf")
+        outdir = ospath.join(SimConfig.output_root)
         create and os.makedirs(outdir, exist_ok=True)
         return ospath.join(outdir, "populations_offset.dat")
 
