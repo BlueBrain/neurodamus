@@ -34,6 +34,7 @@ py38-full-spack:
     # modules need to be loaded in this certain order to avoid mixing of libraries
     EXTRA_MODULES:
       unstable:py-psutil
+      unstable:intel-oneapi-compilers
       unstable:py-bluepy
       unstable:neurodamus-neocortex
       unstable:py-neurodamus  # needed for dependencies

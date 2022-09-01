@@ -100,7 +100,7 @@ class PointNeuronManager(CellManagerBase):
         """
         logging.info("Load Cells from SONATA file")
         import h5py  # Can be heavy so loaded on demand
-        pth = ospath.join(circuit_conf["CircuitPath"], circuit_conf["CellLibraryFile"])
+        pth = ospath.join(circuit_conf["CellLibraryFile"])
         sonata_point_nodes = h5py.File(pth, 'r')
 
         sonata_gidvec = sonata_point_nodes["/nodes/default/node_id"][:]
@@ -197,7 +197,7 @@ class PointNeuronConnection(ConnectionBase):
         else:
             self._conn_params.append_synapse_parameters(params_obj)
 
-    def finalize(self, cell_distributor, cell):
+    def finalize(self, cell_distributor, cell, src_pop_offset):
         """Finalize synapses. Set's the receptors values, creates the point synapses,
         edits their parameters based on the excitatory and inhibitory cells and creates
         more synapses.
@@ -206,10 +206,12 @@ class PointNeuronConnection(ConnectionBase):
             cell_distributor: Get the cell distributor which includes all the cells, to be able
                               to access the references of all the cells
             cell: The PointType object which is the target of this connection
+            src_pop_offset: source population offset needed for generating the synapses with the
+                            proper source gid
         """
-        return self._create_point_synapse(cell_distributor, cell, self._conn_params)
+        return self._create_point_synapse(cell_distributor, cell, self._conn_params, src_pop_offset)
 
-    def _create_point_synapse(self, cell_distributor, target_neuron, syn_params):
+    def _create_point_synapse(self, cell_distributor, target_neuron, syn_params, src_pop_offset):
         """Actually create the Netcons of the point synapses and also connect the VecStims to the
            cells
 
@@ -218,31 +220,35 @@ class PointNeuronConnection(ConnectionBase):
             target_neuron: The reference to the PointType
             syn_params: The synapse parameters of the connection (passed as argument as they might
                         be passed changed)
+            src_pop_offset: source population offset needed for generating the synapses with the
+                            proper source gid
         """
         nb_synapses_ = len(syn_params)
         target_cell = target_neuron.CCell
         id_syn = target_cell.initSynapse(nb_synapses_)
         netconns_numbers = 0
-        gid_offset = cell_distributor.local_nodes.offset
         for i in range(nb_synapses_):
-            base_sgid = syn_params.sgid[i]
-            source_gid = base_sgid + gid_offset
-            if source_gid in self.sgids:
-                weight = syn_params.weight[i] if syn_params.weight[i] > 1e-9 else 0.
-                target_cell.addSynapse(id_syn + i, weight, syn_params.tau_rec[i],
-                                       syn_params.tau_fac[i], syn_params.U[i],
-                                       syn_params.delay[i],  # used for last_spike to match Nest
-                                       syn_params.x[i], syn_params.u[i])
-                if base_sgid in self._vecstims:
-                    connection = Nd.NetCon(self._vecstims[base_sgid], target_cell)
-                else:
-                    connection = cell_distributor.pc.gid_connect(source_gid, target_cell)
-                connection.weight[0] = id_syn + i
-                connection.weight[1] = syn_params.receptor_type[i] - 1
-                connection.delay = syn_params.delay[i] + Nd.dt
-                netconns_numbers += 1
-                self._synapse_ids[source_gid] = id_syn + i
-                self._synapses.append(connection)
+            # source_gid includes the source gid population offset
+            source_gid = syn_params.sgid[i] + src_pop_offset
+            weight = syn_params.weight[i] if syn_params.weight[i] > 1e-9 else 0.
+            target_cell.addSynapse(id_syn + i, weight, syn_params.tau_rec[i],
+                                    syn_params.tau_fac[i], syn_params.U[i],
+                                    syn_params.delay[i],  # used for last_spike to match Nest
+                                    syn_params.x[i], syn_params.u[i])
+            if source_gid in self._vecstims:
+                logging.debug("Generating replay connection between ({}) and"
+                              " point ({}) neuron".format(source_gid, target_neuron._gid))
+                connection = Nd.NetCon(self._vecstims[source_gid], target_cell)
+            else:
+                logging.debug("Generating connection between ({}) and point"
+                              " ({}) neuron".format(source_gid, target_neuron._gid))
+                connection = cell_distributor.pc.gid_connect(source_gid, target_cell)
+            connection.weight[0] = id_syn + i
+            connection.weight[1] = syn_params.receptor_type[i] - 1
+            connection.delay = syn_params.delay[i] + Nd.dt
+            netconns_numbers += 1
+            self._synapse_ids[source_gid] = id_syn + i
+            self._synapses.append(connection)
 
         return netconns_numbers
 
@@ -251,7 +257,7 @@ class PointNeuronConnection(ConnectionBase):
         predetermined timings.
 
         Args:
-            sgid: VecStim "cell" gid
+            sgid: VecStim "cell" gid including source pop offset
             tvec: time for spike events from the sgid
             start_delay: When the events may start to be delivered
         """
@@ -557,11 +563,11 @@ class PointNeuronSynapseManager(SynapseRuleManager):
             for sgid in conn.sgids:
                 base_sgid = sgid - src_pop_offset
                 if base_sgid in spike_manager:
-                    if base_sgid not in self.vecstims:
-                        self.vecstims[base_sgid] = conn.replay(base_sgid, spike_manager[base_sgid],
+                    if sgid not in self.vecstims:
+                        self.vecstims[sgid] = conn.replay(sgid, spike_manager[base_sgid],
                                                                None, start_delay)
                     else:
-                        conn.replay(base_sgid, spike_manager[base_sgid], self.vecstims[base_sgid],
+                        conn.replay(sgid, spike_manager[base_sgid], self.vecstims[sgid],
                                     start_delay)
 
         replayed_count = len(self.vecstims)
@@ -582,7 +588,7 @@ class PointNeuronSynapseManager(SynapseRuleManager):
         # Note: (Compat) neurodamus hoc keeps connections in reversed order.
         for conn in reversed(conns):  # type of conn: Connection
             # Skip disabled if we are running with core-neuron
-            n_created_conns += conn.finalize(cell_distributor, cell)
+            n_created_conns += conn.finalize(cell_distributor, cell, self.src_pop_offset)
         return n_created_conns
 
 
