@@ -189,10 +189,12 @@ class CircuitManager:
         pop_offsets = {}
         alias_pop = {}
         pop_offset_file = cls._pop_offset_file()
-        if SimConfig.restore and not os.path.exists(pop_offset_file):
-            # RESTORE: link to populations_offset.dat besides save directory
-            os.symlink(os.path.join(SimConfig.restore, "../populations_offset.dat"),
-                       pop_offset_file)
+        if SimConfig.restore_coreneuron:
+            if MPI.rank == 0 and not os.path.exists(pop_offset_file):
+                # RESTORE: link to populations_offset.dat besides save directory
+                os.symlink(os.path.join(SimConfig.restore, "../populations_offset.dat"),
+                           pop_offset_file)
+            MPI.barrier()
         with open(pop_offset_file, "r") as f:
             offsets = [line.strip().split("::") for line in f]
             for entry in offsets:
