@@ -1,13 +1,13 @@
 import os
 import pytest
 import subprocess
+from pathlib import Path
 
-sims = os.path.abspath(os.path.join(os.path.dirname(__file__), "simulations"))
+SIM_DIR = Path(__file__).parent.absolute() / "simulations"
 
 requires_mpi = pytest.mark.skipif(
     os.environ.get("SLURM_JOB_ID") is None and os.environ.get("RUN_MPI") is None,
-    reason="Simulation tests require MPI"
-)
+    reason="Simulation tests require MPI")
 
 
 @pytest.mark.slow
@@ -17,12 +17,8 @@ def test_quick_v6():
 
     We require launching with mpiexec, so we do it in a bash script
     """
-    simdir = os.path.join(sims, "mini_v6")
+    simdir = SIM_DIR / "mini_v6"
     subprocess.run(
         ["bash", "tests/test_simulation.bash", simdir, "BlueConfig", "mpiexec"],
         check=True
     )
-
-
-if __name__ == '__main__':
-    test_quick_v6()

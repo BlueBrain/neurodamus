@@ -1,10 +1,13 @@
 """
 Test checking hoc entities from neuron are accessible from the high level wrappers.
 """
-from neurodamus.core import Neuron
+import pytest
+
+pytestmark = pytest.mark.forked  # independent processes
 
 
 def test_base_h():
+    from neurodamus.core import Neuron
     print(Neuron.dt)
 
 
@@ -13,8 +16,3 @@ def neurodamus():
     from neurodamus.core import NeurodamusCore as Nd
     rng_conf = Nd.RNGSettings()
     assert rng_conf.RANDOM123 == 1
-
-
-if __name__ == '__main__':
-    test_base_h()
-    neurodamus()

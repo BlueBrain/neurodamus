@@ -1,23 +1,28 @@
 import os
 import pytest
-import subprocess
-from tempfile import NamedTemporaryFile
 import shutil
+import subprocess
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 from neurodamus.node import Node
 from neurodamus.core.configuration import GlobalConfig, LogLevel
 
-alltests = ['test_point_detailed_conn']
+SIMS = Path(__file__).parent.absolute() / "simulations"
+
+
+# NOTE: These tests are currently disabled since they require some work
+# Namely launch it via python directly, and use a separate random dir
 
 # BlueConfig string
 BC_str = """
 Run Default
 {{
-    CircuitPath simulations/usecase3
-    MorphologyPath simulations/usecase3/CircuitA/morphologies/asc
+    CircuitPath {SIMS}/usecase3
+    MorphologyPath {SIMS}/usecase3/CircuitA/morphologies/asc
     MorphologyType asc
-    METypePath simulations/usecase3/CircuitA/hoc
-    CellLibraryFile simulations/usecase3/nodes_A.h5
+    METypePath {SIMS}/usecase3/CircuitA/hoc
+    CellLibraryFile {SIMS}/usecase3/nodes_A.h5
     nrnPath <NONE>
     CircuitTarget Mosaic_A
 
@@ -46,13 +51,13 @@ nodes/whole_brain_model_SONATA.h5
 
 Projection projDetailedToPoint
 {{
-    Path simulations/point_detailed/edges_A_point.h5
+    Path {SIMS}/point_detailed/edges_A_point.h5
     Type Point
 }}
 
 Projection projPointToDetailed
 {{
-    Path simulations/point_detailed/edges_point_A.h5
+    Path {SIMS}/point_detailed/edges_point_A.h5
 }}
 
 Connection AtoPoint
@@ -84,24 +89,14 @@ a71709499
 """
 
 
-@pytest.mark.slow
-@pytest.mark.skipif(
-    not os.path.isdir("/gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-point"),
-    reason="Circuit file not available")
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
-def test_sim_feature():
-    test_dir = os.path.dirname(__file__)
-    hippocampus_repo_dir = os.path.join(test_dir, "hippocampus")
+def _build_special(test_dir, repo_dir, mod_files_dir):
     subprocess.run(
         ["git", "clone", "--recursive", "-b", "adex_mod",
-            "git@bbpgitlab.epfl.ch:hpc/sim/models/hippocampus.git", hippocampus_repo_dir],
+            "git@bbpgitlab.epfl.ch:hpc/sim/models/hippocampus.git", repo_dir],
         check=True
     )
-    mod_files_dir = os.path.join(test_dir, "mod")
     os.mkdir(mod_files_dir)
-    shutil.copyfile(os.path.join(hippocampus_repo_dir, "mod", "adex.mod"),
+    shutil.copyfile(os.path.join(repo_dir, "mod", "adex.mod"),
                     os.path.join(mod_files_dir, "adex.mod"))
     with open(os.path.join(mod_files_dir, "neuron_only_mods.txt"), 'w') as f:
         print('adex.mod', file=f)
@@ -110,28 +105,42 @@ def test_sim_feature():
         check=True,
         cwd=test_dir
     )
-    for test in alltests:
-        subprocess.run(
-            ["./x86_64/special", "-mpi", "-python", os.path.abspath(__file__), test],
-            check=True,
-            env=os.environ,
-            cwd=test_dir
-        )
-    shutil.rmtree(mod_files_dir)
-    shutil.rmtree(hippocampus_repo_dir)
-    shutil.rmtree(os.path.join(test_dir, "x86_64"))
 
 
-def exec_test_point_detailed_conn():
+@pytest.fixture(scope="module")
+def _setup():
+    test_dir = TemporaryDirectory("hip_point_test")
+    hippocampus_repo_dir = test_dir / "hippocampus"
+    mod_files_dir = test_dir / "mod"
+    x86_dir = test_dir / "x86_64"
+
+    if not os.path.isfile(os.path.join(x86_dir, "special")):
+        _build_special(test_dir, hippocampus_repo_dir, mod_files_dir)
+
+    os.environ["NRNMECH_LIB_PATH"] = str(x86_dir / "libnrnmech.so")
+    os.environ["LD_LIBRARY_PATH"] = str(x86_dir) + ":" + os.environ.get("LD_LIBRARY_PATH", "")
+
+    yield  # Run tests now! Keep test_dir alive
+    pass   # done
+
+
+@pytest.mark.slow
+@pytest.mark.forked
+@pytest.mark.skipif(
+    not os.path.isdir("/gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-point"),
+    reason="Circuit file not available")
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
+def _test_point_detailed_conn(_setup):
     """
     A test of the impact of eager caching of synaptic parameters. BBPBGLIB-813
     """
-
     # dump config to files
     with NamedTemporaryFile("w", prefix='test_point_detailed_conn_tgt', delete=False) as tgt_file:
         tgt_file.write(TGT_str)
     with NamedTemporaryFile("w", prefix="test_point_detailed_conn_bc", delete=False) as bc_file:
-        bc_file.write(BC_str.format(target_file=tgt_file.name))
+        bc_file.write(BC_str.format(target_file=tgt_file.name, SIMS=SIMS))
 
     # create Node from config
     GlobalConfig.verbosity = LogLevel.DEBUG
@@ -172,12 +181,3 @@ def exec_test_point_detailed_conn():
     # remove temp files
     os.unlink(bc_file.name)
     os.unlink(tgt_file.name)
-    quit()
-
-
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1:
-        exec('exec_{}()'.format(sys.argv[-1]))
-    else:
-        test_sim_feature()

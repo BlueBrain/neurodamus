@@ -1,20 +1,9 @@
+import numpy as np
+import numpy.testing as npt
 import os
 import pytest
-import subprocess
 from tempfile import NamedTemporaryFile
-import numpy as np
 
-import numpy.testing as npt
-
-from neurodamus.node import Node
-from neurodamus.core import NeurodamusCore as Nd
-from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
-from neurodamus.io.synapse_reader import SynapseReader, _constrained_hill
-from neurodamus.utils import compat
-from neurodamus.utils.logging import log_verbose
-
-
-alltests = ['test_synapses']
 
 # BlueConfig string
 BC_str = """
@@ -92,43 +81,50 @@ Target Cell post_L5_PC
 """
 
 
+@pytest.fixture(scope="module")
+def blueconfig1():
+    target_values = {
+        "pre_L5_BC": 3587718,
+        "pre_L5_PC": 4148946,
+        "pre_VPM": 5067862,
+        "post_L5_PC": 3424037
+    }
+
+    # dump config to files
+    with NamedTemporaryFile("w", prefix='test_synapses_tgt', delete=False) as tgt_file:
+        tgt_file.write(TGT_str.format(**target_values))
+    with NamedTemporaryFile("w", prefix="test_synapses_bc", delete=False) as bc_file:
+        bc_file.write(BC_str.format(target_file=tgt_file.name))
+
+    yield target_values, bc_file.name
+
+    os.unlink(bc_file.name)
+    os.unlink(tgt_file.name)
+
+
 @pytest.mark.slow
+@pytest.mark.forked
 @pytest.mark.skipif(
     not os.path.isfile("/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3"),
     reason="Circuit file not available")
 @pytest.mark.skipif(
     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
     reason="Test requires loading a neocortex model to run")
-def test_sim_feature():
-    for test in alltests:
-        subprocess.run(
-            ["python", os.path.abspath(__file__), test],
-            check=True
-        )
-
-
-def exec_test_synapses():
+def test_synapses(blueconfig1):
     """
     A test of the impact of eager caching of synaptic parameters. BBPBGLIB-813
     """
-    # GIDs
-    pre_L5_BC = 3587718
-    pre_L5_PC = 4148946
-    pre_VPM = 5067862
-    post_L5_PC = 3424037
-
-    # dump config to files
-    with NamedTemporaryFile("w", prefix='test_synapses_tgt', delete=False) as tgt_file:
-        tgt_file.write(TGT_str.format(pre_L5_BC=pre_L5_BC,
-                                      pre_L5_PC=pre_L5_PC,
-                                      pre_VPM=pre_VPM,
-                                      post_L5_PC=post_L5_PC))
-    with NamedTemporaryFile("w", prefix="test_synapses_bc", delete=False) as bc_file:
-        bc_file.write(BC_str.format(target_file=tgt_file.name))
+    from neurodamus.core import NeurodamusCore as Nd
+    from neurodamus.node import Node
+    from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
+    from neurodamus.io.synapse_reader import SynapseReader
+    from neurodamus.utils import compat
+    from neurodamus.utils.logging import log_verbose
 
     # create Node from config
+    gids, blueconfig = blueconfig1
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(bc_file.name)
+    n = Node(blueconfig)
     conn_weight = 0.8  # for testing
 
     # append Connection blocks programmatically
@@ -168,7 +164,7 @@ def exec_test_synapses():
     from bluepy import Circuit
     from bluepy.enums import Synapse
 
-    c = Circuit(bc_file.name)
+    c = Circuit(blueconfig)
 
     dfs = {}
     properties = [Synapse.G_SYNX, Synapse.U_SYN, Synapse.DTC, Synapse.D_SYN, Synapse.F_SYN,
@@ -176,16 +172,17 @@ def exec_test_synapses():
     plast_params = ["volume_CR", "rho0_GB", "Use_d_TM", "Use_p_TM",
                     "gmax_d_AMPA", "gmax_p_AMPA", "theta_d", "theta_p"]
 
-    df = c.connectome.pair_synapses([pre_L5_BC], [post_L5_PC], properties)
+    df = c.connectome.pair_synapses([gids["pre_L5_BC"]], [gids["post_L5_PC"]], properties)
     df["weight"] = df[Synapse.G_SYNX] * conn_weight  # add weight column
     dfs['ProbGABAAB_EMS'] = df
 
-    df = c.projection("Thalamocortical_input_VPM").pair_synapses([pre_VPM], [post_L5_PC],
-                                                                 properties)
+    df = c.projection("Thalamocortical_input_VPM").pair_synapses(
+        [gids["pre_VPM"]], [gids["post_L5_PC"]], properties)
     df["weight"] = df[Synapse.G_SYNX] * conn_weight  # add weight column
     dfs['ProbAMPANMDA_EMS'] = df
 
-    df = c.connectome.pair_synapses([pre_L5_PC], [post_L5_PC], properties + plast_params)
+    df = c.connectome.pair_synapses(
+        [gids["pre_L5_PC"]], [gids["post_L5_PC"]], properties + plast_params)
     df["gmax_NMDA"] = df[Synapse.G_SYNX] * df[Synapse.CONDUCTANCE_RATIO]  # add gmax_NMDA column
     df["weight"] = 1.0  # add weight column (not set in Connection block for GluSynapse)
     dfs['GluSynapse'] = df
@@ -207,7 +204,7 @@ def exec_test_synapses():
         df[Synapse.U_SYN] = tmp.U
 
     # 2) get values from NEURON
-    post_cell = n._target_manager.hoc.cellDistributor.getCell(post_L5_PC)
+    post_cell = n._target_manager.hoc.cellDistributor.getCell(gids["post_L5_PC"])
     # here we collect all synapses for the post cell
     import re
     _match_index = re.compile(r"\[[0-9]+\]$")
@@ -226,13 +223,10 @@ def exec_test_synapses():
             except Exception:
                 continue
         synlist.setdefault(syntype, []).append(d)
+
     # sort lists by synapseID
     for _, x in synlist.items():
         x = sorted(x, key=lambda d: d['synapseID'])
-
-    # remove temp files
-    os.unlink(bc_file.name)
-    os.unlink(tgt_file.name)
 
     # 3) compare values: Neurodamus vs bluepy
     # mapping between Nd and bluepy properties
@@ -289,6 +283,8 @@ def exec_test_synapses():
 
 
 def test__constrained_hill():
+    from neurodamus.io.synapse_reader import _constrained_hill
+
     # original functions
     def hill(ca_conc, y, K_half):
         return y*ca_conc**4/(K_half**4 + ca_conc**4)
@@ -307,12 +303,3 @@ def test__constrained_hill():
     npt.assert_allclose(scale_factors(a, 2), _constrained_hill(a, 2))
     npt.assert_allclose(scale_factors(a, 2.2), _constrained_hill(a, 2.2))
     npt.assert_allclose(scale_factors(a, b), _constrained_hill(a, b))
-
-
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1:
-        exec('exec_{}()'.format(sys.argv[1]))
-    else:
-        test_sim_feature()
-        test__constrained_hill()

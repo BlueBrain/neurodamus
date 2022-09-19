@@ -1,11 +1,10 @@
-
-import os.path
+import pytest
+from pathlib import Path
 from unittest import mock
 
-import pytest
 from neurodamus.connection_manager import ConnectionSet
 
-SIM_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "simulations"))
+SIM_DIR = Path(__file__).parent.absolute() / "simulations"
 CIRCUIT_PATH = "/gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-2k"
 
 
@@ -37,7 +36,6 @@ def test_population_get(population):
     conn = population.get_connection(1, 2)
     assert conn.sgid == 1
     assert conn.tgid == 2
-
     assert population.get_connection(2, 2) is None
 
 

@@ -1,15 +1,11 @@
 import os
 import pytest
-import subprocess
 from tempfile import NamedTemporaryFile
 
 from neurodamus.node import Node
-from neurodamus.core import NeurodamusCore as Nd
 from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
 from neurodamus.utils import compat
 
-
-alltests = ['test_eager_caching']
 
 # BlueConfig string
 BC_str = """
@@ -76,24 +72,19 @@ Target Cell post_L5_PC
 
 
 @pytest.mark.slow
+@pytest.mark.forked
 @pytest.mark.skipif(
     not os.path.isfile("/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3"),
     reason="Circuit file not available")
 @pytest.mark.skipif(
     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
     reason="Test requires loading a neocortex model to run")
-def test_sim_feature():
-    for test in alltests:
-        subprocess.run(
-            ["python", os.path.abspath(__file__), test],
-            check=True
-        )
-
-
-def exec_test_eager_caching():
+def test_eager_caching():
     """
     A test of the impact of eager caching of synaptic parameters. BBPBGLIB-813
     """
+    from neurodamus.core import NeurodamusCore as Nd
+
     # dump config to files
     with NamedTemporaryFile("w", prefix='test_eager_caching_tgt', delete=False) as tgt_file:
         tgt_file.write(TGT_str)
@@ -147,11 +138,3 @@ def exec_test_eager_caching():
 
     os.unlink(bc_file.name)
     os.unlink(tgt_file.name)
-
-
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1:
-        exec('exec_{}()'.format(sys.argv[1]))
-    else:
-        test_sim_feature()

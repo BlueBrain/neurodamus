@@ -2,19 +2,29 @@
 Basic tests to HL neuron for creating cells and setup a simple simulation
 """
 from os import path
-from neurodamus.core import Neuron, Cell, CurrentSource
-from pytest import approx
+import pytest
+
+# !! NOTE: Please don't import neron/neurodamus at module level
+# pytest weird discovery system will trigger Neuron init and open can of worms
+# And make all tests run forked
+pytestmark = pytest.mark.forked
 
 
-def test_load_cell():
+@pytest.fixture
+def Cell():
+    from neurodamus.core import Cell
+    return Cell
+
+
+def test_load_cell(Cell):
     d = path.dirname(__file__)
     c = Cell(1, path.join(d, "morphology/C060114A7.asc"))
     assert len(c.all) == 325
     assert c.axons[4].name().endswith(".axon[4]")
-    assert c.soma.L == approx(26.11, abs=0.01)
+    assert c.soma.L == pytest.approx(26.11, abs=0.01)
 
 
-def test_create_cell():
+def test_create_cell(Cell):
     builder = Cell.Builder
     c = (builder
          .add_soma(1)
@@ -30,7 +40,7 @@ def test_create_cell():
     assert len(c._axon) == 1
 
 
-def test_create_cell_2():
+def test_create_cell_2(Cell):
     c = (Cell.Builder
          .add_soma(1)
          .add_dendrite("dend1", 2, 5)
@@ -44,7 +54,7 @@ def test_create_cell_2():
     assert len(c._axon) == 3
 
 
-def test_create_cell_3():
+def test_create_cell_3(Cell):
     Dend = Cell.Builder.DendriteSection
     c = (Cell.Builder
          .add_soma(1)
@@ -63,6 +73,7 @@ def test_create_cell_3():
 
 
 def test_basic_system():
+    from neurodamus.core import Neuron, Cell, CurrentSource
     c = Cell.Builder.add_soma(60).create()
     Cell.Mechanisms.HH(gkbar=0.0, gnabar=0.0, el=-70).apply(c.soma)
     CurrentSource.pulse(0.1, 50, delay=10).attach_to(c.soma)
@@ -79,5 +90,3 @@ def test_basic_system():
 if __name__ == "__main__":
     sim = test_basic_system()
     sim.plot()
-    from six.moves import input
-    input("Press enter to quit")

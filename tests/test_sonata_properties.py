@@ -1,16 +1,13 @@
 import logging
 import os
 import pytest
-import subprocess
 from tempfile import NamedTemporaryFile
 
 from neurodamus.node import Node
-from neurodamus.core import NeurodamusCore as Nd
 from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
 from neurodamus.utils import compat
 
-
-alltests = ['test_input_resistance', 'test_input_resistance_2']
+NODE = "/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/sonata/networks/nodes/All/nodes.h5"
 
 # BlueConfig string
 BC_str = """
@@ -88,37 +85,44 @@ Target Section small_soma
 }
 """
 
-NODE = "/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/sonata/networks/nodes/All/nodes.h5"
+# Prerequisites
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.forked,
+    pytest.mark.skipif(
+        not os.path.isfile(NODE),
+        reason="Circuit file not available"
+    ),
+    pytest.mark.skipif(
+        not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+        reason="Test requires loading a neocortex model to run"
+    )
+]
 
 
-@pytest.mark.slow
-@pytest.mark.skipif(
-    not os.path.isfile(NODE),
-    reason="Circuit file not available")
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
-def unit_test():
-    for test in alltests:
-        subprocess.run(
-            ["python", os.path.abspath(__file__), test],
-            check=True
-        )
-
-
-def exec_test_input_resistance():
-    """
-    A test of getting input resistance values from SONATA nodes file. BBPBGLIB-806
-    """
+@pytest.fixture(scope="module")
+def blueconfig():
     # dump config to files
     with NamedTemporaryFile("w", prefix='test_input_resistance_tgt', delete=False) as tgt_file:
         tgt_file.write(TGT_str)
     with NamedTemporaryFile("w", prefix="test_input_resistance_bc", delete=False) as bc_file:
         bc_file.write(BC_str.format(target_file=tgt_file.name))
 
+    yield bc_file.name
+
+    os.unlink(bc_file.name)
+    os.unlink(tgt_file.name)
+
+
+def test_input_resistance(blueconfig):
+    """
+    A test of getting input resistance values from SONATA nodes file. BBPBGLIB-806
+    """
+    from neurodamus.core import NeurodamusCore as Nd
+
     # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(bc_file.name)
+    n = Node(blueconfig)
 
     # append Stimulus and StimulusInject blocks programmatically
     # relativeOU
@@ -150,6 +154,19 @@ def exec_test_input_resistance():
     n.create_cells()
     n.create_synapses()
     n.enable_stimulus()
+
+    # Ensure we have our targets and loaded cells ok
+    target_small = n.target_manager.get_target("small")
+    cell_manager = n.circuits.base_cell_manager
+    gids = cell_manager.local_nodes.final_gids()
+    assert target_small.offset == 0
+    assert target_small.gid_count() == 4
+    assert cell_manager.total_cells == 4
+    assert len(cell_manager.local_nodes) == 4
+    for gid in (3425774, 3868780, 2886525, 3099746):
+        assert gid in target_small
+        assert gid in gids
+
     # manually finalize synapse managers (otherwise netcons are not created)
     for syn_manager in n._circuits.all_synapse_managers():
         syn_manager.finalize(n._run_conf.get("BaseSeed", 0), SimConfig.coreneuron)
@@ -158,26 +175,18 @@ def exec_test_input_resistance():
 
     # check spikes
     nspike = sum(len(spikes) for spikes, _ in n._spike_vecs)
-    assert (nspike == 9)
-
-    # remove temporary files
-    os.unlink(bc_file.name)
-    os.unlink(tgt_file.name)
+    assert nspike == 6
 
 
-def exec_test_input_resistance_2():
+def test_input_resistance_2(blueconfig):
     """
     A test of getting input resistance values from SONATA nodes file. BBPBGLIB-806
     """
-    # dump config to files
-    with NamedTemporaryFile("w", prefix='test_input_resistance_2_tgt', delete=False) as tgt_file:
-        tgt_file.write(TGT_str)
-    with NamedTemporaryFile("w", prefix="test_input_resistance_2_bc", delete=False) as bc_file:
-        bc_file.write(BC_str.format(target_file=tgt_file.name))
+    from neurodamus.core import NeurodamusCore as Nd
 
     # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(bc_file.name)
+    n = Node(blueconfig)
 
     # append Stimulus and StimulusInject blocks programmatically
     # relativeSN
@@ -219,16 +228,4 @@ def exec_test_input_resistance_2():
 
     # check spikes
     nspike = sum(len(spikes) for spikes, _ in n._spike_vecs)
-    assert (nspike == 12)
-
-    # remove temporary files
-    os.unlink(bc_file.name)
-    os.unlink(tgt_file.name)
-
-
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1:
-        exec('exec_{}()'.format(sys.argv[1]))
-    else:
-        unit_test()
+    assert nspike == 5

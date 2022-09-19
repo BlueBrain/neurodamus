@@ -1,6 +1,8 @@
+import numpy as np
+import pytest
+
 from neurodamus.core.nodeset import NodeSet
 from neurodamus.target_manager import _HocTarget, NodesetTarget, TargetSpec
-import numpy as np
 
 null_target_spec = TargetSpec("")
 
@@ -53,6 +55,7 @@ def test_hoc_target_intersect():
     assert not ht1.intersects(ht2)
 
 
+@pytest.mark.forked
 def test_nodeset_target_intersect():
     nodes_popA = NodeSet([1, 2]).register_global("pop_A")
     nodes2_popA = NodeSet([2, 3]).register_global("pop_A")
@@ -70,12 +73,3 @@ def test_nodeset_target_intersect():
     assert not t1.intersects(t2)
     t2.nodesets = [nodes_popB, nodes3_popA]
     assert not t1.intersects(t2)
-
-
-if __name__ == "__main__":
-    test_targetspec_overlap_name()
-    test_populations_disjoint()
-    test_targetspec_overlap()
-    test_hoc_target_intersect()
-    test_nodeset_target_intersect()
-    print("tests passed")

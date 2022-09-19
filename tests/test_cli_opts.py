@@ -10,6 +10,7 @@ SIM_DIR = Path(__file__).parent.absolute() / "simulations" / "v5_sonata"
 CONFIG_FILE_MINI = "simulation_config_mini.json"
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(
     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
     reason="Test requires loading a neocortex model to run")
@@ -57,8 +58,3 @@ def test_cli_prcellgid():
     )
     assert (test_folder_path / "62798_py_Neuron_t0.0.nrndat").is_file()
     assert (test_folder_path / "62798_py_Neuron_t100.0.nrndat").is_file()
-
-
-if __name__ == "__main__":
-    test_save_restore_cli()
-    test_cli_prcellgid()

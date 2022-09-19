@@ -1,21 +1,23 @@
 import os
 import pytest
-import subprocess
-from neurodamus.io.sonata_config import SonataConfig
-from neurodamus.core.configuration import SimConfig
+from pathlib import Path
 
-USECASE3 = os.path.abspath(os.path.join(os.path.dirname(__file__), "simulations", "usecase3"))
-SONATA_CONF_FILE = os.path.join(USECASE3, "simulation_sonata.json")
-V5 = os.path.abspath(os.path.join(os.path.dirname(__file__), "simulations", "v5_sonata"))
+USECASE3 = Path(__file__).parent.absolute() / "simulations" / "usecase3"
+SONATA_CONF_FILE = str(USECASE3 / "simulation_sonata.json")
+V5 = Path(__file__).parent.absolute() / "simulations" / "v5_sonata"
 
 
-def fork_test_parse_base():
+@pytest.mark.forked
+def test_parse_base():
+    from neurodamus.io.sonata_config import SonataConfig
     raw_conf = SonataConfig(SONATA_CONF_FILE)
     assert raw_conf.run["random_seed"] == 1122
     assert raw_conf.parsedRun["BaseSeed"] == 1122
 
 
-def fork_test_SimConfig_from_sonata():
+@pytest.mark.forked
+def test_SimConfig_from_sonata():
+    from neurodamus.core.configuration import SimConfig
     SimConfig.init(SONATA_CONF_FILE, {})
     # RNGSettings in hoc correctly initialized from Sonata
     assert SimConfig.rng_info.getGlobalSeed() == 1122
@@ -73,7 +75,7 @@ def test_simulation_sonata_config():
     import subprocess
     os.environ['NEURODAMUS_PYTHON'] = "."
     subprocess.run(
-        ["bash", "tests/test_simulation.bash", USECASE3, "simulation_sonata.json"],
+        ["bash", "tests/test_simulation.bash", str(USECASE3), "simulation_sonata.json"],
         check=True
     )
 
@@ -85,30 +87,6 @@ def test_v5_sonata_config():
     import subprocess
     os.environ['NEURODAMUS_PYTHON'] = "."
     subprocess.run(
-        ["bash", "tests/test_simulation.bash", V5, "simulation_config.json"],
+        ["bash", "tests/test_simulation.bash", str(V5), "simulation_config.json"],
         check=True
     )
-
-
-# A pytest which executes fork_* tests in a new python interpreter
-# For some reason pytest-forked crashes when loading libnrnmech
-def test_run_forked_tests():
-    for test_name in ("fork_test_parse_base", "fork_test_SimConfig_from_sonata"):
-        print("[Forked] Running", test_name)
-        subprocess.run(
-            ["python", os.path.abspath(__file__), test_name],
-            check=True
-        )
-
-
-if __name__ == "__main__":
-    import sys
-    # In case the test is specified
-    if len(sys.argv) > 1:
-        test_f = globals().get(sys.argv[1])
-        sys.exit(test_f())
-
-    fork_test_parse_base()
-    fork_test_SimConfig_from_sonata()
-    test_simulation_sonata_config()
-    test_v5_sonata_config()
