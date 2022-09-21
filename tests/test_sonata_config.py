@@ -7,7 +7,9 @@ SONATA_CONF_FILE = str(USECASE3 / "simulation_sonata.json")
 V5 = Path(__file__).parent.absolute() / "simulations" / "v5_sonata"
 
 
-@pytest.mark.forked
+pytestmark = pytest.mark.forked
+
+
 def test_parse_base():
     from neurodamus.io.sonata_config import SonataConfig
     raw_conf = SonataConfig(SONATA_CONF_FILE)
@@ -15,7 +17,6 @@ def test_parse_base():
     assert raw_conf.parsedRun["BaseSeed"] == 1122
 
 
-@pytest.mark.forked
 def test_SimConfig_from_sonata():
     from neurodamus.core.configuration import SimConfig
     SimConfig.init(SONATA_CONF_FILE, {})
@@ -72,21 +73,35 @@ def test_SimConfig_from_sonata():
     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
     reason="Test requires loading a neocortex model to run")
 def test_simulation_sonata_config():
-    import subprocess
-    os.environ['NEURODAMUS_PYTHON'] = "."
-    subprocess.run(
-        ["bash", "tests/test_simulation.bash", str(USECASE3), "simulation_sonata.json"],
-        check=True
-    )
+    from neurodamus import Neurodamus
+    nd = Neurodamus(str(USECASE3 / "simulation_sonata.json"), disable_reports=True)
+    nd.run()
+    # TODO: Check the sim status is ok. Sim has no spikes
 
 
 @pytest.mark.skipif(
     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
     reason="Test requires loading a neocortex model to run")
 def test_v5_sonata_config():
-    import subprocess
-    os.environ['NEURODAMUS_PYTHON'] = "."
-    subprocess.run(
-        ["bash", "tests/test_simulation.bash", str(V5), "simulation_config.json"],
-        check=True
-    )
+    import numpy as np
+    import numpy.testing as npt
+    from neurodamus import Neurodamus
+
+    nd = Neurodamus(str(V5 / "simulation_config.json"), disable_reports=True)
+    nd.run()
+
+    spike_gids = np.array([
+        68855, 69877, 64935, 66068, 62945, 63698, 67666, 68223,
+        65915, 69530, 63256, 64861, 66105, 68532, 65951, 64163,
+        68855, 62797, 69877
+    ]) + 1  # Conform to nd 1-based
+    timestamps = np.array([
+        9.125, 14.3, 15.425, 29.075, 31.025, 33.2, 34.175, 35.075,
+        35.625, 36.875, 36.95, 37.1, 37.6, 37.6, 38.05, 38.075,
+        38.175, 38.45, 39.875
+    ])
+
+    obtained_timestamps = nd._spike_vecs[0][0].as_numpy()
+    obtained_spike_gids = nd._spike_vecs[0][1].as_numpy()
+    npt.assert_allclose(spike_gids, obtained_spike_gids)
+    npt.assert_allclose(timestamps, obtained_timestamps)

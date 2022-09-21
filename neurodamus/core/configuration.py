@@ -897,7 +897,7 @@ def _report_vars(config: _SimConfig, run_conf):
 
 
 def get_debug_cell_gid(cli_options):
-    gid = cli_options and cli_options.get("dump_cell_state")
+    gid = None if not cli_options else cli_options.get("dump_cell_state")
     try:
         gid = int(gid) if gid is not None else SimConfig.run_conf.get("prCellGid")
     except ValueError as e:
