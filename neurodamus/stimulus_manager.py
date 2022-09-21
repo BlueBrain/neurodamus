@@ -91,7 +91,7 @@ class BaseStim:
     IsPythonOnly = False
     IsNoise = False
 
-    def __init__(self, target, stim_info: dict, cell_manager):
+    def __init__(self, _target, stim_info: dict, _cell_manager):
         self.duration = float(stim_info["Duration"])  # duration [ms]
         self.delay = float(stim_info["Delay"])        # start time [ms]
 
@@ -565,7 +565,6 @@ class Noise(BaseStim):
         self.parse_check_all_parameters(stim_info)
 
         sim_dt = float(SimConfig.run_conf["Dt"])  # simulation time-step [ms]
-        sim_tstop = float(SimConfig.run_conf["Duration"])  # simulation duration [ms]
         rng_mode = SimConfig.rng_info.getRNGMode()  # simulation RNGMode
 
         # setup RNG
@@ -580,16 +579,6 @@ class Noise(BaseStim):
             rand = lambda gid: random.Random123(Noise.stimCount + 100,
                                                 SimConfig.rng_info.getStimulusSeed() + 500,
                                                 gid + 300)
-
-        init_zero = False
-        # selectively zero initial value
-        if rng_mode == SimConfig.rng_info.COMPATIBILITY or self.delay > Nd.h.t:
-            init_zero = True
-
-        final_zero = False
-        # selectively zero final value
-        if self.delay + self.duration < sim_tstop:
-            final_zero = True
 
         # apply stim to each point in target
         tpoints = target.getPointList(cell_manager)
@@ -611,8 +600,7 @@ class Noise(BaseStim):
 
                 # generate noise current source
                 cs = CurrentSource.noise(self.mean, self.var, self.duration,
-                                         dt=self.dt, delay=self.delay, rng=rng,
-                                         init_zero=init_zero, final_zero=final_zero)
+                                         dt=self.dt, delay=self.delay, rng=rng)
                 # attach current source to section
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
                 self.stimList.append(cs)  # save CurrentSource

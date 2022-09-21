@@ -10,7 +10,7 @@ import logging
 
 class SignalSource:
 
-    def __init__(self, base_amp=0.0, rng=None):
+    def __init__(self, base_amp=0.0, *, delay=0, rng=None):
         """
         Creates a new signal source, which can create composed signals
         Args:
@@ -23,6 +23,9 @@ class SignalSource:
         self._cur_t = 0
         self._base_amp = base_amp
         self._rng = rng
+        if delay > .0:
+            self._add_point(base_amp)
+            self._cur_t = delay
 
     def reset(self):
         self.stim_vec.resize(0)
@@ -38,6 +41,9 @@ class SignalSource:
     def delay(self, duration):
         """Increments the ref time so that the next created signal is delayed
         """
+        # NOTE: We rely on the fact that Neuron allows "instantaneous" changes
+        # and made all signal shapes return to base_amp. Therefore delay() doesn't
+        # need to introduce any point to avoid interpolation.
         self._cur_t += duration
         return self
 
@@ -66,6 +72,7 @@ class SignalSource:
         """Adds a ramp.
 
         A ramp is characterized by a pulse whose peak changes uniformly during its length.
+        Neuron automatically interpolates all values between [t0, t1] as a ramp
         """
         base_amp = kw.get("base_amp", self._base_amp)
         self._add_point(base_amp)
@@ -121,9 +128,7 @@ class SignalSource:
         stim.sin(freq, .0, step)
         stim.mul(amp)
         self.stim_vec.append(stim)
-
-        # Last point
-        self._add_point(base_amp)
+        self._add_point(base_amp)  # Last point
         return self
 
     def add_sinspec(self, start, dur):
@@ -149,7 +154,7 @@ class SignalSource:
         self._add_point(base_amp)
         return self
 
-    def add_noise(self, mean, variance, duration, dt=0.5, init_zero=False, final_zero=False):
+    def add_noise(self, mean, variance, duration, dt=0.5):
         """Adds a noise component to the signal.
         """
         rng = self._rng or RNG()  # Creates a default RNG
@@ -160,14 +165,14 @@ class SignalSource:
         tvec.indgen(self._cur_t, self._cur_t + duration, dt)
         svec = Neuron.h.Vector(len(tvec))
         svec.setrand(rng)
-        if init_zero:
-            svec.x[0] = 0
-        if final_zero:
-            svec.x[-1] = 0
+
+        # Delimit noise signals with base_amp
+        # Otherwise Neuron does interpolation with surrounding points
+        self._add_point(self._base_amp)
         self.time_vec.append(tvec)
         self.stim_vec.append(svec)
         self._cur_t += duration
-        self._add_point(.0)
+        self._add_point(self._base_amp)
         return self
 
     def add_shot_noise(self, tau_D, tau_R, rate, amp_mean, amp_var, duration, dt=0.25):
@@ -255,10 +260,11 @@ class SignalSource:
 
         P.mul(A)  # normalize to peak amplitude
 
+        self._add_point(self._base_amp)
         self.time_vec.append(tvec)
         self.stim_vec.append(P)
         self._cur_t += duration
-        self._add_point(.0)
+        self._add_point(self._base_amp)
 
         return self
 
@@ -302,10 +308,11 @@ class SignalSource:
 
         svec.add(mean)  # shift signal by mean value [uS]
 
+        self._add_point(self._base_amp)
         self.time_vec.append(tvec)
         self.stim_vec.append(svec)
         self._cur_t += duration
-        self._add_point(.0)
+        self._add_point(self._base_amp)
 
         return self
 
@@ -321,39 +328,35 @@ class SignalSource:
         fig.show()
 
     # ==== Helpers =====
-    @classmethod
-    def pulse(cls, max_amp, duration, base_amp=.0, delay=0):
-        return cls(base_amp).delay(delay).add_pulse(max_amp, duration)
+    # Helper methods forward generic kwargs to base class, like rng and delay
 
     @classmethod
-    def ramp(cls, amp1, amp2, duration, base_amp=.0, delay=0):
-        return cls(base_amp).delay(delay).add_ramp(amp1, amp2, duration)
+    def pulse(cls, max_amp, duration, base_amp=.0, **kw):
+        return cls(base_amp, **kw).add_pulse(max_amp, duration)
 
     @classmethod
-    def train(cls, amp, frequency, pulse_duration, total_duration, base_amp=.0, delay=0):
-        return cls(base_amp).delay(delay).add_train(amp, frequency, pulse_duration, total_duration)
+    def ramp(cls, amp1, amp2, duration, base_amp=.0, **kw):
+        return cls(base_amp, **kw).add_ramp(amp1, amp2, duration)
 
     @classmethod
-    def sin(cls, amp, total_duration, freq, step=0.025, delay=0, base_amp=.0):
-        return cls(base_amp).delay(delay).add_sin(amp, total_duration, freq, step)
+    def train(cls, amp, frequency, pulse_duration, total_duration, base_amp=.0, **kw):
+        return cls(base_amp, **kw).add_train(amp, frequency, pulse_duration, total_duration)
 
     @classmethod
-    def noise(cls, mean, variance, duration, dt=0.5, delay=0, base_amp=.0, rng=None,
-              init_zero=False, final_zero=False):
-        return cls(base_amp, rng).delay(delay).add_noise(mean, variance, duration, dt,
-                                                         init_zero, final_zero)
+    def sin(cls, amp, total_duration, freq, step=0.025, base_amp=.0, **kw):
+        return cls(base_amp, **kw).add_sin(amp, total_duration, freq, step)
 
     @classmethod
-    def shot_noise(cls, tau_D, tau_R, rate, amp_mean, amp_var, duration,
-                   dt=0.25, delay=0, base_amp=.0, rng=None):
-        return cls(base_amp, rng).delay(delay).add_shot_noise(tau_D, tau_R, rate, amp_mean, amp_var,
-                                                              duration, dt)
+    def noise(cls, mean, variance, duration, dt=0.5, base_amp=.0, **kw):
+        return cls(base_amp, **kw).add_noise(mean, variance, duration, dt)
 
     @classmethod
-    def ornstein_uhlenbeck(cls, tau, sigma, mean, duration,
-                           dt=0.25, delay=0, base_amp=.0, rng=None):
-        return cls(base_amp, rng).delay(delay).add_ornstein_uhlenbeck(tau, sigma, mean,
-                                                                      duration, dt)
+    def shot_noise(cls, tau_D, tau_R, rate, amp_mean, var, duration, dt=0.25, base_amp=.0, **kw):
+        return cls(base_amp, **kw).add_shot_noise(tau_D, tau_R, rate, amp_mean, var, duration, dt)
+
+    @classmethod
+    def ornstein_uhlenbeck(cls, tau, sigma, mean, duration, dt=0.25, base_amp=.0, **kw):
+        return cls(base_amp, **kw).add_ornstein_uhlenbeck(tau, sigma, mean,duration, dt)
 
     # Operations
     def __add__(self, other):
@@ -364,11 +367,11 @@ class SignalSource:
 class CurrentSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, base_amp=0.0, rng=None):
+    def __init__(self, base_amp=0.0, *, delay=0, rng=None):
         """
         Creates a new current source that injects a signal under IClamp
         """
-        super().__init__(base_amp, rng)
+        super().__init__(base_amp, delay=delay, rng=rng)
         self._clamps = set()
         self._all_sources.append(self)
 
@@ -415,14 +418,14 @@ class CurrentSource(SignalSource):
 class ConductanceSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, reversal=0.0, rng=None):
+    def __init__(self, reversal=0.0, *, delay=.0, rng=None):
         """
         Creates a new conductance source that injects a conductance by driving
         the rs of an SEClamp at a given reversal potential.
 
         reversal: reversal potential of conductance (mV)
         """
-        super().__init__(0.0, rng)  # set SignalSource's base_amp to zero
+        super().__init__(0.0, delay=delay, rng=rng)  # set SignalSource's base_amp to zero
         self._reversal = reversal   # set reversal from base_amp parameter in classmethods
         self._clamps = set()
         self._all_sources.append(self)
