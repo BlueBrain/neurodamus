@@ -2,6 +2,23 @@
 Change Log
 ==========
 
+
+Version 2.12.4
+==============
+**23 Sep 2022**
+
+*Improvements*
+  * Add test for point to detailed neuron connectivity and vice versa
+  * [BBPBGLIB-904] Pytests refactoring and coverage + Have mini simulations run directly under pytest
+  * Add zero amplitude at start of new noise stimuli to allow stacking over time
+
+*Bug fixes*
+  * [BBPBGLIB-888] Save populations_offset.dat in output directory to resolve issue in restore
+  * coreneuron restore: link populations_offset.dat only in rank0 and hold the other ranks
+  * [HPCTM-1584] Fix deletion of SHM coredat files when '--enable-shm' is not set
+
+
+
 Version 2.12.3
 ==============
 **29 Aug 2022**
