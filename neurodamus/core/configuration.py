@@ -14,6 +14,7 @@ from ..io.sonata_config import SonataConfig
 from ..utils import compat
 from ..utils.logging import log_verbose
 from ..utils.pyutils import ConfigT
+from ._shmutils import SHMUtil
 
 EXCEPTION_NODE_FILENAME = ".exception_node"
 """A file which controls which rank shows exception"""
@@ -818,16 +819,32 @@ def _check_model_build_mode(config: _SimConfig, run_conf):
 
     # It's a CoreNeuron run. We have to check if build_model is AUTO or OFF
     core_data_location = config.coreneuron_datadir
+    core_data_location_shm = SHMUtil.get_datadir_shm(core_data_location)
     core_data_exists = (
         os.path.isfile(os.path.join(config.output_root, "sim.conf"))
         and os.path.isfile(os.path.join(core_data_location, "files.dat"))
     )
 
     if config.build_model in (None, "AUTO"):
-        if not core_data_exists:
+        # If enable-shm option is given we have to rebuild the model and delete any previous files
+        # in /dev/shm or gpfs
+        # In any case when we start model building any data in the core_data_location_shm if it
+        # exists are deleted
+        if (
+            not core_data_exists
+            or config.cli_options.enable_shm
+            or os.path.exists(core_data_location_shm)
+        ):
+            data_location = (
+                core_data_location_shm
+                if (
+                    config.cli_options.enable_shm and core_data_location_shm is not None
+                )
+                else core_data_location
+            )
             logging.info("CoreNeuron input data not found in '%s'. "
                          "Neurodamus will proceed to model building.",
-                         core_data_location)
+                         data_location)
             config.build_model = True
         else:
             logging.info("CoreNeuron input data found. Skipping model build")

@@ -17,7 +17,7 @@ from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, SimConfig
 from .core._engine import EngineBase
-from .core._utils import SHMUtil
+from .core._shmutils import SHMUtil
 from .core.configuration import ConfigurationError, find_input_file, get_debug_cell_gid
 from .core.nodeset import PopulationNodes
 from .cell_distributor import CellDistributor, VirtualCellPopulation, GlobalCellManager
@@ -1157,15 +1157,16 @@ class Node:
         corenrn_datadir = SimConfig.coreneuron_datadir
         corenrn_datadir_shm = SHMUtil.get_datadir_shm(corenrn_datadir)
 
+        # Clean-up any previous simulations in the same output directory
+        if self._cycle_i == 0 and corenrn_datadir_shm:
+            subprocess.call(['/bin/rm', '-rf', corenrn_datadir_shm])
+
         # Ensure that we have a folder in /dev/shm (i.e., 'SHMDIR' ENV variable)
         if SimConfig.cli_options.enable_shm and not corenrn_datadir_shm:
             logging.warning("Unknown SHM directory for model file transfer in CoreNEURON.")
         # Try to configure the /dev/shm folder as the output directory for the files
         elif self._cycle_i == 0 and not corenrn_restore and \
                 (SimConfig.cli_options.enable_shm and SimConfig.delete_corenrn_data):
-            # Clean-up any previous simulations in the same output directory
-            subprocess.call(['/bin/rm', '-rf', corenrn_datadir_shm])
-
             # Check for the available memory in /dev/shm and estimate the RSS by multiplying
             # the number of cycles in the multi-step model build with an approximate factor
             shm_avail = SHMUtil.get_shm_avail()
