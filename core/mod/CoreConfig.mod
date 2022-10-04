@@ -182,11 +182,14 @@ VERBATIM
     fprintf(fp, CORENRN_ARG_FMT"%lf\n",  "voltage", *hoc_val_pointer("v_init"));
     fprintf(fp, CORENRN_ARG_FMT"'%s/%s'\n", "report-conf",  outputdir, REPORT_CONFIG_FILE);
     fprintf(fp, CORENRN_ARG_FMT"%d\n", "cell-permute", DEFAULT_CELL_PERMUTE);
-    if (ifarg(7) && strlen(hoc_gargstr(7))) {  // if spike replay specified
-        fprintf(fp, CORENRN_ARG_FMT"'%s'\n", "pattern", abspath(hoc_gargstr(7), tmpmem));
+    if ((int)*getarg(7)) {
+        fprintf(fp, "'%s'\n", "model-stats");
     }
-    if (ifarg(8)) {  // if seed specified
-        fprintf(fp, CORENRN_ARG_FMT"%d\n", "seed", (int)*getarg(8));
+    if (ifarg(8) && strlen(hoc_gargstr(8))) {  // if spike replay specified
+        fprintf(fp, CORENRN_ARG_FMT"'%s'\n", "pattern", abspath(hoc_gargstr(8), tmpmem));
+    }
+    if (ifarg(9)) {  // if seed specified
+        fprintf(fp, CORENRN_ARG_FMT"%d\n", "seed", (int)*getarg(9));
     }
 # if CORENRN_CLI11
     fprintf(fp, "mpi=true\n");
