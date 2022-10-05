@@ -910,7 +910,7 @@ class Node:
                     for point in points:
                         gid = point.gid
                         pop_name, pop_offset = global_manager.getPopulationInfo(gid)
-                        cell = global_manager.getCell(gid)
+                        cell = global_manager.get_cellref(gid)
                         spgid = global_manager.getSpGid(gid)
 
                         # may need to take different actions based on report type

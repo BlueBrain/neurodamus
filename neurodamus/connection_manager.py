@@ -970,7 +970,7 @@ class ConnectionManagerBase(object):
         By default it calls finalize on each cell.
         """
         # Note: *kwargs normally contains 'replay_mode' but may differ for other types
-        metype = self._cell_manager.getMEType(tgid)
+        metype = self._cell_manager.get_cell(tgid)
         n_created_conns = 0
         if reverse:
             conns = reversed(conns)

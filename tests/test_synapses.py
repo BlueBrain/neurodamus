@@ -204,7 +204,7 @@ def test_synapses(blueconfig1):
         df[Synapse.U_SYN] = tmp.U
 
     # 2) get values from NEURON
-    post_cell = n._target_manager.hoc.cellDistributor.getCell(gids["post_L5_PC"])
+    post_cell = n.circuits.global_manager.get_cellref(gids["post_L5_PC"])
     # here we collect all synapses for the post cell
     import re
     _match_index = re.compile(r"\[[0-9]+\]$")

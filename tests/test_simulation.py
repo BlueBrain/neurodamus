@@ -102,7 +102,7 @@ def test_v5_gap_junction():
     # P2: Assert simulation went well
     # Check voltages
     from neuron import h
-    c = cell_manager.gid2cell[74188]
+    c = cell_manager.get_cell(74188)
     voltage_vec = h.Vector()
     voltage_vec.record(c._cellref.soma[0](0.5)._ref_v, 0.125)
     h.finitialize()  # reinit for the recordings to be registered

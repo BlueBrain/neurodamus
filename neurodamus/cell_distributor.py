@@ -2,6 +2,7 @@
 Mechanisms to load and balance cells across the computing resources.
 """
 from __future__ import absolute_import, print_function
+import abc
 import logging  # active only in rank 0 (init)
 import os
 import weakref
@@ -60,7 +61,41 @@ class VirtualCellPopulation:
         return "([VIRT] {:s})".format(self.population_name)
 
 
-class CellManagerBase(object):
+class _CellManager(abc.ABC):
+
+    @abc.abstractmethod
+    def get_final_gids(self):
+        ...
+
+    @abc.abstractmethod
+    def get_cell(self, gid):
+        ...
+
+    def get_cellref(self, gid):
+        """Retrieve a cell object given its gid.
+        Note that this function handles multisplit cases incl converting to an
+        spgid automatically \n
+        Returns: Cell object
+        """
+        if self._binfo:
+            # are we in load balance mode? must replace gid with spgid
+            gid = self._binfo.thishost_gid(gid)
+        return self._pc.gid2obj(gid)
+
+    # Methods for compat with hoc
+
+    @abc.abstractmethod
+    def getGidListForProcessor(self):
+        ...
+
+    def getMEType(self, gid):
+        return self.get_cell(gid)
+
+    def getCell(self, gid):
+        return self.get_cellref(gid)
+
+
+class CellManagerBase(_CellManager):
 
     CellType = NotImplemented  # please override
     """The underlying Cell type class
@@ -302,8 +337,11 @@ class CellManagerBase(object):
     def _store_cell(self, gid, cell):
         self._gid2cell[gid] = cell
 
-    def getMEType(self, gid):
+    def get_cell(self, gid):
         return self._gid2cell[gid]
+
+    def get_cellref(self, gid):
+        return self._gid2cell[gid]._cellref
 
     def record_spikes(self, gids=None, append_spike_vecs=None):
         """Setup recording of spike events (crossing of threshold) for cells on this node
@@ -332,7 +370,7 @@ class CellManagerBase(object):
         pass
 
 
-class GlobalCellManager:
+class GlobalCellManager(_CellManager):
     """
     GlobalCellManager is a wrapper over all Cell Managers so that we can query
     any cell from its global gid
@@ -363,7 +401,7 @@ class GlobalCellManager:
     def get_final_gids(self):
         return numpy.concatenate([man.get_final_gids() for man in self._cell_managers])
 
-    def getMEType(self, gid):
+    def get_cell(self, gid):
         cell_managers_iter = iter(self._cell_managers)
         prev_manager = next(cell_managers_iter)  # base cell manager
         for manager in cell_managers_iter:
@@ -372,7 +410,7 @@ class GlobalCellManager:
             prev_manager = manager
         return prev_manager._gid2cell[gid]
 
-    def getCell(self, gid):
+    def get_cellref(self, gid):
         """Retrieve a cell object given its gid.
         Note that this function handles multisplit cases incl converting to an
         spgid automatically \n

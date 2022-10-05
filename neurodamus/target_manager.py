@@ -501,7 +501,7 @@ class NodesetTarget(_TargetInterface):
         gids = target_gids[numpy.in1d(target_gids, local_gids)]
         for gid in gids:
             point = Nd.TPointList(gid)
-            cellObj = cell_manager.getCell(gid)
+            cellObj = cell_manager.get_cellref(gid)
             secs = getattr(cellObj, section_type)
             for sec in secs:
                 for seg in sec:

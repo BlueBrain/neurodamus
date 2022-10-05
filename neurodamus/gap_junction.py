@@ -169,7 +169,7 @@ class GapJunctionManager(ConnectionManagerBase):
         super().finalize(conn_type="Gap-Junctions")
 
     def _finalize_conns(self, final_tgid, conns, *_, **_kw):
-        metype = self._cell_manager.getMEType(final_tgid)
+        metype = self._cell_manager.get_cell(final_tgid)
 
         if self._gj_offsets is None:
             for conn in reversed(conns):

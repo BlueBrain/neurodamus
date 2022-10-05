@@ -14,7 +14,7 @@
     >>>     tpoints = target.getPointList(cell_manager)
     >>>     for point in tpoints:
     >>>         gid = point.gid
-    >>>         cell = cell_manager.getMEType(gid)
+    >>>         cell = cell_manager.get_cell(gid)
 
 """
 
@@ -122,7 +122,7 @@ class OrnsteinUhlenbeck(BaseStim):
         tpoints = target.getPointList(cell_manager)
         for tpoint_list in tpoints:
             gid = tpoint_list.gid
-            cell = cell_manager.getMEType(gid)
+            cell = cell_manager.get_cell(gid)
 
             self.compute_parameters(cell)
 
@@ -252,7 +252,7 @@ class ShotNoise(BaseStim):
         tpoints = target.getPointList(cell_manager)
         for tpoint_list in tpoints:
             gid = tpoint_list.gid
-            cell = cell_manager.getMEType(gid)
+            cell = cell_manager.get_cell(gid)
 
             self.compute_parameters(cell)
 
@@ -458,7 +458,7 @@ class Linear(BaseStim):
         tpoints = target.getPointList(cell_manager)
         for tpoint_list in tpoints:
             gid = tpoint_list.gid
-            cell = cell_manager.getMEType(gid)
+            cell = cell_manager.get_cell(gid)
 
             self.compute_parameters(cell)
 
@@ -584,7 +584,7 @@ class Noise(BaseStim):
         tpoints = target.getPointList(cell_manager)
         for tpoint_list in tpoints:
             gid = tpoint_list.gid
-            cell = cell_manager.getMEType(gid)
+            cell = cell_manager.get_cell(gid)
 
             self.compute_parameters(cell)
 

@@ -211,11 +211,11 @@ class AstrocyteManager(CellDistributor):
     _sonata_with_extra_attrs = False
 
     def post_stdinit(self):
-        gidvec = self.getGidListForProcessor()
         nseg_warning = 0
-        for gid in gidvec:
-            self._gid2cell[gid].set_pointers()
-            nseg_warning += self._gid2cell[gid]._nseg_warning
+        for cell in self.cells:
+            cell.set_pointers()
+            nseg_warning += cell._nseg_warning
+
         MPI.allreduce(nseg_warning, MPI.SUM)
         if nseg_warning:
             logging.warning("Astrocyte sections with multiple compartments not yet supported."

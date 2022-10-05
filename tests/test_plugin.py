@@ -122,7 +122,7 @@ class ACellSynapseManager(ConnectionManagerBase):
         cur_conn.append_src_cells(syns_params.sgid, syns_params)
 
     def _finalize_conns(self, tgid, conns, *_, **_kw):
-        target_cell = self._cell_manager.getMEType(tgid)
+        target_cell = self._cell_manager.get_cell(tgid)
         conns[0].finalize(target_cell)
         return conns[0].conn_count
 
