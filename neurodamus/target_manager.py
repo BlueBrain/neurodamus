@@ -540,7 +540,7 @@ class _HocTarget(_TargetInterface):
         return len(self.get_raw_gids())
 
     def get_gids(self):
-        return (self.get_raw_gids() + self.offset).astype("uint32")
+        return numpy.add(self.get_raw_gids(), self.offset, dtype="uint32")
 
     def get_raw_gids(self):
         if self._raw_gids is None:

@@ -834,5 +834,4 @@ class LoadBalance:
 
     # -
     def _get_target_gids(self, target_spec):
-        return self._target_parser.getTarget(target_spec.name).completegids() \
-            .as_numpy().astype(int)
+        return self._target_parser.get_target(target_spec).get_gids()

@@ -46,12 +46,12 @@ def test_hoc_target_intersect():
     # different population is short circuited -> gids aren't necessary to see they dont intersect
     assert not ht1_pop1.intersects(ht1_pop2)
     # We override the internal gid cache to avoid creating hoc targets
-    ht1._raw_gids = np.array([1, 2], dtype=int)
-    ht2._raw_gids = np.array([1, 2], dtype=int)
+    ht1._raw_gids = np.array([1, 2], dtype="uint32")
+    ht2._raw_gids = np.array([1, 2], dtype="uint32")
     assert ht1.intersects(ht2)
-    ht2._raw_gids = np.array([2, 3], dtype=int)
+    ht2._raw_gids = np.array([2, 3], dtype="uint32")
     assert ht1.intersects(ht2)
-    ht2._raw_gids = np.array([3, 4], dtype=int)
+    ht2._raw_gids = np.array([3, 4], dtype="uint32")
     assert not ht1.intersects(ht2)
 
 

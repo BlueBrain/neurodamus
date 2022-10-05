@@ -354,7 +354,7 @@ class Node:
         load_balancer = LoadBalance(
             lb_mode,
             self._run_conf["nrnPath"],
-            self._target_manager.parser,
+            self._target_manager,
             prosp_hosts
         )
 
