@@ -3,6 +3,17 @@ Change Log
 ==========
 
 
+Version 2.12.5
+==============
+**07 Oct 2022**
+
+*Improvements*
+  * Add a GapJunction unit test to showcase how it could be tested
+  * Improved Cell Managers API with `get_cell` (python cell) and `get_cellref` (hoc cellref)
+  * Make Load balancer use the TargetManager Python class
+  * [HPCTM-1600] Set SHM File Transfer by default + Improve model memory consumption estimates
+
+
 Version 2.12.4
 ==============
 **23 Sep 2022**

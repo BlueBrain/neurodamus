@@ -52,7 +52,7 @@ def neurodamus(args=None):
         --save-time=<TIME>      The simulation time [ms] to save the state. (Default: At the end)
         --restore=<PATH>        Restore and resume simulation from a save point on disk
         --dump-cell-state=<GID> Dump cell state debug files on start, save-restore and at the end
-        --enable-shm            Enables the use of /dev/shm for coreneuron_input [default: False]
+        --enable-shm=[ON, OFF]  Enables the use of /dev/shm for coreneuron_input [default: ON]
     """
     options = docopt_sanitize(docopt(neurodamus.__doc__, args))
     config_file = options.pop("BlueConfig")

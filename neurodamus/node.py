@@ -1169,15 +1169,18 @@ class Node:
                 (SimConfig.cli_options.enable_shm and SimConfig.delete_corenrn_data):
             # Check for the available memory in /dev/shm and estimate the RSS by multiplying
             # the number of cycles in the multi-step model build with an approximate factor
+            mem_total = SHMUtil.get_mem_total()
+            mem_avail = SHMUtil.get_mem_avail()
             shm_avail = SHMUtil.get_shm_avail()
             initial_rss = self._initial_rss
-            current_rss = SHMUtil.get_rss()
+            current_rss = SHMUtil.get_node_rss()
             factor = SHMUtil.get_shm_factor()
             rss_diff = (current_rss - initial_rss) if initial_rss < current_rss else current_rss
             rss_req = int(rss_diff * self._n_cycles * factor)  # 'rss_diff' prevents <0 estimates
 
             # Sync condition value with all ranks to ensure that all of them can use /dev/shm
-            if MPI.allreduce(int(shm_avail > rss_req), MPI.SUM) == MPI.nhost_world():
+            shm_possible = (rss_req < shm_avail) and ((mem_avail + rss_req) < mem_total)
+            if MPI.allreduce(int(shm_possible), MPI.SUM) == MPI.size:
                 logging.info("SHM file transfer mode for CoreNEURON enabled")
 
                 # Create SHM folder and links to GPFS for the global data structures
@@ -1659,7 +1662,7 @@ class Neurodamus(Node):
     # -
     def _instantiate_simulation(self):
         # Keep the initial RSS for the SHM file transfer calculations
-        self._initial_rss = SHMUtil.get_rss()  # TODO: MPI-SHM communicator to estimate
+        self._initial_rss = SHMUtil.get_node_rss()
 
         self.load_targets()
 
