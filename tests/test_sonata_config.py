@@ -1,5 +1,7 @@
+import os
 import pytest
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 USECASE3 = Path(__file__).parent.absolute() / "simulations" / "usecase3"
 SONATA_CONF_FILE = str(USECASE3 / "simulation_sonata.json")
@@ -27,7 +29,6 @@ def test_SimConfig_from_sonata():
     assert SimConfig.run_conf['Dt'] == 0.1
     assert SimConfig.run_conf['Celsius'] == 35
     assert SimConfig.run_conf['V_Init'] == -75
-    assert SimConfig.run_conf['MinisSingleVesicle'] is True
 
     # output section
     assert SimConfig.run_conf['SpikesFile'] == 'spikes.h5'
@@ -64,3 +65,95 @@ def test_SimConfig_from_sonata():
     assert conditions['init_depleted_GluSynapse'] is True
     assert conditions['minis_single_vesicle_GluSynapse'] is False
     assert conditions['randomize_Gaba_risetime'] == 'False'
+
+
+contents = """
+{
+    "manifest": {
+        "$CIRCUIT_DIR": "%s"
+    },
+    "network": "$CIRCUIT_DIR/circuit_config.json",
+    "run":
+    {
+        "random_seed": 12345,
+        "dt": 0.05,
+        "tstop": 1000,
+        "stimulus_seed": 1122
+    },
+    "conditions": {
+        "modifications": {
+            "applyTTX": {
+                "node_set": "single",
+                "type": "TTX"
+            },
+            "no_SK_E2": {
+                "node_set": "single",
+                "type": "ConfigureAllSections",
+                "section_configure": "%%s.gSK_E2bar_SK_E2 = 0"
+            }
+        }
+    },
+    "connection_overrides": {
+        "GABAB_erev": {
+            "source": "Inhibitory",
+            "target": "Mosaic",
+            "weight": 1.0,
+            "synapse_delay_override": 0.5,
+            "synapse_configure": "%%s.e_GABAA = -82.0 tau_d_GABAB_ProbGABAAB_EMS = 77",
+            "neuromodulation_dtc": 100,
+            "neuromodulation_strength": 0.75
+        }
+    }
+}
+"""
+
+
+@pytest.fixture(scope="module")
+def sonataconfig():
+    # dump content to json file
+    with NamedTemporaryFile("w", suffix='.json', delete=False) as tmp_config:
+        tmp_config.write(contents % USECASE3)
+    yield tmp_config.name
+
+    os.unlink(tmp_config.name)
+
+
+def test_parse_seeds(sonataconfig):
+    from neurodamus.core.configuration import SimConfig
+
+    SimConfig.init(sonataconfig, {})
+    assert SimConfig.rng_info.getGlobalSeed() == 12345
+    assert SimConfig.rng_info.getStimulusSeed() == 1122
+    assert SimConfig.rng_info.getIonChannelSeed() == 0
+    assert SimConfig.rng_info.getMinisSeed() == 0
+    assert SimConfig.rng_info.getSynapseSeed() == 0
+
+
+def test_parse_modifications(sonataconfig):
+    from neurodamus.core.configuration import SimConfig
+
+    SimConfig.init(sonataconfig, {})
+    TTX_mod = SimConfig.modifications["applyTTX"]
+    assert TTX_mod["Type"] == "TTX"
+    assert TTX_mod["Target"] == "single"
+    ConfigureAllSections_mod = SimConfig.modifications["no_SK_E2"]
+    ConfigureAllSections_mod["Type"] = "ConfigureAllSections"
+    ConfigureAllSections_mod["Target"] = "single"
+    ConfigureAllSections_mod["SectionConfigure"] = "%s.gSK_E2bar_SK_E2 = 0"
+
+
+def test_parse_connections(sonataconfig):
+    from neurodamus.core.configuration import SimConfig
+
+    SimConfig.init(sonataconfig, {})
+    conn = SimConfig.connections["GABAB_erev"]
+    assert conn["Source"] == "Inhibitory"
+    assert conn["Destination"] == "Mosaic"
+    assert conn["Weight"] == 1.0
+    assert conn.get("SpontMins") is None
+    assert conn["Delay"] == 0
+    assert conn["SynDelayOverride"] == 0.5
+    assert conn.get("Modoverride") is None
+    assert conn["SynapseConfigure"] == "%s.e_GABAA = -82.0 tau_d_GABAB_ProbGABAAB_EMS = 77"
+    assert conn["NeuromodDtc"] == 100
+    assert conn["NeuromodStrength"] == 0.75

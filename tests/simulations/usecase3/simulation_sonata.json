@@ -20,7 +20,6 @@
     "conditions": {
         "celsius": 35.0,
         "v_init": -75,
-        "minis_single_vesicle": true,
         "mechanisms": {
           "ProbAMPANMDA_EMS": {
             "init_depleted": false,

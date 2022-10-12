@@ -101,7 +101,6 @@ class SonataConfig:
         "StimulusInject": "inputs",
         "Connection": "connection_overrides",
         "parsedConfigures": False,
-        "parsedModifications": False,
 
         # Section fields
         # --------------
@@ -114,8 +113,7 @@ class SonataConfig:
             "tstart": "Start",
             "spike_threshold": "SpikeThreshold",
             "spike_location": "SpikeLocation",
-            "integration_method": "SecondOrder",
-            "forward_skip": "ForwardSkip",
+            "integration_method": "SecondOrder"
         },
         "conditions": {
             "randomize_gaba_rise_time": "randomize_Gaba_risetime",
@@ -125,15 +123,19 @@ class SonataConfig:
         },
         "connection_overrides": {
             "target": "Destination",
-            "modoverride": "ModOverride"
+            "modoverride": "ModOverride",
+            "synapse_delay_override": "SynDelayOverride",
+            "neuromodulation_dtc": "NeuromodDtc",
+            "neuromodulation_strength": "NeuromodStrength"
         },
         "inputs": {
             "module": "Pattern",
             "input_type": "Mode",
             "random_seed": "Seed",
+            "series_resistance": "RS",
             "node_set": "Target",  # for StimulusInject
-            "source": "Source",  # for StimulusInject
-            "type": "Type"
+            "source": "Source"  # for StimulusInject
+
         },
         "reports": {
             "type": "Type",
@@ -148,6 +150,9 @@ class SonataConfig:
             "end_time": "EndTime",
             "file_name": "FileName",
             "enabled": "Enabled"
+        },
+        "modifications": {
+            "node_set": "Target"
         }
     }
 
@@ -170,14 +175,13 @@ class SonataConfig:
             parsed_run["Celsius"] = self._sim_conf.conditions.celsius
             parsed_run["V_Init"] = self._sim_conf.conditions.v_init
             parsed_run["ExtracellularCalcium"] = self._sim_conf.conditions.extracellular_calcium
-            parsed_run["MinisSingleVesicle"] = self._sim_conf.conditions.minis_single_vesicle
         return parsed_run
 
     @property
     def Conditions(self):
         conditions = {}
         for key, value in self._translate_dict("conditions", self._sim_conf.conditions).items():
-            if key not in ["Celsius", "VInit", "ExtracellularCalcium", "MinisSingleVesicle"]:
+            if key not in ["Celsius", "VInit", "ExtracellularCalcium", "ListModificationNames"]:
                 if key == "Mechanisms":
                     for suffix, dict_var in value.items():
                         for name, val in dict_var.items():
@@ -341,8 +345,18 @@ class SonataConfig:
             reports[name] = rep
         return reports
 
+    @property
+    def parsedModifications(self):
+        modifications = {}
+        for name in self._sim_conf.conditions.list_modification_names:
+            setting = self._translate_dict("modifications",
+                                           self._sim_conf.conditions.modification(name))
+            self._adapt_libsonata_fields(setting)
+            modifications[name] = setting
+        return modifications
+
     def _dir(self, obj):
-        return [x for x in dir(obj) if not x.startswith('__') and not callable(x)]
+        return [x for x in dir(obj) if not x.startswith('__') and not callable(getattr(obj, x))]
 
     def _adapt_libsonata_fields(self, rep):
         for key in rep:
