@@ -1677,9 +1677,6 @@ class Neurodamus(Node):
             self._build_model()
             return
 
-        if self._run_conf["CircuitPath"] in (None, False):
-            raise ConfigurationError("Multi building steps requires a base circuit")
-
         target = self._target_manager.get_target(self._target_spec)
         target_name = self._target_spec.name
         cell_count = target.gid_count()
@@ -1702,20 +1699,83 @@ class Neurodamus(Node):
             return
 
         logging.info("MULTI-CYCLE RUN: {} Cycles".format(n_cycles))
-        sub_targets = self._target_manager.generate_subtargets(target_name, n_cycles)
-        self._n_cycles = n_cycles
-
-        tmp_target_spec = TargetSpec(self._run_conf["CircuitTarget"])
         TimerManager.archive(archive_name="Before Cycle Loop")
-        for cycle_i, cur_target in enumerate(sub_targets):
+
+        if SimConfig.is_sonata_config:
+            PopulationNodes.freeze_offsets()
+            sub_targets = target.generate_subtargets(n_cycles)
+
+            for cycle_i, cur_targets in enumerate(sub_targets):
+                logging.info("")
+                logging.info("-" * 60)
+                log_stage("==> CYCLE {} (OUT OF {})".format(cycle_i + 1, n_cycles))
+                logging.info("-" * 60)
+
+                self.clear_model()
+
+                for cur_target in cur_targets:
+                    self._target_manager.register_target(cur_target)
+                    pop = list(cur_target.population_names)[0]
+                    for circuit in itertools.chain([self._base_circuit],
+                                                   self._extra_circuits.values()):
+                        tmp_target_spec = TargetSpec(circuit.CircuitTarget)
+                        if tmp_target_spec.population == pop:
+                            tmp_target_spec.name = cur_target.name
+                            circuit.CircuitTarget = str(tmp_target_spec)
+
+                self._cycle_i = cycle_i
+                self._build_model()
+
+                # Move generated files aside (to be merged later)
+                if MPI.rank == 0:
+                    base_filesdat = ospath.join(SimConfig.coreneuron_datadir, 'files')
+                    os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
+                # Archive timers for this cycle
+                TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
+
+        else:
+            self._multi_cycle_run_blueconfig_setting(n_cycles)
+
+        if MPI.rank == 0:
+            self._merge_filesdat(n_cycles)
+
+    def _multi_cycle_run_blueconfig_setting(self, n_cycles):
+        """
+            Running multi cycle model buildings for blueconfig settings,
+            Different from sonata setting because for blueconfig target is set per circuit
+            thus can be different.
+            This step will be deprecated once the migration to SONATA is complete.
+        """
+        sub_targets = defaultdict(list)
+        for circuit in itertools.chain([self._base_circuit], self._extra_circuits.values()):
+            if not circuit.CircuitPath:
+                continue
+            if circuit.CircuitTarget is None:
+                raise ConfigurationError("Multi building steps requires a circuit target "
+                                         "for circuit %s" % circuit._name)
+
+            target_spec = TargetSpec(circuit.CircuitTarget)
+            target = self._target_manager.get_target(target_spec)
+            circuit_subtargets = target.generate_subtargets(n_cycles)
+            sub_targets[circuit._name or "Base"] = circuit_subtargets
+
+        for cycle_i in range(n_cycles):
             logging.info("")
             logging.info("-" * 60)
             log_stage("==> CYCLE {} (OUT OF {})".format(cycle_i + 1, n_cycles))
             logging.info("-" * 60)
 
             self.clear_model()
-            tmp_target_spec.name = cur_target.name
-            self._base_circuit.CircuitTarget = str(tmp_target_spec)  # FQN
+
+            for circuit_name, circuit_subtargets in sub_targets.items():
+                cur_target = circuit_subtargets[cycle_i]
+                cur_target.name += "_" + circuit_name
+                self._target_manager.register_target(cur_target)
+                circuit = self._extra_circuits.get(circuit_name, self._base_circuit)
+                tmp_target_spec = TargetSpec(circuit.CircuitTarget)
+                tmp_target_spec.name = cur_target.name
+                circuit.CircuitTarget = str(tmp_target_spec)
+
             self._cycle_i = cycle_i
             self._build_model()
 
@@ -1725,8 +1785,6 @@ class Neurodamus(Node):
                 os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
             # Archive timers for this cycle
             TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
-        if MPI.rank == 0:
-            self._merge_filesdat(n_cycles)
 
     # -
     @timeit(name="finished Run")

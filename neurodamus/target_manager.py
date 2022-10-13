@@ -204,34 +204,6 @@ class TargetManager:
         # give a TargetManager the TargetParser's completed targetList
         self.hoc = Nd.TargetManager(self.parser.targetList, cell_manager)
 
-    def generate_subtargets(self, target_name, n_parts):
-        """To facilitate CoreNeuron data generation, we allow users to use ModelBuildingSteps to
-        indicate that the CircuitTarget should be split among multiple, smaller targets that will
-        be built step by step.
-
-        Returns:
-            list with generated targets, or empty if no splitting was done
-        """
-        if not n_parts or n_parts == 1:
-            return False
-
-        target = self.parser.getTarget(target_name)
-        allgids = target.completegids()
-        new_targets = []
-
-        for cycle_i in range(n_parts):
-            target = Nd.Target()
-            target.name = "{}_{}".format(target_name, cycle_i)
-            new_targets.append(target)
-            self.parser.updateTargetList(target)
-
-        target_looper = itertools.cycle(new_targets)
-        for gid in allgids.x:
-            target = next(target_looper)
-            target.gidMembers.append(gid)
-
-        return new_targets
-
     def get_target_points(self, target, cell_manager, cell_use_compartment_cast, **kw):
         """Helper to retrieve the points of a target.
         If target is a cell then uses compartmentCast to obtain its points.
@@ -398,6 +370,10 @@ class _TargetInterface(metaclass=ABCMeta):
                 return True
         return False
 
+    @abstractmethod
+    def generate_subtargets(self, n_parts):
+        return NotImplemented
+
 
 class NodesetTarget(_TargetInterface):
     def __init__(self, name, nodesets: List[NodeSet], **kw):
@@ -511,6 +487,36 @@ class NodesetTarget(_TargetInterface):
             pointList.append(point)
         return pointList
 
+    def generate_subtargets(self, n_parts):
+        """generate sub NodeSetTarget per population for multi-cycle runs
+        Returns:
+            list of [sub_target_n_pop1, sub_target_n_pop2, ...]
+        """
+        if not n_parts or n_parts == 1:
+            return False
+
+        all_raw_gids = {ns.population_name: ns.final_gids() - ns.offset for ns in self.nodesets}
+        from collections import defaultdict
+        new_targets = defaultdict(list)
+        pop_names = list(all_raw_gids.keys())
+
+        for cycle_i in range(n_parts):
+            for pop in pop_names:
+                # name sub target per populaton, to be registered later
+                target_name = "{}__{}_{}".format(pop, self.name, cycle_i)
+                target = NodesetTarget(target_name, [NodeSet().register_global(pop)])
+                new_targets[pop].append(target)
+
+        for pop, raw_gids in all_raw_gids.items():
+            target_looper = itertools.cycle(new_targets[pop])
+            for gid in raw_gids:
+                target = next(target_looper)
+                target.nodesets[0].add_gids([gid])
+
+        # return list of subtargets lists of all pops per cycle
+        return [[targets[cycle_i] for targets in new_targets.values()]
+                    for cycle_i in range(n_parts)]
+
     def __getattr__(self, item):
         log_verbose("Compat interface to hoc target. Calling " + item)
         return getattr(self.get_hoc_target(), item)
@@ -540,7 +546,11 @@ class _HocTarget(_TargetInterface):
         return len(self.get_raw_gids())
 
     def get_gids(self):
-        return numpy.add(self.get_raw_gids(), self.offset, dtype="uint32")
+        try:
+            return numpy.add(self.get_raw_gids(), self.offset, dtype="uint32")
+        except numpy.core._exceptions.UFuncTypeError as e:
+            logging.error("Type error: please use type uint32 for the array of raw gids.")
+            raise e
 
     def get_raw_gids(self):
         if self._raw_gids is None:
@@ -589,6 +599,29 @@ class _HocTarget(_TargetInterface):
 
     def isCellTarget(self, **kw):
         return self.hoc_target.isCellTarget()
+
+    def generate_subtargets(self, n_parts):
+        """generate sub hoc targets for multi-cycle runs
+        Returns:
+            list of subtargets
+        """
+        if not n_parts or n_parts == 1:
+            return False
+
+        allgids = self.get_gids()
+        new_targets = []
+
+        for cycle_i in range(n_parts):
+            target = Nd.Target()
+            target.name = "{}_{}".format(self.name, cycle_i)
+            new_targets.append(_HocTarget(target.name, target, self.population_name))
+
+        target_looper = itertools.cycle(new_targets)
+        for gid in allgids:
+            target = next(target_looper)
+            target.hoc_target.gidMembers.append(gid)
+
+        return new_targets
 
     def __getattr__(self, item):
         return getattr(self.hoc_target, item)
