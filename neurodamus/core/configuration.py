@@ -832,13 +832,12 @@ def _check_model_build_mode(config: _SimConfig, run_conf):
         # exists are deleted
         if (
             not core_data_exists
-            or config.cli_options.enable_shm
             or os.path.exists(core_data_location_shm)
         ):
             data_location = (
                 core_data_location_shm
                 if (
-                    config.cli_options.enable_shm and core_data_location_shm is not None
+                    user_config.enable_shm and core_data_location_shm is not None
                 )
                 else core_data_location
             )
