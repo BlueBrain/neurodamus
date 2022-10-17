@@ -199,6 +199,8 @@ class _SimConfig(object):
     loadbal_mode = None
     synapse_options = {}
     is_sonata_config = False
+    spike_location = "soma"
+    spike_threshold = -30
 
     _validators = []
     _requisitors = []

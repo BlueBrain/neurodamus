@@ -364,7 +364,7 @@ class Node:
 
         logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
         cell_dist = self._circuits.new_node_manager(self._base_circuit, self._target_manager)
-        with load_balancer.generate_load_balance(target_spec.simple_name, cell_dist):
+        with load_balancer.generate_load_balance(target_spec, cell_dist):
             # Instantiate a basic circuit to evaluate complexities
             cell_dist.finalize()
             self.create_synapses()

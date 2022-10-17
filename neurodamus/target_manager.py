@@ -88,6 +88,9 @@ class TargetSpec:
 class TargetManager:
 
     def __init__(self, run_conf):
+        """
+        Initializes a new TargetManager
+        """
         self._run_conf = run_conf
         self.parser = Nd.TargetParser()
         self._has_hoc_targets = False
@@ -527,12 +530,12 @@ class _HocTarget(_TargetInterface):
     A wrapper around Hoc targets to implement _TargetInterface
     """
 
-    def __init__(self, name, hoc_target, pop_name=None):
+    def __init__(self, name, hoc_target, pop_name=None, *, _raw_gids=None):
         self.name = name
         self.population_name = pop_name
         self.hoc_target = hoc_target
         self.offset = 0
-        self._raw_gids = None
+        self._raw_gids = _raw_gids and numpy.array(_raw_gids, dtype="uint32")
 
     @property
     def population_names(self):

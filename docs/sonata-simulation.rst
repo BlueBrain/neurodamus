@@ -37,7 +37,7 @@ Fundamental simulation parameters
 | Sonata Config                             | BlueConfig                                    |
 +-------------------------------------------+-----------------------------------------------+
 |                                           |                                               |
-| .. code-block:: JSON                      | .. code-block:: JSON                          |
+| .. code-block:: json                      | .. code-block:: console                       |
 |                                           |                                               |
 |   "run": {                                |   Run Default                                 |
 |   "tstop": 100.0,                         |   {                                           |
@@ -88,7 +88,7 @@ https://sonata-extension.readthedocs.io/en/latest/sonata_nodeset.html
 
 In the current example `most_central_100_SP_PC` must be defined in `node_sets.json`, in this case:
 
-.. code-block:: JSON
+.. code-block:: json
 
     "most_central_100_SP_PC": {
       "population": "hippocampus_neurons",

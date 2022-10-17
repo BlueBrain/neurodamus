@@ -245,3 +245,74 @@ connections - `ConnectionSet`. This class is basically a container which a few e
 add or find connections, and multiple can exist for the same Manager in case connections come from
 different sources with eventually different random seeds. However, in practice, only on exceptional
 cases (like support for old projections files) we will have more than one ConnectionSet.
+
+
+Load Balance
+------------
+
+Due to the differences in cells and the number of connections among them, cells may incur very
+different CPU loads. For that reason Round Robin cell distribution is hardly optimal and Neurodamus
+provides load balancing facilities.
+
+The way this functionality is plugged in Neurodamus is conceptually simple: one can provide a
+`LoadBalance` object to the cell creation top-level routine: `node.create_cells`. This object can
+be built by another top-level method: `node.compute_load_balance`. Here one basically takes into
+account the load balance mode requested by the user and do a dummy circuit instantiation so that
+cells' complexities can be evaluated and, with the help of Neuron, derive an optimized cell
+distribution arrangement.
+
+LoadBalance class instances (in `cell_distributor.py`) are created for the current system (CPUs) and
+circuit (node files). From this point one can load or generate load balance information by targets.
+
+Given the heavy costs of computing load balance, some state files are created
+which allow the balance info to be reused.
+
+- `cxinfo.txt`: This file tracks the "circuit" and target being simulated for which
+  there is load balance done. If the user changes the circuit (node file) then
+  all load balancing is invalidated and a new full loadbalance is required.
+  If the simulated target changes (but not the circuit) then
+
+  * In case the target is in the file then load balancing info is reused
+  * Otherwise we check if the target is a subtarget of any other load balanced target
+    -> if yes then the load balance is derived, otherwise full instantiation is required
+
+  NOTE: For the support of multi-population load-balance, this file is being dropped, as in the
+  new scheme many load-balances (one per circuit) can coexist, created in different directories.
+
+- `cx_{TARGET}#.dat`: File with complexity information for the cells of a given target
+  This file is reused in case the simulation is launched on a different CPU count,
+  and it can be used to derive cx files for sub targets.
+
+- `cx_{TARGET}#.{CPU_COUNT}.dat`: The actual load-balance file assigning cells/pieces
+  to individual CPUs. It can only be reused for the same target and CPU count.
+
+*NOTE*: Even though the `cx_{TARGET}#.{CPU_COUNT}.dat` has the cpu assignment, it goes hand-in-hand
+with `cx_{TARGET}#.dat` which contains information about the cells constitution and eventual split.
+Neuron actually enforces this duality and we cannot change suffixes, so bear that in mind.
+
+Internal API
+~~~~~~~~~~~~
+
+The `LoadBalance` class provides API to verify, load and (re)generate load balances for a target.
+Indeed public API represents exactly these 3 cases:
+
+- `valid_load_distribution(self, target_spec)`: Verifies if load balance for the given target
+  exists according to this instance nodes file and CPUs. It may generate the CPU assignment file
+  automatically and it will also try to derive the cx files from other load-balanced targets.
+  In all these happy paths it will return True, whereas a False informs the user he must take the
+  long route of generating load balance data from scratch.
+
+- `load_balance_info(self, target_spec)`: Reads the load balance information for a target from
+  disk (it must exist), returning a BalanceInfo hoc object.
+
+- `generate_load_balance(self, target_spec, cell_distributor)`: This heavy-duty context manager
+  helps the user creating a new load balance. In the body of the context he should instantiate
+  the nodes and synapses having an impact in the load. Is it engineered as such so that both
+  preparatory actions (like creating mcomplex) and post-actions (like evaluating and saving cell
+  complexity) are executed in order in a single call:
+
+  .. code-block:: python
+
+      with lbal.generate_load_balance(t1, cell_manager):
+        cell_manager.finalize()
+        conn_manager.create_connections()
