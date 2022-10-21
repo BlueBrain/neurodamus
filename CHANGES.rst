@@ -2,6 +2,29 @@
 Change Log
 ==========
 
+Version 2.12.6
+==============
+**21 Oct 2022**
+
+*New Features*
+  * Enable model stats printing in CoreNEURON
+  * Read new sonata keys from libsonata
+
+    * [BBPBGLIB-885] neuromodulation_dtc and neuromodulation_strength in connection_overrides
+    * [BBPBGLIB-915] deprecate minis_single_vesicle key from conditions
+    * [BBPBGLIB-913] deprecate forward_skip key
+    * [BBPBGLIB-920] add keys in run for additional seedings: stimulus_seed, ionchannel_seed, minis_seed, synapse_seed
+    * [BBPBGLIB-921] add series_resistance key in seclamp
+    * [BBPBGLIB-919] parse modifications
+
+*Improvements*
+  * [BBPBGLIB-934] LoadBalance refactoring for multiple circuits
+  * Enable reading sonata circuit config with empty edge
+
+*Bug fixes*
+  * [BBPBGLIB-933] Fix coreneuron multi-cycle model building for multiple circuits
+  * Fix for conflict with SHM File Transfer and --keep-build
+
 
 Version 2.12.5
 ==============
