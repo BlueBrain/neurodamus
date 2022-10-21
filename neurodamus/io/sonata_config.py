@@ -230,7 +230,7 @@ class SonataConfig:
             circuit_conf["Engine"] = "NGV" if node_prop.type == "astrocyte" else "METype"
 
             # find inner connectivity
-            for edge_config in network["edges"]:
+            for edge_config in network.get("edges") or []:
                 for edge_pop_name in edge_config["populations"].keys():
                     edge_storage = self.circuits.edge_population(edge_pop_name)
                     edge_type = self.circuits.edge_population_properties(edge_pop_name).type
@@ -259,7 +259,7 @@ class SonataConfig:
         )
         projections = {}
 
-        for edge_config in self._circuit_networks["edges"]:
+        for edge_config in self._circuit_networks.get("edges") or []:
             for population_name, edge_pop_config in edge_config["populations"].items():
                 edge_pop = self.circuits.edge_population(population_name)
                 pop_type = edge_pop_config.get("type", "chemical")

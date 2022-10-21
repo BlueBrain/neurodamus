@@ -92,7 +92,7 @@ def test_v5_sonata_multisteps():
     from neurodamus import Neurodamus
 
     config_file = str(SIM_DIR / "v5_sonata" / "simulation_config.json")
-    output_dir = os.path.join(os.path.dirname(config_file), "output_coreneuron")
+    output_dir = str(SIM_DIR / "v5_sonata" / "output_coreneuron")
     tmp_file = _create_tmpconfig_coreneuron(config_file)
 
     nd = Neurodamus(tmp_file.name, output_path=output_dir, modelbuilding_steps=3)
@@ -124,7 +124,7 @@ def test_usecase3_BlueConfig_multisteps():
     from neurodamus import Neurodamus
 
     config_file = str(SIM_DIR / "usecase3" / "BlueConfig")
-    output_dir = os.path.join(os.path.dirname(config_file), "output_coreneuron")
+    output_dir = str(SIM_DIR / "usecase3" / "output_coreneuron")
     tmp_file = _create_tmpconfig_coreneuron(config_file)
 
     nd = Neurodamus(tmp_file.name, output_path=output_dir, modelbuilding_steps=2)

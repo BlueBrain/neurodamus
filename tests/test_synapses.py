@@ -2,6 +2,7 @@ import numpy as np
 import numpy.testing as npt
 import os
 import pytest
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 
@@ -303,3 +304,41 @@ def test__constrained_hill():
     npt.assert_allclose(scale_factors(a, 2), _constrained_hill(a, 2))
     npt.assert_allclose(scale_factors(a, 2.2), _constrained_hill(a, 2.2))
     npt.assert_allclose(scale_factors(a, b), _constrained_hill(a, b))
+
+
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
+def test_no_edge_creation(capsys):
+    from neurodamus.node import Node
+
+    USECASE3 = Path(__file__).parent.absolute() / "simulations" / "usecase3"
+    contents = """
+    {
+        "manifest": {
+            "$CIRCUIT_DIR": "%s"
+        },
+        "network": "$CIRCUIT_DIR/%s",
+        "node_sets_file": "$CIRCUIT_DIR/nodesets.json",
+        "run":
+        {
+            "random_seed": 12345,
+            "dt": 0.05,
+            "tstop": 1000
+        }
+    }
+    """
+    # create a tmp json file to read usecase3/no_edge_circuit_config.json
+    with NamedTemporaryFile("w", suffix='.json', delete=False) as tmp_config:
+        tmp_config.write(contents % (USECASE3, "no_edge_circuit_config.json"))
+
+    n = Node(tmp_config.name)
+    n.load_targets()
+    n.create_cells()
+    n.create_synapses()
+
+    captured = capsys.readouterr()
+    assert "Circuit internal connectivity has been DISABLED" in captured.out
+    assert len(n.circuits.edge_managers) == 0
+
+    os.unlink(tmp_config.name)
