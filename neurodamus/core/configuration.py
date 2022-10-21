@@ -58,6 +58,7 @@ class CliOptions(ConfigT):
     save_time = None
     restore = None
     enable_shm = False
+    model_stats = False
 
 
 class CircuitConfig(ConfigT):

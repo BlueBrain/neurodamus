@@ -53,6 +53,7 @@ def neurodamus(args=None):
         --restore=<PATH>        Restore and resume simulation from a save point on disk
         --dump-cell-state=<GID> Dump cell state debug files on start, save-restore and at the end
         --enable-shm=[ON, OFF]  Enables the use of /dev/shm for coreneuron_input [default: ON]
+        --model-stats           Show model stats in CoreNEURON simulations [default: False]
     """
     options = docopt_sanitize(docopt(neurodamus.__doc__, args))
     config_file = options.pop("BlueConfig")

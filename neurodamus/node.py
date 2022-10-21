@@ -1226,7 +1226,6 @@ class Node:
                 self._pc.nrnbbcore_write(corenrn_data)
                 MPI.barrier()  # wait for all ranks to finish corenrn data generation
 
-        optional_params = [self._run_conf["BaseSeed"]] if "BaseSeed" in self._run_conf else []
         SimConfig.coreneuron.write_sim_config(
             corenrn_output,
             corenrn_data,
@@ -1235,7 +1234,8 @@ class Node:
             fwd_skip,
             self._pr_cell_gid or -1,
             self._core_replay_file,
-            *optional_params
+            SimConfig.rng_info.getGlobalSeed(),
+            int(SimConfig.cli_options.model_stats)
         )
         # Wait for rank0 to write the sim config file
         MPI.barrier()
