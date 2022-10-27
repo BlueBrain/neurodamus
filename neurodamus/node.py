@@ -2,12 +2,10 @@
 # Copyright 2018 - Blue Brain Project, EPFL
 
 from __future__ import absolute_import
-import functools
 import glob
 import itertools
 import logging
 import math
-import operator
 import os
 import subprocess
 from os import path as ospath
@@ -19,7 +17,8 @@ from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, SimConfig
 from .core._engine import EngineBase
-from .core.configuration import ConfigurationError, find_input_file
+from .core._shmutils import SHMUtil
+from .core.configuration import ConfigurationError, find_input_file, get_debug_cell_gid
 from .core.nodeset import PopulationNodes
 from .cell_distributor import CellDistributor, VirtualCellPopulation, GlobalCellManager
 from .cell_distributor import LoadBalance, LoadBalanceMode
@@ -32,7 +31,7 @@ from .neuromodulation_manager import NeuroModulationManager
 from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
-from .utils.timeit import TimerManager, timeit, timeit_rank0
+from .utils.timeit import TimerManager, timeit
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
 from . import point_neuron as _point # NOQA
@@ -172,6 +171,7 @@ class CircuitManager:
     """ Write infor in sim_conf/populations_offset.dat
         format population name::gid offset::population alias
     """
+    @run_only_rank0
     def write_population_offsets(self):
         with open(self._pop_offset_file(create=True), "w") as f:
             pop_offsets, alias_pop = self.get_population_offsets()
@@ -188,7 +188,14 @@ class CircuitManager:
     def read_population_offsets(cls):
         pop_offsets = {}
         alias_pop = {}
-        with open(cls._pop_offset_file(), "r") as f:
+        pop_offset_file = cls._pop_offset_file()
+        if SimConfig.restore_coreneuron:
+            if MPI.rank == 0 and not os.path.exists(pop_offset_file):
+                # RESTORE: link to populations_offset.dat besides save directory
+                os.symlink(os.path.join(SimConfig.restore, "../populations_offset.dat"),
+                           pop_offset_file)
+            MPI.barrier()
+        with open(pop_offset_file, "r") as f:
             offsets = [line.strip().split("::") for line in f]
             for entry in offsets:
                 pop_offsets[entry[0] or None] = int(entry[1])
@@ -197,7 +204,7 @@ class CircuitManager:
 
     @classmethod
     def _pop_offset_file(self, create=False):
-        outdir = ospath.join(SimConfig.current_dir, "sim_conf")
+        outdir = ospath.join(SimConfig.output_root)
         create and os.makedirs(outdir, exist_ok=True)
         return ospath.join(outdir, "populations_offset.dat")
 
@@ -244,10 +251,14 @@ class Node:
                 self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True)
             self._base_circuit = SimConfig.base_circuit
             self._extra_circuits = SimConfig.extra_circuits
-            self._pr_cell_gid = self._run_conf.get("prCellGid")
+            self._pr_cell_gid = get_debug_cell_gid(options)
             self._core_replay_file = ""
             self._is_ngv_run = any(c.Engine.__name__ == "NGVEngine"
                                    for c in self._extra_circuits.values() if c.Engine)
+            self._initial_rss = 0
+            self._cycle_i = 0
+            self._n_cycles = 1
+            self._shm_enabled = False
         self._circuits = CircuitManager()
         self._stim_list = None
         self._report_list = None
@@ -314,7 +325,7 @@ class Node:
                                 "Please consider launching it in a larger MPI cluster")
 
         # Check / set load balance mode
-        lb_mode = LoadBalanceMode.parse(self._run_conf.get("RunMode"))
+        lb_mode = SimConfig.loadbal_mode
         if lb_mode == LoadBalanceMode.MultiSplit:
             if not SimConfig.use_coreneuron:
                 logging.info("Load Balancing ENABLED. Mode: MultiSplit")
@@ -343,7 +354,7 @@ class Node:
         load_balancer = LoadBalance(
             lb_mode,
             self._run_conf["nrnPath"],
-            self._target_manager.parser,
+            self._target_manager,
             prosp_hosts
         )
 
@@ -353,7 +364,7 @@ class Node:
 
         logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
         cell_dist = self._circuits.new_node_manager(self._base_circuit, self._target_manager)
-        with load_balancer.generate_load_balance(target_spec.simple_name, cell_dist):
+        with load_balancer.generate_load_balance(target_spec, cell_dist):
             # Instantiate a basic circuit to evaluate complexities
             cell_dist.finalize()
             self.create_synapses()
@@ -470,8 +481,8 @@ class Node:
         src_target = self.target_manager.get_target(source_t)
         dst_target = self.target_manager.get_target(dest_t)
         # Loop over population pairs
-        for src_pop in src_target.populations:
-            for dst_pop in dst_target.populations:
+        for src_pop in src_target.population_names:
+            for dst_pop in dst_target.population_names:
                 # Loop over all managers having connections between the populations
                 for conn_manager in self._circuits.get_edge_managers(src_pop, dst_pop):
                     logging.debug("Using connection manager: %s", conn_manager)
@@ -520,10 +531,10 @@ class Node:
         dst_target = self.target_manager.get_target(dest_t)
 
         # If the src_pop is not a known node population, allow creating a Virtual one
-        src_populations = src_target.populations or [source_t.population]
+        src_populations = src_target.population_names or [source_t.population]
 
         for src_pop in src_populations:
-            for dst_pop in dst_target.populations:
+            for dst_pop in dst_target.population_names:
                 logging.info(" * %s (Type: %s, Src: %s, Dst: %s)", pname, ptype, src_pop, dst_pop)
                 conn_manager = self._circuits.get_create_edge_manager(
                     ptype_cls, src_pop, dst_pop, source_t,
@@ -564,14 +575,8 @@ class Node:
         self._enable_electrodes()
 
         # for each stimulus defined in the config file, request the stimmanager to instantiate
-        add_args = []
-        if "BaseSeed" in self._run_conf:
-            add_args.append(self._run_conf["BaseSeed"])
-        self._stim_manager = StimulusManager(
-            self._target_manager, None, *add_args)  # Does not use hoc electrode manager
 
-        # Nd.StimulusManager(
-        #     self._target_manager.hoc, self._elec_manager, *extra_params)
+        self._stim_manager = StimulusManager(self._target_manager, self._elec_manager)
 
         # build a dictionary of stims for faster lookup : useful when applying 10k+ stims
         # while we are at it, check if any stims are using extracellular
@@ -603,13 +608,7 @@ class Node:
             if stim_pattern == "SynapseReplay":
                 continue  # Handled by enable_replay
 
-            logging.info(" * [STIM] %s: %s (%s) -> %s",
-                         name, stim_name, stim_pattern, target_spec)
-            if stim_pattern in ["Noise", "ShotNoise", "RelativeShotNoise"] and \
-                    SimConfig.run_conf.get("StimulusSeed") is None:
-                logging.warning("StimulusSeed unset (default %d), "
-                                "set explicitly to vary noisy stimuli across runs",
-                                SimConfig.rng_info.getStimulusSeed())
+            logging.info(" * [STIM] %s: %s (%s) -> %s", name, stim_name, stim_pattern, target_spec)
             self._stim_manager.interpret(target_spec, stim)
 
     # -
@@ -670,34 +669,49 @@ class Node:
                        connectivity_type=None):
         spike_filepath = find_input_file(stim_conf["SpikeFile"])
         spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
-
-        # For CoreNeuron, we should put the replays into a single file to be used as PatternStim
-        if SimConfig.use_coreneuron:
-            # Initialize file if non-existing
-            if not self._core_replay_file:
-                self._core_replay_file = ospath.join(SimConfig.output_root, 'pattern.dat')
-                if MPI.rank == 0:
-                    log_verbose("Creating pattern.dat file for CoreNEURON")
-                    spike_manager.dump_ascii(self._core_replay_file)
-            else:
-                if MPI.rank == 0:
-                    log_verbose("Appending to pattern.dat")
-                    with open(self._core_replay_file, "a") as f:
-                        spike_manager.dump_ascii(f)
-            return
-
         ptype_cls = EngineBase.connection_types.get(connectivity_type)
         src_target = self.target_manager.get_target(source)
         dst_target = self.target_manager.get_target(target)
 
-        for src_pop in src_target.populations:
-            for dst_pop in dst_target.populations:
-                conn_manager = self._circuits.get_edge_manager(src_pop, dst_pop, ptype_cls)
-                if not conn_manager:
-                    logging.error("No edge manager found among populations %s -> %s",
-                                  src_pop, dst_pop)
-                    raise ConfigurationError("Unknown replay pathway. Check Source / Target")
-                conn_manager.replay(spike_manager, source, target, delay)
+        if SimConfig.restore_coreneuron:
+            pop_offsets, alias_pop = CircuitManager.read_population_offsets()
+
+        for src_pop in src_target.population_names:
+            for dst_pop in dst_target.population_names:
+                src_pop_str, dst_pop_str = src_pop or "(base)", dst_pop or "(base)"
+
+                if SimConfig.restore_coreneuron:  # Node and Edges managers not initialized
+                    src_pop_offset = pop_offsets[src_pop] if src_pop in pop_offsets \
+                        else pop_offsets[alias_pop[src_pop]]
+                else:
+                    conn_manager = self._circuits.get_edge_manager(src_pop, dst_pop, ptype_cls)
+                    if not conn_manager:
+                        logging.error("No edge manager found among populations %s -> %s",
+                                      src_pop_str, dst_pop_str)
+                        raise ConfigurationError("Unknown replay pathway. Check Source / Target")
+                    src_pop_offset = conn_manager.src_pop_offset
+
+                logging.info("=> Population pathway %s -> %s. Source offset: %d",
+                             src_pop_str, dst_pop_str, src_pop_offset)
+                if SimConfig.use_coreneuron:
+                    self._coreneuron_replay_append(spike_manager, src_pop_offset)
+                else:
+                    conn_manager.replay(spike_manager, source, target, delay)
+
+    def _coreneuron_replay_append(self, spike_manager, gid_offset=None):
+        """Write replay spikes in single file for CoreNeuron"""
+        # To be loaded as PatternStim, requires final gids (with offset)
+        # Initialize file if non-existing
+        if not self._core_replay_file:
+            self._core_replay_file = ospath.join(SimConfig.output_root, 'pattern.dat')
+            if MPI.rank == 0:
+                log_verbose("Creating pattern.dat file for CoreNEURON. Gid offset: %d", gid_offset)
+                spike_manager.dump_ascii(self._core_replay_file, gid_offset)
+        else:
+            if MPI.rank == 0:
+                log_verbose("Appending to pattern.dat. Gid offset: %d", gid_offset)
+                with open(self._core_replay_file, "a") as f:
+                    spike_manager.dump_ascii(f, gid_offset)
 
     # -
     @mpi_no_errors
@@ -746,7 +760,7 @@ class Node:
             end_time = rep_conf.get("EndTime", sim_end)
             logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
 
-            if rep_type.lower() not in ("compartment", "summation", "synapse", "pointtype"):
+            if rep_type not in ("compartment", "Summation", "Synapse", "PointType"):
                 if MPI.rank == 0:
                     logging.error("Unsupported report type: %s.", rep_type)
                 n_errors += 1
@@ -802,7 +816,6 @@ class Node:
                 Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
                 rep_conf.get("ISC", "")
             )
-
             if SimConfig.use_coreneuron and MPI.rank == 0:
                 corenrn_target = target
 
@@ -865,8 +878,9 @@ class Node:
                     compartment_type = rep_conf.get("Compartments")
                     target_type = _compute_corenrn_target_type(section_type, compartment_type)
 
+                reporton_comma_separated = ",".join(report_on.split())
                 core_report_params = (
-                    (rep_name, rep_target.name, rep_type, report_on.replace(" ", ","))
+                    (rep_name, rep_target.name, rep_type, reporton_comma_separated)
                     + rep_params[3:5] + (target_type,) + rep_params[5:8]
                     + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
                 )
@@ -876,37 +890,39 @@ class Node:
                 continue  # we dont even need to initialize reports
 
             report = Nd.Report(*rep_params)
-            global_manager = self._circuits.global_manager
+            if not SimConfig.use_coreneuron or rep_type == "Synapse":
+                global_manager = self._circuits.global_manager
 
-            if rep_type.lower() in ("compartment", "summation", "synapse"):
-                # Go through the target members, one cell at a time. We give a cell reference
-                # For summation targets - check if we were given a Cell target because we really
-                # want all points of the cell which will ultimately be collapsed to a single value
-                # on the soma. Otherwise, get target points as normal.
-                sections = rep_conf.get("Sections")
-                compartments = rep_conf.get("Compartments")
-                is_cell_target = target.isCellTarget(sections=sections, compartments=compartments)
-                points = self._target_manager.get_target_points(target, global_manager,
-                                                                rep_type.lower() == "summation",
-                                                                sections=sections,
-                                                                compartments=compartments)
-                for point in points:
-                    gid = point.gid
-                    pop_name, pop_offset = global_manager.getPopulationInfo(gid)
-                    cell = global_manager.getCell(gid)
-                    spgid = global_manager.getSpGid(gid)
+                if rep_type in ("compartment", "Summation", "Synapse"):
+                    # Go through the target members, one cell at a time. We give a cell reference
+                    # For summation targets - check if we were given a Cell target because we really
+                    # want all points of the cell which will ultimately be collapsed to a single
+                    # value on the soma. Otherwise, get target points as normal.
+                    sections = rep_conf.get("Sections")
+                    compartments = rep_conf.get("Compartments")
+                    is_cell_target = target.isCellTarget(sections=sections,
+                                                         compartments=compartments)
+                    points = self._target_manager.get_target_points(target, global_manager,
+                                                                    rep_type == "Summation",
+                                                                    sections=sections,
+                                                                    compartments=compartments)
+                    for point in points:
+                        gid = point.gid
+                        pop_name, pop_offset = global_manager.getPopulationInfo(gid)
+                        cell = global_manager.get_cellref(gid)
+                        spgid = global_manager.getSpGid(gid)
 
-                    # may need to take different actions based on report type
-                    if rep_type.lower() == "compartment":
-                        report.addCompartmentReport(
-                            cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
-                    elif rep_type.lower() == "summation":
-                        report.addSummationReport(
-                            cell, point, is_cell_target, spgid, SimConfig.use_coreneuron,
-                            pop_name, pop_offset)
-                    elif rep_type.lower() == "synapse":
-                        report.addSynapseReport(
-                            cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+                        # may need to take different actions based on report type
+                        if rep_type == "compartment":
+                            report.addCompartmentReport(
+                                cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+                        elif rep_type == "Summation":
+                            report.addSummationReport(
+                                cell, point, is_cell_target, spgid, SimConfig.use_coreneuron,
+                                pop_name, pop_offset)
+                        elif rep_type == "Synapse":
+                            report.addSynapseReport(
+                                cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
 
             # Custom reporting. TODO: Move above processing to SynRuleManager.enable_report
             cell_manager.enable_report(report, rep_target, SimConfig.use_coreneuron)
@@ -936,8 +952,7 @@ class Node:
             else:
                 file_name = "out.h5"
             SimConfig.coreneuron.write_spike_filename(file_name)
-
-        if not SimConfig.use_coreneuron:
+        else:
             # Report Buffer Size hint in MB.
             reporting_buffer_size = self._run_conf.get("ReportingBufferSize")
             if reporting_buffer_size is not None:
@@ -1031,7 +1046,7 @@ class Node:
             spike_compress: The spike_compress() parameters (tuple or int)
         """
         logging.info("Preparing to run simulation...")
-        is_save_state = any(c in self._run_conf for c in ("SaveTime", "Save", "Restore"))
+        is_save_state = SimConfig.save or SimConfig.restore
         self._pc.setup_transfer()
 
         if spike_compress and not is_save_state and not self._is_ngv_run:
@@ -1056,7 +1071,7 @@ class Node:
     # -
     def _sim_init_neuron(self):
         # === Neuron specific init ===
-        restore_path = self._run_conf.get("Restore")
+        restore_path = SimConfig.restore
         fwd_skip = self._run_conf.get("ForwardSkip", 0)
 
         if fwd_skip and not restore_path:
@@ -1137,12 +1152,71 @@ class Node:
                 dummyfile.write("%s\n0\n" % coredata_version)
 
     # -
+    def _sim_corenrn_configure_datadir(self, corenrn_restore):
+        corenrn_datadir = SimConfig.coreneuron_datadir
+        corenrn_datadir_shm = SHMUtil.get_datadir_shm(corenrn_datadir)
+
+        # Clean-up any previous simulations in the same output directory
+        if self._cycle_i == 0 and corenrn_datadir_shm:
+            subprocess.call(['/bin/rm', '-rf', corenrn_datadir_shm])
+
+        # Ensure that we have a folder in /dev/shm (i.e., 'SHMDIR' ENV variable)
+        if SimConfig.cli_options.enable_shm and not corenrn_datadir_shm:
+            logging.warning("Unknown SHM directory for model file transfer in CoreNEURON.")
+        # Try to configure the /dev/shm folder as the output directory for the files
+        elif self._cycle_i == 0 and not corenrn_restore and \
+                (SimConfig.cli_options.enable_shm and SimConfig.delete_corenrn_data):
+            # Check for the available memory in /dev/shm and estimate the RSS by multiplying
+            # the number of cycles in the multi-step model build with an approximate factor
+            mem_total = SHMUtil.get_mem_total()
+            mem_avail = SHMUtil.get_mem_avail()
+            shm_avail = SHMUtil.get_shm_avail()
+            initial_rss = self._initial_rss
+            current_rss = SHMUtil.get_node_rss()
+            factor = SHMUtil.get_shm_factor()
+            rss_diff = (current_rss - initial_rss) if initial_rss < current_rss else current_rss
+            rss_req = int(rss_diff * self._n_cycles * factor)  # 'rss_diff' prevents <0 estimates
+
+            # Sync condition value with all ranks to ensure that all of them can use /dev/shm
+            shm_possible = (rss_req < shm_avail) and ((mem_avail + rss_req) < mem_total)
+            if MPI.allreduce(int(shm_possible), MPI.SUM) == MPI.size:
+                logging.info("SHM file transfer mode for CoreNEURON enabled")
+
+                # Create SHM folder and links to GPFS for the global data structures
+                os.makedirs(corenrn_datadir_shm, exist_ok=True)
+
+                # Important: These three files must be available on every node, as they are shared
+                #            across all of the processes. The trick here is to fool NEURON into
+                #            thinking that the files are written in /dev/shm, but they are actually
+                #            written on GPFS. The workflow is identical, meaning that rank 0 writes
+                #            the content and every other rank reads it afterwards in CoreNEURON.
+                for filename in {"bbcore_mech.dat", "files.dat", "globals.dat"}:
+                    path = os.path.join(corenrn_datadir, filename)
+                    path_shm = os.path.join(corenrn_datadir_shm, filename)
+
+                    try:
+                        os.close(os.open(path, os.O_CREAT))
+                        os.symlink(path, path_shm)
+                    except FileExistsError:
+                        pass  # Ignore if other process has already created it
+
+                # Update the flag to confirm the configuration
+                self._shm_enabled = True
+            else:
+                logging.warning("Unable to utilize SHM for model file transfer in CoreNEURON. "
+                                "Increase the number of nodes to reduce the memory footprint "
+                                "(Current use per node: %d MB / Limit: %d MB)",
+                                (rss_req >> 20), (shm_avail >> 20))
+
+        return corenrn_datadir if not self._shm_enabled else corenrn_datadir_shm
+
+    # -
     @timeit(name="corewrite")
     def _sim_corenrn_write_config(self, corenrn_restore=False):
         log_stage("Dataset generation for CoreNEURON")
 
-        corenrn_output = SimConfig.coreneuron_ouputdir
-        corenrn_data = SimConfig.coreneuron_datadir
+        corenrn_output = SimConfig.coreneuron_outputdir
+        corenrn_data = self._sim_corenrn_configure_datadir(corenrn_restore)
         fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
         if not corenrn_restore:
@@ -1151,7 +1225,6 @@ class Node:
                 self._pc.nrnbbcore_write(corenrn_data)
                 MPI.barrier()  # wait for all ranks to finish corenrn data generation
 
-        optional_params = [self._run_conf["BaseSeed"]] if "BaseSeed" in self._run_conf else []
         SimConfig.coreneuron.write_sim_config(
             corenrn_output,
             corenrn_data,
@@ -1160,8 +1233,11 @@ class Node:
             fwd_skip,
             self._pr_cell_gid or -1,
             self._core_replay_file,
-            *optional_params
+            SimConfig.rng_info.getGlobalSeed(),
+            int(SimConfig.cli_options.model_stats)
         )
+        # Wait for rank0 to write the sim config file
+        MPI.barrier()
 
         logging.info(" => Dataset written to '{}'".format(corenrn_data))
 
@@ -1175,11 +1251,14 @@ class Node:
         timings = None
         if SimConfig.use_neuron:
             timings = self._run_neuron()
-            self.spike2file("out.dat")
+            if not SimConfig.is_sonata_config:
+                self.spike2file("out.dat")
+            self.sonata_spikes()
         if SimConfig.use_coreneuron:
             self.clear_model()
             self._run_coreneuron()
-            self.adapt_spikes("out.dat")
+            if not SimConfig.is_sonata_config:
+                self.adapt_spikes("out.dat")
         return timings
 
     # -
@@ -1192,15 +1271,15 @@ class Node:
     # -
     def _run_coreneuron(self):
         logging.info("Launching simulation with CoreNEURON")
-        neurodamus2core = {"Save": "--checkpoint",
-                           "Restore": "--restore"}
-        opts = [(core_opt, self._run_conf[opt])
-                for opt, core_opt in neurodamus2core.items()
-                if opt in self._run_conf]
-        opts_expanded = functools.reduce(operator.iconcat, opts, [])
+        core_nrn_opts = ()
 
-        log_verbose("solve_core(..., %s)", ", ".join(opts_expanded))
-        SimConfig.coreneuron.psolve_core(*opts_expanded)
+        for opt, core_opt in {"save": "--checkpoint", "restore": "--restore"}.items():
+            opt_value = getattr(SimConfig, opt)
+            if opt_value is not None:
+                core_nrn_opts = core_nrn_opts + (core_opt, opt_value)
+
+        log_verbose("solve_core(..., %s)", ", ".join(core_nrn_opts))
+        SimConfig.coreneuron.psolve_core(*core_nrn_opts)
 
     #
     def _sim_event_handlers(self, tstart, tstop):
@@ -1209,46 +1288,38 @@ class Node:
         """
         events = defaultdict(list)  # each key (time) points to a list of handlers
 
-        # Handle Save
-        save_time_config = self._run_conf.get("SaveTime")
-
-        if "Save" in self._run_conf:
-            tsave = tstop
-            if save_time_config is not None:
-                tsave = save_time_config
-                if tsave > tstop:
-                    tsave = tstop
-                    logging.warning("SaveTime specified beyond Simulation Duration. "
-                                    "Setting SaveTime to tstop.")
-
-            @timeit(name="savetime")
-            def save_f():
-                logging.info("Saving State... (t=%f)", tsave)
-                bbss = Nd.BBSaveState()
-                MPI.barrier()
-                self._stim_manager.saveStatePreparation(bbss)
-                bbss.ignore(self._binreport_helper)
-                self._binreport_helper.pre_savestate(self._run_conf["Save"])
-                log_verbose("SaveState Initialization Done")
-
-                # If event at the end of the sim we can actually clearModel() before savestate()
-                if save_time_config is None:
-                    log_verbose("Clearing model prior to final save")
-                    self._binreport_helper.flush()
-                    self._sonatareport_helper.flush()
-                    self.clear_model()
-
-                self.dump_cell_config()
-                self._binreport_helper.savestate()
-                logging.info(" => Save done successfully")
-
+        if SimConfig.save:
+            tsave = SimConfig.save_time or SimConfig.tstop  # Consider 0 as the end too!
+            save_f = self._create_save_handler(tsave)
             events[tsave].append(save_f)
-
-        elif save_time_config is not None:
-            logging.warning("SaveTime IGNORED. Reason: no 'Save' config entry")
 
         event_list = [(t, events[t]) for t in sorted(events)]
         return event_list
+
+    # -
+    def _create_save_handler(self, tsave):
+        @timeit(name="savetime")
+        def save_f():
+            logging.info("Saving State... (t=%f)", tsave)
+            bbss = Nd.BBSaveState()
+            MPI.barrier()
+            self._stim_manager.saveStatePreparation(bbss)
+            bbss.ignore(self._binreport_helper)
+            self._binreport_helper.pre_savestate(SimConfig.save)
+            log_verbose("SaveState Initialization Done")
+
+            # If event at the end of the sim we can actually clearModel() before savestate()
+            if SimConfig.save_time is None:
+                log_verbose("Clearing model prior to final save")
+                self._binreport_helper.flush()
+                self._sonatareport_helper.flush()
+                self.clear_model()
+
+            self.dump_cell_config()
+            self._binreport_helper.savestate()
+            logging.info(" => Save done successfully")
+
+        return save_f
 
     # -
     @mpi_no_errors
@@ -1290,7 +1361,7 @@ class Node:
     # finish spike exchange. As a work-around, periodically halt simulation and flush reports
     # Default is 25 ms / cycle
     def _psolve_loop(self, tstop):
-        cur_t = Nd.t
+        cur_t = round(Nd.t, 2)  # fp innnacuracies could lead to infinitesimal loops
         buffer_t = SimConfig.buffer_time
         for _ in range(math.ceil((tstop - cur_t) / buffer_t)):
             next_flush = min(tstop, cur_t + buffer_t)
@@ -1313,7 +1384,7 @@ class Node:
 
         logging.info("Clearing model")
         self._pc.gid_clear()
-        self._target_manager.parser.updateTargets(Nd.Vector())  # reset targets local cells
+        self._target_manager.parser.updateTargets(Nd.Vector())  # Reset targets local cells
         self._target_manager.init_hoc_manager(None)  # Init/release cell manager
 
         if not avoid_creating_objs:
@@ -1361,7 +1432,10 @@ class Node:
         spikewriter = Nd.SpikeWriter()
         spikewriter.write(spikevec, idvec, outfile)
 
-        # SONATA SPIKES
+    def sonata_spikes(self):
+        """ Write the spike events that occured on each node into a single output SONATA file.
+        """
+        output_root = SimConfig.output_root
         if hasattr(self._sonatareport_helper, "create_spikefile"):
             # Write spike report for multiple populations if exist
             spike_path = self._run_conf.get("SpikesFile")
@@ -1442,7 +1516,7 @@ class Node:
             data_folder = SimConfig.coreneuron_datadir
             logging.info("Deleting intermediate data in %s", data_folder)
 
-            with timeit_rank0(name="Delete corenrn data"):
+            with timeit(name="Delete corenrn data"):
                 if MPI.rank == 0:
                     if ospath.islink(data_folder):
                         # in restore, coreneuron data is a symbolic link
@@ -1451,6 +1525,13 @@ class Node:
                         subprocess.call(['/bin/rm', '-rf', data_folder])
                     os.remove(ospath.join(SimConfig.output_root, "sim.conf"))
                     os.remove(ospath.join(SimConfig.output_root, "report.conf"))
+
+                # Delete the SHM folder if it was used
+                if self._shm_enabled:
+                    data_folder_shm = SHMUtil.get_datadir_shm(data_folder)
+                    logging.info("Deleting intermediate SHM data in %s", data_folder_shm)
+                    subprocess.call(['/bin/rm', '-rf', data_folder_shm])
+
             MPI.barrier()
 
         logging.info("Finished")
@@ -1493,13 +1574,17 @@ class Neurodamus(Node):
         self._run_conf["EnableReports"] = enable_reports
         self._run_conf["AutoInit"] = auto_init
 
-        if SimConfig.coreneuron and "Restore" in self._run_conf:
+        if SimConfig.restore_coreneuron:
             self._coreneuron_restore()
         elif SimConfig.build_model:
             self._instantiate_simulation()
 
         # In case an exception occurs we must prevent the destructor from cleaning
         self._init_ok = True
+
+        # Remove .SUCCESS file if exists
+        self._success_file = SimConfig.config_file + ".SUCCESS"
+        self._remove_file(self._success_file)
 
     # -
     def _build_model(self):
@@ -1565,6 +1650,7 @@ class Neurodamus(Node):
 
     # -
     def _coreneuron_restore(self):
+        log_stage(" =============== CORENEURON RESTORE ===============")
         self.load_targets()
         self.enable_replay()
         if self._run_conf["EnableReports"]:
@@ -1574,6 +1660,9 @@ class Neurodamus(Node):
 
     # -
     def _instantiate_simulation(self):
+        # Keep the initial RSS for the SHM file transfer calculations
+        self._initial_rss = SHMUtil.get_node_rss()
+
         self.load_targets()
 
         # Check connection block configuration and raise warnings for overriding parameters
@@ -1586,9 +1675,6 @@ class Neurodamus(Node):
         if n_cycles == 1:
             self._build_model()
             return
-
-        if self._run_conf["CircuitPath"] in (None, False):
-            raise ConfigurationError("Multi building steps requires a base circuit")
 
         target = self._target_manager.get_target(self._target_spec)
         target_name = self._target_spec.name
@@ -1612,19 +1698,84 @@ class Neurodamus(Node):
             return
 
         logging.info("MULTI-CYCLE RUN: {} Cycles".format(n_cycles))
-        sub_targets = self._target_manager.generate_subtargets(target_name, n_cycles)
-
-        tmp_target_spec = TargetSpec(self._run_conf["CircuitTarget"])
         TimerManager.archive(archive_name="Before Cycle Loop")
-        for cycle_i, cur_target in enumerate(sub_targets):
+
+        if SimConfig.is_sonata_config:
+            PopulationNodes.freeze_offsets()
+            sub_targets = target.generate_subtargets(n_cycles)
+
+            for cycle_i, cur_targets in enumerate(sub_targets):
+                logging.info("")
+                logging.info("-" * 60)
+                log_stage("==> CYCLE {} (OUT OF {})".format(cycle_i + 1, n_cycles))
+                logging.info("-" * 60)
+
+                self.clear_model()
+
+                for cur_target in cur_targets:
+                    self._target_manager.register_target(cur_target)
+                    pop = list(cur_target.population_names)[0]
+                    for circuit in itertools.chain([self._base_circuit],
+                                                   self._extra_circuits.values()):
+                        tmp_target_spec = TargetSpec(circuit.CircuitTarget)
+                        if tmp_target_spec.population == pop:
+                            tmp_target_spec.name = cur_target.name
+                            circuit.CircuitTarget = str(tmp_target_spec)
+
+                self._cycle_i = cycle_i
+                self._build_model()
+
+                # Move generated files aside (to be merged later)
+                if MPI.rank == 0:
+                    base_filesdat = ospath.join(SimConfig.coreneuron_datadir, 'files')
+                    os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
+                # Archive timers for this cycle
+                TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
+
+        else:
+            self._multi_cycle_run_blueconfig_setting(n_cycles)
+
+        if MPI.rank == 0:
+            self._merge_filesdat(n_cycles)
+
+    def _multi_cycle_run_blueconfig_setting(self, n_cycles):
+        """
+            Running multi cycle model buildings for blueconfig settings,
+            Different from sonata setting because for blueconfig target is set per circuit
+            thus can be different.
+            This step will be deprecated once the migration to SONATA is complete.
+        """
+        sub_targets = defaultdict(list)
+        for circuit in itertools.chain([self._base_circuit], self._extra_circuits.values()):
+            if not circuit.CircuitPath:
+                continue
+            if circuit.CircuitTarget is None:
+                raise ConfigurationError("Multi building steps requires a circuit target "
+                                         "for circuit %s" % circuit._name)
+
+            target_spec = TargetSpec(circuit.CircuitTarget)
+            target = self._target_manager.get_target(target_spec)
+            circuit_subtargets = target.generate_subtargets(n_cycles)
+            sub_targets[circuit._name or "Base"] = circuit_subtargets
+
+        for cycle_i in range(n_cycles):
             logging.info("")
             logging.info("-" * 60)
             log_stage("==> CYCLE {} (OUT OF {})".format(cycle_i + 1, n_cycles))
             logging.info("-" * 60)
 
             self.clear_model()
-            tmp_target_spec.name = cur_target.name
-            self._base_circuit.CircuitTarget = str(tmp_target_spec)  # FQN
+
+            for circuit_name, circuit_subtargets in sub_targets.items():
+                cur_target = circuit_subtargets[cycle_i]
+                cur_target.name += "_" + circuit_name
+                self._target_manager.register_target(cur_target)
+                circuit = self._extra_circuits.get(circuit_name, self._base_circuit)
+                tmp_target_spec = TargetSpec(circuit.CircuitTarget)
+                tmp_target_spec.name = cur_target.name
+                circuit.CircuitTarget = str(tmp_target_spec)
+
+            self._cycle_i = cycle_i
             self._build_model()
 
             # Move generated files aside (to be merged later)
@@ -1633,8 +1784,6 @@ class Neurodamus(Node):
                 os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
             # Archive timers for this cycle
             TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
-        if MPI.rank == 0:
-            self._merge_filesdat(n_cycles)
 
     # -
     @timeit(name="finished Run")
@@ -1651,7 +1800,21 @@ class Neurodamus(Node):
         else:
             log_stage("======================= SIMULATION =======================")
             self.run_all()
+        # Create SUCCESS file if the simulation finishes successfully
+        self._touch_file(self._success_file)
+        logging.info("Creating .SUCCESS file: '%s'", self._success_file)
 
     def __del__(self):
         if self._init_ok:
             self.cleanup()
+
+    @run_only_rank0
+    def _remove_file(self, file_name):
+        import contextlib
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(file_name)
+
+    @run_only_rank0
+    def _touch_file(self, file_name):
+        with open(file_name, 'a'):
+            os.utime(file_name, None)

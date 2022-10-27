@@ -6,27 +6,33 @@ We define ACell cells and corresponding managers
 import logging
 import numpy as np
 import os
-import pytest
 import subprocess
+from pathlib import Path
 
 from neurodamus.cell_distributor import CellManagerBase
 from neurodamus.connection import ConnectionBase
 from neurodamus.connection_manager import ConnectionManagerBase
 from neurodamus.core import EngineBase
-from neurodamus.core import NeurodamusCore as Nd
 from neurodamus.io.synapse_reader import SynapseParameters
 from neurodamus.io.cell_readers import split_round_robin
 from neurodamus.metype import BaseCell
+
+#
+# Launching of the engine as a test
+#
+SIM_DIR = Path(__file__).parent.absolute() / "simulations"
 
 
 class ACellType(BaseCell):
     """A new testing cell type
     """
+
     class CellName(str):
         pass
 
     def __init__(self, gid, cell_info, circuit_conf):
         """Instantiate a new Cell from mvd/node info"""
+        from neurodamus.core import NeurodamusCore as Nd  # dont load top-level because of pytest
         super().__init__(gid, cell_info, circuit_conf)
         self.gid = gid
         self.section = Nd.Section(name="soma", cell=self.CellName("a" + str(gid)))
@@ -34,6 +40,7 @@ class ACellType(BaseCell):
         self.f1 = cell_info[1]
 
     def connect2target(self, target_pp=None):
+        from neurodamus.core import NeurodamusCore as Nd
         return Nd.NetCon(self.section(1)._ref_v, target_pp, sec=self.section)
 
 
@@ -77,6 +84,7 @@ class ACellConnection(ConnectionBase):
         self._synapse_params = np.concatenate((self._synapse_params, syn_params))
 
     def finalize(self, target_cell, *_):
+        from neurodamus.core import NeurodamusCore as Nd
         syn = Nd.ExpSyn(target_cell.section(0.5))
         self._synapses = (syn,)
         self._netcons = []
@@ -114,7 +122,7 @@ class ACellSynapseManager(ConnectionManagerBase):
         cur_conn.append_src_cells(syns_params.sgid, syns_params)
 
     def _finalize_conns(self, tgid, conns, *_, **_kw):
-        target_cell = self._cell_manager.getMEType(tgid)
+        target_cell = self._cell_manager.get_cell(tgid)
         conns[0].finalize(target_cell)
         return conns[0].conn_count
 
@@ -124,27 +132,14 @@ class ACellEngine(EngineBase):
     InnerConnectivityCls = ACellSynapseManager
 
 
-#
-# Launching of the engine as a test
-#
-sims = os.path.abspath(os.path.join(os.path.dirname(__file__), "simulations"))
-requires_mpi = pytest.mark.skipif(
-    os.environ.get("SLURM_JOB_ID") is None and os.environ.get("RUN_MPI") is None,
-    reason="Simulation tests require MPI")
-
-
 def test_run_acell_circuit():
-    simdir = os.path.join(sims, "acell_engine")
+    simdir = SIM_DIR / "acell_engine"
     env = os.environ.copy()
     env['NEURODAMUS_PYTHON'] = "."
     env['PYTHONPATH'] += ":" + os.path.dirname(__file__)
     env['NEURODAMUS_PLUGIN'] = os.path.splitext(os.path.basename(__file__))[0]
     subprocess.run(
-        ["bash", "tests/test_simulation.bash", simdir, "BlueConfig", ""],
+        ["bash", "tests/test_simulation.bash", str(simdir), "BlueConfig", ""],
         env=env,
         check=True,
     )
-
-
-if __name__ == "__main__":
-    test_run_acell_circuit()

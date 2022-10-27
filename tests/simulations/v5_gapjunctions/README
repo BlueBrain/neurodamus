@@ -1,0 +1,37 @@
+scx-v5-gapjunctions
+===================
+
+This neurodamus blueconfig is extracted from a real use case and uses the
+following advanced features:
+ * GapJunctions
+ * Projections
+ * Synapse Replay
+ *   - With Delay
+
+
+SETUP
+=====
+
+We searched for a minimal setup where two cells had a GJ and one of them received projections
+used in the replay.
+
+                      (GJ)
+      cells  ->  74188 <-> 74051
+projections  ->
+
+Source Cells
+------------
+$ h5ls -r /gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1/merged_circuit/ncsFunctionalAllRecipePathways/nrn.h5 | grep a74188
+/a74188                  Dataset {1217, 19}
+
+Gap Junctions
+-------------
+>>> f = h5py.File("gap_junctions/gj.syn2")
+>>> res = f["synapses/default/properties/connected_neurons_pre"][:]
+>>> f["synapses/default/properties/connected_neurons_post"][numpy.where(res == 74188-1)]
+# notice 74050 shows up a few times
+
+Projections
+-----------
+$ h5ls /gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1/merged_circuit/ncsThalamocortical_VPM_tcS2F_2p6_ps/proj_nrn.h5.5005 | grep 74188
+a74188                   Dataset {103, 19}

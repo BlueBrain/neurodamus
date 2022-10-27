@@ -1,10 +1,9 @@
-from neurodamus.io.config_parser import BlueConfig, BlueConfigParserError
-from os import path as ospath
 import pytest
+from neurodamus.io.config_parser import BlueConfig, BlueConfigParserError
+from pathlib import Path
 from contextlib import contextmanager
 
-BLUECONFIG_FILE = ospath.abspath(ospath.join(
-    ospath.dirname(__file__), "simulations", "complex.blueconfig"))
+BLUECONFIG_FILE = Path(__file__).parent.absolute() / "simulations" / "complex.blueconfig"
 
 
 def test_blueconfig_parser():
@@ -53,11 +52,3 @@ def test_require_run():
     with patch_line(0, "# Run section commented"):
         with pytest.raises(BlueConfigParserError, match="Section 'Run' doesn't exist"):
             BlueConfig(BLUECONFIG_FILE)
-
-
-if __name__ == "__main__":
-    test_blueconfig_parser()
-    test_blueconfig_err_no_close()
-    test_blueconfig_commented_section()
-    test_blueconfig_err_single_token()
-    test_require_run()

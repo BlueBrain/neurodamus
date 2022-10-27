@@ -11,6 +11,12 @@ from ..core import NeurodamusCore as Nd, MPI
 from ..utils.logging import log_verbose
 
 
+def _constrained_hill(K_half, y):
+    K_half_fourth = K_half**4
+    y_fourth = y**4
+    return (K_half_fourth + 16) / 16 * y_fourth / (K_half_fourth + y_fourth)
+
+
 class _SynParametersMeta(type):
     def __init__(cls, name, bases, attrs):
         type.__init__(cls, name, bases, attrs)
@@ -73,6 +79,8 @@ class SynapseReader(object):
                 mod_override_params = self._read_extra_fields_from_mod_override(mod_override, gid)
                 if mod_override_params is not None:
                     syn_params = SynapseParameters.concatenate(syn_params, mod_override_params)
+
+            # Modify parameters
             self._patch_delay_fp_inaccuracies(syn_params)
             if self._uhill_property_avail:
                 self._scale_U_param(syn_params, self._ca_concentration, mod_override)
@@ -98,16 +106,8 @@ class SynapseReader(object):
         if extra_cellular_calcium is None:
             return
 
-        def hill(ca_conc, y, K_half):
-            return y*ca_conc**4/(K_half**4 + ca_conc**4)
-
-        def constrained_hill(K_half):
-            y_max = (K_half**4 + 16) / 16
-            return lambda x: hill(x, y_max, K_half)
-
-        f_scale = lambda x, y: constrained_hill(x)(y)
-        scale_factors = np.vectorize(f_scale)(syn_params.u_hill_coefficient,
-                                              extra_cellular_calcium)
+        scale_factors = _constrained_hill(syn_params.u_hill_coefficient,
+                                          extra_cellular_calcium)
         syn_params.U *= scale_factors
 
         if mod_override is not None:
@@ -173,6 +173,7 @@ class SynReaderSynTool(SynapseReader):
     """
     SYNREADER_MOD_NFIELDS_DEFAULT = 14
     _has_warned_field_count_mismatch = False
+    _is_sonata_circuit = False
 
     def _open_file(self, syn_src, population, verbose=False):
         if not self.is_syntool_enabled():
@@ -186,6 +187,19 @@ class SynReaderSynTool(SynapseReader):
         reader = self._syn_reader = Nd.SynapseReader(syn_src, verbose)
         if population:
             reader.selectPopulation(population)
+
+        def _is_sonata_circuit(syn_src):
+            if ospath.isdir(syn_src):
+                return ospath.exists(ospath.join(syn_src, "edges.sonata"))
+            elif syn_src.endswith(".sonata"):
+                return True
+            elif syn_src.endswith(".h5"):
+                import h5py
+                f = h5py.File(syn_src, 'r')
+                return "edges" in f
+            else:
+                return False
+        self._is_sonata_circuit = _is_sonata_circuit(syn_src)
 
     def _load_synapse_parameters(self, gid):
         reader = self._syn_reader
@@ -217,6 +231,8 @@ class SynReaderSynTool(SynapseReader):
         """ Load synapse data from reader,
             to be overridden in derived class for different SynapseParameters and data fields.
         """
+        if self._is_sonata_circuit:
+            self._check_sonata_required_fields(["n_rrp_vesicles"])
         nrow = int(reader.loadSynapses(gid))
         if nrow < 1:
             return nrow, 0, 0, SynapseParameters.empty
@@ -271,6 +287,13 @@ class SynReaderSynTool(SynapseReader):
             syn_params_mtx[syn_i] = tmpParams.as_numpy()
 
         return conn_syn_params
+
+    def _check_sonata_required_fields(self, fields=[]):
+        for name in fields:
+            if not self.has_property(name):
+                logging.error("Synapse parameter '" + name + "' is required in the edges file")
+                raise SynToolNotAvail("Synapse parameter '" + name +
+                                      "' is required in the edges file")
 
 
 class SynReaderNRN(SynapseReader):

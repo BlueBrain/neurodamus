@@ -88,6 +88,9 @@ class TargetSpec:
 class TargetManager:
 
     def __init__(self, run_conf):
+        """
+        Initializes a new TargetManager
+        """
         self._run_conf = run_conf
         self.parser = Nd.TargetParser()
         self._has_hoc_targets = False
@@ -145,12 +148,13 @@ class TargetManager:
     def create_global_target(cls):
         # In blueconfig mode the _ALL_ target refers to base single population)
         if not SimConfig.is_sonata_config:
-            return _HocTarget(TargetSpec.GLOBAL_TARGET_NAME, None)
+            return _HocTarget(TargetSpec.GLOBAL_TARGET_NAME, None)  # None population -> generic
         return NodesetTarget(TargetSpec.GLOBAL_TARGET_NAME, [])
 
     def register_target(self, target):
         self._targets[target.name] = target
-        if hoc_target := target.get_hoc_target():
+        hoc_target = target.get_hoc_target()
+        if hoc_target:
             self.parser.updateTargetList(hoc_target)
 
     def get_target(self, target_spec: TargetSpec, target_pop=None):
@@ -169,7 +173,7 @@ class TargetManager:
         target_pop = target_spec.population
 
         def get_concrete_target(target):
-            """Get a more specific target, dependending on specified population prefix"""
+            """Get a more specific target, depending on specified population prefix"""
             return target if target_pop is None else target.make_subtarget(target_pop)
 
         # Check cached
@@ -202,34 +206,6 @@ class TargetManager:
     def init_hoc_manager(self, cell_manager):
         # give a TargetManager the TargetParser's completed targetList
         self.hoc = Nd.TargetManager(self.parser.targetList, cell_manager)
-
-    def generate_subtargets(self, target_name, n_parts):
-        """To facilitate CoreNeuron data generation, we allow users to use ModelBuildingSteps to
-        indicate that the CircuitTarget should be split among multiple, smaller targets that will
-        be built step by step.
-
-        Returns:
-            list with generated targets, or empty if no splitting was done
-        """
-        if not n_parts or n_parts == 1:
-            return False
-
-        target = self.parser.getTarget(target_name)
-        allgids = target.completegids()
-        new_targets = []
-
-        for cycle_i in range(n_parts):
-            target = Nd.Target()
-            target.name = "{}_{}".format(target_name, cycle_i)
-            new_targets.append(target)
-            self.parser.updateTargetList(target)
-
-        target_looper = itertools.cycle(new_targets)
-        for gid in allgids.x:
-            target = next(target_looper)
-            target.gidMembers.append(gid)
-
-        return new_targets
 
     def get_target_points(self, target, cell_manager, cell_use_compartment_cast, **kw):
         """Helper to retrieve the points of a target.
@@ -397,6 +373,10 @@ class _TargetInterface(metaclass=ABCMeta):
                 return True
         return False
 
+    @abstractmethod
+    def generate_subtargets(self, n_parts):
+        return NotImplemented
+
 
 class NodesetTarget(_TargetInterface):
     def __init__(self, name, nodesets: List[NodeSet], **kw):
@@ -482,8 +462,8 @@ class NodesetTarget(_TargetInterface):
 
     def getPointList(self, cell_manager, **kw):
 
-        """ Retrieve a TPointList containing compartments (based on section type and compartment type)
-        of any local cells on the cpu.
+        """ Retrieve a TPointList containing compartments (based on section type and
+        compartment type) of any local cells on the cpu.
         Args:
             cell_manager: a cell manager or global cell manager
             sections: section type, such as "soma", "axon", "dend", "apic" and "all",
@@ -501,7 +481,7 @@ class NodesetTarget(_TargetInterface):
         gids = target_gids[numpy.in1d(target_gids, local_gids)]
         for gid in gids:
             point = Nd.TPointList(gid)
-            cellObj = cell_manager.getCell(gid)
+            cellObj = cell_manager.get_cellref(gid)
             secs = getattr(cellObj, section_type)
             for sec in secs:
                 for seg in sec:
@@ -510,6 +490,36 @@ class NodesetTarget(_TargetInterface):
                     point.append(Nd.SectionRef(sec), seg.x)
             pointList.append(point)
         return pointList
+
+    def generate_subtargets(self, n_parts):
+        """generate sub NodeSetTarget per population for multi-cycle runs
+        Returns:
+            list of [sub_target_n_pop1, sub_target_n_pop2, ...]
+        """
+        if not n_parts or n_parts == 1:
+            return False
+
+        all_raw_gids = {ns.population_name: ns.final_gids() - ns.offset for ns in self.nodesets}
+        from collections import defaultdict
+        new_targets = defaultdict(list)
+        pop_names = list(all_raw_gids.keys())
+
+        for cycle_i in range(n_parts):
+            for pop in pop_names:
+                # name sub target per populaton, to be registered later
+                target_name = "{}__{}_{}".format(pop, self.name, cycle_i)
+                target = NodesetTarget(target_name, [NodeSet().register_global(pop)])
+                new_targets[pop].append(target)
+
+        for pop, raw_gids in all_raw_gids.items():
+            target_looper = itertools.cycle(new_targets[pop])
+            for gid in raw_gids:
+                target = next(target_looper)
+                target.nodesets[0].add_gids([gid])
+
+        # return list of subtargets lists of all pops per cycle
+        return [[targets[cycle_i] for targets in new_targets.values()]
+                    for cycle_i in range(n_parts)]
 
     def __getattr__(self, item):
         log_verbose("Compat interface to hoc target. Calling " + item)
@@ -521,12 +531,12 @@ class _HocTarget(_TargetInterface):
     A wrapper around Hoc targets to implement _TargetInterface
     """
 
-    def __init__(self, name, hoc_target, pop_name=None):
+    def __init__(self, name, hoc_target, pop_name=None, *, _raw_gids=None):
         self.name = name
         self.population_name = pop_name
         self.hoc_target = hoc_target
         self.offset = 0
-        self._raw_gids = None
+        self._raw_gids = _raw_gids and numpy.array(_raw_gids, dtype="uint32")
 
     @property
     def population_names(self):
@@ -540,7 +550,11 @@ class _HocTarget(_TargetInterface):
         return len(self.get_raw_gids())
 
     def get_gids(self):
-        return (self.get_raw_gids() + self.offset).astype("uint32")
+        try:
+            return numpy.add(self.get_raw_gids(), self.offset, dtype="uint32")
+        except numpy.core._exceptions.UFuncTypeError as e:
+            logging.error("Type error: please use type uint32 for the array of raw gids.")
+            raise e
 
     def get_raw_gids(self):
         if self._raw_gids is None:
@@ -556,12 +570,12 @@ class _HocTarget(_TargetInterface):
 
     def make_subtarget(self, pop_name):
         if pop_name is not None:
-            # Old targets have only one population. Ensure one doesnt assign more than once
+            # Old targets have only one population. Ensure one doesn't assign more than once
             if self.name == TargetSpec.GLOBAL_TARGET_NAME:  # This target is special
                 return _HocTarget(pop_name + "__ALL__", Nd.Target(self.name), pop_name)
             if self.population_name not in (None, pop_name):
-                raise ConfigurationError("Target %s cannot be reassigned population (%s->%s)"
-                                         % (self.name, self.population_name, pop_name))
+                raise ConfigurationError("Target %s cannot be reassigned population %s (cur: %s)"
+                                         % (self.name, pop_name, self.population_name))
             self.population_name = pop_name
         return self
 
@@ -578,7 +592,7 @@ class _HocTarget(_TargetInterface):
         self.hoc_target = Nd.Target(self.name, hoc_gids, self.population_name)
 
     def __contains__(self, item):
-        return self.hoc_target.completeContains(item - self.offset)
+        return self.hoc_target.completeContains(item)
 
     def is_void(self):
         return not bool(self.hoc_target)  # old targets could match with any population
@@ -589,6 +603,29 @@ class _HocTarget(_TargetInterface):
 
     def isCellTarget(self, **kw):
         return self.hoc_target.isCellTarget()
+
+    def generate_subtargets(self, n_parts):
+        """generate sub hoc targets for multi-cycle runs
+        Returns:
+            list of subtargets
+        """
+        if not n_parts or n_parts == 1:
+            return False
+
+        allgids = self.get_gids()
+        new_targets = []
+
+        for cycle_i in range(n_parts):
+            target = Nd.Target()
+            target.name = "{}_{}".format(self.name, cycle_i)
+            new_targets.append(_HocTarget(target.name, target, self.population_name))
+
+        target_looper = itertools.cycle(new_targets)
+        for gid in allgids:
+            target = next(target_looper)
+            target.hoc_target.gidMembers.append(gid)
+
+        return new_targets
 
     def __getattr__(self, item):
         return getattr(self.hoc_target, item)

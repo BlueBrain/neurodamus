@@ -38,6 +38,7 @@ class _Neuron(object):
             return cls._h
         if mpi:
             GlobalConfig.set_mpi()
+
         from neuron import h
         from neuron import nrn
         cls.__cache = {}

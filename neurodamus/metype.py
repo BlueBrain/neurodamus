@@ -45,7 +45,8 @@ class METype(BaseCell):
 
     __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons',
                  '_synapses', '_syn_helper_list', '_emodel_name',
-                 'exc_mini_frequency', 'inh_mini_frequency')
+                 'exc_mini_frequency', 'inh_mini_frequency',
+                 'extra_attrs')
 
     def __init__(self, gid, etype_path, emodel, morpho_path, meinfos=None):
         """Instantite a new Cell from METype
@@ -66,6 +67,7 @@ class METype(BaseCell):
         self._emodel_name = emodel
         self.exc_mini_frequency = None
         self.inh_mini_frequency = None
+        self.extra_attrs = None
 
         self._instantiate_cell(gid, etype_path, emodel, morpho_path, meinfos)
 
@@ -154,6 +156,7 @@ class Cell_V6(METype):
         self.exc_mini_frequency = meinfos_v6.exc_mini_frequency
         self.inh_mini_frequency = meinfos_v6.inh_mini_frequency
         self.local_to_global_matrix = meinfos_v6.local_to_global_matrix
+        self.extra_attrs = meinfos_v6.extra_attrs
 
     def local_to_global_coord_mapping(self, points):
         if self.local_to_global_matrix is False:
@@ -162,6 +165,12 @@ class Cell_V6(METype):
         elif self.local_to_global_matrix is None:
             raise Exception("Nodes don't provide all 3d position/rotation info")
         return vector_rotate_translate(points, self.local_to_global_matrix)
+
+    def __getattr__(self, item):
+        prop = self.extra_attrs.get(item)
+        if prop is None:
+            raise AttributeError(item)
+        return prop
 
 
 class Cell_V5(METype):
@@ -258,7 +267,8 @@ class METypeItem(object):
     __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
                  "threshold_current", "holding_current",
                  "exc_mini_frequency", "inh_mini_frequency", "add_params",
-                 "local_to_global_matrix")
+                 "local_to_global_matrix",
+                 "extra_attrs")
 
     def __init__(self, morph_name, layer=None, fullmtype=None, etype=None, emodel=None,
                  combo_name=None, threshold_current=0, holding_current=0,
@@ -275,6 +285,7 @@ class METypeItem(object):
         self.exc_mini_frequency = float(exc_mini_frequency)
         self.inh_mini_frequency = float(inh_mini_frequency)
         self.add_params = add_params
+        self.extra_attrs = {}
         cli_opts = SimConfig.cli_options
         self.local_to_global_matrix = self._make_coord_map_matrix(position, rotation, scale) \
             if cli_opts is None or cli_opts.enable_coord_mapping else False

@@ -1,6 +1,8 @@
+import numpy as np
+import pytest
+
 from neurodamus.core.nodeset import NodeSet
 from neurodamus.target_manager import _HocTarget, NodesetTarget, TargetSpec
-import numpy as np
 
 null_target_spec = TargetSpec("")
 
@@ -44,15 +46,16 @@ def test_hoc_target_intersect():
     # different population is short circuited -> gids aren't necessary to see they dont intersect
     assert not ht1_pop1.intersects(ht1_pop2)
     # We override the internal gid cache to avoid creating hoc targets
-    ht1._raw_gids = np.array([1, 2], dtype=int)
-    ht2._raw_gids = np.array([1, 2], dtype=int)
+    ht1._raw_gids = np.array([1, 2], dtype="uint32")
+    ht2._raw_gids = np.array([1, 2], dtype="uint32")
     assert ht1.intersects(ht2)
-    ht2._raw_gids = np.array([2, 3], dtype=int)
+    ht2._raw_gids = np.array([2, 3], dtype="uint32")
     assert ht1.intersects(ht2)
-    ht2._raw_gids = np.array([3, 4], dtype=int)
+    ht2._raw_gids = np.array([3, 4], dtype="uint32")
     assert not ht1.intersects(ht2)
 
 
+@pytest.mark.forked
 def test_nodeset_target_intersect():
     nodes_popA = NodeSet([1, 2]).register_global("pop_A")
     nodes2_popA = NodeSet([2, 3]).register_global("pop_A")
@@ -70,12 +73,3 @@ def test_nodeset_target_intersect():
     assert not t1.intersects(t2)
     t2.nodesets = [nodes_popB, nodes3_popA]
     assert not t1.intersects(t2)
-
-
-if __name__ == "__main__":
-    test_targetspec_overlap_name()
-    test_populations_disjoint()
-    test_targetspec_overlap()
-    test_hoc_target_intersect()
-    test_nodeset_target_intersect()
-    print("tests passed")

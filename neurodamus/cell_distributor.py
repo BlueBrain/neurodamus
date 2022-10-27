@@ -2,6 +2,8 @@
 Mechanisms to load and balance cells across the computing resources.
 """
 from __future__ import absolute_import, print_function
+import abc
+import hashlib
 import logging  # active only in rank 0 (init)
 import os
 import weakref
@@ -9,6 +11,7 @@ from contextlib import contextmanager
 from enum import Enum
 from io import StringIO
 from os import path as ospath
+from pathlib import Path
 
 import numpy
 
@@ -16,59 +19,13 @@ from .connection_manager import ConnectionManagerBase
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
-from .core.configuration import find_input_file
+from .core.configuration import LoadBalanceMode, find_input_file, SimConfig
 from .core.nodeset import NodeSet
 from .io import cell_readers
 from .metype import Cell_V5, Cell_V6, EmptyCell
 from .target_manager import TargetSpec
 from .utils import compat
 from .utils.logging import log_verbose
-
-
-class LoadBalanceMode(Enum):
-    """An enumeration, inc parser, of the load balance modes.
-    """
-    RoundRobin = 0
-    WholeCell = 1
-    MultiSplit = 2
-
-    @classmethod
-    def parse(cls, lb_mode):
-        """Parses the load balancing mode from a string.
-        Options other than WholeCell or MultiSplit are considered RR
-        """
-        if lb_mode is None:
-            return None
-        _modes = {
-            "rr": cls.RoundRobin,
-            "roundrobin": cls.RoundRobin,
-            "wholecell": cls.WholeCell,
-            "loadbalance": cls.MultiSplit,
-            "multisplit": cls.MultiSplit
-        }
-        return _modes[lb_mode.lower()]
-
-    class AutoBalanceModeParams:
-        """Parameters for auto-selecting a load-balance mode"""
-        multisplit_cpu_cell_ratio = 1.5
-        cell_count = 1000
-        duration = 1000
-        mpi_ranks = 200
-
-    @classmethod
-    def auto_select(cls, use_neuron, cell_count, duration, auto_params=AutoBalanceModeParams):
-        """Simple heuristics for auto selecting load balance"""
-        lb_mode = LoadBalanceMode.RoundRobin
-        reason = ""
-        if use_neuron and MPI.size > auto_params.multisplit_cpu_cell_ratio * cell_count:
-            lb_mode = LoadBalanceMode.MultiSplit
-            reason = "CPU-Cell ratio"
-        elif (cell_count > auto_params.cell_count
-              and duration > auto_params.duration
-              and MPI.size > auto_params.mpi_ranks):
-            lb_mode = LoadBalanceMode.WholeCell
-            reason = 'Simulation size'
-        return lb_mode, reason
 
 
 class NodeFormat(Enum):
@@ -103,10 +60,44 @@ class VirtualCellPopulation:
     is_virtual = property(lambda self: True)
 
     def __str__(self):
-        return "([VIRT] {:s})".format(self._population_name)
+        return "([VIRT] {:s})".format(self.population_name)
 
 
-class CellManagerBase(object):
+class _CellManager(abc.ABC):
+
+    @abc.abstractmethod
+    def get_final_gids(self):
+        ...
+
+    @abc.abstractmethod
+    def get_cell(self, gid):
+        ...
+
+    def get_cellref(self, gid):
+        """Retrieve a cell object given its gid.
+        Note that this function handles multisplit cases incl converting to an
+        spgid automatically \n
+        Returns: Cell object
+        """
+        if self._binfo:
+            # are we in load balance mode? must replace gid with spgid
+            gid = self._binfo.thishost_gid(gid)
+        return self._pc.gid2obj(gid)
+
+    # Methods for compat with hoc
+
+    @abc.abstractmethod
+    def getGidListForProcessor(self):
+        ...
+
+    def getMEType(self, gid):
+        return self.get_cell(gid)
+
+    def getCell(self, gid):
+        return self.get_cellref(gid)
+
+
+class CellManagerBase(_CellManager):
 
     CellType = NotImplemented  # please override
     """The underlying Cell type class
@@ -201,18 +192,19 @@ class CellManagerBase(object):
 
     @classmethod
     def _get_sonata_population_name(self, node_file):
-        import h5py  # only for Sonata
-        ds = h5py.File(node_file, "r")["nodes"]
-        assert len(ds) == 1  # single population
-        return next(iter(ds.keys()))
+        import libsonata  # only for SONATA
+        pop_names = libsonata.NodeStorage(node_file).population_names
+        assert len(pop_names) == 1
+        return next(iter(pop_names), None)
 
-    def load_nodes(self, load_balancer=None, *, _loader=None):
+    def load_nodes(self, load_balancer=None, *, _loader=None, loader_opts=None):
         """Top-level loader of nodes.
         """
         if self._local_nodes is None:
             return
         conf = self._circuit_conf
-        loader_f = _loader or self._node_loader
+        _loader = _loader or self._node_loader
+        loader_f = (lambda *args: _loader(*args, **loader_opts)) if loader_opts else _loader
 
         logging.info("Reading Nodes (METype) info from '%s'", conf.CellLibraryFile)
         if not load_balancer:
@@ -247,9 +239,7 @@ class CellManagerBase(object):
                                "Please perform a full load balance.")
 
         logging.info(" -> Distributing target '%s' using Load-Balance", target_spec.name)
-        self._binfo = Nd.BalanceInfo(ospath.join(load_balancer.cx_datafolder, "cx_%s")
-                                     % target_spec.simple_name, MPI.rank, MPI.size)
-
+        self._binfo = load_balancer.load_balance_info(target_spec)
         # self._binfo has gidlist, but gids can appear multiple times
         all_gids = numpy.unique(self._binfo.gids.as_numpy().astype("uint32"))
         total_cells = len(all_gids)
@@ -347,8 +337,11 @@ class CellManagerBase(object):
     def _store_cell(self, gid, cell):
         self._gid2cell[gid] = cell
 
-    def getMEType(self, gid):
+    def get_cell(self, gid):
         return self._gid2cell[gid]
+
+    def get_cellref(self, gid):
+        return self._gid2cell[gid]._cellref
 
     def record_spikes(self, gids=None, append_spike_vecs=None):
         """Setup recording of spike events (crossing of threshold) for cells on this node
@@ -377,7 +370,7 @@ class CellManagerBase(object):
         pass
 
 
-class GlobalCellManager:
+class GlobalCellManager(_CellManager):
     """
     GlobalCellManager is a wrapper over all Cell Managers so that we can query
     any cell from its global gid
@@ -408,7 +401,7 @@ class GlobalCellManager:
     def get_final_gids(self):
         return numpy.concatenate([man.get_final_gids() for man in self._cell_managers])
 
-    def getMEType(self, gid):
+    def get_cell(self, gid):
         cell_managers_iter = iter(self._cell_managers)
         prev_manager = next(cell_managers_iter)  # base cell manager
         for manager in cell_managers_iter:
@@ -417,7 +410,7 @@ class GlobalCellManager:
             prev_manager = manager
         return prev_manager._gid2cell[gid]
 
-    def getCell(self, gid):
+    def get_cellref(self, gid):
         """Retrieve a cell object given its gid.
         Note that this function handles multisplit cases incl converting to an
         spgid automatically \n
@@ -482,23 +475,36 @@ class CellDistributor(CellManagerBase):
     def load_nodes(self, load_balancer=None, **kw):
         """gets gids from target, splits and returns a GidSet with all metadata
         """
-        if self._node_format == NodeFormat.SONATA and self._sonata_with_extra_attrs:
-            loader = lambda *args, **kw: cell_readers.load_nodes(*args, **kw, has_extra_data=True)
+        loader_opts = kw.pop("loader_opts", {})
+        all_cell_requirements = SimConfig.cell_requirements
+        cell_requirements = all_cell_requirements.get(self._population_name) or (
+            self.is_default and all_cell_requirements.get(None)
+        )
+
+        if self._node_format == NodeFormat.SONATA:
+            loader = cell_readers.load_sonata
+            loader_opts["node_population"] = self._population_name  # mandatory in Sonata
+            loader_opts["load_dynamic_props"] = cell_requirements
+            loader_opts["has_extra_data"] = self._sonata_with_extra_attrs
         else:
-            loader = self._cell_loaders.get(self._circuit_conf.CellLibraryFile,
-                                            cell_readers.load_nodes)
+            if cell_requirements:
+                raise Exception('Additional cell properties only available with SONATA')
+            nodes_filename = self._circuit_conf.CellLibraryFile
+            loader = self._cell_loaders.get(nodes_filename, cell_readers.load_nodes)
+
         log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader.__name__)
-        return super().load_nodes(load_balancer, _loader=loader, **kw)
+        return super().load_nodes(load_balancer, _loader=loader, loader_opts=loader_opts)
 
     def _instantiate_cells(self, *_):
         if self.CellType is not NotImplemented:
             return super()._instantiate_cells(self.CellType)
         conf = self._circuit_conf
         CellType = Cell_V5 if self._is_v5_circuit else Cell_V6
-        CellType.morpho_extension = conf.MorphologyType
+        if conf.MorphologyType:
+            CellType.morpho_extension = conf.MorphologyType
         log_verbose("Loading metypes from: %s", conf.METypePath)
         log_verbose("Loading '%s' morphologies from: %s",
-                    conf.MorphologyType, conf.MorphologyPath)
+                    CellType.morpho_extension, conf.MorphologyPath)
         super()._instantiate_cells(CellType)
 
 
@@ -509,25 +515,50 @@ class LoadBalance:
 
     LoadBalance instances target the current system (cpu count) and circuit
     (nrn_path) BUT check/create load distribution for any given target.
-    """
-    cx_datafolder = "sim_conf"
-    cxinfo_filename = ospath.join(cx_datafolder, "cxinfo.txt")
-    _cx_filename_tpl = ospath.join(cx_datafolder, "cx_%s.dat")
-    _cpu_assign_filename_tpl = ospath.join(cx_datafolder, "cx_%s.%s.dat")
 
-    def __init__(self, balance_mode, nrn_path, target_parser, target_cpu_count=None):
+    NOTE: Given the heavy costs of computing load balance, some state files are created
+    which allow the balance info to be reused. These are
+     - cx_{TARGET}.dat: File with complexity information for the cells of a given target
+     - cx_{TARGET}.{CPU_COUNT}.dat: The file assigning cells/pieces to individual CPUs ranks.
+
+    For more information refer to the developer documentation.
+    """
+    _base_output_dir = "sim_conf"
+    _circuit_lb_dir_tpl = "_loadbal_%s"
+    _cx_filename_tpl = "cx_%s#.dat"             # use # to well delimiter the target name
+    _cpu_assign_filename_tpl = "cx_%s#.%s.dat"  # prefix must be same (imposed by Neuron)
+
+    def __init__(self, balance_mode, nodes_path, target_manager, target_cpu_count=None):
+        """
+        Creates a new Load Balance object, associated with a given node file
+        """
         self.lb_mode = balance_mode
-        self.nrnpath = nrn_path
         self.target_cpu_count = target_cpu_count or MPI.size
-        self._target_parser = target_parser
+        self._target_manager = target_manager
         self._valid_loadbalance = set()
-        # Properties saved in cxinfo
-        self.cxinfo_nrnpath = None
-        self.cxinfo_targets = []
-        self._load_cxinfo()
-        if MPI.rank == 0 and not ospath.isdir(self.cx_datafolder):
-            os.makedirs(self.cx_datafolder, exist_ok=True)
-        MPI.check_no_errors()  # fancy barrier so that all ranks see the new dir
+        self._lb_dir, self._cx_targets = self._get_circuit_loadbal_dir(nodes_path)
+        log_verbose("Found existing targets with loadbal: %s", self._cx_targets)
+
+    @classmethod
+    @run_only_rank0
+    def _get_circuit_loadbal_dir(cls, node_file) -> tuple:
+        """Ensure lbal dir exists. dir may be crated on rank 0"""
+        lb_dir = cls._loadbal_dir(node_file)
+        if lb_dir.is_dir():
+            return lb_dir, cls._get_lbdir_targets(lb_dir)
+
+        logging.info("Creating load balance dir %s", lb_dir)
+        os.makedirs(lb_dir)
+        return lb_dir, set()
+
+    @classmethod
+    def _get_lbdir_targets(cls, lb_dir: Path) -> list:
+        """Inspects the load-balance folder and detects which targets are load balanced"""
+        prefix, suffix = cls._cx_filename_tpl.split("%s")
+        return set(
+            fname.name[len(prefix):-len(suffix)]
+            for fname in lb_dir.glob(cls._cx_filename_tpl.replace("%s", "*"))
+        )
 
     @run_only_rank0
     def valid_load_distribution(self, target_spec) -> bool:
@@ -536,25 +567,22 @@ class LoadBalance:
         """
         target_name = target_spec.simple_name
 
-        # Remember If the user already checked or generated
+        # Check cache
         if target_name in self._valid_loadbalance:
             logging.info(" => Cell distribution from Load Balance is valid")
             return True
 
-        # We have to make sure that the complexity files, besides existing, must
-        # be registered in cxinfo.txt, otherwise they might be from another circuit
+        # A valid load-distribution requires BOTH the cx and the cpu_assign files.
         if self._cx_valid(target_spec):
-            cpu_assign_filename = self._cpu_assign_filename_tpl % (target_name,
-                                                                   self.target_cpu_count)
-            if ospath.isfile(cpu_assign_filename):
-                logging.info(" => Found valid cell distribution: %s", cpu_assign_filename)
-                self._valid_loadbalance.add(target_name)
-                return True
+            cpu_assign_filename = self._cpu_assign_filename(target_name)
+            if cpu_assign_filename.is_file():
+                logging.info(" => Found valid load balance: %s", cpu_assign_filename)
             else:
-                logging.info(" => Found valid complexity file.")
+                # Still need to derive the CPU assignment
+                logging.info(" => Found valid complexity file: %s", self._cx_filename(target_name))
                 self._cpu_assign(target_name)
-                self._valid_loadbalance.add(target_name)
-                return True
+            self._valid_loadbalance.add(target_name)
+            return True
 
         # If not found, attempt to find a cx file computed for a superset target
         # so we can derive a new cx file without instantiating cells
@@ -565,15 +593,13 @@ class LoadBalance:
         return False
 
     # -
-    def _reuse_cell_complexity(self, target_spec):
+    def _reuse_cell_complexity(self, target_spec) -> bool:
         """Check if the complexities of all target gids were already calculated
         for another target.
         """
-        # Abort if the circuit changed or in case now we request full circuit
-        # since its Impossible to have a superset of it
-        if (self.cxinfo_nrnpath != self.nrnpath
-                or not target_spec.name
-                or not self.cxinfo_targets):
+        # Abort if there are no cx files yet or in case now we request full circuit
+        # since its impossible to have a superset of it
+        if (not target_spec.name or not self._cx_targets):
             logging.info(" => Target Cx reusing is not available.")
             return False
 
@@ -581,9 +607,9 @@ class LoadBalance:
         target_gids = self._get_target_gids(target_spec)
         cx_other = {}
 
-        for previous_target in self.cxinfo_targets:
+        for previous_target in self._cx_targets:
             log_verbose("Trying previous cx file on target %s", previous_target)
-            ref_filename = self._cx_filename_tpl % previous_target
+            ref_filename = self._cx_filename(previous_target)
             if self._cx_contains_gids(ref_filename, target_gids, cx_other):
                 break  # done!
             log_verbose("  - Target is not a superset. Ignoring.")
@@ -591,46 +617,35 @@ class LoadBalance:
             logging.info(" => Did not find any suitable target")
             return False
 
-        new_cx_filename = self._cx_filename_tpl % target_spec.simple_name
+        new_cx_filename = self._cx_filename(target_spec.simple_name)
         logging.info("Target %s is a subset of the target %s. Generating %s",
                      target_spec.name, previous_target, new_cx_filename)
 
         # Write the new cx file since Neuron needs it to do CPU assignment
         with open(new_cx_filename, "w") as newfile:
             self._write_msdat_dict(newfile, cx_other, target_gids)
-        # Write updated cxinfo
-        self._write_cxinfo(target_spec.simple_name)
+        # register
+        self._cx_targets.add(target_spec.simple_name)
         return True
 
     # -
-    def _cx_valid(self, target_spec, check_contents=True):
-        """Determine if valid complexity files exist for the provided
+    def _cx_valid(self, target_spec) -> bool:
+        """Determine if valid complexity files exist for the provided circuit and
         target spec, otherwise return False -> we need to regen load balance info
-
-        Note: We keep cxinfo to keep track of the complexity files calculated
-        for a given circuit/target. In case the circuit location changes we always
-        return False and a new cxinfo is generated (invalidating any existing cx_*)
         """
-        if self.cxinfo_nrnpath is None:
-            logging.info(" => No cx_info file found!")
-            return False
-
-        if self.cxinfo_nrnpath != self.nrnpath:
-            logging.info(" => Circuit path has changed. Ignoring cx files")
+        # _cx_targets populated at instantiation. If not there, no chance. If in list, verify
+        if not self._cx_targets:
+            logging.info(" => No complexity files for current circuit yet")
             return False
 
         target_name = target_spec.simple_name
-        if target_name not in self.cxinfo_targets:
+        cx_filename = self._cx_filename(target_name)
+
+        if target_name not in self._cx_targets:
             logging.info(" => No Cx files available for requested target")
             return False
 
-        cx_filename = self._cx_filename_tpl % target_name
-        if not ospath.isfile(cx_filename):
-            logging.warning(" => %s file missing. Fixing cxinfo.txt", cx_filename)
-            self._write_cxinfo()
-            return False
-
-        if target_spec and check_contents:
+        if target_spec:  # target provided, otherwise everything
             target_gids = self._get_target_gids(target_spec)
             if not self._cx_contains_gids(cx_filename, target_gids):
                 logging.warning(" => %s invalid: changed target definition!", cx_filename)
@@ -638,10 +653,10 @@ class LoadBalance:
         return True
 
     @classmethod
-    def _cx_contains_gids(cls, cxpath, target_gids, out_cx=None):
+    def _cx_contains_gids(cls, cxpath, target_gids, out_cx=None) -> bool:
         """Checks a cx file contains complexities for given gids
         """
-        if not ospath.isfile(cxpath):
+        if not cxpath.is_file():
             log_verbose("  - cxpath doesnt exist: %s", cxpath)
             return False
         with open(cxpath, "r") as f:
@@ -651,10 +666,10 @@ class LoadBalance:
             return False
         if out_cx is not None:
             out_cx.update(cx_saved)
-        return cx_saved
+        return True
 
     @contextmanager
-    def generate_load_balance(self, target_str, cell_distributor):
+    def generate_load_balance(self, target_spec, cell_distributor):
         """Context manager that creates load balance for the circuit instantiated within
 
         Args:
@@ -664,45 +679,24 @@ class LoadBalance:
         """
         mcomplex = Nd.MComplexLoadBalancer()  # init mcomplex before building circuit
         yield
+        target_str = target_spec.simple_name
         self._compute_save_complexities(target_str, mcomplex, cell_distributor)
-        self._write_cxinfo(target_str)
         self._cpu_assign(target_str)
         self._valid_loadbalance.add(target_str)
-
-    def _load_cxinfo(self):
-        if not ospath.isfile(self.cxinfo_filename):
-            return
-        with open(self.cxinfo_filename, "r") as cxinfo:
-            self.cxinfo_nrnpath = next(cxinfo).strip()
-            # In case nrnpath changed ignore targets
-            if self.cxinfo_nrnpath == self.nrnpath:
-                self.cxinfo_targets = [t.strip() for t in cxinfo]
-
-    @run_only_rank0
-    def _write_cxinfo(self, *targets_append):
-        """Write config in the cxinfo file for future usage
-        """
-        all_targets = sorted(set(self.cxinfo_targets) | set(targets_append))
-
-        with open(self.cxinfo_filename, "w") as cxinfo:
-            print(self.nrnpath, file=cxinfo)
-            for tname in all_targets:
-                if ospath.isfile(self._cx_filename_tpl % tname):
-                    print(tname, file=cxinfo)
-        # Update meta
-        self.cxinfo_nrnpath = self.nrnpath
-        self.cxinfo_targets = all_targets
 
     @mpi_no_errors
     def _compute_save_complexities(self, target_str, mcomplex, cell_distributor):
         msfactor = 1e6 if self.lb_mode == LoadBalanceMode.WholeCell else 0.8
-        out_filename = self._cx_filename_tpl % target_str
+        out_filename = self._cx_filename(target_str)
 
         cx_cells = self._compute_complexities(mcomplex, cell_distributor)
         total_cx, max_cx = self._cell_complexity_total_max(cx_cells)
         lcx = self._get_optimal_piece_complexity(total_cx,
                                                  self.target_cpu_count,
                                                  msfactor)
+        logging.info("LB Info: TC=%.3f MC=%.3f OptimalCx=%.3f FileName=%s",
+                     total_cx, max_cx, lcx, out_filename)
+
         ms_list = []
         tmp = Nd.Vector()
 
@@ -713,18 +707,17 @@ class LoadBalance:
 
         # To output build independently the contents of the file then append
         ostring = StringIO()
-        if MPI.rank == 0:
-            ostring.write("1\n%d\n" % cell_distributor.total_cells)
-            logging.info("LB Info: TC=%.3f MC=%.3f OptimalCx=%.3f FileName=%s",
-                         total_cx, max_cx, lcx, out_filename)
         for ms in ms_list:
             self._write_msdat(ostring, ms)
 
         all_ranks_cx = MPI.py_gather(ostring.getvalue(), 0)
         if MPI.rank == 0:
             with open(out_filename, "w") as fp:
+                fp.write("1\n%d\n" % cell_distributor.total_cells)
                 for cx_info in all_ranks_cx:
                     fp.write(cx_info)
+        # register
+        self._cx_targets.add(target_str)
 
     @staticmethod
     def _cell_complexity_total_max(cx_cells):
@@ -759,9 +752,11 @@ class LoadBalance:
     @run_only_rank0
     def _cpu_assign(self, target_name):
         """Assigns cells to 'prospective_hosts' cpus using mymetis3.
+        Results are written to file. basename.<NCPU>.dat
         """
         logging.info("Assigning Cells <-> %d CPUs [mymetis3]", self.target_cpu_count)
-        Nd.mymetis3(ospath.join(self.cx_datafolder, "cx_%s" % target_name), self.target_cpu_count)
+        base_filename = self._cx_filename(target_name, True)
+        Nd.mymetis3(base_filename, self.target_cpu_count)
 
     @staticmethod
     def _write_msdat(fp, ms):
@@ -806,7 +801,7 @@ class LoadBalance:
 
         for line in fp:
             if piece_count == 0:
-                gid, cx, piece_count = [int(float(x)) for x in line.split()]
+                gid, _cx, piece_count = [int(float(x)) for x in line.split()]
                 cx_saved[gid] = [line]
             else:                               # Handle parts
                 cx_saved[gid].append(line)
@@ -828,6 +823,27 @@ class LoadBalance:
                 fp.write(line)  # raw lines, include \n
 
     # -
-    def _get_target_gids(self, target_spec):
-        return self._target_parser.getTarget(target_spec.name).completegids() \
-            .as_numpy().astype(int)
+    def _get_target_gids(self, target_spec) -> numpy.ndarray:
+        return self._target_manager.get_target(target_spec).get_gids()
+
+    def load_balance_info(self, target_spec):
+        """ Loads a load-balance info for a given target.
+        NOTE: Please ensure the load balance exists or is derived before calling this function
+        """
+        bal_filename = self._cx_filename(target_spec.simple_name, True)
+        return Nd.BalanceInfo(bal_filename, MPI.rank, MPI.size)
+
+    @classmethod
+    def _loadbal_dir(cls, nodefile) -> Path:
+        """Returns the dir where load balance files are stored for a given nodes file"""
+        nodefile_hash = hashlib.md5(nodefile.encode()).digest().hex()[:10]
+        return Path(cls._base_output_dir) / (cls._circuit_lb_dir_tpl % nodefile_hash)
+
+    def _cx_filename(self, target_str, basename_str=False) -> Path:
+        """Gets the filename of a cell complexity file for a given target"""
+        fname = self._lb_dir / (self._cx_filename_tpl % target_str)
+        return str(fname)[:-4] if basename_str else fname
+
+    def _cpu_assign_filename(self, target_str) -> Path:
+        """Gets the CPU assignment filename for a given target, according to target CPU count"""
+        return self._lb_dir / (self._cpu_assign_filename_tpl % (target_str, self.target_cpu_count))

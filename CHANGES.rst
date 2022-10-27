@@ -2,6 +2,184 @@
 Change Log
 ==========
 
+Version 2.12.6
+==============
+**21 Oct 2022**
+
+*New Features*
+  * Enable model stats printing in CoreNEURON
+  * Read new sonata keys from libsonata
+
+    * [BBPBGLIB-885] neuromodulation_dtc and neuromodulation_strength in connection_overrides
+    * [BBPBGLIB-915] deprecate minis_single_vesicle key from conditions
+    * [BBPBGLIB-913] deprecate forward_skip key
+    * [BBPBGLIB-920] add keys in run for additional seedings: stimulus_seed, ionchannel_seed, minis_seed, synapse_seed
+    * [BBPBGLIB-921] add series_resistance key in seclamp
+    * [BBPBGLIB-919] parse modifications
+
+*Improvements*
+  * [BBPBGLIB-934] LoadBalance refactoring for multiple circuits
+  * Enable reading sonata circuit config with empty edge
+
+*Bug fixes*
+  * [BBPBGLIB-933] Fix coreneuron multi-cycle model building for multiple circuits
+  * Fix for conflict with SHM File Transfer and --keep-build
+
+
+Version 2.12.5
+==============
+**07 Oct 2022**
+
+*Improvements*
+  * Add a GapJunction unit test to showcase how it could be tested
+  * Improved Cell Managers API with `get_cell` (python cell) and `get_cellref` (hoc cellref)
+  * Make Load balancer use the TargetManager Python class
+  * [HPCTM-1600] Set SHM File Transfer by default + Improve model memory consumption estimates
+
+
+Version 2.12.4
+==============
+**23 Sep 2022**
+
+*Improvements*
+  * Add test for point to detailed neuron connectivity and vice versa
+  * [BBPBGLIB-904] Pytests refactoring and coverage + Have mini simulations run directly under pytest
+  * Add zero amplitude at start of new noise stimuli to allow stacking over time
+
+*Bug fixes*
+  * [BBPBGLIB-888] Save populations_offset.dat in output directory to resolve issue in restore
+  * coreneuron restore: link populations_offset.dat only in rank0 and hold the other ranks
+  * [HPCTM-1584] Fix deletion of SHM coredat files when '--enable-shm' is not set
+
+
+
+Version 2.12.3
+==============
+**29 Aug 2022**
+
+*New Features*
+  * Bump submodule past hpc/sim/neurodamus-core!12
+
+*Bug fixes*
+  * [BBPBGLIB-887] Protect synapse reading: n_rrp_vesicles is required for SONATA circuits
+  * [REP-80] Call hoc in report initialization for synapse reports in CoreNEURON
+  * [BBPBGLIB-901] Fix corenrn input dir w sonata
+
+
+Version 2.12.2
+==============
+**17 Aug 2022**
+
+*Improvements*
+  * CoreNEURON: Skip report initialization after creating report.conf in save/restore
+  * Improve report initialization time with CoreNEURON
+
+*Bug fixes*
+  * Fix for race-condition when reading sim.conf
+  * [BBPBGLIB-894] Fix spike train handling
+
+
+Version 2.12.1
+==============
+**28 Jul 2022**
+
+*New Features*
+  * Add support for SHM file transfer in CoreNEURON
+
+
+Version 2.12.0
+==============
+**15 Jul 2022**
+
+*New Features*
+  * [BBPBGLIB-816] Complete Baseline support for SONATA configuration
+  * New CLI options for save-restore, run mode and dump cell state
+  * Documentation for running a SONATA simulation
+
+*Improvements*
+  * Avoid creating out.dat when running simulations with SONATA config file
+  * Read sonata config parameters from libsonata parser
+  * Replace calculation of U scale_factors calculation by a single function
+
+*Bug fixes*
+  * Resolve nodes and edges paths according to circuit_config.json location
+  * [BBPBGLIB-856] Fixes for hoc targets w offset and nodes extra properties
+  * Expect same behavior when connection delay is not present and when is 0
+
+
+Version 2.11.3
+==============
+**25 May 2022**
+
+*New Features*
+ * Load extended cell properties from SONATA [BBPBGLIB-806]
+
+*Improvements*
+ * Core mods compatibility across Nrn8.0..9.x
+ * Added synapses test [BBPBGLIB-826]
+
+
+Version 2.11.2
+==============
+**12 May 2022**
+
+*Improvements*
+ * Improved target intersection for nodesets addressed in BBPBGLIB-823
+
+
+Version 2.11.1
+==============
+**2 May 2022**
+
+*Improvements*
+ * Use libsonata API parser for sonata config
+
+
+Version 2.11.0
+==============
+**28 Apr 2022**
+
+*Improvements*
+ * No eager caching of synaptic parameters
+ * Sonata nodesets to be able to cross multiple populations
+ * Adding test with patched delays after ModOverride
+
+
+Version 2.10.3
+==============
+**30 Mar 2022**
+
+*New Features*
+ * Support sonata configurations for ngv
+
+*Improvements*
+ * BBPBGLIB-805 Allow independent scaling fields
+ * Configurable scaling between I_thresh and invRin
+
+*Bug fixes*
+ * Summation report fixes
+
+
+Version 2.10.2
+==============
+**4 Mar 2022**
+
+*New Features*
+ * Suport multi-population compartment report
+ * Suport sonata configuration and sonata NodeSetTarget
+ * Implement RelativeOrnsteinUhlenbeck stimulus
+ * New-gen stimuli injected as Current or Conductance
+ * Implement StochasticConductance stimulus
+ * Implement ConductanceSource(SignalSource) using an SEClamp
+ * Implement Ornstein-Uhlenbeck process signal generation
+
+*Improvements*
+ * Control display of unhandled exceptions
+
+*Bug fixes*
+ * Store reference to rs-driving signal (fix CELLS-79)
+
+
 Version 2.8.0
 =============
 **October 21, 2021**

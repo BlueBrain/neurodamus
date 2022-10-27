@@ -1,6 +1,8 @@
+import pytest
 from neurodamus.core.nodeset import NodeSet
 
 
+@pytest.mark.forked
 def test_NodeSet_base():
     # No registration, just plain gid sets
     set1 = NodeSet([1, 2, 3])
@@ -15,6 +17,7 @@ def test_NodeSet_base():
     assert set2.max_gid == 3
 
 
+@pytest.mark.forked
 def test_NodeSet_add():
     set_mid = NodeSet([1, 2, 3, 1000]).register_global("pop2")
     assert set_mid.offset == 0

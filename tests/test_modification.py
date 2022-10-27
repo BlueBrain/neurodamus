@@ -1,16 +1,11 @@
 import os
 import pytest
-import subprocess
 from tempfile import NamedTemporaryFile
 
-from neurodamus.node import Node
-from neurodamus.core import NeurodamusCore as Nd
-from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
 from neurodamus.utils import compat
 from neurodamus.utils.logging import log_verbose
+# !! NOTE: Please dont import Neuron or Nd objects. pytest will trigger Neuron instantiation!
 
-
-alltests = ['test_TTX_modification', 'test_ConfigureAllSections_modification']
 
 # BlueConfig string
 BC_str = """
@@ -88,38 +83,47 @@ Target Cell single
 }
 """
 
-
-@pytest.mark.slow
-@pytest.mark.skipif(
-    not os.path.isfile("/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3"),
-    reason="Circuit file not available")
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
-def test_modifications():
-    for test in alltests:
-        subprocess.run(
-            ["python", os.path.abspath(__file__), test],
-            check=True
-        )
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.forked,
+    pytest.mark.skipif(
+        not os.path.isfile("/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3"),
+        reason="Circuit file not available"
+    ),
+    pytest.mark.skipif(
+        not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+        reason="Test requires loading a neocortex model to run"
+    )
+]
 
 
-def exec_test_TTX_modification():
-    """
-    A test of enabling TTX with a short simulation.
-    Expected outcome is non-zero spike count without TTX, zero with TTX.
-
-    We require launching with mpiexec (numprocs=1).
-    """
+@pytest.fixture(scope="module")
+def blueconfig():
     # dump config to files
     with NamedTemporaryFile("w", prefix='test_ttx_mod_tgt', delete=False) as tgt_file:
         tgt_file.write(TGT_str)
     with NamedTemporaryFile("w", prefix="test_ttx_mod_bc", delete=False) as bc_file:
         bc_file.write(BC_str.format(target_file=tgt_file.name))
 
-    # create Node from config
+    yield bc_file.name
+
+    os.unlink(bc_file.name)
+    os.unlink(tgt_file.name)
+
+
+def test_TTX_modification(blueconfig):
+    """
+    A test of enabling TTX with a short simulation.
+    Expected outcome is non-zero spike count without TTX, zero with TTX.
+
+    We require launching with mpiexec (numprocs=1).
+    """
+    from neurodamus.core import NeurodamusCore as Nd
+    from neurodamus.core.configuration import GlobalConfig, LogLevel, SimConfig
+    from neurodamus.node import Node
+
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(bc_file.name)
+    n = Node(blueconfig)
 
     # setup sim
     n.load_targets()
@@ -149,26 +153,22 @@ def exec_test_TTX_modification():
     nspike_TTX = sum(len(spikes) for spikes, _ in n._spike_vecs)
 
     log_verbose("spikes without TTX = %s, with TTX = %s", nspike_noTTX, nspike_TTX)
-    assert(nspike_noTTX > 0 and nspike_TTX == 0)
-    os.unlink(bc_file.name)
-    os.unlink(tgt_file.name)
+    assert (nspike_noTTX > 0 and nspike_TTX == 0)
 
 
-def exec_test_ConfigureAllSections_modification():
+def test_ConfigureAllSections_modification(blueconfig):
     """
     A test of performing ConfigureAllSections with a short simulation.
     Expected outcome is higher spike count when enabled.
 
     We require launching with mpiexec (numprocs=1).
     """
-    with NamedTemporaryFile("w", prefix='test_allsec_mod_tgt', delete=False) as tgt_file:
-        tgt_file.write(TGT_str)
-    with NamedTemporaryFile("w", prefix="test_allsec_mod_bc", delete=False) as bc_file:
-        bc_file.write(BC_str.format(target_file=tgt_file.name))
+    from neurodamus.core import NeurodamusCore as Nd
+    from neurodamus.core.configuration import GlobalConfig, LogLevel, SimConfig
+    from neurodamus.node import Node
 
-    # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(bc_file.name)
+    n = Node(blueconfig)
 
     # setup sim
     n.load_targets()
@@ -199,14 +199,4 @@ def exec_test_ConfigureAllSections_modification():
 
     log_verbose("spikes without ConfigureAllSections = %s, with ConfigureAllSections = %s",
                 nspike_ConfigureAllSections, nspike_noConfigureAllSections)
-    assert(nspike_ConfigureAllSections > nspike_noConfigureAllSections)
-    os.unlink(bc_file.name)
-    os.unlink(tgt_file.name)
-
-
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1:
-        exec('exec_{}()'.format(sys.argv[1]))
-    else:
-        test_modifications()
+    assert (nspike_ConfigureAllSections > nspike_noConfigureAllSections)

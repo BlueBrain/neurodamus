@@ -14,6 +14,7 @@ from ..io.sonata_config import SonataConfig
 from ..utils import compat
 from ..utils.logging import log_verbose
 from ..utils.pyutils import ConfigT
+from ._shmutils import SHMUtil
 
 EXCEPTION_NODE_FILENAME = ".exception_node"
 """A file which controls which rank shows exception"""
@@ -43,15 +44,21 @@ class GlobalConfig:
         os.environ["NEURON_INIT_MPI"] = "1"
 
 
-class RunOptions(ConfigT):
+class CliOptions(ConfigT):
     build_model = None
     simulate_model = True
     model_path = None  # Currently is output-path
     output_path = None
     keep_build = False
+    lb_mode = None
     modelbuilding_steps = None
     experimental_stims = False
     enable_coord_mapping = False
+    save = False
+    save_time = None
+    restore = None
+    enable_shm = False
+    model_stats = False
 
 
 class CircuitConfig(ConfigT):
@@ -91,6 +98,59 @@ class NeuronStdrunDefaults:
     v_init = -65
 
 
+class LoadBalanceMode(Enum):
+    """An enumeration, inc parser, of the load balance modes.
+    """
+    RoundRobin = 0
+    WholeCell = 1
+    MultiSplit = 2
+
+    @classmethod
+    def parse(cls, lb_mode):
+        """Parses the load balancing mode from a string.
+        Options other than WholeCell or MultiSplit are considered RR
+        """
+        if lb_mode is None:
+            return None
+        _modes = {
+            "rr": cls.RoundRobin,
+            "roundrobin": cls.RoundRobin,
+            "wholecell": cls.WholeCell,
+            "loadbalance": cls.MultiSplit,
+            "multisplit": cls.MultiSplit
+        }
+        lb_mode_enum =  _modes.get(lb_mode.lower())
+        if lb_mode_enum is None:
+            raise ConfigurationError("Unknown load balance mode: " + lb_mode)
+        return lb_mode_enum
+
+    class AutoBalanceModeParams:
+        """Parameters for auto-selecting a load-balance mode"""
+        multisplit_cpu_cell_ratio = 1.5
+        cell_count = 1000
+        duration = 1000
+        mpi_ranks = 200
+
+    @classmethod
+    def auto_select(cls, use_neuron, cell_count, duration, auto_params=AutoBalanceModeParams):
+        """Simple heuristics for auto selecting load balance"""
+        from ._neurodamus import MPI
+        lb_mode = LoadBalanceMode.RoundRobin
+        reason = ""
+        if MPI.size == 1:
+            lb_mode = LoadBalanceMode.RoundRobin
+            reason = "Single rank - not worth using Load Balance"
+        elif use_neuron and MPI.size > auto_params.multisplit_cpu_cell_ratio * cell_count:
+            lb_mode = LoadBalanceMode.MultiSplit
+            reason = "CPU-Cell ratio"
+        elif (cell_count > auto_params.cell_count
+              and duration > auto_params.duration
+              and MPI.size > auto_params.mpi_ranks):
+            lb_mode = LoadBalanceMode.WholeCell
+            reason = 'Simulation size'
+        return lb_mode, reason
+
+
 class _SimConfig(object):
     """
     A class initializing several HOC config objects and proxying to simConfig
@@ -123,24 +183,32 @@ class _SimConfig(object):
     blueconfig_dir = None
     current_dir = None
     buffer_time = 25
+    save = None
+    save_time = None
     restore = None
     extracellular_calcium = None
     secondorder = None
     use_coreneuron = False
     use_neuron = True
     coreneuron_datadir = None
-    coreneuron_ouputdir = None
+    coreneuron_outputdir = None
     corenrn_buff_size = 8
     delete_corenrn_data = False
     modelbuilding_steps = 1
     build_model = True
     simulate_model = True
+    loadbal_mode = None
     synapse_options = {}
     is_sonata_config = False
+    spike_location = "soma"
+    spike_threshold = -30
 
     _validators = []
+    _requisitors = []
+    _cell_requirements = {}
 
     restore_coreneuron = property(lambda self: self.use_coreneuron and bool(self.restore))
+    cell_requirements = property(lambda self: self._cell_requirements)
 
     @classmethod
     def init(cls, config_file, cli_options):
@@ -172,10 +240,14 @@ class _SimConfig(object):
         cls.reports = compat.Map(cls._config_parser.parsedReports)
         cls.configures = compat.Map(cls._config_parser.parsedConfigures or {})
         cls.modifications = compat.Map(cls._config_parser.parsedModifications or {})
-        cls.cli_options = RunOptions(**(cli_options or {}))
+        cls.cli_options = CliOptions(**(cli_options or {}))
 
         for validator in cls._validators:
             validator(cls, run_conf)
+
+        logging.info("Checking simulation requirements")
+        for requisitor in cls._requisitors:
+            requisitor(cls, cls._config_parser)
 
         logging.info("Initializing hoc config objects")
         if not cls.is_sonata_config:
@@ -236,6 +308,11 @@ class _SimConfig(object):
         cls._validators.append(f)
 
     @classmethod
+    def requisitor(cls, f):
+        """Decorator to register requirements investigators"""
+        cls._requisitors.append(f)
+
+    @classmethod
     def update_connection_blocks(cls, alias):
         """Convert source destination to real population names
 
@@ -262,6 +339,14 @@ class _SimConfig(object):
     @classmethod
     def check_connections_configure(cls, target_manager):
         check_connections_configure(cls, target_manager)  # top_level
+
+    @classmethod
+    def get_stim_inject(cls, stim_name):
+        for _, inject in cls.injects.items():
+            inject = compat.Map(inject)
+            if stim_name == inject["Stimulus"]:
+                return inject
+        return None
 
 
 # Singleton
@@ -355,6 +440,13 @@ def _run_params(config: _SimConfig, run_conf):
     numeric_fields = ("BaseSeed", "StimulusSeed", "Celsius", "V_Init")
     non_negatives = ("Duration", "Dt", "ModelBuildingSteps", "ForwardSkip")
     _check_params("Run default", run_conf, required_fields, numeric_fields, non_negatives)
+
+
+@SimConfig.validator
+def _loadbal_mode(config: _SimConfig, run_conf):
+    cli_args = config.cli_options
+    lb_mode_str = cli_args.lb_mode or run_conf.get("RunMode")
+    config.loadbal_mode = LoadBalanceMode.parse(lb_mode_str)
 
 
 @SimConfig.validator
@@ -652,10 +744,38 @@ def _output_root(config: _SimConfig, run_conf):
 
 
 @SimConfig.validator
-def _check_restore(config: _SimConfig, run_conf):
-    if "Restore" not in run_conf:
+def _check_save(config: _SimConfig, run_conf):
+    cli_args = config.cli_options
+    save_path = cli_args.save or run_conf.get("Save")
+    save_time = cli_args.save_time or run_conf.get("SaveTime")
+
+    if not save_path:
+        if save_time:
+            logging.warning("SaveTime/--save-time IGNORED. Reason: no 'Save' config entry")
         return
-    restore_path = os.path.join(config.current_dir, run_conf["Restore"])
+
+    # Handle save
+    assert isinstance(save_path, str), "Save must be a string path"
+    if save_time:
+        save_time = float(save_time)
+        if save_time > config.tstop:
+            logging.warning("SaveTime specified beyond Simulation Duration. "
+                        "Setting SaveTime to simulation end time.")
+            save_time = None
+
+    config.save = os.path.join(config.current_dir, save_path)
+    config.save_time = save_time
+
+
+@SimConfig.validator
+def _check_restore(config: _SimConfig, run_conf):
+    restore = config.cli_options.restore or run_conf.get("Restore")
+    if not restore:
+        return
+    # sync restore settings to hoc, otherwise we end up with an empty coreneuron_input dir
+    run_conf["Restore"] = restore
+
+    restore_path = os.path.join(config.current_dir, restore)
     assert os.path.isdir(os.path.dirname(restore_path))
     config.restore = restore_path
 
@@ -667,9 +787,19 @@ def _coreneuron_params(config: _SimConfig, run_conf):
         assert buffer_size > 0
         log_verbose("ReportingBufferSize = %g", buffer_size)
         config.corenrn_buff_size = int(buffer_size)
+
     # Set defaults for CoreNeuron dirs since SimConfig init/verification happens after
-    config.coreneuron_ouputdir = config.output_root
-    config.coreneuron_datadir = os.path.join(config.output_root, "coreneuron_input")
+    config.coreneuron_outputdir = config.output_root
+    coreneuron_datadir = os.path.join(config.output_root, "coreneuron_input")
+
+    if config.use_coreneuron and config.restore:
+        # Most likely we will need to reuse coreneuron_input from first part
+        if not os.path.isdir(coreneuron_datadir):
+            logging.info("RESTORE: Searching for coreneuron_input besides " + config.restore)
+            coreneuron_datadir = os.path.join(config.restore, "..", "coreneuron_input")
+        assert os.path.isdir(coreneuron_datadir), "coreneuron_input dir not found"
+
+    config.coreneuron_datadir = coreneuron_datadir
 
 
 @SimConfig.validator
@@ -687,17 +817,38 @@ def _check_model_build_mode(config: _SimConfig, run_conf):
             config.build_model = True
             return
 
+    # CoreNeuron restore is a bit special and already had its input dir checked
+    if config.restore:
+        config.build_model = False
+        return
+
     # It's a CoreNeuron run. We have to check if build_model is AUTO or OFF
     core_data_location = config.coreneuron_datadir
+    core_data_location_shm = SHMUtil.get_datadir_shm(core_data_location)
     core_data_exists = (
         os.path.isfile(os.path.join(config.output_root, "sim.conf"))
         and os.path.isfile(os.path.join(core_data_location, "files.dat"))
     )
+
     if config.build_model in (None, "AUTO"):
-        if not core_data_exists:
+        # If enable-shm option is given we have to rebuild the model and delete any previous files
+        # in /dev/shm or gpfs
+        # In any case when we start model building any data in the core_data_location_shm if it
+        # exists are deleted
+        if (
+            not core_data_exists
+            or os.path.exists(core_data_location_shm)
+        ):
+            data_location = (
+                core_data_location_shm
+                if (
+                    user_config.enable_shm and core_data_location_shm is not None
+                )
+                else core_data_location
+            )
             logging.info("CoreNeuron input data not found in '%s'. "
                          "Neurodamus will proceed to model building.",
-                         core_data_location)
+                         data_location)
             config.build_model = True
         else:
             logging.info("CoreNeuron input data found. Skipping model build")
@@ -713,7 +864,7 @@ def _keep_coreneuron_data(config: _SimConfig, run_conf):
         keep_core_data = False
         if config.cli_options.keep_build or run_conf.get("KeepModelData", False) == "True":
             keep_core_data = True
-        elif not config.cli_options.simulate_model or "Save" in run_conf:
+        elif not config.cli_options.simulate_model or config.save:
             logging.warning("Keeping coreneuron data for CoreNeuron following run")
             keep_core_data = True
         config.delete_corenrn_data = not keep_core_data
@@ -764,6 +915,18 @@ def _report_vars(config: _SimConfig, run_conf):
             if rep_config["ReportOn"] not in ("v", "i_membrane"):
                 logging.warning("Compartment reports on vars other than v and i_membrane "
                                 " are still not fully supported (CoreNeuron)")
+
+
+def get_debug_cell_gid(cli_options):
+    gid = None if not cli_options else cli_options.get("dump_cell_state")
+    try:
+        gid = int(gid) if gid is not None else SimConfig.run_conf.get("prCellGid")
+    except ValueError as e:
+        raise ConfigurationError("Cannot parse Gid for dump-cell-state: " + gid) from e
+    if gid and SimConfig.is_sonata_config:
+        # In sonata mode, user will provide a 0-based, add 1.
+        gid += 1
+    return gid
 
 
 def check_connections_configure(SimConfig, target_manager):
@@ -875,3 +1038,21 @@ def check_connections_configure(SimConfig, target_manager):
             logging.warning(" -> %s", conn["_name"])
     else:
         logging.info(" => CHECK No single Weight=0 blocks!")
+
+
+@SimConfig.requisitor
+def _input_resistance(config: _SimConfig, config_parser):
+    from ..target_manager import TargetSpec
+    prop = "@dynamics:input_resistance"
+    for stim_name, stim in config.stimuli.items():
+        stim = compat.Map(stim)
+        stim_inject = config.get_stim_inject(stim_name)
+        if stim_inject is None:
+            continue  # not injected, do not care
+        target = stim_inject["Target"]  # all we can know so far
+        if stim["Mode"] == "Conductance" and \
+           stim["Pattern"] in ["RelativeShotNoise", "RelativeOrnsteinUhlenbeck"]:
+            target_spec = TargetSpec(target) if isinstance(target, str) else TargetSpec(target.s)
+            # NOTE: key will be None when target has no prefix, referring to the default population
+            config._cell_requirements.setdefault(target_spec.population, set()).add(prop)
+            log_verbose('[cell] %s (%s)' % (prop, target))

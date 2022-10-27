@@ -3,10 +3,10 @@ Collection of Cell Readers from different sources (Pure HDF5, SynTool...)
 """
 from __future__ import absolute_import
 import logging
-
 import numpy as np
 from collections import defaultdict
 from os import path as ospath
+
 from ..core import NeurodamusCore as Nd
 from ..core.configuration import ConfigurationError
 from ..metype import METypeManager, METypeItem
@@ -149,8 +149,10 @@ def _load_mvd3_h5py(circuit_conf, all_gids, stride=1, stride_offset=0):
     return gidvec, me_manager, total_mvd_cells
 
 
-def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *, has_extra_data=False):
-    """Load cells from SONATA or MVD3 file
+def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *,
+               node_population=False, has_extra_data=False):
+    """Load cells from SONATA or MVD3 file.
+       node_population can be provided by load_sonata() and can be None. False to auto-detect
     """
     try:
         import mvdtool
@@ -158,13 +160,13 @@ def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *, has_extra_d
         raise ConfigurationError("load_nodes: mvdtool is not available. Please install")
     pth = circuit_conf.CellLibraryFile
     is_mvd = pth.endswith('.mvd3')
-
+    if node_population is False:
+        node_population = TargetSpec(circuit_conf.CircuitTarget).population
     if not ospath.isfile(pth):
         pth = ospath.join(circuit_conf.CircuitPath, pth)
     if not ospath.isfile(pth):
         raise ConfigurationError("Could not find Nodes: " + circuit_conf.CellLibraryFile)
 
-    node_population = TargetSpec(circuit_conf.CircuitTarget).population
     node_reader = mvdtool.open(pth, node_population or "")
     combo_file = circuit_conf.MEComboInfoFile
 
@@ -207,6 +209,53 @@ def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *, has_extra_d
                        exc_mini_freqs, inh_mini_freqs, positions, rotations, add_params_list)
 
     return gidvec, meinfo, total_cells
+
+
+def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
+                node_population, load_dynamic_props=(), **kw):
+    """
+    A reader supporting additional dynamic properties from Sonata files.
+    """
+    load_nodes_base_info = lambda: load_nodes(
+        circuit_conf, all_gids, stride, stride_offset, node_population=node_population, **kw
+    )
+    # If dynamic properties are not specified simply return early
+    if not load_dynamic_props:
+        return load_nodes_base_info()
+
+    import libsonata
+    node_file = circuit_conf.CellLibraryFile
+    node_store = libsonata.NodeStorage(node_file)
+    node_pop = node_store.open_population(node_population)
+    attr_names = node_pop.attribute_names
+    dynamics_attr_names = node_pop.dynamics_attribute_names
+
+    # Check properties exist, eventually removing prefix
+    def validate_property(prop_name):
+        if prop_name.startswith("@dynamics:"):
+            actual_prop_name = prop_name[len("@dynamics:"):]  # remove prefix
+            if actual_prop_name not in dynamics_attr_names:
+                raise Exception('Required Dynamics property %s not present' % prop_name)
+        elif prop_name not in attr_names:
+            raise Exception('Required extra property %s not present' % prop_name)
+
+    [validate_property(p) for p in load_dynamic_props]
+
+    # All good. Lets start reading!
+    gidvec, meinfos, fullsize = load_nodes_base_info()
+    node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
+
+    for prop_name in load_dynamic_props:
+        log_verbose("Loading extra property: %s ", prop_name)
+        if prop_name.startswith("@dynamics:"):
+            prop_name = prop_name[len("@dynamics:"):]
+            prop_data = node_pop.get_dynamics_attribute(prop_name, node_sel)
+        else:
+            prop_data = node_pop.get_attribute(prop_name, node_sel)
+        for gid, val in zip(gidvec, prop_data):
+            meinfos[gid].extra_attrs[prop_name] = val
+
+    return gidvec, meinfos, fullsize
 
 
 def load_combo_metypes(combo_file, gidvec, combo_list, morph_list):
