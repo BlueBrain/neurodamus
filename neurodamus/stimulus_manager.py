@@ -50,28 +50,17 @@ class StimulusManager:
 
     def interpret(self, target_spec, stim_info):
         stim_t = self._stim_types.get(stim_info["Pattern"])
-<<<<<<< HEAD
 
-=======
         if self._stim_seed is None and getattr(stim_t, 'IsNoise', False):
             logging.warning("StimulusSeed unset (default %d), "
                             "set explicitly to vary noisy stimuli across runs",
                             SimConfig.rng_info.getStimulusSeed())
->>>>>>> main
         # Get either hoc target or sonata node_set, needed for python and hoc interpret
         # If sonata node_set, internally register the target and add to hoc TargetList
 
         target = self._target_manager.get_target(target_spec)
-<<<<<<< HEAD
-        python_only_stims = ('ShotNoise', 'RelativeShotNoise', 'AbsoluteShotNoise',
-                             'OrnsteinUhlenbeck', 'RelativeOrnsteinUhlenbeck',
-                             'Extracellular')  # Adds extracellular
 
-        if SimConfig.cli_options.experimental_stims or \
-                (stim_t and stim_t.__name__ in python_only_stims):
-=======
         if SimConfig.cli_options.experimental_stims or stim_t and stim_t.IsPythonOnly:
->>>>>>> main
             # New style Stim, in Python
             log_verbose("Using new-gen stimulus")
             cell_manager = self._target_manager.hoc.cellDistributor
@@ -108,14 +97,11 @@ class BaseStim:
     Barebones stimulus class
     """
 
-<<<<<<< HEAD
-    def __init__(self, target, stim_info: dict, cell_manager):
-=======
+
     IsPythonOnly = False
     IsNoise = False
 
     def __init__(self, _target, stim_info: dict, _cell_manager):
->>>>>>> main
         self.duration = float(stim_info["Duration"])  # duration [ms]
         self.delay = float(stim_info["Delay"])  # start time [ms]
 
@@ -236,24 +222,16 @@ class RelativeOrnsteinUhlenbeck(OrnsteinUhlenbeck):
         return True
 
     def compute_parameters(self, cell):
-<<<<<<< HEAD
-        threshold = cell.getThreshold()  # cell threshold current [nA]
 
-        invRin = self.invRin_scaling * threshold  # proxy for inverse input resistance [MOhm]
-=======
         # threshold current [nA] or inverse input resistance [uS]
         rel_prop = self.get_relative(cell)
->>>>>>> main
 
         self.sigma = (self.sigma_perc / 100) * rel_prop  # signal stdev [nA or uS]
         if self.sigma <= 0:
             raise Exception("%s standard deviation must be positive" % self.__class__.__name__)
 
-<<<<<<< HEAD
-        self.mean = (self.mean_perc / 100) * invRin  # signal mean [uS]
-=======
+
         self.mean = (self.mean_perc / 100) * rel_prop    # signal mean [nA or uS]
->>>>>>> main
         if self.mean < 0 and abs(self.mean) > 2 * self.sigma:
             logging.warning("%s signal is mostly zero" % self.__class__.__name__)
 
@@ -433,18 +411,12 @@ class RelativeShotNoise(ShotNoise):
         return self.mean_perc != 0  # no-op if mean_perc == 0
 
     def compute_parameters(self, cell):
-<<<<<<< HEAD
-        threshold = cell.getThreshold()  # cell threshold current [nA]
-        mean = self.mean_perc / 100 * threshold  # desired mean [nA]
-        sd = self.sd_perc / 100 * threshold  # desired standard deviation [nA]
-        var = sd * sd  # variance [nA^2]
-=======
+
         # threshold current [nA] or inverse input resistance [uS]
         rel_prop = self.get_relative(cell)
         mean = self.mean_perc / 100 * rel_prop  # desired mean [nA or uS]
         sd = self.sd_perc / 100 * rel_prop      # desired standard deviation [nA or uS]
         var = sd * sd                           # variance [nA^2 or uS^2]
->>>>>>> main
         super().params_from_mean_var(mean, var)
 
 
@@ -822,6 +794,8 @@ class Extracellular(BaseStim):
     Extracellular stimulus
     """
     stimCount = 0  # global count for seeding
+
+    IsPythonOnly = True
 
     def __init__(self, target, stim_info: dict, cell_manager):
 
