@@ -332,6 +332,8 @@ class SignalSource:
         """
         # First and last are base_amp
         base_amp = kw.get("base_amp", self._base_amp)
+        ramp_up_time = kw.get("ramp_up_time", None)
+        ramp_down_time = kw.get("ramp_down_time", None)
 
         self._add_point(base_amp)
 
@@ -340,12 +342,30 @@ class SignalSource:
 
         self._add_point((base_amp))
 
-        self.add_segment(amp[0], width[0])
+        if ramp_up_time is not None or ramp_down_time is not None:
+            if ramp_up_time is None:
+                ramp_up_time = 0
+            if ramp_down_time is None:
+                ramp_down_time = 0
 
-        if len(amp)>1:
-            for i in np.arange(1,len(amp)):
+            const_time = width[0] - (ramp_up_time + ramp_down_time)
+
+            if ramp_up_time > 0:
+                self.add_segment(base_amp, ramp_up_time, amp[0])
+
+            self.add_segment(amp[0], const_time)
+
+            if ramp_down_time > 0:
+                self.add_segment(amp[0], ramp_down_time, base_amp)
+
+        else:
+            self.add_segment(amp[0], width[0])
+
+        if len(amp) > 1:
+            for i in np.arange(1, len(amp)):
 
                 self.add_segment(amp[i], width[i])
+
         self._add_point(base_amp)
         return self
 
@@ -679,7 +699,8 @@ class ConductanceSource(SignalSource):
 class ElectrodeSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, pattern, delay, type, duration, AmpStart, frequency, width, rotationAngles, pulseNumber, stepSize):
+    def __init__(self, pattern, delay, type, duration, AmpStart, frequency, width, rotationAngles, pulseNumber, stepSize,
+                 ramp_up_time, ramp_down_time):
 
 
         """
@@ -699,10 +720,13 @@ class ElectrodeSource(SignalSource):
         self.rotation_angles = rotationAngles
         self.pulse_number = pulseNumber
         self.stepSize = stepSize
+        self.ramp_up_time = ramp_up_time
+        self.ramp_down_time = ramp_down_time
 
         if self.type == "Pulse":
 
-            self.add_pulses_arbitrary(self.AmpStart,self.width,delay=self.stim_delay)
+            self.add_pulses_arbitrary(self.AmpStart, self.width, delay=self.stim_delay,
+                                      ramp_up_time=self.ramp_up_time, ramp_down_time=self.ramp_down_time)
 
         elif self.type == "Train":
 
@@ -749,9 +773,76 @@ class ElectrodeSource(SignalSource):
         x = np.mean(xpos)
         y = np.mean(ypos)
         z = np.mean(zpos)
+        
+        print(np.array([x,y,z]),flush=True)
 
         return np.array([x,y,z])
 
+    def grindaway(self,hsection):
+        """Grindaway"""
+
+        # get the data for the section
+        n_segments = int(h.n3d(sec=hsection))
+        n_comps = hsection.nseg
+
+        xs = np.zeros(n_segments)
+        ys = np.zeros(n_segments)
+        zs = np.zeros(n_segments)
+        lengths = np.zeros(n_segments)
+        for index in range(0, n_segments):
+            xs[index] = h.x3d(index, sec=hsection)
+            ys[index] = h.y3d(index, sec=hsection)
+            zs[index] = h.z3d(index, sec=hsection)
+            lengths[index] = h.arc3d(index, sec=hsection)
+
+        # to use Vector class's .interpolate()
+        # must first scale the independent variable
+        # i.e. normalize length along centroid
+        lengths /= (lengths[-1])
+
+        # initialize the destination "independent" vector
+        # range = np.array(n_comps+2)
+        comp_range = np.arange(0, n_comps + 2) / n_comps - \
+            1.0 / (2 * n_comps)
+        comp_range[0] = 0
+        comp_range[-1] = 1
+
+        # length contains the normalized distances of the pt3d points
+        # along the centroid of the section.  These are spaced at
+        # irregular intervals.
+        # range contains the normalized distances of the nodes along the
+        # centroid of the section.  These are spaced at regular intervals.
+        # Ready to interpolate.
+
+        xs_interp = np.interp(comp_range, lengths, xs)
+        ys_interp = np.interp(comp_range, lengths, ys)
+        zs_interp = np.interp(comp_range, lengths, zs)
+
+        return xs_interp, ys_interp, zs_interp
+
+    def get_positions(self,
+            hsection1=None,
+            location1=None):
+        """Gets position on a section
+
+        Parameters
+        ----------
+
+        hsection1 : hoc section
+                    First section
+        location1 : float
+                    range x along hsection1
+        """
+
+        xs_interp1, ys_interp1, zs_interp1 = self.grindaway(hsection1)
+
+        x1 = xs_interp1[int(np.floor((len(xs_interp1) - 1) * location1))]
+        y1 = ys_interp1[int(np.floor((len(ys_interp1) - 1) * location1))]
+        z1 = zs_interp1[int(np.floor((len(zs_interp1) - 1) * location1))]
+
+        pos1 = np.array([x1,y1,z1])
+
+        return pos1
 
 
     def interp_seg_positions(self,section,x):
@@ -870,6 +961,10 @@ class ElectrodeSource(SignalSource):
     def attach_to(self, section, x, **kw):
 
 
+        self.extracellulars.append(self.time_vec)
+
+        seg = section(x)
+
         section.insert('extracellular')
 
         ramp_up_number = kw.get("ramp_up_number", None)
@@ -909,18 +1004,24 @@ class ElectrodeSource(SignalSource):
             segVec.copy(self.stim_vec)
             segVec.mul(scaleFac[0])
 
+        self.extracellulars.append(segVec)
+        self.extracellulars.append(seg.extracellular)
+        self.extracellulars.append(seg.extracellular.e)
+
         out = segVec.play(seg.extracellular._ref_e, self.time_vec)
         self.extracellulars.append(out)
 
-        return segVec.to_python(), newpos
+
+
+        return segVec.to_python(), self.time_vec.to_python(), newpos
 
 class PointSourceElectrode(ElectrodeSource):
 
     def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,
-                 rotationAngles, pulseNumber, stepSize, x, y, z, sigma=0.277):
+                 rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time, x, y, z, sigma=0.277):
 
         super().__init__(pattern, delay, type, duration,  AmpStart, frequency, width,
-                         rotationAngles, pulseNumber, stepSize)
+                         rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time)
 
         # x,y,z positions of electrode, sigma is extracellular conductivity
         self.x = x
@@ -957,10 +1058,11 @@ class PointSourceElectrode(ElectrodeSource):
 class ConstantEfield(ElectrodeSource):
 
     def __init__(self, pattern, delay, type, duration, AmpStart, frequency, width,
-                 rotationAngles, pulseNumber, stepSize, offset, constantAxis, somaPosition):
+                 rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time,
+                 offset, constantAxis, somaPosition):
 
         super().__init__(pattern, delay, type, duration, AmpStart, frequency, width,
-                         rotationAngles, pulseNumber, stepSize)
+                         rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time)
         self.constantAxis = constantAxis
         self.soma_position = somaPosition
         self.offset = offset
@@ -991,18 +1093,20 @@ class ConstantEfield(ElectrodeSource):
 
         if 'soma' in section.name():
 
+            #segpositions = self.get_positions(section,x)
+
             segpositions = self.get_soma_position(section)
 
             self.soma_position = segpositions.copy()
         else:
-            segpositions = self.interp_seg_positions(section, x)
+            # segpositions = self.interp_seg_positions(section, x)
+            segpositions = self.get_positions(section,x)
 
         if isinstance(self.offset, np.ndarray):
 
             segpositions += self.offset * 1e3  # offset in mm converted to um
 
         self.new_soma_pos = self.soma_position.copy()
-
 
         scaleFactor, newpositions = self.constant_potentials(segpositions)
 
@@ -1011,12 +1115,12 @@ class ConstantEfield(ElectrodeSource):
 class RealElectrode(ElectrodeSource):
 
     def __init__(self, pattern, delay, type, duration,  AmpStart, frequency, width,
-                 rotationAngles, pulseNumber, stepSize,
+                 rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time,
                  electrode_path, offset, current_applied, soma_position, axes):
 
 
         super().__init__(pattern, delay, type, duration,  AmpStart,
-                         frequency, width, rotationAngles, pulseNumber, stepSize)
+                         frequency, width, rotationAngles, pulseNumber, stepSize, ramp_up_time, ramp_down_time)
 
         self.electrode_path = electrode_path
         self.offset = offset

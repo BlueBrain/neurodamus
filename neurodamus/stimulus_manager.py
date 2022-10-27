@@ -25,6 +25,7 @@ from .core.configuration import SimConfig
 from .core.stimuli import CurrentSource, ConductanceSource, RealElectrode, PointSourceElectrode, ConstantEfield
 from .core import random
 import numpy as np
+from neuron import h
 
 
 # from sklearn.decomposition import PCA
@@ -789,18 +790,20 @@ class Extracellular(BaseStim):
         if not self.parse_check_all_parameters(stim_info):
             return None  # nothing to do, stim is a no-op
 
+        print('Parameters checked',flush=True)
+
         tpoints = target.getPointList(cell_manager)
 
-        posList = []
+        posList = {}
 
-        fields = []
+        fields = {}
+
+        times = []
 
         for tpoint_list in tpoints:
             gid = tpoint_list.gid
 
-            print('gid is ' + str(gid))
-
-            # cell = cell_manager.getMEType(gid)
+            cell = cell_manager.getMEType(gid)
 
             somaPos = None
 
@@ -826,7 +829,8 @@ class Extracellular(BaseStim):
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
 
-                print(sc.sec.name(),flush=True)
+                print(sc.sec.name())
+                print(sc.sec.nseg)
 
                 x = tpoint_list.x[sec_id]
 
@@ -841,21 +845,24 @@ class Extracellular(BaseStim):
                         es = ConstantEfield(self.pattern, self.delay, self.type, self.duration,
                                             self.AmpStart, self.frequency, self.width,
                                             self.rotation_angles, self.pulse_number,
-                                            self.stepSize, self.offset, self.constantAxis, somaPos)
+                                            self.stepSize, self.ramp_up_time, self.ramp_down_time,
+                                            self.offset, self.constantAxis, somaPos)
 
-                        phi, pos = es.attach_to(sc.sec, x, ramp_up_number=self.ramp_up_number,
+                        phi, time, pos = es.attach_to(sc.sec, x, ramp_up_number=self.ramp_up_number,
                                  ramp_down_number=self.ramp_down_number)
 
                         somaPos = es.soma_position
 
-                        posList.append(pos)
-                        fields.append(phi)
+                        posList[sc.sec.name()+'('+str(x)+')'] = pos
+                        fields[sc.sec.name()+'('+str(x)+')'] = phi
+                        times.append(time)
 
                     else:
 
                         es = PointSourceElectrode(self.pattern, self.delay, self.type, self.duration,
                                                   self.AmpStart, self.frequency, self.width,
                                                   self.rotation_angles, self.pulse_number, self.stepSize,
+                                                  self.ramp_up_time, self.ramp_down_time,
                                                   self.x, self.y, self.z, sigma=0.207)
 
                         phi, pos = es.attach_to(sc.sec, x, ramp_up_number=self.ramp_up_number,
@@ -868,6 +875,7 @@ class Extracellular(BaseStim):
                     es = RealElectrode(self.pattern, self.delay, self.type, self.duration,
                                        self.AmpStart, self.frequency, self.width,
                                        self.rotation_angles, self.pulse_number, self.stepSize,
+                                       self.ramp_up_time, self.ramp_down_time,
                                        self.electrode_path, self.offset,
                                        self.current_applied, somaPos, axes)
 
@@ -877,6 +885,10 @@ class Extracellular(BaseStim):
                     somaPos = es.soma_position
 
                 self.stimList.append(es)  # save source
+
+        np.save('fields.npy', fields)
+        np.save('positions.npy', posList)
+        np.save('times.npy', times)
 
         Extracellular.stimCount += 1  # increment global count
 
@@ -1099,24 +1111,27 @@ class Extracellular(BaseStim):
         self.ramp_up_number = None
         self.ramp_down_number = None
 
+        self.ramp_up_time = None
+        self.ramp_down_time = None
+
         if stim_info.get("RampUpTime") is not None:
-            ramp_up_time = float(stim_info.get("RampUpTime"))
-            self.ramp_up_number = int(ramp_up_time / self.stepSize)
-            if ramp_up_time > self.duration:
+            self.ramp_up_time = float(stim_info.get("RampUpTime"))
+            self.ramp_up_number = int(self.ramp_up_time / self.stepSize)
+            if self.ramp_up_time > self.duration:
                 raise Exception('Ramp up time must be smaller than duration')
 
         if stim_info.get("RampDownTime") is not None:
-            ramp_down_time = float(stim_info.get("RampDownTime"))
-            self.ramp_down_number = int(ramp_down_time / self.stepSize)
-            if ramp_down_time > self.duration:
+            self.ramp_down_time = float(stim_info.get("RampDownTime"))
+            self.ramp_down_number = int(self.ramp_down_time / self.stepSize)
+            if self.ramp_down_time > self.duration:
                 raise Exception('Ramp down time must be smaller than duration')
 
             if stim_info.get("RampUpTime") is not None:
-                if ramp_up_time + ramp_down_time > self.duration:
+                if self.ramp_up_time + self.ramp_down_time > self.duration:
                     raise Exception("Ramps must be shorter than the duration")
 
         if (self.ramp_up_number is not None or self.ramp_down_number is not None) and not (
-                'TI' in self.type or self.type == 'Sinusoid'):
-            raise Exception("ramp only works with TI or sinusoids")
+                'TI' in self.type or self.type == 'Sinusoid' or self.type == 'Pulse'):
+            raise Exception("ramp only works with TI or sinusoids or single pulses")
 
         return True

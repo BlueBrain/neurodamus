@@ -20,6 +20,7 @@ __copyright__ = "2018 Blue Brain Project, EPFL"
 
 # Neurodamus node for setting up a neurodamus execution
 from .node import Node, Neurodamus
+from .metype import Cell_V5, Cell_V6
 
 
 __all__ = ["Node", "Neurodamus"]

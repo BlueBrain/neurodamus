@@ -87,6 +87,7 @@ class _NeurodamusCore(_Neuron):
         def check_load_lib(mech, env_lib_path):
             if hasattr(cls._h, mech):
                 return True
+            print(env_lib_path,flush=True)
             mechlib = os.environ.get(env_lib_path)
             if mechlib is None:
                 return False
