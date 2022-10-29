@@ -567,7 +567,7 @@ int loadDataVector( Info *info, char* name )
  */
 int loadDataInt( Info* info, char* name, hid_t row, int *dest )
 {
-    hsize_t dims[1] = {1}, offset[1] = {row}, offset_out[1] = {0}, count[1] = {1};
+    hsize_t dims[1] = {1}, offset[1] = {static_cast<hsize_t>(row)}, offset_out[1] = {0}, count[1] = {1};
     hid_t dataset_id, dataspace, memspace, space; //, filetype;
     herr_t status;
     int ndims = 0;
@@ -609,7 +609,7 @@ int loadDataInt( Info* info, char* name, hid_t row, int *dest )
  */
 int loadDataString( Info* info, char* name, hid_t row, char **hoc_dest )
 {
-    hsize_t dims[1] = {1}, offset[1] = {row}, offset_out[1] = {0}, count[1] = {1};
+    hsize_t dims[1] = {1}, offset[1] = {static_cast<hsize_t>(row)}, offset_out[1] = {0}, count[1] = {1};
     hid_t dataset_id, dataspace, memspace, space, filetype, memtype;
     herr_t status;
     char** rdata;
