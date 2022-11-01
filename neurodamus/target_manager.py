@@ -115,6 +115,10 @@ class TargetManager:
         Note that these will be moved into a TargetManager after the cells have been distributed,
         instantiated, and potentially split.
         """
+        def _is_sonata_file(file_name):
+            if file_name.endswith(".h5") or file_name.endswith(".sonata"):
+                return True
+            return False
         if circuit.CircuitPath:
             self._try_open_start_target(circuit)
 
@@ -123,7 +127,7 @@ class TargetManager:
             self.load_user_target(target_file)
 
         nodes_file = circuit.get("CellLibraryFile")
-        if nodes_file and nodes_file.endswith(".h5") and self._nodeset_reader:
+        if nodes_file and _is_sonata_file(nodes_file) and self._nodeset_reader:
             self._nodeset_reader.register_node_file(find_input_file(nodes_file))
 
     def _try_open_start_target(self, circuit):
@@ -390,7 +394,7 @@ class NodesetTarget(_TargetInterface):
         """ Retrieve the final gids of the nodeset target """
         if not self.nodesets:
             logging.warning("Nodeset '%s' can't be materialized. No node populations", self.name)
-            return []
+            return numpy.array([])
         nodesets = sorted(self.nodesets, key=lambda n: n.offset)  # Get gids ascending
         gids = nodesets[0].final_gids()
         for extra_nodes in nodesets[1:]:
