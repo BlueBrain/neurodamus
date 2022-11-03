@@ -440,8 +440,8 @@ class ConductanceSource(SignalSource):
                 self.clamp.dur1 = time_vec[-1]
                 self.clamp.amp1 = reversal
                 # support delay with initial zero
-                self.time_vec = Neuron.h.Vector(1, 0).append(time_vec)
-                self.stim_vec = Neuron.h.Vector(1, 0).append(stim_vec)
+                self.time_vec = time_vec.insrt(0, 0)
+                self.stim_vec = stim_vec.insrt(0, 0)
                 # replace self.stim_vec with inverted and clamped signal
                 # rs is in MOhm, so conductance is in uS (micro Siemens)
                 self.stim_vec = Neuron.h.Vector(
