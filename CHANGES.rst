@@ -2,6 +2,17 @@
 Change Log
 ==========
 
+Version 2.12.7
+==============
+**04 Nov 2022**
+
+*Improvements*
+  * [BBPP134-14] Support node files with '.sonata' extension
+
+*Bug fixes*
+  * [BBPBGLIB-945] Properly display the exception messages when the simulation crashes
+
+
 Version 2.12.6
 ==============
 **21 Oct 2022**
