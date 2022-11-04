@@ -77,7 +77,7 @@ def neurodamus(args=None):
         return 1  # no need for _mpi_abort, error is being handled by all ranks
     except Exception:
         show_exception_abort("Unhandled Exception. Terminating...", sys.exc_info())
-        return 1  # some ranks don't mpi_abort
+        return 1
     return 0
 
 
@@ -129,20 +129,20 @@ def show_exception_abort(err_msg, exc_info):
     First one is elected to print
     """
     err_file = Path(EXCEPTION_NODE_FILENAME)
-    ALL_RANKS_SYNC_WINDOW = 5
+    ALL_RANKS_SYNC_WINDOW = 1
 
     if err_file.exists():
-        return 1  # Dont mpi_abort here, otherwise other ranks wont process the code below
+        return 1
 
     with open(err_file, 'a') as f:
         f.write(str(MPI.rank) + "\n")
-    time.sleep(ALL_RANKS_SYNC_WINDOW)  # give time for all ranks, avoid split-brain
 
     with open(err_file, 'r') as f:
         line0 = open(err_file).readline().strip()
     if str(MPI.rank) == line0:
         logging.critical(err_msg, exc_info=exc_info)
 
+    time.sleep(ALL_RANKS_SYNC_WINDOW)  # give time to the rank that logs the exception
     _mpi_abort()  # abort all ranks which have waited. Seems to help avoiding MPT stack
 
 
