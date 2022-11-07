@@ -2,6 +2,14 @@
 Change Log
 ==========
 
+Version 2.12.8
+==============
+**07 Nov 2022**
+
+*New Features*
+  * [NRN-111] Add support for incoming Datum changes in 9.0.0
+
+
 Version 2.12.7
 ==============
 **04 Nov 2022**
