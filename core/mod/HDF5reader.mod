@@ -36,6 +36,11 @@ NET_RECEIVE(w) {
 }
 
 VERBATIM
+#if defined(NRN_VERSION_GTEQ)
+#if NRN_VERSION_GTEQ(9,0,0)
+#define NRN_VERSION_GTEQ_9_0_0
+#endif
+#endif
 #ifndef DISABLE_HDF5
 
 #undef ptr
@@ -567,7 +572,11 @@ int loadDataVector( Info *info, char* name )
  */
 int loadDataInt( Info* info, char* name, hid_t row, int *dest )
 {
+    #if defined(NRN_VERSION_GTEQ_9_0_0)
+    hsize_t dims[1] = {1}, offset[1] = {static_cast<hsize_t>(row)}, offset_out[1] = {0}, count[1] = {1};
+    #else
     hsize_t dims[1] = {1}, offset[1] = {row}, offset_out[1] = {0}, count[1] = {1};
+    #endif
     hid_t dataset_id, dataspace, memspace, space; //, filetype;
     herr_t status;
     int ndims = 0;
@@ -609,7 +618,11 @@ int loadDataInt( Info* info, char* name, hid_t row, int *dest )
  */
 int loadDataString( Info* info, char* name, hid_t row, char **hoc_dest )
 {
+    #if defined(NRN_VERSION_GTEQ_9_0_0)
+    hsize_t dims[1] = {1}, offset[1] = {static_cast<hsize_t>(row)}, offset_out[1] = {0}, count[1] = {1};
+    #else
     hsize_t dims[1] = {1}, offset[1] = {row}, offset_out[1] = {0}, count[1] = {1};
+    #endif
     hid_t dataset_id, dataspace, memspace, space, filetype, memtype;
     herr_t status;
     char** rdata;

@@ -33,6 +33,11 @@ VERBATIM
 #else
 # define debug_printf(...)
 #endif
+#if defined(NRN_VERSION_GTEQ)
+#if NRN_VERSION_GTEQ(9,0,0)
+#define NRN_VERSION_GTEQ_9_0_0
+#endif
+#endif
 ENDVERBATIM
 
 
@@ -95,7 +100,11 @@ VERBATIM
         // Invoke low-level artcell_net_send, since generic NMODL net_send is only
         // available in INITIAL and NET_RECEIVE blocks. It takes an ABSOLUTE time instead
         debug_printf("[VecStim] restartEvent(): index=%d, etime=%g, t=%g\n", (int)index - 1, etime, t);
+        #if defined(NRN_VERSION_GTEQ_9_0_0)
+        artcell_net_send(_tqitem, (double*)0, _ppvar[1].get<Point_process*>(), etime, 1.0);
+        #else
         artcell_net_send(_tqitem, (double*)0, (Point_process*)_ppvar[1]._pvoid, etime, 1.0);
+        #endif
     }
 #endif
 ENDVERBATIM

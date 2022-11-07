@@ -22,6 +22,11 @@ THREADSAFE
 }
 
 VERBATIM
+#if defined(NRN_VERSION_GTEQ)
+#if NRN_VERSION_GTEQ(9,0,0)
+#define NRN_VERSION_GTEQ_9_0_0
+#endif
+#endif
 #ifndef NRN_VERSION_GTEQ_8_2_0
 extern int ifarg(int iarg);
 #ifndef CORENEURON_BUILD
@@ -435,7 +440,11 @@ VERBATIM
     double etime = resumeEvent(_threadargs_);
     if (etime < start+duration) {
         debug_printf("InhPoisson: First event after resume at t = %6.3f\n", etime);
+        #if defined(NRN_VERSION_GTEQ_9_0_0)
+        artcell_net_send(_tqitem, (double*)0, _ppvar[1].get<Point_process*>(), etime, activeFlag);
+        #else
         artcell_net_send(_tqitem, (double*)0, (Point_process*)_ppvar[1]._pvoid, etime, activeFlag);
+        #endif
     }
 #endif
 ENDVERBATIM
