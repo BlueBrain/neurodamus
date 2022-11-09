@@ -12,6 +12,8 @@ from os import path as ospath
 from collections import namedtuple, defaultdict
 from contextlib import contextmanager
 from shutil import copyfileobj, move
+import ctypes
+import ctypes.util
 
 from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
 from .core import NeurodamusCore as Nd
@@ -35,6 +37,37 @@ from .utils.timeit import TimerManager, timeit
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
 from . import point_neuron as _point # NOQA
+
+
+def trim_memory():
+    """
+    malloc_trim - release free memory from the heap (back to the OS)
+
+    * We should only run malloc_trim if we are using the default glibc memory allocator.
+    When using a custom allocator such as jemalloc, this could cause unexpected behavior
+    including segfaults.
+
+    * The malloc_trim function returns 1 if memory was actually
+    released back to the system, or 0 if it was not possible to
+    release any memory.
+    """
+
+    if os.getenv('LD_PRELOAD'):
+        if 'jemalloc' in os.getenv('LD_PRELOAD'):
+            logging.warning("malloc_trim works only with the default glibc memory allocator. "
+                            "Please avoid using jemalloc (for now, we skip malloc_trim).")
+            logging.info("malloc_trim: not possible to release any memory.")
+            return 0
+
+    try:
+        path_libc = ctypes.util.find_library("c")
+        libc = ctypes.CDLL(path_libc)
+        logging.info("malloc_trim: memory released back to the system.")
+        return libc.malloc_trim(0)
+    except OSError:
+        logging.error('Unable to call malloc_trim.')
+        logging.info("malloc_trim: not possible to release any memory.")
+        return 0
 
 
 class METypeEngine(EngineBase):
@@ -1256,6 +1289,7 @@ class Node:
                 self.spike2file("out.dat")
             self.sonata_spikes()
         if SimConfig.use_coreneuron:
+            Nd.MemUsage().print_mem_usage()
             self.clear_model()
             self._run_coreneuron()
             if not SimConfig.is_sonata_config:
@@ -1398,6 +1432,8 @@ class Node:
                     self._sonatareport_helper.clear()
 
         Node.__init__(self, None, None)  # Reset vars
+
+        trim_memory()
 
     # -------------------------------------------------------------------------
     #  output
