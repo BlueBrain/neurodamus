@@ -563,6 +563,15 @@ class Connection(ConnectionBase):
                 syn.g = cond
             self._conductances_bk = None
 
+    def __del__(self):
+        """Clear Random123 objects when connection is deleted
+        """
+        for syn in self._synapses:
+            try:
+                syn.clearRNG()
+            except AttributeError:
+                pass
+
 
 class ArtificialStim:
     """Base class for artificial Stims, namely Replay and Minis
