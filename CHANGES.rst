@@ -2,6 +2,16 @@
 Change Log
 ==========
 
+Version 2.12.9
+==============
+**09 Nov 2022**
+
+*New Features*
+  * [BBPBGLIB-938] Clean Random123 objects in synapses
+  * [BBPBGLIB-950] Call malloc_trim to return free pages back to the OS when clearing up the model
+  * Shrink NEURON ArrayPools and call Python garbage collect when clearing up the model
+
+
 Version 2.12.8
 ==============
 **07 Nov 2022**
