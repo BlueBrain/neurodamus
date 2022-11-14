@@ -516,6 +516,7 @@ class GlioVascularManager(ConnectionManagerBase):
                 sec.L = l
                 sec.diam = d
                 sec.insert('vascouplingB')
+                sec.vascouplingB.Rad = d/2
                 sec.insert('mcd')
                 sec(0.5).mcd.perimeter = p
                 glut = Nd.GlutReceive(sec(0.5), sec=sec)
