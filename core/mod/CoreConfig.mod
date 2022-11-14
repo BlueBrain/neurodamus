@@ -180,7 +180,6 @@ VERBATIM
     fprintf(fp, CORENRN_ARG_FMT"%d\n",   "prcellgid", (int)*getarg(6));
     fprintf(fp, CORENRN_ARG_FMT"%lf\n",  "celsius", celsius);
     fprintf(fp, CORENRN_ARG_FMT"%lf\n",  "voltage", *hoc_val_pointer("v_init"));
-    fprintf(fp, CORENRN_ARG_FMT"'%s/%s'\n", "report-conf",  outputdir, REPORT_CONFIG_FILE);
     fprintf(fp, CORENRN_ARG_FMT"%d\n", "cell-permute", DEFAULT_CELL_PERMUTE);
     if (ifarg(7) && strlen(hoc_gargstr(7))) {  // if spike replay specified
         fprintf(fp, CORENRN_ARG_FMT"'%s'\n", "pattern", abspath(hoc_gargstr(7), tmpmem));
@@ -190,6 +189,9 @@ VERBATIM
     }
     if (ifarg(9) && (int)*getarg(9)) {  // if model-stats specified
         fprintf(fp, "'%s'\n", "model-stats");
+    }
+    if (!ifarg(10) || (int)*getarg(10)) {  // if --disable-reports is False (reports are enabled)
+        fprintf(fp, CORENRN_ARG_FMT"'%s/%s'\n", "report-conf",  outputdir, REPORT_CONFIG_FILE);
     }
 # if CORENRN_CLI11
     fprintf(fp, "mpi=true\n");
