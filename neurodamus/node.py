@@ -1237,7 +1237,8 @@ class Node:
             self._pr_cell_gid or -1,
             self._core_replay_file,
             SimConfig.rng_info.getGlobalSeed(),
-            int(SimConfig.cli_options.model_stats)
+            int(SimConfig.cli_options.model_stats),
+            int(self._run_conf["EnableReports"])
         )
         # Wait for rank0 to write the sim config file
         MPI.barrier()
@@ -1537,7 +1538,8 @@ class Node:
                     else:
                         subprocess.call(['/bin/rm', '-rf', data_folder])
                     os.remove(ospath.join(SimConfig.output_root, "sim.conf"))
-                    os.remove(ospath.join(SimConfig.output_root, "report.conf"))
+                    if self._run_conf["EnableReports"]:
+                        os.remove(ospath.join(SimConfig.output_root, "report.conf"))
 
                 # Delete the SHM folder if it was used
                 if self._shm_enabled:
