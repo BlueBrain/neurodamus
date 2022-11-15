@@ -511,7 +511,8 @@ class GlioVascularManager(ConnectionManagerBase):
             lengths = self._gliovascular.get_attribute('endfoot_compartment_length', endfeet)
             diameters = self._gliovascular.get_attribute('endfoot_compartment_diameter', endfeet)
             perimeters = self._gliovascular.get_attribute('endfoot_compartment_perimeter', endfeet)
-            vasc_node_ids = self._gliovascular.get_attribute('source_node_id', endfeet)
+            assert self._gliovascular.source == "vasculature"
+            vasc_node_ids = self._gliovascular.source_nodes(self._gliovascular.select_all())
             # vasculature_section_ids = self._gliovascular.get_attribute('vasculature_section_id', endfeet)
             # vasculature_segment_ids = self._gliovascular.get_attribute('vasculature_segment_id', endfeet)
 
