@@ -472,7 +472,7 @@ class GlioVascularManager(ConnectionManagerBase):
             raise Exception("Missing GlioVascular Sonata file via 'Path' configuration")
 
         if "VasculaturePath" not in circuit_conf:
-            logging.warning("Missing Vasculature Sonata fine via 'VasculaturePath' configuration")
+            logging.warning("Missing Vasculature Sonata file via 'VasculaturePath' configuration")
 
         super().__init__(circuit_conf, target_manager, cell_manager, src_cell_manager, **kw)
         self._astro_ids = self._cell_manager.local_nodes.raw_gids()
@@ -486,6 +486,12 @@ class GlioVascularManager(ConnectionManagerBase):
         # per file, hence this two lines below to access the first and only pop in
         # the file
         edge_file, *pop = sonata_source.split(":")
+
+        print("AAAAAAA")
+        print(sonata_source)
+        print(dir(sonata_source))
+        exit()
+
         storage = libsonata.EdgeStorage(edge_file)
         pop_name = pop[0] if pop else list(storage.population_names)[0]
         self._gliovascular = storage.open_population(pop_name)
@@ -523,7 +529,7 @@ class GlioVascularManager(ConnectionManagerBase):
 
                 print("BBB")
                 logging.warning(dir(sec(0.5).vascouplingB))
-                
+
 
                 # sec(0.5).vascouplingB.Rad = d/2
                 sec.insert('mcd')
