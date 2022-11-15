@@ -470,6 +470,10 @@ class GlioVascularManager(ConnectionManagerBase):
                 "Circuit target is required for GlioVascular projections")
         if "Path" not in circuit_conf:
             raise Exception("Missing GlioVascular Sonata file via 'Path' configuration")
+
+        if "VasculaturePath" not in circuit_conf:
+            logging.warning("Missing Vasculature Sonata fine via 'VasculaturePath' configuration")
+
         super().__init__(circuit_conf, target_manager, cell_manager, src_cell_manager, **kw)
         self._astro_ids = self._cell_manager.local_nodes.raw_gids()
         self._gid_offset = self._cell_manager.local_nodes.offset
@@ -516,7 +520,11 @@ class GlioVascularManager(ConnectionManagerBase):
                 sec.L = l
                 sec.diam = d
                 sec.insert('vascouplingB')
-                sec(0.5).vascouplingB.Rad = d/2
+
+                print("BBB")
+                print(sec(0.5).vascouplingB.vasculature_section_id)
+
+                # sec(0.5).vascouplingB.Rad = d/2
                 sec.insert('mcd')
                 sec(0.5).mcd.perimeter = p
                 glut = Nd.GlutReceive(sec(0.5), sec=sec)
