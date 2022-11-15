@@ -496,11 +496,6 @@ class GlioVascularManager(ConnectionManagerBase):
             pop_name = pop[0] if pop else list(storage.population_names)[0]
             self._vasculature = storage.open_population(pop_name)
 
-            print("AAAA")
-            print(self._vasculature)
-            print(dir(self._vasculature))
-            exit()
-
     def create_connections(self, *_, **__):
         logging.info("Creating GlioVascular virtual connections")
         # Retrieve endfeet selections for GLIA gids on the current processor
@@ -508,6 +503,12 @@ class GlioVascularManager(ConnectionManagerBase):
             self._connect_endfeet(astro_id)
 
     def _connect_endfeet(self, astro_id):
+
+        print("AAAA")
+        print(self._vasculature)
+        print(dir(self._vasculature))
+        exit()
+
         endfeet = self._gliovascular.afferent_edges(astro_id)
         if endfeet.flat_size > 0:
             # Get endfeet input
@@ -515,6 +516,8 @@ class GlioVascularManager(ConnectionManagerBase):
             lengths = self._gliovascular.get_attribute('endfoot_compartment_length', endfeet)
             diameters = self._gliovascular.get_attribute('endfoot_compartment_diameter', endfeet)
             perimeters = self._gliovascular.get_attribute('endfoot_compartment_perimeter', endfeet)
+            vasculature_section_ids = self._gliovascular.get_attribute('vasculature_section_id', endfeet)
+            vasculature_segment_ids = self._gliovascular.get_attribute('vasculature_segment_id', endfeet)
 
             # Retrieve instantiated astrocyte
             astrocyte = self._cell_manager.gid2cell[astro_id + self._gid_offset]
@@ -523,17 +526,17 @@ class GlioVascularManager(ConnectionManagerBase):
             astrocyte.create_endfeet(parent_section_ids.size)
 
             # Iterate through endfeet: insert mechanisms, set values and connect to parent section
-            for sec, parent_section_id, l, d, p in zip(astrocyte.endfeet,
+            for sec, parent_section_id, l, d, p, vasc_sec, vasc_seg in zip(astrocyte.endfeet,
                                                        parent_section_ids,
                                                        lengths,
                                                        diameters,
-                                                       perimeters):
+                                                       perimeters, vasculature_section_ids , vasculature_segment_ids):
                 sec.L = l
                 sec.diam = d
                 sec.insert('vascouplingB')
 
                 print("BBB")
-                logging.warning(dir(sec(0.5).vascouplingB))
+                logging.warning(f"{vasc_sec} {vasc_seg}")
                 exit()
 
 
@@ -553,6 +556,8 @@ class GlioVascularManager(ConnectionManagerBase):
             # logging.warn(str(cell.all.printnames())) #  print astrocyte names for "all" sections
             # logging.warn(str(Nd.h.topology()))  # print astrocyte topology
             # Nd.h('forall psection()')
+
+        exit()
 
     def finalize(self, *_, **__):
         pass  # No synpases/netcons
