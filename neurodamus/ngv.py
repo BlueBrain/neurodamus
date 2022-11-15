@@ -492,7 +492,7 @@ class GlioVascularManager(ConnectionManagerBase):
         self._gliovascular = storage.open_population(pop_name)
 
         if "VasculaturePath" in circuit_conf:
-            storage = libsonata.EdgeStorage(circuit_conf["VasculaturePath"])
+            storage = libsonata.NodeStorage(circuit_conf["VasculaturePath"])
             pop_name = pop[0] if pop else list(storage.population_names)[0]
             self._vasculature = storage.open_population(pop_name)
 
