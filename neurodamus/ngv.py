@@ -490,7 +490,6 @@ class GlioVascularManager(ConnectionManagerBase):
         print("AAAAAAA")
         print(sonata_source)
         print(dir(sonata_source))
-        exit()
 
         storage = libsonata.EdgeStorage(edge_file)
         pop_name = pop[0] if pop else list(storage.population_names)[0]
@@ -529,6 +528,7 @@ class GlioVascularManager(ConnectionManagerBase):
 
                 print("BBB")
                 logging.warning(dir(sec(0.5).vascouplingB))
+                exit()
 
 
                 # sec(0.5).vascouplingB.Rad = d/2
