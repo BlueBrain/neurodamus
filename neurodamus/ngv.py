@@ -522,7 +522,8 @@ class GlioVascularManager(ConnectionManagerBase):
                 sec.insert('vascouplingB')
 
                 print("BBB")
-                print(sec(0.5).vascouplingB.vasculature_section_id)
+                logging.warning(dir(sec(0.5).vascouplingB))
+                
 
                 # sec(0.5).vascouplingB.Rad = d/2
                 sec.insert('mcd')
