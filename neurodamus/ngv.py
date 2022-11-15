@@ -465,6 +465,7 @@ class GlioVascularManager(ConnectionManagerBase):
     InnerConnectivityCls = None  # No synapses
 
     def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
+
         if cell_manager.circuit_target is None:
             raise Exception(
                 "Circuit target is required for GlioVascular projections")
@@ -486,14 +487,19 @@ class GlioVascularManager(ConnectionManagerBase):
         # per file, hence this two lines below to access the first and only pop in
         # the file
         edge_file, *pop = sonata_source.split(":")
-
-        print("AAAAAAA")
-        print(sonata_source)
-        print(dir(sonata_source))
-
         storage = libsonata.EdgeStorage(edge_file)
         pop_name = pop[0] if pop else list(storage.population_names)[0]
         self._gliovascular = storage.open_population(pop_name)
+
+        if "VasculaturePath" in circuit_conf:
+            storage = libsonata.EdgeStorage(circuit_conf["VasculaturePath"])
+            pop_name = pop[0] if pop else list(storage.population_names)[0]
+            self._vasculature = storage.open_population(pop_name)
+
+            print("AAAA")
+            print(self._vasculature)
+            print(dir(self._vasculature))
+            exit()
 
     def create_connections(self, *_, **__):
         logging.info("Creating GlioVascular virtual connections")
