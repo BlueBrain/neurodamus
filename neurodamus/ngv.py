@@ -548,6 +548,7 @@ class GlioVascularManager(ConnectionManagerBase):
             
             assert self._gliovascular.source == "vasculature"
             if hasattr(self, "_vasculature"):
+                import libsonata
                 vasc_node_ids = libsonata.Selection(self._gliovascular.source_nodes(self._gliovascular.select_all()))
                 d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
                 d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
