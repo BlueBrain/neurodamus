@@ -534,7 +534,7 @@ class GlioVascularManager(ConnectionManagerBase):
                 if hasattr(self, "_vasculature"):
                     r_vessel_start = self._vasculature.get_attribute("start_diameter", vasc_node_id)/2
                     r_vessel_end = self._vasculature.get_attribute("end_diameter", vasc_node_id)/2
-                    sec.vascouplingB.R0pas = (r_vessel_start + r_vessel_end)/2
+                    sec(0.5).vascouplingB.R0pas = (r_vessel_start + r_vessel_end)/2
 
                 # sec(0.5).vascouplingB.Rad = d/2
                 sec.insert('mcd')
