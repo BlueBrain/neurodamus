@@ -502,16 +502,6 @@ class GlioVascularManager(ConnectionManagerBase):
         for astro_id in self._astro_ids:
             self._connect_endfeet(astro_id)
 
-        from neuron import h
-        for sec in h.allsec():
-
-            # logging.warning("gid:{:d} -> astro:{:s}".format(gid, str(sec.name())))
-            try:
-                sec(0.5).vascouplingB.R0pas = 0.12345
-                logging.warning(f"sec.name: {sec.name()} R0rad: {sec(0.5).vascouplingB.R0pas}")
-            except:
-                pass
-
     def _connect_endfeet(self, astro_id):
 
         endfeet = self._gliovascular.afferent_edges(astro_id)
@@ -560,13 +550,10 @@ class GlioVascularManager(ConnectionManagerBase):
             if hasattr(self, "_vasculature"):
                 import libsonata
                 vasc_node_ids = libsonata.Selection(self._gliovascular.source_nodes(self._gliovascular.select_all()))
-                vasc_node_ids2 = self._gliovascular.source_nodes(self._gliovascular.select_all())
                 d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
                 d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
-                for sec, d_vessel_start, d_vessel_end, vasc_node_id in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends, vasc_node_ids2):
-                    old = sec(0.5).vascouplingB.R0pas
+                for sec, d_vessel_start, d_vessel_end in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends):
                     sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
-                    logging.warning(f"setting R0pas: {old} -> {sec(0.5).vascouplingB.R0pas}. vasc_node_id: {vasc_node_id}")
             
 
     def finalize(self, *_, **__):
