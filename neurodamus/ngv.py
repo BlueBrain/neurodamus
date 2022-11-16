@@ -553,7 +553,9 @@ class GlioVascularManager(ConnectionManagerBase):
                 d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
                 d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
                 for sec, d_vessel_start, d_vessel_end in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends):
+                    old = sec(0.5).vascouplingB.R0pas
                     sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
+                    logging.warning(f"setting R0pas: {old} -> {sec(0.5).vascouplingB.R0pas}")
             
 
     def finalize(self, *_, **__):
