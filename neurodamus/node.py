@@ -1068,8 +1068,28 @@ class Node:
         if not self._is_ngv_run:
             Nd.cvode.cache_efficient("ElectrodesPath" not in self._run_conf)
         self._pc.set_maxstep(4)
+
+
+        from neuron import h
+        for sec in h.allsec():
+
+            # logging.warning("gid:{:d} -> astro:{:s}".format(gid, str(sec.name())))
+            try:
+                logging.warning(f"before: sec.name: {sec.name()} R0rad: {sec(0.5).vascouplingB.R0pas}")
+            except:
+                pass
+
         with timeit(name="stdinit"):
             Nd.stdinit()
+
+        from neuron import h
+        for sec in h.allsec():
+
+            # logging.warning("gid:{:d} -> astro:{:s}".format(gid, str(sec.name())))
+            try:
+                logging.warning(f"after: sec.name: {sec.name()} R0rad: {sec(0.5).vascouplingB.R0pas}")
+            except:
+                pass
 
         logging.info("Executing actions after stdinit...")
         for mgr in self._circuits.all_node_managers():
