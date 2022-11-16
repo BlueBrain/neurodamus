@@ -502,6 +502,16 @@ class GlioVascularManager(ConnectionManagerBase):
         for astro_id in self._astro_ids:
             self._connect_endfeet(astro_id)
 
+        from neuron import h
+        for sec in h.allsec():
+
+            # logging.warning("gid:{:d} -> astro:{:s}".format(gid, str(sec.name())))
+            try:
+                sec(0.5).vascouplingB.R0pas = 0.12345
+                logging.warning(f"sec.name: {sec.name()} R0rad: {sec(0.5).vascouplingB.R0pas}")
+            except:
+                pass
+
     def _connect_endfeet(self, astro_id):
 
         endfeet = self._gliovascular.afferent_edges(astro_id)
