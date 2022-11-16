@@ -550,9 +550,10 @@ class GlioVascularManager(ConnectionManagerBase):
             if hasattr(self, "_vasculature"):
                 import libsonata
                 vasc_node_ids = libsonata.Selection(self._gliovascular.source_nodes(self._gliovascular.select_all()))
+                vasc_node_ids2 = self._gliovascular.source_nodes(self._gliovascular.select_all())
                 d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
                 d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
-                for sec, d_vessel_start, d_vessel_end, vasc_node_id in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends, vasc_node_ids):
+                for sec, d_vessel_start, d_vessel_end, vasc_node_id in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends, vasc_node_ids2):
                     old = sec(0.5).vascouplingB.R0pas
                     sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
                     logging.warning(f"setting R0pas: {old} -> {sec(0.5).vascouplingB.R0pas}. vasc_node_id: {vasc_node_id}")
