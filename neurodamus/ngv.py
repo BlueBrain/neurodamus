@@ -511,8 +511,6 @@ class GlioVascularManager(ConnectionManagerBase):
             lengths = self._gliovascular.get_attribute('endfoot_compartment_length', endfeet)
             diameters = self._gliovascular.get_attribute('endfoot_compartment_diameter', endfeet)
             perimeters = self._gliovascular.get_attribute('endfoot_compartment_perimeter', endfeet)
-            assert self._gliovascular.source == "vasculature"
-            vasc_node_ids = self._gliovascular.source_nodes(self._gliovascular.select_all())
             # vasculature_section_ids = self._gliovascular.get_attribute('vasculature_section_id', endfeet)
             # vasculature_segment_ids = self._gliovascular.get_attribute('vasculature_segment_id', endfeet)
 
@@ -527,16 +525,11 @@ class GlioVascularManager(ConnectionManagerBase):
                                                        parent_section_ids,
                                                        lengths,
                                                        diameters,
-                                                       perimeters, vasc_node_ids):
+                                                       perimeters):
                 sec.L = l
                 sec.diam = d
+                # here we just insert the mechanism. If we have the vasculature we are also populating it, after
                 sec.insert('vascouplingB')
-                if hasattr(self, "_vasculature"):
-                    r_vessel_start = self._vasculature.get_attribute("start_diameter", vasc_node_id)/2
-                    r_vessel_end = self._vasculature.get_attribute("end_diameter", vasc_node_id)/2
-                    sec(0.5).vascouplingB.R0pas = (r_vessel_start + r_vessel_end)/2
-
-                # sec(0.5).vascouplingB.Rad = d/2
                 sec.insert('mcd')
                 sec(0.5).mcd.perimeter = p
                 glut = Nd.GlutReceive(sec(0.5), sec=sec)
@@ -552,8 +545,15 @@ class GlioVascularManager(ConnectionManagerBase):
             # logging.warn(str(cell.all.printnames())) #  print astrocyte names for "all" sections
             # logging.warn(str(Nd.h.topology()))  # print astrocyte topology
             # Nd.h('forall psection()')
-
-        exit()
+            
+            assert self._gliovascular.source == "vasculature"
+            if hasattr(self, "_vasculature"):
+                vasc_node_ids = self._gliovascular.source_nodes(self._gliovascular.select_all())
+                d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
+                d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
+                for sec, d_vessel_start, d_vessel_end in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends):
+                    sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
+            
 
     def finalize(self, *_, **__):
         pass  # No synpases/netcons
