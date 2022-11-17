@@ -494,6 +494,7 @@ class GlioVascularManager(ConnectionManagerBase):
         if "VasculaturePath" in circuit_conf:
             storage = libsonata.NodeStorage(circuit_conf["VasculaturePath"])
             pop_name = list(storage.population_names)[0]
+            self._vasculature_path = circuit_conf["VasculaturePath"]
             self._vasculature = storage.open_population(pop_name)
 
     def create_connections(self, *_, **__):
