@@ -1792,6 +1792,8 @@ class Neurodamus(Node):
                 for _ in range(nlines):
                     line = fd.readline()
                     cn_entries.append(line)
+            # Apart from merging the files.dat files we also need to create links for all the files
+            # in coreneuron_datadir_in_gpfs/<NODE_ID> to coreneuron_datadir (in /dev/shm/)
 
         cnfilename = ospath.join(coreneuron_datadir, "files.dat")
         with open(cnfilename, 'w') as cnfile:
@@ -1883,6 +1885,17 @@ class Neurodamus(Node):
                 if MPI.rank == 0:
                     base_filesdat = ospath.join(SimConfig.coreneuron_datadir, 'files')
                     os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
+                    # Below improvement should only be enabled if /dev/shm is available
+                    # If /dev/shm is enabled this means the the <*_{1,2,3}.dat> files are going to
+                    # be written first in /dev/shm (which is going to be used as a buffer to
+                    # accelerate the writes and avoid GPFS IO)
+                    # Rank 0 should move the <*_{1,2,3}.dat> files to a the coreneuron_datadir on
+                    # GPFS (coreneuron_input_gpfs). Each node should move them to a separate
+                    # subfolder (with name NODE_ID?) of coreneuron_datadir to increase GPFS
+                    # performance. We can do that by finding out the Rank 0 of every node (already
+                    # implemented).
+                    # We will then create links on coreneuron_datadir for each file in the
+                    # subfolders.
                 # Archive timers for this cycle
                 TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
 
