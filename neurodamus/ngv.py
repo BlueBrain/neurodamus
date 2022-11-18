@@ -511,8 +511,6 @@ class GlioVascularManager(ConnectionManagerBase):
             lengths = self._gliovascular.get_attribute('endfoot_compartment_length', endfeet)
             diameters = self._gliovascular.get_attribute('endfoot_compartment_diameter', endfeet)
             perimeters = self._gliovascular.get_attribute('endfoot_compartment_perimeter', endfeet)
-            # vasculature_section_ids = self._gliovascular.get_attribute('vasculature_section_id', endfeet)
-            # vasculature_segment_ids = self._gliovascular.get_attribute('vasculature_segment_id', endfeet)
 
             # Retrieve instantiated astrocyte
             astrocyte = self._cell_manager.gid2cell[astro_id + self._gid_offset]
@@ -546,22 +544,17 @@ class GlioVascularManager(ConnectionManagerBase):
             # logging.warn(str(Nd.h.topology()))  # print astrocyte topology
             # Nd.h('forall psection()')
             
-            # assert self._gliovascular.source == "vasculature"
-            # if hasattr(self, "_vasculature"):
-            #     import libsonata
-            #     vasc_node_ids = libsonata.Selection(self._gliovascular.source_nodes(self._gliovascular.select_all()))
-            #     d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
-            #     d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
-            #
-            #     logging.warning(f"len vasc node ids: {len(self._gliovascular.source_nodes(self._gliovascular.select_all()))}")
-            #     logging.warning(f"len astrocyte.endfeet: {len(astrocyte.endfeet)}")
-            #     logging.warning(f"len starts: {len(d_vessel_starts)}")
-            #     logging.warning(f"len ends: {len(d_vessel_ends)}")
-            #
-            #     exit()
-            #
-            #     for sec, d_vessel_start, d_vessel_end in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends):
-            #         sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
+            assert self._gliovascular.source == "vasculature"
+            if hasattr(self, "_vasculature"):
+                import libsonata
+
+                vasc_node_ids = libsonata.Selection(self._gliovascular.source_nodes(endfeet))
+                assert vasc_node_ids.flat_size == len(list(astrocyte.endfeet))
+                d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
+                d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
+
+                for sec, d_vessel_start, d_vessel_end in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends):
+                    sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
             
 
     def finalize(self, *_, **__):
