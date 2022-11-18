@@ -546,22 +546,22 @@ class GlioVascularManager(ConnectionManagerBase):
             # logging.warn(str(Nd.h.topology()))  # print astrocyte topology
             # Nd.h('forall psection()')
             
-            assert self._gliovascular.source == "vasculature"
-            if hasattr(self, "_vasculature"):
-                import libsonata
-                vasc_node_ids = libsonata.Selection(self._gliovascular.source_nodes(self._gliovascular.select_all()))
-                d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
-                d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
-
-                logging.warning(f"len vasc node ids: {len(self._gliovascular.source_nodes(self._gliovascular.select_all()))}")
-                logging.warning(f"len astrocyte.endfeet: {len(astrocyte.endfeet)}")
-                logging.warning(f"len starts: {len(d_vessel_starts)}")
-                logging.warning(f"len ends: {len(d_vessel_ends)}")
-
-                exit()
-
-                for sec, d_vessel_start, d_vessel_end in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends):
-                    sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
+            # assert self._gliovascular.source == "vasculature"
+            # if hasattr(self, "_vasculature"):
+            #     import libsonata
+            #     vasc_node_ids = libsonata.Selection(self._gliovascular.source_nodes(self._gliovascular.select_all()))
+            #     d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
+            #     d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
+            #
+            #     logging.warning(f"len vasc node ids: {len(self._gliovascular.source_nodes(self._gliovascular.select_all()))}")
+            #     logging.warning(f"len astrocyte.endfeet: {len(astrocyte.endfeet)}")
+            #     logging.warning(f"len starts: {len(d_vessel_starts)}")
+            #     logging.warning(f"len ends: {len(d_vessel_ends)}")
+            #
+            #     exit()
+            #
+            #     for sec, d_vessel_start, d_vessel_end in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends):
+            #         sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
             
 
     def finalize(self, *_, **__):
