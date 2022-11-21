@@ -16,7 +16,7 @@ from shutil import copyfileobj, move
 
 from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
 from .core import NeurodamusCore as Nd
-from .core.configuration import GlobalConfig, SimConfig
+from .core.configuration import CircuitConfig, GlobalConfig, SimConfig
 from .core._engine import EngineBase
 from .core._shmutils import SHMUtil
 from .core.configuration import ConfigurationError, find_input_file, get_debug_cell_gid
@@ -94,14 +94,18 @@ class CircuitManager:
         self.global_target.append_nodeset(virtual_cell_manager.local_nodes)
         return virtual_cell_manager
 
-    def new_node_manager(self, circuit, *args, **kwargs):
+    @staticmethod
+    def new_node_manager_bare(circuit: CircuitConfig, target_manager, run_conf, **kwargs):
+        engine = circuit.Engine or METypeEngine
+        CellManagerCls = engine.CellManagerCls or CellDistributor
+        return CellManagerCls(circuit, target_manager, run_conf, **kwargs)
+
+    def new_node_manager(self, circuit, target_manager, run_conf, *, load_balancer=None, **kwargs):
         if circuit.get("PopulationType") == "virtual":
             return self._new_virtual_node_manager(circuit)
 
-        engine = circuit.Engine or METypeEngine
-        CellManagerCls = engine.CellManagerCls or SynapseRuleManager
-        cell_manager = CellManagerCls(circuit, *args, **kwargs)
-        cell_manager.load_nodes()
+        cell_manager = self.new_node_manager_bare(circuit, target_manager, run_conf, **kwargs)
+        cell_manager.load_nodes(load_balancer)
         self.register_node_manager(cell_manager)
         return cell_manager
 
@@ -144,7 +148,7 @@ class CircuitManager:
                 destination = ''
                 source = self.alias.get(source)  # refresh unaliasing
             else:
-                raise ConfigurationError("Can't find projection Node population: %s", destination)
+                raise ConfigurationError("Can't find projection Node population: " + destination)
 
         src_manager = self.node_managers.get(source) or self.virtual_node_managers.get(source)
         if src_manager is None:  # src manager may not exist -> virtual
@@ -233,7 +237,8 @@ class Node:
             config_file: A BlueConfig file
             options: A dictionary of run options typically coming from cmd line
         """
-        Nd.init()
+        Nd.init()  # ensure/load neurodamus mods
+        self._run_conf: dict  # Multi-cycle runs preserve this
 
         # The Recipe being None is allowed internally for e.g. setting up multi-cycle runs
         # It shall not be used as Public API
@@ -251,7 +256,7 @@ class Node:
             if SimConfig.use_neuron:
                 self._binreport_helper = Nd.BinReportHelper(Nd.dt, True)
                 self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True)
-            self._base_circuit = SimConfig.base_circuit
+            self._base_circuit: CircuitConfig = SimConfig.base_circuit
             self._extra_circuits = SimConfig.extra_circuits
             self._pr_cell_gid = get_debug_cell_gid(options)
             self._core_replay_file = ""
@@ -261,6 +266,10 @@ class Node:
             self._cycle_i = 0
             self._n_cycles = 1
             self._shm_enabled = False
+        else:
+            self._run_conf  # Assert this is defined (if not multicyle runs are not properly set)
+
+        # Init unconditionally
         self._circuits = CircuitManager()
         self._stim_list = None
         self._report_list = None
@@ -270,6 +279,10 @@ class Node:
         self._jumpstarters = []
         self._cell_state_dump_t = None
 
+        # Register the global target and cell manager
+        self._target_manager.register_target(self._circuits.global_target)
+        self._target_manager.init_hoc_manager(self._circuits.global_manager)
+
     #
     # public 'read-only' properties - object modification on user responsibility
     circuits = property(lambda self: self._circuits)
@@ -278,6 +291,11 @@ class Node:
     elec_manager = property(lambda self: self._elec_manager)
     stims = property(lambda self: self._stim_list)
     reports = property(lambda self: self._report_list)
+
+    def all_circuits(self, exclude_disabled=True):
+        if not exclude_disabled or self._base_circuit.CircuitPath:
+            yield self._base_circuit
+        yield from self._extra_circuits.values()
 
     # -
     def check_resume(self):
@@ -297,11 +315,12 @@ class Node:
         if base_population:
             logging.info("Default population selected: %s", base_population)
             PopulationNodes.create_pop(base_population, is_base_pop=True)
-        self._target_manager.load_targets(self._base_circuit)
-        for xcircuit in self._extra_circuits.values():
-            self._target_manager.load_targets(xcircuit)
-        # Register the global target
-        self._target_manager.register_target(self._circuits.global_target)
+
+        for circuit in self.all_circuits():
+            log_verbose("Loading targets for circuit %s", circuit._name or "(default)")
+            self._target_manager.load_targets(circuit)
+
+        self._target_manager.load_user_target()
 
     # -
     @mpi_no_errors
@@ -311,12 +330,15 @@ class Node:
         CellDistributor to split cells and balance those pieces across the available CPUs.
         """
         log_stage("Computing Load Balance")
-        if not self._base_circuit.CircuitPath:
+        circuit = self._base_circuit
+        if not circuit.CircuitPath:
             logging.info(" => No base circuit. Skipping... ")
             return None
 
+        _ = PopulationNodes.offset_freezer()  # Dont offset while in loadbal
+
         # Info about the cells to be distributed
-        target_spec = self._target_spec
+        target_spec = TargetSpec(circuit.CircuitTarget)
         target = self.target_manager.get_target(target_spec)
         cell_count = None
 
@@ -327,28 +349,8 @@ class Node:
                                 "Please consider launching it in a larger MPI cluster")
 
         # Check / set load balance mode
-        lb_mode = SimConfig.loadbal_mode
-        if lb_mode == LoadBalanceMode.MultiSplit:
-            if not SimConfig.use_coreneuron:
-                logging.info("Load Balancing ENABLED. Mode: MultiSplit")
-            else:
-                logging.warning("Load Balancing mode CHANGED to WholeCell for CoreNeuron")
-                lb_mode = LoadBalanceMode.WholeCell
-
-        elif lb_mode == LoadBalanceMode.WholeCell:
-            logging.info("Load Balancing ENABLED. Mode: WholeCell")
-
-        elif lb_mode is None:
-            if cell_count is None:
-                lb_mode, reason = LoadBalanceMode.RoundRobin, "No target set, unknown cell count"
-            else:
-                lb_mode, reason = LoadBalanceMode.auto_select(SimConfig.use_neuron, cell_count,
-                                                              self._run_conf["Duration"])
-            if lb_mode != LoadBalanceMode.RoundRobin:
-                logging.warning("Load Balance AUTO-SELECTED: %s. Reason: %s", lb_mode.name, reason)
-
+        lb_mode = LoadBalance.select_lb_mode(SimConfig, self._run_conf, target)
         if lb_mode == LoadBalanceMode.RoundRobin:
-            logging.info("Load Balancing DISABLED. Will use Round-Robin distribution")
             return None
 
         # Build load balancer as per requested options
@@ -365,11 +367,16 @@ class Node:
             return load_balancer
 
         logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
-        cell_dist = self._circuits.new_node_manager(self._base_circuit, self._target_manager)
+        cell_dist = self._circuits.new_node_manager(
+            circuit, self._target_manager, self._run_conf
+        )
         with load_balancer.generate_load_balance(target_spec, cell_dist):
             # Instantiate a basic circuit to evaluate complexities
             cell_dist.finalize()
-            self.create_synapses()
+            self._circuits.global_manager.finalize()
+            SimConfig.update_connection_blocks(self._circuits.alias)
+            target_manager = self._target_manager
+            self._create_synapse_manager(SynapseRuleManager, self._base_circuit, target_manager)
 
         # reset since we instantiated with RR distribution
         Nd.t = .0  # Reset time
@@ -391,7 +398,7 @@ class Node:
                 "Load Balance requested for %d CPUs (as per ProspectiveHosts). "
                 "To continue execution launch on a partition of that size",
                 prosp_hosts)
-            Nd.quit()
+            Nd.quit(1)
 
         log_stage("LOADING NODES")
         if not load_balance:
@@ -404,13 +411,11 @@ class Node:
         self._circuits.register_node_manager(cell_distributor)
 
         # SUPPORT for extra/custom Circuits
-        circuits_sorted = sorted(
-            self._extra_circuits.items(),
-            key=lambda x: (x[1].Engine.CircuitPrecedence if x[1].Engine else 0, x[0])
-        )
-        for name, circuit in circuits_sorted:
+        for name, circuit in self._extra_circuits.items():
             log_stage("Circuit %s", name)
             self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
+
+        PopulationNodes.freeze_offsets()  # Dont offset further, could change gids
 
         # Let the cell managers have any final say in the cell objects
         log_stage("FINALIZING CIRCUIT CELLS")
@@ -418,8 +423,9 @@ class Node:
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
             cell_manager.finalize()
 
-        # Done main targets. We can stop offsetting
-        PopulationNodes.freeze_offsets()
+        # Final bits after we have all cell managers
+        self._circuits.global_manager.finalize()
+        SimConfig.update_connection_blocks(self._circuits.alias)
 
     # -
     @mpi_no_errors
@@ -428,41 +434,14 @@ class Node:
         """Create synapses among the cells, handling connections that appear in the config file
         """
         log_stage("LOADING CIRCUIT CONNECTIVITY")
-        self._circuits.global_manager.finalize()
-        self._target_manager.init_hoc_manager(self._circuits.global_manager)
         target_manager = self._target_manager
-        SimConfig.update_connection_blocks(self._circuits.alias)
-
-        def create_synapase_manager(ctype, conf, *args, **kwargs):
-            """Create a synapse manager for intra-circuit connectivity"""
-            log_stage("Circuit %s", conf._name or "(default)")
-            if not conf.get("nrnPath"):
-                logging.info(" => Circuit internal connectivity has been DISABLED")
-                return
-
-            c_target = TargetSpec(conf.get("CircuitTarget"))
-            if c_target.population is None:
-                c_target.population = self._circuits.alias.get(conf._name)
-            edge_file, *pop = conf.get("nrnPath").split(":")
-            if not os.path.isabs(edge_file):
-                edge_file = find_input_file(edge_file)
-            src, dst = edge_node_pop_names(edge_file, pop[0] if pop else None)
-
-            if src and dst and src != dst:
-                raise ConfigurationError("Inner connectivity with different populations")
-
-            manager = self._circuits.get_create_edge_manager(
-                ctype, src, dst, c_target, (conf, *args), **kwargs
-            )
-            self._load_connections(conf, manager)  # load internal connections right away
-
-        create_synapase_manager(SynapseRuleManager, self._base_circuit, target_manager,
-                                load_offsets=self._is_ngv_run)
+        self._create_synapse_manager(SynapseRuleManager, self._base_circuit, target_manager,
+                                      load_offsets=self._is_ngv_run)
 
         for circuit in self._extra_circuits.values():
             Engine = circuit.Engine or METypeEngine
             SynManagerCls = Engine.InnerConnectivityCls
-            create_synapase_manager(SynManagerCls, circuit, target_manager)
+            self._create_synapse_manager(SynManagerCls, circuit, target_manager)
 
         log_stage("Handling projections...")
         for pname, projection in SimConfig.projections.items():
@@ -473,6 +452,31 @@ class Node:
             self._process_connection_configure(conn_conf)
 
         logging.info("Done, but waiting for all ranks")
+
+    def _create_synapse_manager(self, ctype, conf, *args, **kwargs):
+        """Create a synapse manager for intra-circuit connectivity
+        """
+        log_stage("Circuit %s", conf._name or "(default)")
+        if not conf.get("nrnPath"):
+            logging.info(" => Circuit internal connectivity has been DISABLED")
+            return
+
+        c_target = TargetSpec(conf.get("CircuitTarget"))
+        if c_target.population is None:
+            c_target.population = self._circuits.alias.get(conf._name)
+
+        edge_file, *pop = conf.get("nrnPath").split(":")
+        if not os.path.isabs(edge_file):
+            edge_file = find_input_file(edge_file)
+        src, dst = edge_node_pop_names(edge_file, pop[0] if pop else None)
+
+        if src and dst and src != dst:
+            raise ConfigurationError("Inner connectivity with different populations")
+
+        manager = self._circuits.get_create_edge_manager(
+            ctype, src, dst, c_target, (conf, *args), **kwargs
+        )
+        self._load_connections(conf, manager)  # load internal connections right away
 
     def _process_connection_configure(self, conn_conf):
         source_t = TargetSpec(conn_conf["Source"])

@@ -122,10 +122,6 @@ class TargetManager:
         if circuit.CircuitPath:
             self._try_open_start_target(circuit)
 
-        target_file = circuit.get("TargetFile")
-        if target_file and not target_file.endswith(".json"):
-            self.load_user_target(target_file)
-
         nodes_file = circuit.get("CellLibraryFile")
         if nodes_file and _is_sonata_file(nodes_file) and self._nodeset_reader:
             self._nodeset_reader.register_node_file(find_input_file(nodes_file))
@@ -138,8 +134,11 @@ class TargetManager:
             self.parser.open(start_target_file, False)
             self._has_hoc_targets = True
 
-    def load_user_target(self, target_file):
+    def load_user_target(self):
         # Old target files. Notice new targets with same should not happen
+        target_file = self._run_conf.get("TargetFile")
+        if not target_file or target_file.endswith(".json"):  # allow any ext, except nodesets
+            return
         user_target = find_input_file(target_file)
         self.parser.open(user_target, True)
         self._has_hoc_targets = True

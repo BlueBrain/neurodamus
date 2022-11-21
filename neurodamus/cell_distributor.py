@@ -378,7 +378,6 @@ class GlobalCellManager(_CellManager):
 
     def __init__(self):
         self._cell_managers = []
-        self._binfo = None
         self._pc = Nd.pc
 
     def register_manager(self, cell_manager):
@@ -386,7 +385,6 @@ class GlobalCellManager(_CellManager):
 
     def finalize(self):
         self._cell_managers.sort(key=lambda x: x.local_nodes.offset)
-        self._binfo = self._cell_managers[0]._binfo
 
     # Accessor methods (Keep CamelCase API for compatibility with existing hoc)
     # ----------------
@@ -401,14 +399,18 @@ class GlobalCellManager(_CellManager):
     def get_final_gids(self):
         return numpy.concatenate([man.get_final_gids() for man in self._cell_managers])
 
-    def get_cell(self, gid):
+    def _find_manager(self, gid):
         cell_managers_iter = iter(self._cell_managers)
         prev_manager = next(cell_managers_iter)  # base cell manager
         for manager in cell_managers_iter:
             if manager.local_nodes.offset > gid:
                 break
             prev_manager = manager
-        return prev_manager._gid2cell[gid]
+        return prev_manager
+
+    def get_cell(self, gid):
+        manager = self._find_manager(gid)
+        return manager.get_cell(gid)
 
     def get_cellref(self, gid):
         """Retrieve a cell object given its gid.
@@ -416,9 +418,10 @@ class GlobalCellManager(_CellManager):
         spgid automatically \n
         Returns: Cell object
         """
-        if self._binfo:
+        manager = self._find_manager(gid)
+        if manager._binfo:
             # are we in load balance mode? must replace gid with spgid
-            gid = self._binfo.thishost_gid(gid)
+            gid = manager._binfo.thishost_gid(gid)
         return self._pc.gid2obj(gid)
 
     def getSpGid(self, gid):
@@ -430,18 +433,14 @@ class GlobalCellManager(_CellManager):
         Returns: The gid as it appears on this cpu (if this is the same as the base gid,
         then that is the soma piece)
         """
-        if self._binfo:
-            return self._binfo.thishost_gid(gid)
+        manager = self._find_manager(gid)
+        if manager._binfo:
+            return manager._binfo.thishost_gid(gid)
         return gid
 
     def getPopulationInfo(self, gid):
-        cell_managers_iter = iter(self._cell_managers)
-        prev_manager = next(cell_managers_iter)  # base cell manager
-        for manager in cell_managers_iter:
-            if manager.local_nodes.offset > gid:
-                break
-            prev_manager = manager
-        return prev_manager.population_name, prev_manager.local_nodes.offset
+        manager = self._find_manager(gid)
+        return manager.population_name, manager.local_nodes.offset
 
 
 class CellDistributor(CellManagerBase):
@@ -673,7 +672,7 @@ class LoadBalance:
         """Context manager that creates load balance for the circuit instantiated within
 
         Args:
-            target_str: a string represesntation of the target.
+            target_str: a string representation of the target.
             cell_distributor: the cell distributor object to which we can query
                 the cells to be load balanced
         """
@@ -847,3 +846,30 @@ class LoadBalance:
     def _cpu_assign_filename(self, target_str) -> Path:
         """Gets the CPU assignment filename for a given target, according to target CPU count"""
         return self._lb_dir / (self._cpu_assign_filename_tpl % (target_str, self.target_cpu_count))
+
+    @staticmethod
+    def select_lb_mode(sim_config, run_conf, target):
+        """ A method which selects the load balance mode according to run config
+        """
+        # Check / set load balance mode
+        lb_mode = sim_config.loadbal_mode
+        if lb_mode == LoadBalanceMode.MultiSplit:
+            if not sim_config.use_coreneuron:
+                logging.info("Load Balancing ENABLED. Mode: MultiSplit")
+            else:
+                logging.warning("Load Balancing mode CHANGED to WholeCell for CoreNeuron")
+                lb_mode = LoadBalanceMode.WholeCell
+
+        elif lb_mode == LoadBalanceMode.WholeCell:
+            logging.info("Load Balancing ENABLED. Mode: WholeCell")
+
+        elif lb_mode is None:
+            if target.is_void():
+                lb_mode, reason = LoadBalanceMode.RoundRobin, "No target set, unknown cell count"
+            else:
+                lb_mode, reason = LoadBalanceMode.auto_select(sim_config.use_neuron,
+                                                              target.gid_count(),
+                                                              run_conf["Duration"])
+            logging.warning("Load Balance AUTO-SELECTED: %s. Reason: %s", lb_mode.name, reason)
+
+        return lb_mode

@@ -184,6 +184,8 @@ class SynReaderSynTool(SynapseReader):
                 log_verbose("Found gj nrn file: nrn_gj.h5")
                 syn_src = alt_gj_nrn_file
             # else pass the dir as is, SynapseReader can find e.g. nrn.h5
+
+        self._syn_reader = None  # Clear syn_reader before creating a new one
         reader = self._syn_reader = Nd.SynapseReader(syn_src, verbose)
         if population:
             reader.selectPopulation(population)

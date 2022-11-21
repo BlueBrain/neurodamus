@@ -546,7 +546,12 @@ def _extra_circuits(config: _SimConfig, run_conf):
         circuit_info.setdefault("nrnPath", False)
         extra_circuits[name] = _make_circuit_config(circuit_info, req_morphology=False)
         extra_circuits[name]._name = name
-    config.extra_circuits = extra_circuits
+
+    # Sort so that iteration is deterministic
+    config.extra_circuits = dict(sorted(
+        extra_circuits.items(),
+        key=lambda x: (x[1].Engine.CircuitPrecedence if x[1].Engine else 0, x[0])
+    ))
 
 
 @SimConfig.validator
@@ -835,7 +840,7 @@ def _check_model_build_mode(config: _SimConfig, run_conf):
         # exists are deleted
         if (
             not core_data_exists
-            or os.path.exists(core_data_location_shm)
+            or core_data_location_shm and os.path.exists(core_data_location_shm)
         ):
             data_location = (
                 core_data_location_shm
@@ -849,7 +854,7 @@ def _check_model_build_mode(config: _SimConfig, run_conf):
                          data_location)
             config.build_model = True
         else:
-            logging.info("CoreNeuron input data found. Skipping model build")
+            logging.info("CoreNeuron input data found in %s. Skipping model build", core_data_location)
             config.build_model = False
 
     if not config.build_model and not core_data_exists:

@@ -148,6 +148,25 @@ def test_multisplit(target_manager_hoc, circuit_conf, capsys):
     assert "Target VerySmall is a subset of the target Small" in captured.out
 
 
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run"
+)
+def test_loadbal_integration():
+    """Ensure given the right files are in the lbal dir, the correct situation is detected
+    """
+    from neurodamus import Node
+    from neurodamus.core.configuration import GlobalConfig
+    GlobalConfig.verbosity = 2
+    config_file = str(SIM_DIR / "usecase3" / "simulation_sonata.json")
+    nd = Node(config_file, {"lb_mode": "WholeCell"})
+    from neuron import h
+    h.dt = 0.025  # LoadBalance requires this ATM
+    nd.load_targets()
+    lb = nd.compute_load_balance()
+    nd.create_cells(lb)
+
+
 class MockedTargetManager:
     """
     A mock target manager, for the single purpose of returning the provided targets

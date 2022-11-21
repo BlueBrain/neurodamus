@@ -2,6 +2,7 @@
 Implementation of Gid Sets with the ability of self offsetting and avoid
 global overlapping
 """
+from contextlib import contextmanager
 import numpy
 from ..utils import compat, WeakList
 from . import MPI
@@ -63,6 +64,7 @@ class PopulationNodes:
     @classmethod
     def reset(cls):
         cls._global_populations.clear()
+        cls._do_offsetting = True
 
     @classmethod
     def all(cls):
@@ -126,6 +128,13 @@ class PopulationNodes:
                 # We are in a subsequent nodeset - re-set offsetting
                 gidpop._compute_offset(prev_gidpop)
             prev_gidpop = gidpop
+
+    @classmethod
+    @contextmanager
+    def offset_freezer(cls):
+        cls._do_offsetting = False
+        yield
+        cls._do_offsetting = True
 
 
 class NodeSet:
