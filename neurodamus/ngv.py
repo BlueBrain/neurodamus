@@ -1,6 +1,7 @@
 """
 Module which defines and handles Glia Cells and connectivity
 """
+import libsonata
 import logging
 import numpy as np
 import os.path
@@ -481,7 +482,7 @@ class GlioVascularManager(ConnectionManagerBase):
 
     def open_edge_location(self, sonata_source, circuit_conf, **__):
         logging.info("GlioVascular sonata file %s", sonata_source)
-        import libsonata
+
 
         # sonata files can have multiple populations. In building we only use one
         # per file, hence this two lines below to access the first and only pop in
@@ -546,7 +547,6 @@ class GlioVascularManager(ConnectionManagerBase):
             
             assert self._gliovascular.source == "vasculature"
             if hasattr(self, "_vasculature"):
-                import libsonata
 
                 vasc_node_ids = libsonata.Selection(self._gliovascular.source_nodes(endfeet))
                 assert vasc_node_ids.flat_size == len(list(astrocyte.endfeet))
@@ -554,6 +554,7 @@ class GlioVascularManager(ConnectionManagerBase):
                 d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
 
                 for sec, d_vessel_start, d_vessel_end in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends):
+                    # /4 is because we have an average of diameters and the output is a radius
                     sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
             
 
