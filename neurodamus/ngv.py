@@ -482,8 +482,6 @@ class GlioVascularManager(ConnectionManagerBase):
 
     def open_edge_location(self, sonata_source, circuit_conf, **__):
         logging.info("GlioVascular sonata file %s", sonata_source)
-
-
         # sonata files can have multiple populations. In building we only use one
         # per file, hence this two lines below to access the first and only pop in
         # the file
@@ -527,7 +525,7 @@ class GlioVascularManager(ConnectionManagerBase):
                                                        perimeters):
                 sec.L = l
                 sec.diam = d
-                # here we just insert the mechanism. If we have the vasculature we are also populating it, after
+                # here we just insert the mechanism. Population comes after
                 sec.insert('vascouplingB')
                 sec.insert('mcd')
                 sec(0.5).mcd.perimeter = p
@@ -544,7 +542,7 @@ class GlioVascularManager(ConnectionManagerBase):
             # logging.warn(str(cell.all.printnames())) #  print astrocyte names for "all" sections
             # logging.warn(str(Nd.h.topology()))  # print astrocyte topology
             # Nd.h('forall psection()')
-            
+
             assert self._gliovascular.source == "vasculature"
             if hasattr(self, "_vasculature"):
 
@@ -553,7 +551,8 @@ class GlioVascularManager(ConnectionManagerBase):
                 d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
                 d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
 
-                for sec, d_vessel_start, d_vessel_end in zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends):
+                for sec, d_vessel_start, d_vessel_end in \
+                    zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends):
                     # /4 is because we have an average of diameters and the output is a radius
                     sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
             
