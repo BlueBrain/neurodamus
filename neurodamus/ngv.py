@@ -551,11 +551,11 @@ class GlioVascularManager(ConnectionManagerBase):
                 d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
                 d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
 
-                for sec, d_vessel_start, d_vessel_end in \
-                    zip(astrocyte.endfeet, d_vessel_starts, d_vessel_ends):
+                for sec, d_vessel_start, d_vessel_end in zip(
+                        astrocyte.endfeet, d_vessel_starts, d_vessel_ends
+                ):
                     # /4 is because we have an average of diameters and the output is a radius
                     sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
-            
 
     def finalize(self, *_, **__):
         pass  # No synpases/netcons
