@@ -1068,7 +1068,6 @@ class Node:
         if not self._is_ngv_run:
             Nd.cvode.cache_efficient("ElectrodesPath" not in self._run_conf)
         self._pc.set_maxstep(4)
-
         with timeit(name="stdinit"):
             Nd.stdinit()
 
