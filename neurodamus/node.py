@@ -1322,10 +1322,12 @@ class Node:
                 log_verbose("Clearing model prior to final save")
                 self._binreport_helper.flush()
                 self._sonatareport_helper.flush()
-                self.clear_model()
 
             self.dump_cell_config()
             self._binreport_helper.savestate()
+            # Clear the model after saving state as the pointers are being recorded in reportinglib
+            if SimConfig.save_time is None:
+                self.clear_model()
             logging.info(" => Save done successfully")
 
         return save_f
