@@ -858,6 +858,38 @@ class Extracellular(BaseStim):
 
                 if stim_info["Electrode_Path"] is None:
                     if self.isConstant:
+
+                        print('pattern is ')
+                        print(self.pattern)
+                        print('delay is ')
+                        print(self.delay)
+                        print('type is ')
+                        print(self.type)
+                        print('duration is ')
+                        print(self.duration)
+                        print('ampstart is ')
+                        print(self.AmpStart)
+                        print('freq is ')
+                        print(self.frequency)
+                        print('width is ')
+                        print(self.width)
+                        print('rot is ')
+                        print(self.rotation_angles)
+                        print('pulsenum is ')
+                        print(self.pulse_number)
+                        print('stepsize is ')
+                        print(self.stepSize)
+                        print('rampuptime is ')
+                        print(self.ramp_up_time)
+                        print('rampdowntime is ')
+                        print(self.ramp_down_time)
+                        print('offset is ')
+                        print(self.offset)
+                        print('constantaxis is ')
+                        print(self.constantAxis)
+                        print('somapos is ')
+                        print(somaPos)
+
                         es = ConstantEfield(self.pattern, self.delay, self.type, self.duration,
                                             self.AmpStart, self.frequency, self.width,
                                             self.rotation_angles, self.pulse_number,
@@ -918,7 +950,7 @@ class Extracellular(BaseStim):
         if stim_info["Pattern"] is None:
             raise Exception("%s pattern must be provided" % self.__class__.__name__)
         else:
-            self.pattern = stim_info["Pattern"] # Is always Extracellular for extracellular stimuli
+            self.pattern = "Extracellular"# Is always Extracellular for extracellular stimuli
 
         if stim_info["IsConstant"] is None: # Applies constant e field to cell
             self.isConstant = False

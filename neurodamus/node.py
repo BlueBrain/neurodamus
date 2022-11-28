@@ -571,6 +571,8 @@ class Node:
         """
         log_stage("Stimulus Apply.")
 
+        print('ywoefiuswfbuedweacweafc',flush=True)
+
         # Setup of Electrode objects part of enable stimulus
         self._enable_electrodes()
 

@@ -777,7 +777,7 @@ class ElectrodeSource(SignalSource):
         x = np.mean(xpos)
         y = np.mean(ypos)
         z = np.mean(zpos)
-        
+
         print(np.array([x,y,z]),flush=True)
 
         return np.array([x,y,z])
@@ -974,12 +974,14 @@ class ElectrodeSource(SignalSource):
         ramp_up_number = kw.get("ramp_up_number", None)
         ramp_down_number = kw.get("ramp_down_number", None)
 
+        print('section is '+section.name())
+
         scaleFac, newpos = self.get_scale_factor(section, x)
 
         if 'TI' in self.type:
 
             field1 = self.field1 * scaleFac[0]
-            field2 = self.field2 * scaleFac[-1]
+            field2 = self.fieldfoff2 * scaleFac[-1]
 
             field = field1 + field2
 
@@ -1082,6 +1084,11 @@ class ConstantEfield(ElectrodeSource):
         else:
             newsegpositions = segpositions.copy()
 
+        print('newsegpositions are')
+        print(newsegpositions)
+        print('soma position is')
+        print(self.soma_position)
+
         if self.constantAxis == 'x':
             outputs = newsegpositions[0] - self.soma_position[0]
         elif self.constantAxis == 'y':
@@ -1090,6 +1097,9 @@ class ConstantEfield(ElectrodeSource):
             outputs = newsegpositions[2] - self.soma_position[2]
 
         outputs *= 1e-6 # Returns value in meters
+
+        print('now newseg is')
+        print(newsegpositions)
 
         return np.array([outputs]), newsegpositions
 
@@ -1103,16 +1113,28 @@ class ConstantEfield(ElectrodeSource):
 
             self.soma_position = segpositions.copy()
         else:
-            # segpositions = self.interp_seg_positions(section, x)
-            segpositions = self.get_positions(section,x)
+
+            if int(h.n3d(sec=section)) == 0:
+                segpositions = self.interp_seg_positions(section, x)
+            else:
+                segpositions = self.get_positions(section,x)
+
+
 
         if isinstance(self.offset, np.ndarray):
 
             segpositions += self.offset * 1e3  # offset in mm converted to um
 
+
         self.new_soma_pos = self.soma_position.copy()
 
+
+
         scaleFactor, newpositions = self.constant_potentials(segpositions)
+
+        print('scalefactor is')
+
+        print(scaleFactor)
 
         return scaleFactor * 1e3, newpositions # multiplies scale factor by 1e3 to get potential in mV
 
