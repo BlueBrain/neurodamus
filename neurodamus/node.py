@@ -1175,7 +1175,6 @@ class Node:
                 (SimConfig.cli_options.enable_shm and SimConfig.delete_corenrn_data):
             # Check for the available memory in /dev/shm and estimate the RSS by multiplying
             # the number of cycles in the multi-step model build with an approximate factor
-            mem_total = SHMUtil.get_mem_total()
             mem_avail = SHMUtil.get_mem_avail()
             shm_avail = SHMUtil.get_shm_avail()
             initial_rss = self._initial_rss
@@ -1185,7 +1184,7 @@ class Node:
             rss_req = int(rss_diff * self._n_cycles * factor)  # 'rss_diff' prevents <0 estimates
 
             # Sync condition value with all ranks to ensure that all of them can use /dev/shm
-            shm_possible = (rss_req < shm_avail) and ((mem_avail + rss_req) < mem_total)
+            shm_possible = (rss_req < shm_avail) and (rss_req < mem_avail)
             if MPI.allreduce(int(shm_possible), MPI.SUM) == MPI.size:
                 logging.info("SHM file transfer mode for CoreNEURON enabled")
 
@@ -1212,8 +1211,8 @@ class Node:
             else:
                 logging.warning("Unable to utilize SHM for model file transfer in CoreNEURON. "
                                 "Increase the number of nodes to reduce the memory footprint "
-                                "(Current use per node: %d MB / Limit: %d MB)",
-                                (rss_req >> 20), (shm_avail >> 20))
+                                "(Current use node: %d MB / SHM Limit: %d MB / Mem. Limit: %d MB)",
+                                (rss_req >> 20), (shm_avail >> 20), (mem_avail >> 20))
 
         return corenrn_datadir if not self._shm_enabled else corenrn_datadir_shm
 
