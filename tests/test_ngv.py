@@ -3,6 +3,14 @@ Test suite for Neurodamus NGV support
 """
 import os.path as osp
 
+@pytest.mark.slow
+@pytest.mark.forked
+@pytest.mark.skipif(
+    not os.path.isfile("<vasculature_file_you_are_using"),
+    reason="vasculature file not available")
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
 def test_loading_and_run():
     """Base testing: we instantiate neurodamus and run a simple simulation with ngv stuff"""
     from neurodamus import Neurodamus
