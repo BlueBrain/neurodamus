@@ -2,6 +2,7 @@
 Test suite for Neurodamus NGV support
 """
 import os.path as osp
+import pytest
 
 @pytest.mark.slow
 @pytest.mark.forked
