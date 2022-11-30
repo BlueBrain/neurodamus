@@ -8,9 +8,9 @@ import pytest
 
 @pytest.mark.slow
 @pytest.mark.forked
-@pytest.mark.skipif(
-    not os.path.isfile("<vasculature_file_you_are_using"),
-    reason="vasculature file not available")
+# @pytest.mark.skipif(
+#     not os.path.isfile("/gpfs/bbp.cscs.ch/home/cattabia/subcellular/multiscale_run/sonata/vasculature.h5"),
+#     reason="vasculature file not available")
 @pytest.mark.skipif(
     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
     reason="Test requires loading a neocortex model to run")
