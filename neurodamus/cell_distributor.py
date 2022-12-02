@@ -282,7 +282,7 @@ class CellManagerBase(_CellManager):
                 raise NotImplementedError("No gid offsetting supported by neurodamus Target.hoc")
             target.set_offset(cell_offset)
         # Add local gids to matching targets
-        self._target_manager.parser.updateTargets(self._local_nodes.final_gids(), 1)
+        self._target_manager.register_local_nodes(self._local_nodes)
 
     def _init_cell_network(self):
         """Init global gids for cell networking

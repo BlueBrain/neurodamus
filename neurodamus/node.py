@@ -1394,8 +1394,7 @@ class Node:
 
         logging.info("Clearing model")
         self._pc.gid_clear()
-        self._target_manager.parser.updateTargets(Nd.Vector())  # Reset targets local cells
-        self._target_manager.init_hoc_manager(None)  # Init/release cell manager
+        self._target_manager.clear_simulation_data()
 
         if not avoid_creating_objs:
             bbss = Nd.BBSaveState()

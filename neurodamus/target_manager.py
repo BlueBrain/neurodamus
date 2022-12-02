@@ -99,6 +99,8 @@ class TargetManager:
         self._nodeset_reader = self._init_nodesets(run_conf)
         if MPI.rank == 0:
             self.parser.isVerbose = 1
+        # A list of the local node sets
+        self.local_nodes = []
 
     @classmethod
     def _init_nodesets(cls, run_conf):
@@ -158,7 +160,17 @@ class TargetManager:
         self._targets[target.name] = target
         hoc_target = target.get_hoc_target()
         if hoc_target:
-            self.parser.updateTargetList(hoc_target)
+            self.parser.updateTargetList(target)
+
+    def register_local_nodes(self, local_nodes):
+        """Registers the local nodes so that targets can be scoped to current rank"""
+        self.local_nodes.append(local_nodes)
+        self.parser.updateTargets(local_nodes.final_gids(), 1)
+
+    def clear_simulation_data(self):
+        self.local_nodes.clear()
+        self.parser.updateTargets(Nd.Vector(), 0)
+        self.init_hoc_manager(None)  # Init/release cell manager
 
     def get_target(self, target_spec: TargetSpec, target_pop=None):
         """Retrieves a target from any .target file or Sonata nodeset files.
@@ -177,6 +189,7 @@ class TargetManager:
 
         def get_concrete_target(target):
             """Get a more specific target, depending on specified population prefix"""
+            target.update_local_nodes(self.local_nodes)
             return target if target_pop is None else target.make_subtarget(target_pop)
 
         # Check cached
@@ -358,9 +371,6 @@ class _TargetInterface(metaclass=ABCMeta):
     def contains_raw(self, gid):
         return gid in self.get_raw_gids()
 
-    def getCellCount(self):
-        return self.gid_count
-
     def intersects(self, other):
         """ Check if two targets intersect. At least one common population has to intersect
         """
@@ -380,11 +390,59 @@ class _TargetInterface(metaclass=ABCMeta):
     def generate_subtargets(self, n_parts):
         return NotImplemented
 
+    def update_local_nodes(self, _local_nodes):
+        """Allows setting the local gids"""
+        pass
 
-class NodesetTarget(_TargetInterface):
-    def __init__(self, name, nodesets: List[NodeSet], **kw):
+
+class _HocTargetInterface:
+    """
+    Interface of Hoc targets to be respected when we want to use objects
+    in place of hoc targets.
+
+    This interface provides a default implementation suitable for Nodeset targets
+    where it will be primarily used
+    """
+
+    def isCellTarget(self, **kw):
+        section_type = kw.get("sections", "soma")
+        compartment_type = kw.get("compartments", "center" if section_type == "soma" else "all")
+        return section_type == "soma" and compartment_type == "center"
+
+    def isCompartmentTarget(self, *_):
+        return 0
+
+    def isSectionTarget(self, *_):
+        return 0
+
+    def isSynapseTarget(self, *_):
+        return 0
+
+    def getCellCount(self):
+        return self.gid_count()
+
+    def completegids(self):
+        return compat.hoc_vector(self.get_raw_gids())
+
+    def gids(self):
+        return compat.hoc_vector(self.get_local_gids())
+
+    @abstractmethod
+    def getPointList(self, _cell_manager, **_kw):
+        return NotImplemented
+
+    def set_offset(self, *_):
+        pass  # Only hoc targets require manually setting offsets
+
+    def get_offset(self, *_):
+        pass  # nodeset targets can span multiple multipopulation -> multiple offsets
+
+
+class NodesetTarget(_TargetInterface, _HocTargetInterface):
+    def __init__(self, name, nodesets: List[NodeSet], local_nodes=None, **_kw):
         self.name = name
         self.nodesets = nodesets
+        self.local_nodes = local_nodes
 
     def gid_count(self):
         return sum(len(ns) for ns in self.nodesets)
@@ -435,33 +493,36 @@ class NodesetTarget(_TargetInterface):
         """A nodeset subtarget contains only one given population
         """
         nodesets = [ns for ns in self.nodesets if ns.population_name == pop_name]
-        return NodesetTarget(f"{self.name}#{pop_name}", nodesets)
-
-    # The following methods are to keep compat with hoc routines, namely reports and stims
+        local_nodes = [n for n in self.local_nodes if n.population_name == pop_name]
+        return NodesetTarget(f"{self.name}#{pop_name}", nodesets, local_nodes)
 
     def is_void(self):
         return len(self.nodesets) == 0
 
-    @lru_cache()
     def get_hoc_target(self):
-        gids = self.get_gids()
-        target = Nd.Target(self.name)
-        target.gidMembers.append(Nd.Vector(gids))
-        return target
+        return self  # impersonate a hoc target
 
-    # always returns the original gids, independent of offsetting
-    # FIXME: verify we can drop this, because it's only for compat
-    def completegids(self):
-        return compat.hoc_vector(self.get_raw_gids())
+    def update_local_nodes(self, local_nodes):
+        self.local_nodes = local_nodes
 
-    def isCellTarget(self, **kw):
-        section_type = kw.get("sections", "soma")
-        compartment_type = kw.get("compartments", "center" if section_type == "soma" else "all")
-        return section_type == "soma" and compartment_type == "center"
+    def get_local_gids(self):
+        """Return the list of target gids in this rank
+        """
+        assert self.local_nodes, "Local nodes not set"
 
-    def set_offset(self, _offset):
-        """ For compatibility with hoc target, not needed for Nodeset target """
-        pass
+        def pop_gid_intersect(local_nodes):
+            for n in self.nodesets:
+                if n.population_name == local_nodes.population_name:
+                    return numpy.intersect1d(n.final_gids(), local_nodes.final_gids())
+            return numpy.array([], dtype="uint32")
+
+        # If target is named Mosaic, basically we don't filter and use local_gids
+        if self.name.startswith("Mosaic#"):
+            gids_groups = tuple(n.final_gids() for n in self.local_nodes)
+        else:
+            gids_groups = tuple(pop_gid_intersect(nodes) for nodes in self.local_nodes)
+
+        return numpy.concatenate(gids_groups)
 
     def getPointList(self, cell_manager, **kw):
         """ Retrieve a TPointList containing compartments (based on section type and
@@ -478,18 +539,16 @@ class NodesetTarget(_TargetInterface):
         section_type = kw.get("sections") or "soma"
         compartment_type = kw.get("compartments") or ("center" if section_type == "soma" else "all")
         pointList = compat.List()
-        target_gids = self.get_gids()
-        local_gids = cell_manager.get_final_gids()
-        gids = target_gids[numpy.in1d(target_gids, local_gids)]
-        for gid in gids:
+        for gid in self.get_local_gids():
             point = Nd.TPointList(gid)
             cellObj = cell_manager.get_cellref(gid)
             secs = getattr(cellObj, section_type)
             for sec in secs:
-                for seg in sec:
-                    if compartment_type == "center" and seg.x != 0.5:
-                        continue
-                    point.append(Nd.SectionRef(sec), seg.x)
+                if compartment_type == "center":
+                    point.append(Nd.SectionRef(sec), 0.5)
+                else:
+                    for seg in sec:
+                        point.append(Nd.SectionRef(sec), seg.x)
             pointList.append(point)
         return pointList
 
@@ -522,10 +581,6 @@ class NodesetTarget(_TargetInterface):
         # return list of subtargets lists of all pops per cycle
         return [[targets[cycle_i] for targets in new_targets.values()]
                     for cycle_i in range(n_parts)]
-
-    def __getattr__(self, item):
-        log_verbose("Compat interface to hoc target. Calling " + item)
-        return getattr(self.get_hoc_target(), item)
 
 
 class _HocTarget(_TargetInterface):
@@ -566,6 +621,10 @@ class _HocTarget(_TargetInterface):
 
     def get_hoc_target(self):
         return self.hoc_target
+
+    def gids(self):
+        """This target gids on this rank, with offset"""
+        return self.hoc_target.gids()
 
     def getPointList(self, cell_manager, **kw):
         return self.hoc_target.getPointList(cell_manager)

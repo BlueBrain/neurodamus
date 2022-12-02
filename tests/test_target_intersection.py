@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.testing as npt
 import pytest
 
 from neurodamus.core.nodeset import NodeSet
@@ -77,3 +78,43 @@ def test_nodeset_target_intersect():
     assert not t1.intersects(t2)
     t2.nodesets = [nodes_popB, nodes3_popA]
     assert not t1.intersects(t2)
+
+
+@pytest.mark.forked
+def test_nodeset_gids():
+    from neurodamus.target_manager import NodesetTarget
+    local_nodes_popA = NodeSet(range(5, 10)).register_global("pop_A")
+    local_nodes_popB = NodeSet(range(6)).register_global("pop_B")
+    nodes_popA = NodeSet(range(7)).register_global("pop_A")
+    nodes_popB = NodeSet([3, 4, 5]).register_global("pop_B")
+    t = NodesetTarget(
+        "target-a",
+        [nodes_popA, nodes_popB],
+        local_nodes=[local_nodes_popA, local_nodes_popB]
+    )
+    gids = t.gids()
+    npt.assert_array_equal(gids.as_numpy(), [5, 6, 1003, 1004, 1005])
+
+    t2 = NodesetTarget(
+        "target-b",
+        [nodes_popA, nodes_popB],
+        local_nodes=[local_nodes_popA]
+    )
+    gids = t2.gids()
+    npt.assert_array_equal(gids.as_numpy(), [5, 6])
+
+    t3 = NodesetTarget(
+        "target-c",
+        [nodes_popB],
+        local_nodes=[local_nodes_popA, local_nodes_popB]
+    )
+    gids = t3.gids()
+    npt.assert_array_equal(gids.as_numpy(), [1003, 1004, 1005])
+
+    t4 = NodesetTarget(
+        "target-d",
+        [nodes_popB],
+        local_nodes=[local_nodes_popA]
+    )
+    gids = t4.gids()
+    npt.assert_array_equal(gids.as_numpy(), [])

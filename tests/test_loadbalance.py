@@ -186,9 +186,5 @@ class MockedTargetManager:
         target = self.targets[target_name]
         return target if target_pop is None else target.make_subtarget(target_pop)
 
-    # Target manager has a hoc target parser which we need to mock too
-    class Parser:
-        def updateTargets(self, *_):
-            pass
-
-    parser = Parser()
+    def register_local_nodes(*_):
+        pass

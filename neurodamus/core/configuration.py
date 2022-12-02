@@ -119,7 +119,7 @@ class LoadBalanceMode(Enum):
             "loadbalance": cls.MultiSplit,
             "multisplit": cls.MultiSplit
         }
-        lb_mode_enum =  _modes.get(lb_mode.lower())
+        lb_mode_enum = _modes.get(lb_mode.lower())
         if lb_mode_enum is None:
             raise ConfigurationError("Unknown load balance mode: " + lb_mode)
         return lb_mode_enum
@@ -740,6 +740,10 @@ def _output_root(config: _SimConfig, run_conf):
     if MPI.rank == 0:
         if Nd.checkDirectory(output_path) < 0:
             raise ConfigurationError("Error with OutputRoot: %s" % output_path)
+        # Delete coreneuron_input link since it may conflict with restore
+        corenrn_input = output_path + "/coreneuron_input"
+        if os.path.islink(corenrn_input):
+            os.remove(corenrn_input)
 
     log_verbose("OutputRoot = %s", output_path)
     run_conf["OutputRoot"] = output_path
@@ -763,7 +767,7 @@ def _check_save(config: _SimConfig, run_conf):
         save_time = float(save_time)
         if save_time > config.tstop:
             logging.warning("SaveTime specified beyond Simulation Duration. "
-                        "Setting SaveTime to simulation end time.")
+                            "Setting SaveTime to simulation end time.")
             save_time = None
 
     config.save = os.path.join(config.current_dir, save_path)
@@ -854,7 +858,8 @@ def _check_model_build_mode(config: _SimConfig, run_conf):
                          data_location)
             config.build_model = True
         else:
-            logging.info("CoreNeuron input data found in %s. Skipping model build", core_data_location)
+            logging.info("CoreNeuron input data found in %s. Skipping model build",
+                         core_data_location)
             config.build_model = False
 
     if not config.build_model and not core_data_exists:

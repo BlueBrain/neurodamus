@@ -111,6 +111,9 @@ def blueconfig1():
 @pytest.mark.skipif(
     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
     reason="Test requires loading a neocortex model to run")
+@pytest.mark.skipif(
+    "bluepy" not in os.environ.get("PYTHONPATH"),
+    reason="Test requires bluepy run")
 def test_synapses(blueconfig1):
     """
     A test of the impact of eager caching of synaptic parameters. BBPBGLIB-813
