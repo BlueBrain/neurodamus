@@ -1,5 +1,4 @@
 import logging
-import numpy as np
 
 from .connection_manager import SynapseRuleManager
 from .connection import Connection, NetConType, ReplayMode
@@ -9,6 +8,29 @@ from .utils.logging import log_all
 
 
 class NeuroModulationConnection(Connection):
+    __slots__ = ("_neuromod_strength", "_neuromod_dtc")
+
+    def __init__(self,
+                 sgid, tgid, src_pop_id=0, dst_pop_id=0,
+                 weight_factor=1.0,
+                 minis_spont_rate=None,
+                 configuration=None,
+                 mod_override=None,
+                 **kwargs):
+        self._neuromod_strength = None
+        self._neuromod_dtc = None
+        super().__init__(sgid, tgid, src_pop_id, dst_pop_id,
+                         weight_factor, minis_spont_rate, configuration, mod_override, **kwargs)
+
+    neuromod_strength = property(
+        lambda self: self._neuromod_strength,
+        lambda self, val: setattr(self, '_neuromod_strength', val)
+    )
+    neuromod_dtc = property(
+        lambda self: self._neuromod_dtc,
+        lambda self, val: setattr(self, '_neuromod_dtc', val)
+    )
+
     def finalize(self, cell, base_seed=0, *,
                  skip_disabled=False,
                  replay_mode=ReplayMode.AS_REQUIRED,
@@ -39,10 +61,8 @@ class NeuroModulationConnection(Connection):
             if self._replay is not None:
                 nc = self._replay.create_on(self, sec, syn_obj, syn_params)
                 nc.weight[0] = int(self.weight_factor > 0)  # weight is binary 1/0, default 1
-                nc.weight[1] = syn_params.neuromod_strength if np.isnan(self.neuromod_strength) \
-                    else self.neuromod_strength
-                nc.weight[2] = syn_params.neuromod_dtc if np.isnan(self.neuromod_dtc) \
-                    else self.neuromod_dtc
+                nc.weight[1] = self.neuromod_strength or syn_params.neuromod_strength
+                nc.weight[2] = self.neuromod_dtc or syn_params.neuromod_dtc
                 self.netcon_set_type(nc, syn_obj, NetConType.NC_NEUROMODULATOR)
                 if GlobalConfig.debug_conn == [self.tgid]:
                     log_all(logging.DEBUG, "Neuromodulatory event on tgid: %d, " +

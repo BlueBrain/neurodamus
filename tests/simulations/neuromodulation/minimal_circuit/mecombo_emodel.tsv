@@ -1,0 +1,4 @@
+morph_name	layer	fullmtype	etype	emodel	combo_name	threshold_current	holding_current
+dend-rp160229_C_idA_axon-cr161019_A_idB_-_Scale_x1.000_y1.050_z1.000	6	L6_HPC	cADpyr	cADpyr_L6BPC	cADpyr_L6BPC_L6_HPC_6_dend-rp160229_C_idA_axon-cr161019_A_idB_-_Scale_x1.000_y1.050_z1.000	0.09965234375000001	-0.07199862634479359
+dend-rp160229_C_idB_axon-tkb060505_b1_idF_-_Scale_x1.000_y0.975_z1.000_-_Clone_1	6	L6_HPC	cADpyr	cADpyr_L6BPC	cADpyr_L6BPC_L6_HPC_6_dend-rp160229_C_idB_axon-tkb060505_b1_idF_-_Scale_x1.000_y0.975_z1.000_-_Clone_1	0.0538046875	-0.034601062102979085
+dend-rp160229_C_idA_axon-cr161019_A_idB_-_Scale_x1.000_y1.050_z1.000	5	L5_TPC	cADpyr	cADpyr_L5TPC	cADpyr_L5TPC_L5_TPC_5_dend-rp160229_C_idA_axon-cr161019_A_idB_-_Scale_x1.000_y1.050_z1.000	0.09	-0.05
