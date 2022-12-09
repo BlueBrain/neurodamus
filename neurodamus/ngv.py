@@ -268,7 +268,13 @@ class NeuroGlialConnection(Connection):
 
     def add_synapse(self, syn_tpoints, params_obj, syn_id=None):
         # Only store params. Glia have mechanisms pre-created
-        self._synapse_params.append(params_obj)
+        if self._synapse_params is None:
+            self._synapse_params = np.recarray(1, dtype=params_obj)
+            self._synapse_params[0] = params_obj
+        else:
+            nrows = self._synapse_params.shape[0]
+            self._synapse_params.resize(nrows+1, refcheck=False)
+            self._synapse_params[nrows] = params_obj
 
     def finalize(self, astrocyte, base_Seed, *, base_connections=None, **kw):
         """

@@ -268,6 +268,7 @@ class Connection(ConnectionBase):
         for i, sc in enumerate(syn_tpoints.sclst):
             self._synapse_points_sclst.append(sc)
             self._synapse_points_x.append(syn_tpoints.x.x[i])
+
         if self._synapse_params is None:
             self._synapse_params = np.recarray(1, dtype=params_obj)
             self._synapse_params[0] = params_obj
