@@ -37,6 +37,14 @@ Projection GLIA
     Path /gpfs/bbp.cscs.ch/project/proj67/tmp/NGV-132/glia-sonata/edges.sonata
 }
 
+Projection GlioVascular
+{
+    Type GlioVascular
+    Destination GLIA:
+    Path /gpfs/bbp.cscs.ch/home/cattabia/subcellular/multiscale_run/sonata/gliovascular.h5
+    VasculaturePath /gpfs/bbp.cscs.ch/home/cattabia/subcellular/multiscale_run/sonata/vasculature.h5
+}
+
 Connection All-to-All_spont
 {
     Source srcs_used_glia

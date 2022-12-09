@@ -1,96 +1,96 @@
-include:
-  - project: nse/ci
-    file:
-      - /ci/lib/tox-bb5.yml
-      - /ci/jobs/build-package.yml
-      - /ci/jobs/publish-package.yml
-      - /ci/jobs/docs.yml
-      - /ci/jobs/publish-docs.yml
-
-workflow:
-  rules:
-    # Rules taken from official docs to avoid duplicated pipelines
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"
-      when: never
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
-      when: never
-    - when: always
-
-variables:
-  BLUECONFIGS_BRANCH:
-    value: $BLUECONFIGS_BRANCH
-    description: 'Name of the blueconfigs branch to test against'
-
-python3-base:
-  extends: .tox-template
-  variables:
-    TOXENV: flake8, py3
-
-py38-full-spack:
-  extends: .tox-template
-  variables:
-    TOXENV: bb5
-    # modules need to be loaded in this certain order to avoid mixing of libraries
-    EXTRA_MODULES:
-      unstable:py-psutil
-      unstable:intel-oneapi-compilers
-      unstable:py-bluepy
-      unstable:neurodamus-neocortex
-      unstable:py-neurodamus  # needed for dependencies
-
-set_alt_branches:
-  script:
-    - grep '^[[:alnum:]_]*_BRANCH=' <<< "$CI_COMMIT_MESSAGE" > branch_variables.env || touch branch_variables.env
-    - . branch_variables.env
-    - echo "BLUECONFIGS_PIPELINE_BRANCH=$BLUECONFIGS_BRANCH" >> branch_variables.env
-    - cat branch_variables.env
-  artifacts:
-    reports:
-      dotenv: branch_variables.env
-
-blueconfig_tests:
-  variables:
-    bb5_build_dir: pipeline
-    PY_NEURODAMUS_BRANCH: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
-    PARENT_COMMIT_MESSAGE: $CI_COMMIT_MESSAGE
-  trigger:
-    project: hpc/sim/blueconfigs
-    branch: $BLUECONFIGS_PIPELINE_BRANCH
-    strategy: depend
-  needs:
-    - set_alt_branches
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
-        - neurodamus/**/*
-    - when: manual
-      allow_failure: true
-
-# The following stages are overrides. Don't rename
-# Always add the manual option to create sdist/wheel or upload
-build-package:
-  rules:
-    - when: on_success
-
-publish-package:
-  rules:
-    - when: manual
-      allow_failure: true
-
-docs:
-  variables:
-    TOXENV: docs
-  artifacts:
-    paths:
-      - docs/_build
-
-publish-docs:
-  variables:
-    SYS_PACKAGES: openssh-clients
-    PIP_PACKAGES: docs_internal_upload
-  script:
-    - docs-internal-upload --docs-path docs/_build
-  rules:
-    - when: manual
-      allow_failure: true
+#include:
+#  - project: nse/ci
+#    file:
+#      - /ci/lib/tox-bb5.yml
+#      - /ci/jobs/build-package.yml
+#      - /ci/jobs/publish-package.yml
+#      - /ci/jobs/docs.yml
+#      - /ci/jobs/publish-docs.yml
+#
+#workflow:
+#  rules:
+#    # Rules taken from official docs to avoid duplicated pipelines
+#    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"
+#      when: never
+#    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+#    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+#      when: never
+#    - when: always
+#
+#variables:
+#  BLUECONFIGS_BRANCH:
+#    value: $BLUECONFIGS_BRANCH
+#    description: 'Name of the blueconfigs branch to test against'
+#
+#python3-base:
+#  extends: .tox-template
+#  variables:
+#    TOXENV: flake8, py3
+#
+#py38-full-spack:
+#  extends: .tox-template
+#  variables:
+#    TOXENV: bb5
+#    # modules need to be loaded in this certain order to avoid mixing of libraries
+#    EXTRA_MODULES:
+#      unstable:py-psutil
+#      unstable:intel-oneapi-compilers
+#      unstable:py-bluepy
+#      unstable:neurodamus-neocortex
+#      unstable:py-neurodamus  # needed for dependencies
+#
+#set_alt_branches:
+#  script:
+#    - grep '^[[:alnum:]_]*_BRANCH=' <<< "$CI_COMMIT_MESSAGE" > branch_variables.env || touch branch_variables.env
+#    - . branch_variables.env
+#    - echo "BLUECONFIGS_PIPELINE_BRANCH=$BLUECONFIGS_BRANCH" >> branch_variables.env
+#    - cat branch_variables.env
+#  artifacts:
+#    reports:
+#      dotenv: branch_variables.env
+#
+#blueconfig_tests:
+#  variables:
+#    bb5_build_dir: pipeline
+#    PY_NEURODAMUS_BRANCH: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+#    PARENT_COMMIT_MESSAGE: $CI_COMMIT_MESSAGE
+#  trigger:
+#    project: hpc/sim/blueconfigs
+#    branch: $BLUECONFIGS_PIPELINE_BRANCH
+#    strategy: depend
+#  needs:
+#    - set_alt_branches
+#  rules:
+#    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+#      changes:
+#        - neurodamus/**/*
+#    - when: manual
+#      allow_failure: true
+#
+## The following stages are overrides. Don't rename
+## Always add the manual option to create sdist/wheel or upload
+#build-package:
+#  rules:
+#    - when: on_success
+#
+#publish-package:
+#  rules:
+#    - when: manual
+#      allow_failure: true
+#
+#docs:
+#  variables:
+#    TOXENV: docs
+#  artifacts:
+#    paths:
+#      - docs/_build
+#
+#publish-docs:
+#  variables:
+#    SYS_PACKAGES: openssh-clients
+#    PIP_PACKAGES: docs_internal_upload
+#  script:
+#    - docs-internal-upload --docs-path docs/_build
+#  rules:
+#    - when: manual
+#      allow_failure: true

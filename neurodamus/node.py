@@ -1175,7 +1175,6 @@ class Node:
                 (SimConfig.cli_options.enable_shm and SimConfig.delete_corenrn_data):
             # Check for the available memory in /dev/shm and estimate the RSS by multiplying
             # the number of cycles in the multi-step model build with an approximate factor
-            mem_total = SHMUtil.get_mem_total()
             mem_avail = SHMUtil.get_mem_avail()
             shm_avail = SHMUtil.get_shm_avail()
             initial_rss = self._initial_rss
@@ -1185,7 +1184,7 @@ class Node:
             rss_req = int(rss_diff * self._n_cycles * factor)  # 'rss_diff' prevents <0 estimates
 
             # Sync condition value with all ranks to ensure that all of them can use /dev/shm
-            shm_possible = (rss_req < shm_avail) and ((mem_avail + rss_req) < mem_total)
+            shm_possible = (rss_req < shm_avail) and (rss_req < mem_avail)
             if MPI.allreduce(int(shm_possible), MPI.SUM) == MPI.size:
                 logging.info("SHM file transfer mode for CoreNEURON enabled")
 
@@ -1212,8 +1211,8 @@ class Node:
             else:
                 logging.warning("Unable to utilize SHM for model file transfer in CoreNEURON. "
                                 "Increase the number of nodes to reduce the memory footprint "
-                                "(Current use per node: %d MB / Limit: %d MB)",
-                                (rss_req >> 20), (shm_avail >> 20))
+                                "(Current use node: %d MB / SHM Limit: %d MB / Mem. Limit: %d MB)",
+                                (rss_req >> 20), (shm_avail >> 20), (mem_avail >> 20))
 
         return corenrn_datadir if not self._shm_enabled else corenrn_datadir_shm
 
@@ -1322,10 +1321,12 @@ class Node:
                 log_verbose("Clearing model prior to final save")
                 self._binreport_helper.flush()
                 self._sonatareport_helper.flush()
-                self.clear_model()
 
             self.dump_cell_config()
             self._binreport_helper.savestate()
+            # Clear the model after saving state as the pointers are being recorded in reportinglib
+            if SimConfig.save_time is None:
+                self.clear_model()
             logging.info(" => Save done successfully")
 
         return save_f
@@ -1415,6 +1416,7 @@ class Node:
 
         # Finally call malloc_trim to return all the freed pages back to the OS
         trim_memory()
+        Nd.MemUsage().print_mem_usage()
 
     # -------------------------------------------------------------------------
     #  output
@@ -1609,13 +1611,17 @@ class Neurodamus(Node):
     def _build_model(self):
         log_stage("================ CALCULATING LOAD BALANCE ================")
         load_bal = self.compute_load_balance()
+        mem_usage = Nd.MemUsage()
+        mem_usage.print_mem_usage()
 
         log_stage("==================== BUILDING CIRCUIT ====================")
         self.create_cells(load_bal)
         self.execute_neuron_configures()
+        mem_usage.print_mem_usage()
 
         # Create connections
         self.create_synapses()
+        mem_usage.print_mem_usage()
 
         log_stage("================ INSTANTIATING SIMULATION ================")
         if not SimConfig.coreneuron:
@@ -1623,6 +1629,7 @@ class Neurodamus(Node):
 
         # Apply replay
         self.enable_replay()
+        mem_usage.print_mem_usage()
 
         if self._run_conf["AutoInit"]:
             self.init()
@@ -1635,14 +1642,19 @@ class Neurodamus(Node):
         base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
         for syn_manager in self._circuits.all_synapse_managers():
             syn_manager.finalize(base_seed, SimConfig.coreneuron)
+        mem_usage = Nd.MemUsage()
+        mem_usage.print_mem_usage()
 
         self.enable_stimulus()
+        mem_usage.print_mem_usage()
         self.enable_modifications()
 
         if self._run_conf["EnableReports"]:
             self.enable_reports()
+        mem_usage.print_mem_usage()
 
         self.sim_init()
+        mem_usage.print_mem_usage()
 
     # -
     def _merge_filesdat(self, ncycles):
@@ -1681,6 +1693,7 @@ class Neurodamus(Node):
     def _instantiate_simulation(self):
         # Keep the initial RSS for the SHM file transfer calculations
         self._initial_rss = SHMUtil.get_node_rss()
+        Nd.MemUsage().print_mem_usage()
 
         self.load_targets()
 

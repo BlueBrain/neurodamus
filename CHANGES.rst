@@ -2,6 +2,21 @@
 Change Log
 ==========
 
+Version 2.12.10
+==============
+**25 Nov 2022**
+
+*New Features*
+  * [BBPBGLIB-957] Added RSS printing in multiple places
+
+*Improvements*
+  * Avoid writing --report-conf to the sim.conf if reports are disabled
+  * Load balancing improvements for multiple populations
+
+*Bug fixes*
+  * Clear the model after calling savestate()
+
+
 Version 2.12.9
 ==============
 **09 Nov 2022**
