@@ -21,7 +21,7 @@ def test_loading_and_run():
     # blueconfig = osp.join(osp.abspath(osp.dirname(__file__)),
     #                       "simulations", "ngv", "BlueConfig")
     # ndam = Neurodamus(blueconfig, logging_level=2)
-    ndam.run(2)
+    # ndam.run(2)
 
 if __name__ == "__main__":
     test_loading_and_run()
