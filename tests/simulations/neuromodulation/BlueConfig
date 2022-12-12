@@ -1,0 +1,79 @@
+Run Default
+{
+    CircuitPath ./minimal_circuit
+    nrnPath ./minimal_circuit/edges.sonata
+    CellLibraryFile circuit.mvd3
+    MorphologyPath ./minimal_circuit/morph-release-2020-08-10
+    MorphologyType asc
+    METypePath ./minimal_circuit/hoc-release-2020-07-31
+    MEComboInfoFile ./minimal_circuit/mecombo_emodel.tsv
+
+    CircuitTarget Mosaic
+
+    Simulator NEURON
+    RNGMode Random123
+    BaseSeed 1
+    CurrentDir .
+    OutputRoot output
+    RunMode RR
+    Duration 10
+    Dt 0.025
+}
+
+
+Projection proj
+{
+    Path ./minimal_circuit/projections.sonata
+    PopulationID 1
+    Source virtual_neurons
+    Type NeuroModulation
+}
+
+Report soma
+{
+    Target Mosaic
+    Type compartment
+    ReportOn v
+    Unit mV
+    Format Bin
+    Dt 0.1
+    StartTime 0
+    EndTime 5000
+}
+
+
+# ------------------------------------------------ Stimuli --------------------------------------------------------
+Stimulus proj_spikes
+{
+    Mode Current
+    Delay 0
+    Duration 5000
+    Pattern SynapseReplay
+    SpikeFile ./minimal_circuit/proj_spikes.dat
+}
+
+StimulusInject proj_spikes_inject
+{
+    Stimulus proj_spikes
+    Target post
+    Type NeuroModulation
+}
+
+
+# ------------------------------------------------ Connections --------------------------------------------------------
+Connection all-all
+{
+    Source pre
+    Destination post
+    Weight 1.
+}
+
+Connection proj-all
+{
+    Source virtual_neurons
+    Destination post
+    Weight 1.0
+    NeuromodStrength 0.75
+    NeuromodDtc 750
+}
+

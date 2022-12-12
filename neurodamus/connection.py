@@ -43,8 +43,10 @@ class ConnectionBase:
     """
     The Base implementation for cell connections identified by src-dst gids
     """
-    __slots__ = ("sgid", "tgid", "locked", "_disabled", "_conn_params", "_synapse_params",
-                 "_netcons", "_synapses", "_delay_vec", "_delayweight_vec")
+    __slots__ = ("sgid", "tgid", "locked", "_disabled", "_synapse_params",
+                 "_netcons", "_synapses", "_delay_vec", "_delayweight_vec",
+                 "_weight_factor", "_syndelay_override", "_syn_offset",
+                 "_src_pop_id", "_dst_pop_id")
 
     _match_index = re.compile(r"\[[0-9]+\]")
     """Regex to match indexes of hoc objects, useful to get mechs name"""
@@ -70,17 +72,12 @@ class ConnectionBase:
         self.tgid = int(tgid)
         self.locked = False
         self._disabled = False
-        self._conn_params = np.recarray(1, dtype=dict(
-            names=['weight_factor', 'syndelay_override', 'syn_offset', 'src_pop_id', 'dst_pop_id',
-                   'neuromod_strength', 'neuromod_dtc'],
-            formats=['f8', 'f8', 'u8', 'i4', 'i4', 'f8', 'f8']
-        ))[0]
-        self._conn_params.put(
-            0,
-            (weight_factor, syndelay_override, synapses_offset, src_pop_id, dst_pop_id,
-             None, None)  # neuromod_strength and neuromod_dtc default None -> numpy.nan
-        )
-        self._synapse_params = []
+        self._weight_factor = weight_factor
+        self._syndelay_override = syndelay_override
+        self._syn_offset = synapses_offset
+        self._src_pop_id = src_pop_id
+        self._dst_pop_id = dst_pop_id
+        self._synapse_params = None
         # Initialized in specific routines
         self._netcons = None
         self._synapses = ()
@@ -89,25 +86,16 @@ class ConnectionBase:
 
     synapse_params = property(lambda self: self._synapse_params)
     synapses = property(lambda self: self._synapses)
-    synapses_offset = property(lambda self: self._conn_params.syn_offset)
-    population_id = property(lambda self: (self._conn_params.src_pop_id,
-                                           self._conn_params.dst_pop_id))
+    synapses_offset = property(lambda self: self._syn_offset)
+    population_id = property(lambda self: (self._src_pop_id,
+                                           self._dst_pop_id))
     weight_factor = property(
-        lambda self: self._conn_params.weight_factor,
-        lambda self, weight: self._conn_params.__setattr__('weight_factor', weight)
+        lambda self: self._weight_factor,
+        lambda self, weight: setattr(self, '_weight_factor', weight)
     )
     syndelay_override = property(
-        lambda self: self._conn_params.syndelay_override,
-        lambda self, syndelay_override: self._conn_params.__setattr__('syndelay_override',
-                                                                      syndelay_override)
-    )
-    neuromod_strength = property(
-        lambda self: self._conn_params.neuromod_strength,
-        lambda self, val: self._conn_params.__setattr__('neuromod_strength', val)
-    )
-    neuromod_dtc = property(
-        lambda self: self._conn_params.neuromod_dtc,
-        lambda self, val: self._conn_params.__setattr__('neuromod_dtc', val)
+        lambda self: self._syndelay_override,
+        lambda self, syndelay_override: setattr(self, '_syndelay_override', syndelay_override)
     )
 
     # Subclasses must implement instantiation of their connections in the simulator
@@ -186,21 +174,24 @@ class Connection(ConnectionBase):
     a presynaptic and a postsynaptic gid, including Points where those
     synapses are placed (stored in TPointList)
     """
-    _AMPAMDA_Helper = None
+    __slots__ = ("_minis_spont_rate", "_spont_minis", "_replay", "_mod_override", "_synapse_ids",
+                 "_configurations", "_conductances_bk", "_synapse_points_sclst",
+                 "_synapse_points_x")
+
+    _AMPANMDA_Helper = None
     _GABAAB_Helper = None
     ConnUtils = None  # Collection of hoc routines to speedup execution
     _mod_overrides = set()
 
     @classmethod
     def _init_hmod(cls):
-        if cls._AMPAMDA_Helper is not None:
+        if cls._AMPANMDA_Helper is not None:
             return Nd.h
         h = Nd.require("AMPANMDAHelper", "GABAABHelper")
-        cls._AMPAMDA_Helper = h.AMPANMDAHelper
-        cls._GABAABHelper = h.GABAABHelper
+        cls._AMPANMDA_Helper = h.AMPANMDAHelper
+        cls._GABAAB_Helper = h.GABAABHelper
         cls.ConnUtils = h.ConnectionUtils()
         cls._pc = Nd.pc
-        return h
 
     # -
     def __init__(self,
@@ -221,21 +212,23 @@ class Connection(ConnectionBase):
             minis_spont_rate: rate for spontaneous minis. Default: None
             mod_override: Alternative Synapse type. Default: None (use standard Inh/Exc)
         """
-        h = self._init_hmod()
+        self._init_hmod()
         super().__init__(sgid, tgid, src_pop_id, dst_pop_id, weight_factor, **kwargs)
         self._mod_override = mod_override
-        self._synapse_points = h.TPointList(tgid, 1)
+        self._synapse_points_sclst = []
+        self._synapse_points_x = []
         self._synapse_ids = compat.Vector("i")
         self._configurations = [configuration] if configuration is not None else []
         self._conductances_bk = None  # Store for re-enabling
         # Artificial stimulus sources
-        self._spont_minis = SpontMinis(minis_spont_rate)
-        self._replay = ReplayStim()
+        self._minis_spont_rate = None
+        self._spont_minis = None
+        self._replay = None
 
     # R/W properties
     minis_spont_rate = property(
-        lambda self: self._spont_minis.rate,
-        lambda self, rate: self._spont_minis.__setattr__('rate', rate)
+        lambda self: self._minis_spont_rate,
+        lambda self, rate: setattr(self, '_minis_spont_rate', rate)
     )
 
     # -
@@ -255,7 +248,7 @@ class Connection(ConnectionBase):
         """Generator over all sections containing synapses, yielding pairs
         (section_index, section)
         """
-        for syn_i, sc in enumerate(self._synapse_points.sclst):
+        for syn_i, sc in enumerate(self._synapse_points_sclst):
             # All locations, on and off node should be in this list, but
             # only synapses/netcons on-node should be returned
             if not sc.exists():
@@ -272,13 +265,21 @@ class Connection(ConnectionBase):
             params_obj: Parameters object for the Synapse to be placed
             syn_id: Optional id for the synapse to be used for seeding rng
         """
-        self._synapse_points.append(syn_tpoints)
-        self._synapse_params.append(params_obj)
+        for i, sc in enumerate(syn_tpoints.sclst):
+            self._synapse_points_sclst.append(sc)
+            self._synapse_points_x.append(syn_tpoints.x.x[i])
+        if self._synapse_params is None:
+            self._synapse_params = np.recarray(1, dtype=params_obj)
+            self._synapse_params[0] = params_obj
+        else:
+            nrows = self._synapse_params.shape[0]
+            self._synapse_params.resize(nrows+1, refcheck=False)
+            self._synapse_params[nrows] = params_obj
 
         params_obj.location = syn_tpoints.x[0]  # helper
 
         if syn_id is None:
-            syn_id = self._synapse_points.count()
+            syn_id = len(self._synapse_points_sclst)
         self._synapse_ids.append(syn_id)
 
     # -
@@ -295,6 +296,8 @@ class Connection(ConnectionBase):
         logging.debug("Replaying %d spikes on %d - %d", hoc_tvec.size(), self.sgid, self.tgid)
         logging.debug(" > First replay event for connection at %f", hoc_tvec.x[0])
 
+        if self._replay is None:
+            self._replay = ReplayStim()
         self._replay.add_spikes(hoc_tvec)
         return len(self._replay)
 
@@ -320,14 +323,15 @@ class Connection(ConnectionBase):
         self._synapses = compat.List()  # Used by ConnUtils
         self._netcons = []
         self._init_artificial_stims(cell, replay_mode)
-
+        n_syns = 0
         for syn_i, sec in self.sections_with_synapses:
-            x = self._synapse_points.x[syn_i]
+            x = self._synapse_points_x[syn_i]
             syn_params = self._synapse_params[syn_i]
 
             with Nd.section_in_stack(sec):
                 syn_obj = self._create_synapse(cell, syn_params, x,
                                                self._synapse_ids[syn_i], base_seed)
+                n_syns += 1
 
             self._synapses.append(syn_obj)
             # syn_obj.verboseLevel = self.tgid  # debugging purposes
@@ -362,21 +366,23 @@ class Connection(ConnectionBase):
                     setattr(Nd.h, syn_opt_name, value)
 
         self._configure_synapses()
-        return 1
+        return n_syns
 
     def _init_artificial_stims(self, cell, replay_mode=ReplayMode.AS_REQUIRED):
         shall_create_replay = (
             replay_mode == ReplayMode.COMPLETE or
-            replay_mode == ReplayMode.AS_REQUIRED and self._replay.has_data())
+            replay_mode == ReplayMode.AS_REQUIRED and self._replay and self._replay.has_data())
 
         # Release objects if not needed
         if not shall_create_replay:
             self._replay = None
         # if spont_minis not set by user, set with default rates from circuit if available
-        if not self._spont_minis.has_data():
+        if self._minis_spont_rate is None:
             if cell.inh_mini_frequency or cell.exc_mini_frequency:
                 self._spont_minis = InhExcSpontMinis(cell.inh_mini_frequency,
                                                      cell.exc_mini_frequency)
+        else:
+            self._spont_minis = SpontMinis(self._minis_spont_rate)
         # Release spont_minis object if it evaluates to false (rates are 0)
         if not self._spont_minis:
             self._spont_minis = None
@@ -395,9 +401,8 @@ class Connection(ConnectionBase):
         # See `neurodamus-core.Connection` for explanation. Also pc.gid_connect
         nc = self._pc.gid_connect(self.sgid, syn_obj)
         self.netcon_set_type(nc, syn_obj, NetConType.NC_PRESYN)
-        nc.delay = syn_params.delay if np.isnan(self._conn_params.syndelay_override) \
-            else self._conn_params.syndelay_override
-        nc.weight[0] = syn_params.weight * self._conn_params.weight_factor
+        nc.delay = self.syndelay_override or syn_params.delay
+        nc.weight[0] = syn_params.weight * self.weight_factor
         nc.threshold = SimConfig.spike_threshold
         self._netcons.append(nc)
         return nc
@@ -427,11 +432,11 @@ class Connection(ConnectionBase):
             self._mod_overrides.add(mod_override)
             override_helper = mod_override + "Helper"
             helper_cls = getattr(Nd.h, override_helper)
-            add_params = (self._conn_params.src_pop_id, self._conn_params.dst_pop_id,
+            add_params = (self._src_pop_id, self._dst_pop_id,
                           self._mod_override)
         else:
-            helper_cls = Nd.GABAABHelper if is_inh else Nd.AMPANMDAHelper
-            add_params = (self._conn_params.src_pop_id, self._conn_params.dst_pop_id)
+            helper_cls = self._GABAAB_Helper if is_inh else self._AMPANMDA_Helper
+            add_params = (self._src_pop_id, self._dst_pop_id)
 
         syn_helper = helper_cls(self.tgid, params_obj, x, syn_id, base_seed, *add_params)
 
@@ -462,7 +467,7 @@ class Connection(ConnectionBase):
         self._netcons = []
 
         for syn_i, sec in self.sections_with_synapses:
-            x = self._synapse_points.x[syn_i]
+            x = self._synapse_points_x[syn_i]
             active_params = self._synapse_params[syn_i]
             gap_junction = Nd.Gap(x, sec=sec)
 
@@ -576,6 +581,7 @@ class Connection(ConnectionBase):
 class ArtificialStim:
     """Base class for artificial Stims, namely Replay and Minis
     """
+    __slots__ = ("netstims", "netcons")
 
     _bbss = None
     """SaveState object. Initialized on first use"""
@@ -600,6 +606,7 @@ class ArtificialStim:
 class SpontMinis(ArtificialStim):
     """A class creating/holding spont minis of a connection
     """
+    __slots__ = ("_rng_info", "_keep_alive", "rate_vec")
 
     tbins_vec = None
     """Neurodamus uses a constant rate, so tbin is always containing only 0
@@ -732,6 +739,7 @@ class InhExcSpontMinis(SpontMinis):
 class ReplayStim(ArtificialStim):
     """A class creating/holding replays of a connection
     """
+    __slots__ = ("time_vec")
 
     def __init__(self):
         super().__init__()
