@@ -3,13 +3,13 @@ Implementation of the core Connection classes
 """
 from __future__ import absolute_import
 import logging
-import numpy as np
 import re
 from enum import Enum
 from .core import NeurodamusCore as Nd
 from .core.configuration import GlobalConfig, SimConfig
 from .utils import compat
 from .utils.logging import log_all
+from .utils.pyutils import append_recarray
 
 
 class ReplayMode(Enum):
@@ -269,13 +269,7 @@ class Connection(ConnectionBase):
             self._synapse_points_sclst.append(sc)
             self._synapse_points_x.append(syn_tpoints.x.x[i])
 
-        if self._synapse_params is None:
-            self._synapse_params = np.recarray(1, dtype=params_obj)
-            self._synapse_params[0] = params_obj
-        else:
-            nrows = self._synapse_params.shape[0]
-            self._synapse_params.resize(nrows+1, refcheck=False)
-            self._synapse_params[nrows] = params_obj
+        self._synapse_params = append_recarray(self._synapse_params, params_obj)
 
         params_obj.location = syn_tpoints.x[0]  # helper
 
