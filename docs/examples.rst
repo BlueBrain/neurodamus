@@ -137,6 +137,7 @@ Example 1 - Neuron Tutorial Basic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Basic neuron usage on how to:
+
  - Build a single compartment neuron model
  - Add membrane mechanisms (such as ion currents)
  - Create stimuli and run simulations
@@ -157,6 +158,7 @@ Neurodamus advanced simulation example
 This is a more advanced example that instantiates a Neurodamus simulation step by step for a simple
 circuit.
 It creates a Node object and it takes care of doing the following:
+
  - Loads targets
  - Computes Load Balancing
  - Instantiates cells
