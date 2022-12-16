@@ -1,6 +1,7 @@
 """
 Collection of generic Python utilities.
 """
+import numpy as np
 import weakref
 from bisect import bisect_left
 from enum import EnumMeta
@@ -180,3 +181,17 @@ class ConsoleColors:
         style = (style or color) >> 8
         format_seq = str(color & 0x00ff) + ((";" + str(style)) if style else "")
         return cls._CHANGE_SEQ.format(format_seq) + text + cls._RESET_SEQ
+
+
+def append_recarray(target_array, record):
+    """Append a np.record to a np.recarray"""
+    if target_array is None:
+        target_array = np.recarray(1, dtype=record.dtype)
+        target_array[0] = record
+    elif not isinstance(target_array, np.recarray) or target_array.dtype != record.dtype:
+        raise TypeError("Can not append a recode with a different dtype to the target array")
+    else:
+        nrows = target_array.shape[0]
+        target_array.resize(nrows+1, refcheck=False)
+        target_array[nrows] = record
+    return target_array

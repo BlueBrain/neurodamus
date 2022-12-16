@@ -1610,17 +1610,16 @@ class Neurodamus(Node):
     def _build_model(self):
         log_stage("================ CALCULATING LOAD BALANCE ================")
         load_bal = self.compute_load_balance()
-        mem_usage = Nd.MemUsage()
-        mem_usage.print_mem_usage()
+        Nd.MemUsage().print_mem_usage()
 
         log_stage("==================== BUILDING CIRCUIT ====================")
         self.create_cells(load_bal)
         self.execute_neuron_configures()
-        mem_usage.print_mem_usage()
+        Nd.MemUsage().print_mem_usage()
 
         # Create connections
         self.create_synapses()
-        mem_usage.print_mem_usage()
+        Nd.MemUsage().print_mem_usage()
 
         log_stage("================ INSTANTIATING SIMULATION ================")
         if not SimConfig.coreneuron:
@@ -1628,7 +1627,7 @@ class Neurodamus(Node):
 
         # Apply replay
         self.enable_replay()
-        mem_usage.print_mem_usage()
+        Nd.MemUsage().print_mem_usage()
 
         if self._run_conf["AutoInit"]:
             self.init()
@@ -1641,19 +1640,17 @@ class Neurodamus(Node):
         base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
         for syn_manager in self._circuits.all_synapse_managers():
             syn_manager.finalize(base_seed, SimConfig.coreneuron)
-        mem_usage = Nd.MemUsage()
-        mem_usage.print_mem_usage()
+        Nd.MemUsage().print_mem_usage()
 
         self.enable_stimulus()
-        mem_usage.print_mem_usage()
+        Nd.MemUsage().print_mem_usage()
         self.enable_modifications()
 
         if self._run_conf["EnableReports"]:
             self.enable_reports()
-        mem_usage.print_mem_usage()
+        Nd.MemUsage().print_mem_usage()
 
         self.sim_init()
-        mem_usage.print_mem_usage()
 
     # -
     def _merge_filesdat(self, ncycles):

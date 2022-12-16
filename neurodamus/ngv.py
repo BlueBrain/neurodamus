@@ -16,6 +16,7 @@ from .core.configuration import GlobalConfig
 from .io.synapse_reader import SynapseParameters, SynReaderSynTool
 from .utils import bin_search
 from .utils.logging import log_verbose
+from .utils.pyutils import append_recarray
 from .morphio_wrapper import MorphIOWrapper
 
 
@@ -269,7 +270,7 @@ class NeuroGlialConnection(Connection):
 
     def add_synapse(self, syn_tpoints, params_obj, syn_id=None):
         # Only store params. Glia have mechanisms pre-created
-        self._synapse_params.append(params_obj)
+        self._synapse_params = append_recarray(self._synapse_params, params_obj)
 
     def finalize(self, astrocyte, base_Seed, *, base_connections=None, **kw):
         """
