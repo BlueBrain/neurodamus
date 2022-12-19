@@ -1,13 +1,10 @@
 """
 Test suite for Neurodamus NGV support
 """
-import glob
 import os
 import pytest
-import shutil
 import subprocess
 from pathlib import Path
-from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 from neurodamus import Neurodamus
 from neurodamus.ngv import GlioVascularManager
