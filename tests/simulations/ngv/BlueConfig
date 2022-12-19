@@ -1,54 +1,79 @@
 Run Default
 {
-    Date 18:06:2020
+    Date 21:09:2020
+    #CircuitPath /gpfs/bbp.cscs.ch/project/proj62/Circuits/O1/20201012
+    #METypePath /gpfs/bbp.cscs.ch/project/proj64/entities/emodels/2017.11.03/hoc
+    #MorphologyPath /gpfs/bbp.cscs.ch/project/proj59/entities/morphologies/2017.10.31
+    #nrnPath /gpfs/bbp.cscs.ch/project/proj62/Circuits/O1/20201012/sonata/networks/edges/functional/All/edges.h5
+    #CellLibraryFile /gpfs/bbp.cscs.ch/project/proj62/Circuits/O1/20201012/sonata/networks/nodes/All/nodes.h5
 
-        CircuitPath /gpfs/bbp.cscs.ch/data/scratch/proj16/king/NGV-132/data
-         METypePath /gpfs/bbp.cscs.ch/project/proj1/entities/CCells/24.09.2014
-     MorphologyPath /gpfs/bbp.cscs.ch/release/l2/data/morphologies/31.05.12
-            nrnPath /gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1/merged_circuit/ncsFunctionalAllRecipePathways
-    TargetFile user.target
+    CircuitPath /gpfs/bbp.cscs.ch/project/proj62/Circuits/O1/20190912_spines
+    nrnPath /gpfs/bbp.cscs.ch/project/proj62/Circuits/O1/20190912_spines/sonata/networks/edges/functional/All/edges.h5
+    CellLibraryFile /gpfs/bbp.cscs.ch/project/proj62/Circuits/O1/20190912_spines/sonata/networks/nodes/All/nodes.h5
+    MorphologyPath /gpfs/bbp.cscs.ch/project/proj59/entities/morphologies/2017.10.31
+    #METypePath /gpfs/bbp.cscs.ch/project/proj64/entities/emodels/2017.11.03/hoc
+    METypePath /gpfs/bbp.cscs.ch/project/proj34/sh_ngvm/emodels_atp_scan/emodels_atp_1p4
+    MEComboInfoFile /gpfs/bbp.cscs.ch/project/proj64/entities/emodels/2017.11.03/mecombo_emodel.tsv
 
-    OutputRoot output
-    CircuitTarget select
-    RNGMode UpdatedMCell
+
+    TargetFile ./user.target
+
+    OutputRoot ./RESULTS
+    CircuitTarget mc2c_CI
+    #CircuitTarget mc2_Column
     RunMode RR
-    Duration 100
+    RNGMode UpdatedMCell
+    Duration 1000
     Dt 0.025
 }
+
 
 Circuit GLIA
 {
     Engine NGV
-    # circuit has both cells and glia??
-    CircuitPath /gpfs/bbp.cscs.ch/data/scratch/proj16
-    METypePath /gpfs/bbp.cscs.ch/project/proj1/entities/CCells/24.09.2014
-    CellLibraryFile circuit.mvd3
-
-    CircuitTarget Astrocytes
-    MorphologyPath /gpfs/bbp.cscs.ch/project/proj67/tmp/NGV-132/asc
-    MorphologyType asc
-    EdgeGidOffset 219422
+    #CircuitPath /gpfs/bbp.cscs.ch/data/scratch/proj62/ngv_circuits/20201006_full_sonata/build/
+    #CellLibraryFile /gpfs/bbp.cscs.ch/data/scratch/proj62/ngv_circuits/20201006_full_sonata/build/sonata/nodes/glia.h5
+    #MorphologyPath /gpfs/bbp.cscs.ch/data/scratch/proj62/ngv_circuits/20201006_full_sonata/build/morphologies
+    CircuitPath /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build
+    CellLibraryFile /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build/sonata/nodes/glia.h5
+    MorphologyPath /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build/morphologies
+    MorphologyType h5
+    METypePath /gpfs/bbp.cscs.ch/project/proj62/NGV/emodels
+    #CircuitTarget AstroSingle
+    CircuitTarget AstroMini
 }
 
-Projection GLIA
+
+Projection NeuroGlia
 {
     Type NeuroGlial
-    Destination GLIA:Astrocytes
-    Path /gpfs/bbp.cscs.ch/project/proj67/tmp/NGV-132/glia-sonata/edges.sonata
+    Source All:
+    Destination GLIA:
+    #Path /gpfs/bbp.cscs.ch/data/scratch/proj62/ngv_circuits/20201006_full_sonata/build/sonata/edges/neuroglial.h5
+    Path /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build/sonata/edges/neuroglial.h5
 }
 
-Connection All-to-All_spont
+Projection GlioVascular
 {
-    Source srcs_used_glia
-    Destination select
-    SpontMinis 10
+    Type GlioVascular
+    Destination GLIA:
+    Path /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build/sonata/edges/gliovascular.h5
+    VasculaturePath /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build/sonata/nodes/vasculature.h5
+}
+
+#Connection Neuronal
+{
+    Source src_cells
+    Destination mc2c
+    SpontMinis 0.5
     Weight 1
 }
 
-Connection All-to-all_Glia
+
+#Connection Glia_attach
 {
-    Source select
-    Destination Astrocytes
+    Source mc2c
+    Destination astrocytes:Astrocytes
 }
 
 
@@ -72,7 +97,7 @@ Stimulus ThresholdExc
 
               Mode Current
            Pattern Noise
-       MeanPercent 100
+       MeanPercent 200
           Variance 0.001
              Delay 0.000000
           Duration 30000.000000
@@ -82,50 +107,60 @@ Stimulus ThresholdExc
 StimulusInject ThresholdIntoExc
 {
         Stimulus ThresholdExc
-        Target  a762
+        Target  src_cells
 }
 
-#restore this
 StimulusInject pInj
 {
   Stimulus   pulse1
-    Target   pre
+    Target   mc2c_CI
 }
 
 Report voltage
 {
-        Target AllCells
+        Target mc2c_CI
           Type compartment
       ReportOn v
           Unit mV
-        Format Bin
-            Dt 0.1
+        Format SONATA
+            Dt 1.0
      StartTime 0
-       EndTime 1000
+       EndTime 2000
 }
 
-#Report rcai_soma
+Report NaCurrCompSum
 {
-        Target Astrocytes
-          Type Summation
-       Scaling None
-      ReportOn reportcai_mcd
-          Unit nA
-        Format Bin
-            Dt 0.1
-     StartTime 0
-       EndTime 1000
+    Target mc2c_CI
+    Type Summation
+    ReportOn ina
+    Unit nA
+    Format SONATA
+    Dt 1.0
+    StartTime 0
+    EndTime 2000
 }
 
-#Report rcai
+Report NaConcAllCmps
 {
-        Target AllCmpAstrocytes
-          Type Summation
-       Scaling None
-      ReportOn reportcai_mcd
-          Unit nA
-        Format Bin
-            Dt 0.025
-     StartTime 0
-       EndTime 1000
+    Target mc2c_CI
+    Type compartment
+    ReportOn nai
+    Unit mM
+    Format SONATA
+    Dt 1.0
+    StartTime 0
+    EndTime 2000
+}
+
+Report ATPConcAllCmps
+{
+    # Normal values between 2.2 and 1.0
+    Target mc2c_CI
+    Type compartment
+    ReportOn atpi
+    Unit mM
+    Format SONATA
+    Dt 1.0
+    StartTime 0
+    EndTime 2000
 }
