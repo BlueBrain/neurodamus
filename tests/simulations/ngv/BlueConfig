@@ -116,7 +116,7 @@ StimulusInject pInj
     Target   mc2c_CI
 }
 
-Report voltage
+#Report voltage
 {
         Target mc2c_CI
           Type compartment
@@ -128,7 +128,7 @@ Report voltage
        EndTime 2000
 }
 
-Report NaCurrCompSum
+#Report NaCurrCompSum
 {
     Target mc2c_CI
     Type Summation
@@ -140,7 +140,7 @@ Report NaCurrCompSum
     EndTime 2000
 }
 
-Report NaConcAllCmps
+#Report NaConcAllCmps
 {
     Target mc2c_CI
     Type compartment
@@ -152,7 +152,7 @@ Report NaConcAllCmps
     EndTime 2000
 }
 
-Report ATPConcAllCmps
+#Report ATPConcAllCmps
 {
     # Normal values between 2.2 and 1.0
     Target mc2c_CI
