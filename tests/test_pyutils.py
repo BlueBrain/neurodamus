@@ -61,7 +61,7 @@ def test_map_duplicates_struct():
     assert numpy.array_equal(d.keys(), [1, 2, 3])
     expected_list = [["b", "d"], ["c", "e"], ["a"]]
     assert all([numpy.array_equal(d_list, exp_list)
-                    for d_list, exp_list in zip(d.values(), expected_list)])
+                for d_list, exp_list in zip(d.values(), expected_list)])
     assert numpy.array_equal(d.flat_values(), ["b", "d", "c", "e", "a"]), d.flat_values()
     assert d[1] == ["b", "d"]
     assert d[2] == ["c", "e"]

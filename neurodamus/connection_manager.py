@@ -620,16 +620,19 @@ class ConnectionManagerBase(object):
             gids = numpy.intersect1d(gids, self._raw_gids)
         if dst_target:
             gids = numpy.intersect1d(gids, dst_target.get_raw_gids())
-        if show_progress:
-            gids = ProgressBar.iter(gids)
 
         created_conns_0 = self._cur_population.count()
         sgid_offset, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
 
+        self._synapse_reader.configure_override(mod_override)
+        self._synapse_reader.preload_data(gids)
+
+        if show_progress:
+            gids = ProgressBar.iter(gids)
         for base_tgid in gids:
             tgid = base_tgid + tgid_offset
             # Retrieve all synapses for tgid
-            syns_params = self._synapse_reader.get_synapse_parameters(base_tgid, mod_override)
+            syns_params = self._synapse_reader.get_synapse_parameters(base_tgid)
             logging.debug("GID %d Syn count: %d", tgid, len(syns_params))
             cur_i = 0
             syn_count = len(syns_params)
