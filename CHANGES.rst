@@ -2,6 +2,21 @@
 Change Log
 ==========
 
+Version 2.12.11
+===============
+**20 Dec 2022**
+
+*Improvements*
+  * [BBPBGLIB-954] Don't create hoc obj for nodeset targets 
+  * [BBPBGLIB-937] Reduce memory consumption in Connection class
+  * [BBPBGLIB-954] Avoid flattening nodesets
+
+*Bug fixes*
+  * Fix SHM File Transfer safety checks on large simulations
+  * Fix CI as tox got updated
+  * [BBPBGLIB-962] Fix and workaround for ngv test
+
+
 Version 2.12.10
 ===============
 **25 Nov 2022**

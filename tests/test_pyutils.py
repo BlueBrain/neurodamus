@@ -59,10 +59,13 @@ def test_map_duplicates_struct():
     vals = ["a", "b", "c", "d", "e"]
     d = GroupedMultiMap(keys, vals)
     assert numpy.array_equal(d.keys(), [1, 2, 3])
-    assert numpy.array_equal(d.values(), [["b", "d"], ["c", "e"], ["a"]]), d.values()
+    expected_list = [["b", "d"], ["c", "e"], ["a"]]
+    assert all([numpy.array_equal(d_list, exp_list)
+                for d_list, exp_list in zip(d.values(), expected_list)])
     assert numpy.array_equal(d.flat_values(), ["b", "d", "c", "e", "a"]), d.flat_values()
     assert d[1] == ["b", "d"]
     assert d[2] == ["c", "e"]
+    assert d[3] == ["a"]
     assert numpy.array_equal(list(d.get_items(1)), ["b", "d"])
     logging.info("%s: %s | Flat: %s", d.keys(), d.values(), d.flat_values())
 

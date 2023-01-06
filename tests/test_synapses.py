@@ -204,7 +204,7 @@ def test_synapses(blueconfig1):
 
     for _, df in dfs.items():
         tmp = wrapU(df[Synapse.U_SYN], df[Synapse.U_HILL_COEFFICIENT])
-        SynapseReader._scale_U_param(tmp, SimConfig.extracellular_calcium, None)
+        SynapseReader._scale_U_param(tmp, SimConfig.extracellular_calcium, [])
         df[Synapse.U_SYN] = tmp.U
 
     # 2) get values from NEURON
