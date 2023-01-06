@@ -34,7 +34,6 @@ def _setup():
         os.environ["NRNMECH_LIB_PATH"] = nrn_mech_path
         os.environ["LD_LIBRARY_PATH"] = ld_library_path + ":" + os.environ.get("LD_LIBRARY_PATH", "")
     yield
-    pass
 
 def get_manager(ndamus):
     return ndamus.circuits.get_edge_manager(
