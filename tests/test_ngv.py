@@ -44,7 +44,7 @@ def get_radii(astro_id, manager):
     astrocyte = manager._cell_manager.gid2cell[astro_id + manager._gid_offset]
     if astrocyte.endfeet is None:
         return []
-    return [sec(0.5).vascouplingB.Rad for sec in astrocyte.endfeet]
+    return [sec(0.5).vascouplingB.R0pas for sec in astrocyte.endfeet]
 
 def test_vasccouplingB_radii(_setup):
     ndamus = Neurodamus(
@@ -62,7 +62,11 @@ def test_vasccouplingB_radii(_setup):
     # # I am not sure, I would need to check the results. I think the following check is correct
     # assert all(i != 20 for i in radii)
     #
-    # ndamus.sim_init()
+    ndamus.sim_init()
+
+    radii_old = [r for astro_id in astro_ids for r in get_radii(astro_id, manager)]
+
+    print(radii_old)
     #
     # radii_old = [r for astro_id in astro_ids for r in get_radii(astro_id, manager)]
     # assert all(i != 20 for i in radii)
