@@ -75,4 +75,4 @@ def test_vasccouplingB_radii(_setup):
 
 
 if __name__ == "__main__":
-    test_vasccouplingB_radii(_setup())
+    test_vasccouplingB_radii(_setup().__pytest_wrapped__.obj())
