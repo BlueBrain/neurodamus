@@ -558,9 +558,6 @@ class GlioVascularManager(ConnectionManagerBase):
                     # /4 is because we have an average of diameters and the output is a radius
                     sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
 
-        print("AAAAAAAAAAAAA")
-        exit()
-
     def finalize(self, *_, **__):
         pass  # No synpases/netcons
 
