@@ -16,14 +16,14 @@ Run Default
     MEComboInfoFile /gpfs/bbp.cscs.ch/project/proj64/entities/emodels/2017.11.03/mecombo_emodel.tsv
 
 
-    TargetFile ./user.target
+    TargetFile user.target
 
-    OutputRoot ./RESULTS
+    OutputRoot output
     CircuitTarget mc2c_CI
     #CircuitTarget mc2_Column
     RunMode RR
     RNGMode UpdatedMCell
-    Duration 1000
+    Duration 2
     Dt 0.025
 }
 
@@ -31,12 +31,9 @@ Run Default
 Circuit GLIA
 {
     Engine NGV
-    #CircuitPath /gpfs/bbp.cscs.ch/data/scratch/proj62/ngv_circuits/20201006_full_sonata/build/
-    #CellLibraryFile /gpfs/bbp.cscs.ch/data/scratch/proj62/ngv_circuits/20201006_full_sonata/build/sonata/nodes/glia.h5
-    #MorphologyPath /gpfs/bbp.cscs.ch/data/scratch/proj62/ngv_circuits/20201006_full_sonata/build/morphologies
-    CircuitPath /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build
-    CellLibraryFile /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build/sonata/nodes/glia.h5
-    MorphologyPath /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build/morphologies
+    CircuitPath /gpfs/bbp.cscs.ch/project/proj12/jenkins/subcellular/blueconfigs_test 
+    CellLibraryFile /gpfs/bbp.cscs.ch/project/proj12/jenkins/subcellular/blueconfigs_test/glia.h5
+    MorphologyPath /gpfs/bbp.cscs.ch/project/proj12/jenkins/subcellular/blueconfigs_test/morphologies
     MorphologyType h5
     METypePath /gpfs/bbp.cscs.ch/project/proj62/NGV/emodels
     #CircuitTarget AstroSingle
@@ -49,16 +46,15 @@ Projection NeuroGlia
     Type NeuroGlial
     Source All:
     Destination GLIA:
-    #Path /gpfs/bbp.cscs.ch/data/scratch/proj62/ngv_circuits/20201006_full_sonata/build/sonata/edges/neuroglial.h5
-    Path /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build/sonata/edges/neuroglial.h5
+    Path /gpfs/bbp.cscs.ch/project/proj12/jenkins/subcellular/blueconfigs_test/neuroglial.h5
 }
 
 Projection GlioVascular
 {
     Type GlioVascular
     Destination GLIA:
-    Path /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build/sonata/edges/gliovascular.h5
-    VasculaturePath /gpfs/bbp.cscs.ch/project/proj62/scratch/ngv_circuits/20210211/build/sonata/nodes/vasculature.h5
+    Path /gpfs/bbp.cscs.ch/project/proj12/jenkins/subcellular/blueconfigs_test/gliovascular.h5
+    VasculaturePath /gpfs/bbp.cscs.ch/project/proj12/jenkins/subcellular/blueconfigs_test/vasculature.h5
 }
 
 #Connection Neuronal
