@@ -498,9 +498,6 @@ class GlioVascularManager(ConnectionManagerBase):
 
     def create_connections(self, *_, **__):
         logging.info("Creating GlioVascular virtual connections")
-
-        logging.info(", ".join(self._astro_ids))
-        exit()
         # Retrieve endfeet selections for GLIA gids on the current processor
         for astro_id in self._astro_ids:
             self._connect_endfeet(astro_id)
