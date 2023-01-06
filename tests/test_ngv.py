@@ -21,7 +21,7 @@ pytestmark = [
     )
 ]
 
-# @pytest.fixture(scope="module")
+@pytest.fixture(scope="module")
 def _setup():
     module_output = subprocess.run(['module show neurodamus-neocortex-multiscale'], capture_output=True, text=True, shell=True)
     nrn_mech_path = None
@@ -75,4 +75,4 @@ def test_vasccouplingB_radii(_setup):
 
 
 if __name__ == "__main__":
-    test_vasccouplingB_radii(_setup())
+    test_vasccouplingB_radii(_setup().__pytest_wrapped__.obj())
