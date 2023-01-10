@@ -639,8 +639,9 @@ class ConnectionManagerBase(object):
             extra_params = {}
 
             if self._load_offsets:
-                syn_index = self._synapse_reader.get_property(base_tgid, "synapse_index")
-                extra_params["synapse_index"] = syn_index.as_numpy()
+                extra_params["synapse_index"] = (
+                    self._synapse_reader.get_property(base_tgid, "synapse_index")
+                )
 
             sgids = syns_params[syns_params.dtype.names[0]].copy()  # expect src-gid in field 0
             found_conns = 0

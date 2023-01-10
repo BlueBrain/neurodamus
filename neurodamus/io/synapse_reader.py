@@ -215,6 +215,7 @@ class SonataReader(SynapseReader):
 
     FIXME Remove the caching at the np.recarray level.
     """
+    SYNAPSE_INDEX_NAMES = set(["synapse_index"])
 
     def _open_file(self, src, population, _):
         storage = libsonata.EdgeStorage(src)
@@ -229,7 +230,14 @@ class SonataReader(SynapseReader):
         return True
 
     def has_property(self, field_name):
+        if field_name in self.SYNAPSE_INDEX_NAMES:
+            return True
         return field_name in self._population.attribute_names
+
+    def get_property(self, gid, field_name):
+        """Retrieves a full pre-loaded property given a gid and the property name.
+        """
+        return self._data[gid][field_name]
 
     def preload_data(self, ids):
         """Preload SONATA fields for the specified IDs"""
@@ -272,6 +280,10 @@ class SonataReader(SynapseReader):
         # These two attributes were added later and are considered optional
         _populate("u_hill_coefficient", _read("u_hill_coefficient", True))
         _populate("conductance_ratio", _read("conductance_scale_factor", True))
+
+        # Make synapse index in the file explicit
+        for name in self.SYNAPSE_INDEX_NAMES:
+            _populate(name, needed_edge_ids.flatten())
 
         # Position of the synapse
         if self.has_property("afferent_section_id"):
@@ -429,7 +441,7 @@ class SynReaderSynTool(SynapseReader):
         self._syn_reader.loadSynapseCustom(gid, field_name, *is_pre)
         field_data = Nd.Vector()
         self._syn_reader.getPropertyData(0, field_data)
-        return field_data  # Returns the vector to avoid copies to numpy
+        return field_data.as_numpy()
 
     def _read_extra_fields_from_mod_override(self, tgid):
         reader = self._syn_reader
