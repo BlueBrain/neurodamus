@@ -1,6 +1,7 @@
 """
 Module which defines and handles Glia Cells and connectivity
 """
+import libsonata
 import logging
 import numpy as np
 import os.path
@@ -466,19 +467,22 @@ class GlioVascularManager(ConnectionManagerBase):
     InnerConnectivityCls = None  # No synapses
 
     def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
+
         if cell_manager.circuit_target is None:
             raise Exception(
                 "Circuit target is required for GlioVascular projections")
         if "Path" not in circuit_conf:
             raise Exception("Missing GlioVascular Sonata file via 'Path' configuration")
+
+        if "VasculaturePath" not in circuit_conf:
+            logging.warning("Missing Vasculature Sonata file via 'VasculaturePath' configuration")
+
         super().__init__(circuit_conf, target_manager, cell_manager, src_cell_manager, **kw)
         self._astro_ids = self._cell_manager.local_nodes.raw_gids()
         self._gid_offset = self._cell_manager.local_nodes.offset
 
     def open_edge_location(self, sonata_source, circuit_conf, **__):
         logging.info("GlioVascular sonata file %s", sonata_source)
-        import libsonata
-
         # sonata files can have multiple populations. In building we only use one
         # per file, hence this two lines below to access the first and only pop in
         # the file
@@ -487,6 +491,11 @@ class GlioVascularManager(ConnectionManagerBase):
         pop_name = pop[0] if pop else list(storage.population_names)[0]
         self._gliovascular = storage.open_population(pop_name)
 
+        if "VasculaturePath" in circuit_conf:
+            storage = libsonata.NodeStorage(circuit_conf["VasculaturePath"])
+            pop_name = list(storage.population_names)[0]
+            self._vasculature = storage.open_population(pop_name)
+
     def create_connections(self, *_, **__):
         logging.info("Creating GlioVascular virtual connections")
         # Retrieve endfeet selections for GLIA gids on the current processor
@@ -494,6 +503,7 @@ class GlioVascularManager(ConnectionManagerBase):
             self._connect_endfeet(astro_id)
 
     def _connect_endfeet(self, astro_id):
+
         endfeet = self._gliovascular.afferent_edges(astro_id)
         if endfeet.flat_size > 0:
             # Get endfeet input
@@ -516,6 +526,7 @@ class GlioVascularManager(ConnectionManagerBase):
                                                        perimeters):
                 sec.L = l
                 sec.diam = d
+                # here we just insert the mechanism. Population comes after
                 sec.insert('vascouplingB')
                 sec.insert('mcd')
                 sec(0.5).mcd.perimeter = p
@@ -532,6 +543,20 @@ class GlioVascularManager(ConnectionManagerBase):
             # logging.warn(str(cell.all.printnames())) #  print astrocyte names for "all" sections
             # logging.warn(str(Nd.h.topology()))  # print astrocyte topology
             # Nd.h('forall psection()')
+
+            assert self._gliovascular.source == "vasculature"
+            if hasattr(self, "_vasculature"):
+
+                vasc_node_ids = libsonata.Selection(self._gliovascular.source_nodes(endfeet))
+                assert vasc_node_ids.flat_size == len(list(astrocyte.endfeet))
+                d_vessel_starts = self._vasculature.get_attribute("start_diameter", vasc_node_ids)
+                d_vessel_ends = self._vasculature.get_attribute("end_diameter", vasc_node_ids)
+
+                for sec, d_vessel_start, d_vessel_end in zip(
+                        astrocyte.endfeet, d_vessel_starts, d_vessel_ends
+                ):
+                    # /4 is because we have an average of diameters and the output is a radius
+                    sec(0.5).vascouplingB.R0pas = (d_vessel_start + d_vessel_end) / 4
 
     def finalize(self, *_, **__):
         pass  # No synpases/netcons
