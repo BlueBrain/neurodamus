@@ -19,7 +19,7 @@ from .connection_manager import ConnectionManagerBase
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
-from .core.configuration import LoadBalanceMode, find_input_file, SimConfig
+from .core.configuration import GlobalConfig, LoadBalanceMode, LogLevel, find_input_file, SimConfig
 from .core.nodeset import NodeSet
 from .io import cell_readers
 from .metype import Cell_V5, Cell_V6, EmptyCell
@@ -269,7 +269,13 @@ class CellManagerBase(_CellManager):
 
         logging.info(" > Instantiating cells... (%d in Rank 0)", len(self._local_nodes))
         cell_offset = self._local_nodes.offset
-        for gid, cell_info in ProgressBar.iter(self._local_nodes.items(), len(self._local_nodes)):
+
+        if GlobalConfig.verbosity >= LogLevel.DEBUG:
+            gid_info_items = self._local_nodes.items()
+        else:
+            gid_info_items = ProgressBar.iter(self._local_nodes.items(), len(self._local_nodes))
+
+        for gid, cell_info in gid_info_items:
             cell = CellType(gid, cell_info, self._circuit_conf)
             self._store_cell(gid + cell_offset, cell)
 

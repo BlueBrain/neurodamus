@@ -427,8 +427,7 @@ class Connection(ConnectionBase):
             self._mod_overrides.add(mod_override)
             override_helper = mod_override + "Helper"
             helper_cls = getattr(Nd.h, override_helper)
-            add_params = (self._src_pop_id, self._dst_pop_id,
-                          self._mod_override)
+            add_params = (self._src_pop_id, self._dst_pop_id, self._mod_override)
         else:
             helper_cls = self._GABAAB_Helper if is_inh else self._AMPANMDA_Helper
             add_params = (self._src_pop_id, self._dst_pop_id)

@@ -587,8 +587,10 @@ class ConnectionManagerBase(object):
             point = self._target_manager.hoc.locationToPoint(
                 cur_conn.tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
             if not point.sclst[0].exists():
-                logging.warning("SKIPPED Synapse %s on gid %d. Non-existing target point.",
-                                base_id + i, cur_conn.tgid)
+                target_point_str = "({0.isec:.0f} {0.ipt:.0f} {0.offset:.4f})".format(syn_params)
+                logging.warning(
+                    "SKIPPED Synapse %s on gid %d. Src gid: %d. Deleted target point %s",
+                    base_id + i, cur_conn.tgid, cur_conn.sgid, target_point_str)
             else:
                 cur_conn.add_synapse(point, syn_params, base_id + i)
 

@@ -147,6 +147,8 @@ class Cell_V6(METype):
         EModel = getattr(Nd, emodel)
         morpho_file = meinfos_v6.morph_name + "." + self.morpho_extension
         add_params = meinfos_v6.add_params or ()
+
+        logging.debug("Loading Gid %d: emodel: %s, Morphology: %s", gid, emodel, morpho_file)
         self._cellref = EModel(gid, morpho_path, morpho_file, *add_params)
         self._ccell = self._cellref
         self._synapses = Nd.List()
@@ -189,6 +191,7 @@ class Cell_V5(METype):
         """Instantiates a cell v5 or older. Assumes emodel hoc templates are loaded
         """
         EModel = getattr(Nd, emodel)
+        logging.debug("Loading Gid %d: emodel: %s", gid, emodel)
         self._ccell = ccell = EModel(gid, morpho_path)
         self._cellref = ccell.CellRef
         self._synapses = ccell.CellRef.synlist
