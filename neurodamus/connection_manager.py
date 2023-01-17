@@ -581,18 +581,10 @@ class ConnectionManagerBase(object):
 
     # -
     def _add_synapses(self, cur_conn, syns_params, syn_type_restrict=None, base_id=0):
-        for i, syn_params in enumerate(syns_params):
-            if syn_type_restrict and syn_params.synType != syn_type_restrict:
-                continue
-            point = self._target_manager.hoc.locationToPoint(
-                cur_conn.tgid, syn_params.isec, syn_params.ipt, syn_params.offset)
-            if not point.sclst[0].exists():
-                target_point_str = "({0.isec:.0f} {0.ipt:.0f} {0.offset:.4f})".format(syn_params)
-                logging.warning(
-                    "SKIPPED Synapse %s on gid %d. Src gid: %d. Deleted target point %s",
-                    base_id + i, cur_conn.tgid, cur_conn.sgid, target_point_str)
-            else:
-                cur_conn.add_synapse(point, syn_params, base_id + i)
+        if syn_type_restrict:
+            syns_params = syns_params[syns_params['synType'] != syn_type_restrict]
+
+        cur_conn.add_synapses(self._target_manager, syns_params, base_id)
 
     def get_updated_population_offsets(self, src_target, dst_target):
         sgid_offset = self._src_cell_manager.local_nodes.offset
@@ -645,7 +637,7 @@ class ConnectionManagerBase(object):
                     self._synapse_reader.get_property(base_tgid, "synapse_index")
                 )
 
-            sgids = syns_params[syns_params.dtype.names[0]].copy()  # expect src-gid in field 0
+            sgids = syns_params[syns_params.dtype.names[0]].astype("int64")  # src gid in field 0
             found_conns = 0
             yielded_conns = 0
             _dbg_yielded_src_gids = compat.Vector("i")

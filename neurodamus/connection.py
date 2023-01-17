@@ -1,8 +1,8 @@
 """
 Implementation of the core Connection classes
 """
-from __future__ import absolute_import
 import logging
+import numpy
 import re
 from enum import Enum
 from .core import NeurodamusCore as Nd
@@ -45,7 +45,7 @@ class ConnectionBase:
     """
     __slots__ = ("sgid", "tgid", "locked", "_disabled", "_synapse_params",
                  "_netcons", "_synapses", "_delay_vec", "_delayweight_vec",
-                 "_weight_factor", "_syndelay_override", "_syn_offset",
+                 "weight_factor", "syndelay_override", "_syn_offset",
                  "_src_pop_id", "_dst_pop_id")
 
     _match_index = re.compile(r"\[[0-9]+\]")
@@ -70,10 +70,10 @@ class ConnectionBase:
         """
         self.sgid = int(sgid or -1)
         self.tgid = int(tgid)
+        self.weight_factor = weight_factor
+        self.syndelay_override = syndelay_override
         self.locked = False
         self._disabled = False
-        self._weight_factor = weight_factor
-        self._syndelay_override = syndelay_override
         self._syn_offset = synapses_offset
         self._src_pop_id = src_pop_id
         self._dst_pop_id = dst_pop_id
@@ -89,14 +89,6 @@ class ConnectionBase:
     synapses_offset = property(lambda self: self._syn_offset)
     population_id = property(lambda self: (self._src_pop_id,
                                            self._dst_pop_id))
-    weight_factor = property(
-        lambda self: self._weight_factor,
-        lambda self, weight: setattr(self, '_weight_factor', weight)
-    )
-    syndelay_override = property(
-        lambda self: self._syndelay_override,
-        lambda self, syndelay_override: setattr(self, '_syndelay_override', syndelay_override)
-    )
 
     # Subclasses must implement instantiation of their connections in the simulator
     def finalize(self, cell, base_seed=0, *args, **kw):
@@ -174,8 +166,8 @@ class Connection(ConnectionBase):
     a presynaptic and a postsynaptic gid, including Points where those
     synapses are placed (stored in TPointList)
     """
-    __slots__ = ("_minis_spont_rate", "_spont_minis", "_replay", "_mod_override", "_synapse_ids",
-                 "_configurations", "_conductances_bk", "_synapse_points_sclst",
+    __slots__ = ("minis_spont_rate", "_spont_minis", "_replay", "_mod_override", "_synapse_ids",
+                 "_configurations", "_conductances_bk", "_synapse_sections",
                  "_synapse_points_x")
 
     _AMPANMDA_Helper = None
@@ -214,22 +206,16 @@ class Connection(ConnectionBase):
         """
         self._init_hmod()
         super().__init__(sgid, tgid, src_pop_id, dst_pop_id, weight_factor, **kwargs)
+        self.minis_spont_rate = minis_spont_rate
         self._mod_override = mod_override
-        self._synapse_points_sclst = []
-        self._synapse_points_x = []
-        self._synapse_ids = compat.Vector("i")
+        self._synapse_sections = []
+        self._synapse_points_x = compat.array("d")
+        self._synapse_ids = compat.array("i")  # replaced by np.array for bulk add syn
         self._configurations = [configuration] if configuration is not None else []
         self._conductances_bk = None  # Store for re-enabling
         # Artificial stimulus sources
-        self._minis_spont_rate = None
         self._spont_minis = None
         self._replay = None
-
-    # R/W properties
-    minis_spont_rate = property(
-        lambda self: self._minis_spont_rate,
-        lambda self, rate: setattr(self, '_minis_spont_rate', rate)
-    )
 
     # -
     def add_synapse_configuration(self, configuration):
@@ -248,7 +234,7 @@ class Connection(ConnectionBase):
         """Generator over all sections containing synapses, yielding pairs
         (section_index, section)
         """
-        for syn_i, sc in enumerate(self._synapse_points_sclst):
+        for syn_i, sc in enumerate(self._synapse_sections):
             # All locations, on and off node should be in this list, but
             # only synapses/netcons on-node should be returned
             if not sc.exists():
@@ -256,8 +242,52 @@ class Connection(ConnectionBase):
             yield syn_i, sc.sec
 
     # -
+    def add_synapses(self, target_manager, synapses_params, base_id=0):
+        """Adds synapses in bulk.
+
+        Args:
+         - synapses_params: An SynapseParamteres array (possibly view) for this conn synapses
+         - base_id: The synapse base id, usually absolute offset
+
+        """
+
+        n_synapses = len(synapses_params)
+        synapse_ids = numpy.arange(base_id, base_id+n_synapses, dtype="uint64")
+        mask = numpy.full(n_synapses, True)  # We may need to skip invalid synapses (e.g. on Axon)
+
+        for i, syn_params in enumerate(synapses_params):
+            syn_point = target_manager.hoc.locationToPoint(
+                self.tgid, syn_params['isec'], syn_params['ipt'], syn_params['offset'])
+            syn_params['location'] = syn_point.x[0]
+            section = syn_point.sclst[0]
+
+            if not section.exists():
+                target_point_str = "({0.isec:.0f} {0.ipt:.0f} {0.offset:.4f})".format(syn_params)
+                logging.warning("SKIPPED Synapse %s on gid %d. Src gid: %d. Deleted TPoint %s",
+                                base_id + i, self.tgid, self.sgid, target_point_str)
+                mask[i] = False
+                continue
+
+            # These are normal lists/arrays, so we cant use masks
+            self._synapse_sections.append(section)
+            self._synapse_points_x.append(syn_point.x[0])
+
+        if not mask.all():
+            synapses_params = synapses_params[mask]
+            synapse_ids = synapse_ids[mask]
+
+        if not self._synapse_params:  # None or empty
+            self._synapse_params = synapses_params
+            self._synapse_ids = synapse_ids
+        else:
+            self._synapse_params = numpy.concatenate((self._synapse_params, synapses_params))
+            self._synapse_ids = numpy.concatenate((self._synapse_ids, synapse_ids))
+
+    # -
     def add_synapse(self, syn_tpoints, params_obj, syn_id=None):
         """Adds a synapse in given location to this Connection.
+        NOTE: This procedure can have a significant impact when called multiple
+        times. Consider add_synapses to add multiple synapses in bulk
 
         Args:
             syn_tpoints: TPointList with one point on the tgid where the
@@ -265,16 +295,21 @@ class Connection(ConnectionBase):
             params_obj: Parameters object for the Synapse to be placed
             syn_id: Optional id for the synapse to be used for seeding rng
         """
+        # Update four lists:
+        # - synapse_sections
+        # - synapse_points_x
+        # - synapse_params (slow!)
+        # - synapse_ids
+
         for i, sc in enumerate(syn_tpoints.sclst):
-            self._synapse_points_sclst.append(sc)
+            self._synapse_sections.append(sc)
             self._synapse_points_x.append(syn_tpoints.x.x[i])
 
         self._synapse_params = append_recarray(self._synapse_params, params_obj)
-
         params_obj.location = syn_tpoints.x[0]  # helper
 
         if syn_id is None:
-            syn_id = len(self._synapse_points_sclst)
+            syn_id = len(self._synapse_sections)
         self._synapse_ids.append(syn_id)
 
     # -
@@ -372,12 +407,12 @@ class Connection(ConnectionBase):
         if not shall_create_replay:
             self._replay = None
         # if spont_minis not set by user, set with default rates from circuit if available
-        if self._minis_spont_rate is None:
+        if self.minis_spont_rate is None:
             if cell.inh_mini_frequency or cell.exc_mini_frequency:
                 self._spont_minis = InhExcSpontMinis(cell.inh_mini_frequency,
                                                      cell.exc_mini_frequency)
         else:
-            self._spont_minis = SpontMinis(self._minis_spont_rate)
+            self._spont_minis = SpontMinis(self.minis_spont_rate)
         # Release spont_minis object if it evaluates to false (rates are 0)
         if not self._spont_minis:
             self._spont_minis = None
@@ -421,7 +456,7 @@ class Connection(ConnectionBase):
                 MCellRan4's low index parameter
 
         """
-        is_inh = params_obj.synType < 100
+        is_inh = params_obj['synType'] < 100
         if self._mod_override is not None:
             mod_override = self._mod_override.get("ModOverride").s
             self._mod_overrides.add(mod_override)
@@ -437,11 +472,12 @@ class Connection(ConnectionBase):
         # set the synapse conductance obtained from the synapse file
         # this variable is exclusively used for delay connections
         if hasattr(syn_helper.synapse, "conductance"):
-            syn_helper.synapse.conductance = params_obj.weight
+            syn_helper.synapse.conductance = params_obj['weight']
 
         # set the default value of synapse NMDA_ratio/GABAB_ratio from circuit
-        if params_obj.conductance_ratio >= 0 and self._mod_override is None:
-            self._update_conductance_ratio(syn_helper.synapse, is_inh, params_obj.conductance_ratio)
+        conductance_ratio = float(params_obj['conductance_ratio'])
+        if conductance_ratio >= .0 and self._mod_override is None:
+            self._update_conductance_ratio(syn_helper.synapse, is_inh, conductance_ratio)
 
         cell.CellRef.synHelperList.append(syn_helper)
         cell.CellRef.synlist.append(syn_helper.synapse)
