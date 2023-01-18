@@ -368,8 +368,20 @@ class _TargetInterface(metaclass=ABCMeta):
         """Add a nodeset to the current target"""
         return NotImplemented
 
-    def contains_raw(self, gid):
-        return gid in self.get_raw_gids()
+    def contains(self, items, raw_gids=False):
+        """Return a bool or an array of bool's whether the elements are contained
+        """
+        # Shortcut for empty target. Algorithm below would fail
+        if not self.gid_count():
+            return ([False] * len(items)) if hasattr(items, "__len__") else False
+
+        gids = self.get_raw_gids() if raw_gids else self.get_gids()
+        pos = numpy.searchsorted(gids, items)
+        if pos.ndim == 0:
+            return pos < gids.size and gids[pos] == items
+        else:
+            pos[pos == len(gids)] = 0  # arbitrarily change to valid pos
+            return gids[pos] == items
 
     def intersects(self, other):
         """ Check if two targets intersect. At least one common population has to intersect
@@ -471,12 +483,7 @@ class NodesetTarget(_TargetInterface, _HocTargetInterface):
         """ Determine if a given gid is included in the gid list for this target
         regardless of which cpu. Offsetting is taken into account
         """
-        gids = self.get_gids()
-        pos = numpy.searchsorted(gids, gid)
-        return pos < gids.size and gids[pos] == gid
-
-    def contains_raw(self, gid):
-        return gid in self.get_raw_gids()
+        return self.contains(gid)
 
     def append_nodeset(self, nodeset: NodeSet):
         self.nodesets.append(nodeset)
@@ -587,13 +594,14 @@ class _HocTarget(_TargetInterface):
     """
     A wrapper around Hoc targets to implement _TargetInterface
     """
+    GID_DTYPE = numpy.uint32
 
     def __init__(self, name, hoc_target, pop_name=None, *, _raw_gids=None):
         self.name = name
         self.population_name = pop_name
         self.hoc_target = hoc_target
         self.offset = 0
-        self._raw_gids = _raw_gids and numpy.array(_raw_gids, dtype="uint32")
+        self._raw_gids = _raw_gids and numpy.array(_raw_gids, dtype=self.GID_DTYPE)
 
     @property
     def population_names(self):
@@ -607,8 +615,10 @@ class _HocTarget(_TargetInterface):
         return len(self.get_raw_gids())
 
     def get_gids(self):
+        if not self.offset:
+            return self.get_raw_gids()
         try:
-            return numpy.add(self.get_raw_gids(), self.offset, dtype="uint32")
+            return numpy.add(self.get_raw_gids(), self.offset, dtype=self.GID_DTYPE)
         except numpy.core._exceptions.UFuncTypeError as e:
             logging.error("Type error: please use type uint32 for the array of raw gids.")
             raise e
@@ -616,7 +626,8 @@ class _HocTarget(_TargetInterface):
     def get_raw_gids(self):
         if self._raw_gids is None:
             assert self.hoc_target
-            self._raw_gids = self.hoc_target.completegids().as_numpy().astype("uint32")
+            self._raw_gids = self.hoc_target.completegids().as_numpy().astype(self.GID_DTYPE)
+            self._raw_gids.sort()
         return self._raw_gids
 
     def get_hoc_target(self):
@@ -625,6 +636,9 @@ class _HocTarget(_TargetInterface):
     def gids(self):
         """This target gids on this rank, with offset"""
         return self.hoc_target.gids()
+
+    def get_local_gids(self):
+        return self.hoc_target.gids().as_numpy().astype(self.GID_DTYPE)
 
     def getPointList(self, cell_manager, **kw):
         return self.hoc_target.getPointList(cell_manager)

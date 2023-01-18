@@ -586,6 +586,7 @@ class ConnectionManagerBase(object):
 
         cur_conn.add_synapses(self._target_manager, syns_params, base_id)
 
+    # -
     def get_updated_population_offsets(self, src_target, dst_target):
         sgid_offset = self._src_cell_manager.local_nodes.offset
         tgid_offset = self._cell_manager.local_nodes.offset
@@ -620,48 +621,65 @@ class ConnectionManagerBase(object):
 
         self._synapse_reader.configure_override(mod_override)
         self._synapse_reader.preload_data(gids)
+        extra_fields = {}  # Without extra fields, reuse this object
 
         if show_progress:
             gids = ProgressBar.iter(gids)
+
+        # NOTE: This routine is quite critical, sitting at the core of synapse processing
+        # so it has been carefully optimized with numpy vectorized operations, even if
+        # it might lose some readability.
+        # For each tgid we obtain the synapse parameters as a record array. We then split it,
+        # without copying, yielding ranges (views) of it.
+
         for base_tgid in gids:
             tgid = base_tgid + tgid_offset
-            # Retrieve all synapses for tgid
             syns_params = self._synapse_reader.get_synapse_parameters(base_tgid)
             logging.debug("GID %d Syn count: %d", tgid, len(syns_params))
-            cur_i = 0
-            syn_count = len(syns_params)
-            extra_params = {}
 
             if self._load_offsets:
-                extra_params["synapse_index"] = (
-                    self._synapse_reader.get_property(base_tgid, "synapse_index")
-                )
+                syn_index = self._synapse_reader.get_property(base_tgid, "synapse_index")
+                extra_fields = {"synapse_index": syn_index}
+
+            # We yield ranges of contiguous parameters belonging to the same connection,
+            # and given we have data for a single tgid, enough to group by sgid.
+            # The first row of a range is found by numpy.diff
 
             sgids = syns_params[syns_params.dtype.names[0]].astype("int64")  # src gid in field 0
             found_conns = 0
             yielded_conns = 0
-            _dbg_yielded_src_gids = compat.Vector("i")
+            _dbg_yielded_src_gids = compat.array("i")
+            sgids_ranges = numpy.diff(sgids, prepend=numpy.nan, append=numpy.nan).nonzero()[0]
 
-            while cur_i < syn_count:
+            if src_target:
+                # create a set with the gids that belong both to the synapses and the target
+                unique_sgids = sgids[sgids_ranges[:-1]]
+                allowed_sgids = set(unique_sgids[src_target.contains(unique_sgids, raw_gids=True)])
+
+            for i, range_start in enumerate(sgids_ranges[:-1]):
                 # Use numpy to get all the synapses of the same gid at once
-                sgid = int(sgids[cur_i])
-                final_sgid = sgid + sgid_offset
-                next_i = numpy.argmax(sgids[cur_i:] != sgid) + cur_i
-                if cur_i == next_i:  # last group
-                    next_i = syn_count
+                sgid = int(sgids[range_start])
 
-                if src_target is None or final_sgid in src_target:
-                    if GlobalConfig.debug_conn == [base_tgid]:
-                        _dbg_yielded_src_gids.append(sgid)
-                    elif GlobalConfig.debug_conn == [sgid, base_tgid]:
-                        log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s", sgid, base_tgid,
-                                syns_params)
-                    other_params = {name: prop[cur_i:next_i] for name, prop in extra_params.items()}
-                    yield final_sgid, tgid, syns_params[cur_i:next_i], other_params, cur_i
+                if src_target is None or sgid in allowed_sgids:
+                    final_sgid = sgid + sgid_offset
+                    range_end = sgids_ranges[i+1]
+                    syn_params = syns_params[range_start:range_end]
+                    extra_params = extra_fields and {  # reuse empty {}. Dont modify later!
+                        name: prop[range_start:range_end]
+                        for name, prop in extra_fields.items()
+                    }
+
+                    if dbg_conn := GlobalConfig.debug_conn:  # Debug Logging
+                        if dbg_conn == [base_tgid]:
+                            _dbg_yielded_src_gids.append(sgid)
+                        elif dbg_conn == [sgid, base_tgid]:
+                            log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s",
+                                    sgid, base_tgid, syns_params)
+
+                    yield final_sgid, tgid, syn_params, extra_params, range_start
                     yielded_conns += 1
 
                 found_conns += 1
-                cur_i = next_i
 
             if _dbg_yielded_src_gids:
                 log_all(logging.DEBUG, "Source GIDs for debug cell: %s", _dbg_yielded_src_gids)

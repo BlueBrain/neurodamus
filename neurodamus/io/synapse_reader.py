@@ -441,7 +441,7 @@ class SynReaderSynTool(SynapseReader):
         self._syn_reader.loadSynapseCustom(gid, field_name, *is_pre)
         field_data = Nd.Vector()
         self._syn_reader.getPropertyData(0, field_data)
-        return field_data.as_numpy()
+        return field_data.as_numpy().copy()
 
     def _read_extra_fields_from_mod_override(self, tgid):
         reader = self._syn_reader

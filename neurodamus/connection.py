@@ -167,8 +167,7 @@ class Connection(ConnectionBase):
     synapses are placed (stored in TPointList)
     """
     __slots__ = ("minis_spont_rate", "_spont_minis", "_replay", "_mod_override", "_synapse_ids",
-                 "_configurations", "_conductances_bk", "_synapse_sections",
-                 "_synapse_points_x")
+                 "_configurations", "_conductances_bk", "_synapse_sections", "_synapse_points_x")
 
     _AMPANMDA_Helper = None
     _GABAAB_Helper = None
@@ -246,7 +245,7 @@ class Connection(ConnectionBase):
         """Adds synapses in bulk.
 
         Args:
-         - synapses_params: An SynapseParamteres array (possibly view) for this conn synapses
+         - synapses_params: A SynapseParameters array (possibly view) for this conn synapses
          - base_id: The synapse base id, usually absolute offset
 
         """
