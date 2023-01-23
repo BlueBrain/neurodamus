@@ -1564,7 +1564,8 @@ class Neurodamus(Node):
     """A high level interface to Neurodamus
     """
 
-    def __init__(self, config_file, auto_init=True, logging_level=None, **user_opts):
+    def __init__(self, config_file, auto_init=True, logging_level=None,
+                 cleanup_atexit=True, **user_opts):
         """Creates and initializes a neurodamus run node
 
         As part of Initiazation it calls:
@@ -1581,6 +1582,8 @@ class Neurodamus(Node):
                 1 - Info messages (default)
                 2 - Verbose
                 3 - Debug messages
+            cleanup_atexit: (bool) Call cleanup in the destructor
+                [for more see: https://bbpteam.epfl.ch/project/issues/browse/BBPBGLIB-976]
             user_opts: Options to Neurodamus overriding BlueConfig
         """
         self._init_ok = False
@@ -1588,6 +1591,8 @@ class Neurodamus(Node):
             GlobalConfig.verbosity = logging_level
 
         enable_reports = not user_opts.pop("disable_reports", False)
+
+        self.cleanup_atexit = cleanup_atexit
 
         Node.__init__(self, config_file, user_opts)
         # Use the run_conf dict to avoid passing it around
@@ -1833,7 +1838,7 @@ class Neurodamus(Node):
         logging.info("Creating .SUCCESS file: '%s'", self._success_file)
 
     def __del__(self):
-        if self._init_ok:
+        if self._init_ok and self.cleanup_atexit:
             self.cleanup()
 
     @run_only_rank0
