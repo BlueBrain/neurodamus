@@ -48,9 +48,6 @@ class ConnectionBase:
                  "weight_factor", "syndelay_override", "_syn_offset",
                  "_src_pop_id", "_dst_pop_id")
 
-    _match_index = re.compile(r"\[[0-9]+\]")
-    """Regex to match indexes of hoc objects, useful to get mechs name"""
-
     def __init__(self,
                  sgid, tgid,
                  src_pop_id=0, dst_pop_id=0,
@@ -145,13 +142,28 @@ class ConnectionBase:
         for nc in self._netcons:
             nc.active(True)
 
+    # Recent synapses accept a signal type (synapse, replay, etc...)
+    # The index at which we set it (in `.weight` array) is a top-level Neuron var
+    # However checking/getting it is slow. So we cache globally
+    _netcon_signal_type_index_cache = {}
+
+    _match_index = re.compile(r"\[[0-9]+\]")
+    """Regex to match indexes of hoc objects, useful to get mechs name"""
+
     @classmethod
     def netcon_set_type(cls, netcon, syn_obj, nc_type):
         """Find nc_type_param from the synapse global variable and set via the netcon weight"""
         nc_param_name = cls._match_index.sub("", "nc_type_param_%s" % syn_obj)
-        if hasattr(Nd, nc_param_name):
-            nc_type_param = int(getattr(Nd, nc_param_name))
-            netcon.weight[nc_type_param] = int(nc_type)
+        nc_param_index = cls._netcon_signal_type_index_cache.get(nc_param_name)
+        if nc_param_index is None:  # False -> not supported by this model
+            nc_param_index = getattr(Nd, nc_param_name, False)
+            if nc_param_index:
+                nc_param_index = int(nc_param_index)
+
+            cls._netcon_signal_type_index_cache[nc_param_name] = nc_param_index
+
+        if nc_param_index:
+            netcon.weight[nc_param_index] = int(nc_type)
 
     def __str__(self):
         return "[%d->%d]" % (self.sgid, self.tgid)
