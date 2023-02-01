@@ -134,7 +134,8 @@ class SonataConfig:
             "random_seed": "Seed",
             "series_resistance": "RS",
             "node_set": "Target",  # for StimulusInject
-            "source": "Source"  # for StimulusInject
+            "source": "Source",  # for StimulusInject
+            "sd_percent": "SDPercent"
 
         },
         "reports": {

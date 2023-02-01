@@ -343,10 +343,14 @@ class _SimConfig(object):
     @classmethod
     def get_stim_inject(cls, stim_name):
         for _, inject in cls.injects.items():
-            inject = compat.Map(inject)
+            inject = compat.Map(inject).as_dict(parse_strings=True)
             if stim_name == inject["Stimulus"]:
                 return inject
         return None
+
+    @classmethod
+    def check_cell_requirements(cls, target_manager):
+        _input_resistance(cls, target_manager)  # top_level
 
 
 # Singleton
@@ -1048,19 +1052,18 @@ def check_connections_configure(SimConfig, target_manager):
         logging.info(" => CHECK No single Weight=0 blocks!")
 
 
-@SimConfig.requisitor
-def _input_resistance(config: _SimConfig, config_parser):
-    from ..target_manager import TargetSpec
+def _input_resistance(config: _SimConfig, target_manager):
     prop = "@dynamics:input_resistance"
     for stim_name, stim in config.stimuli.items():
-        stim = compat.Map(stim)
+        stim = compat.Map(stim).as_dict(parse_strings=True)
         stim_inject = config.get_stim_inject(stim_name)
         if stim_inject is None:
             continue  # not injected, do not care
-        target = stim_inject["Target"]  # all we can know so far
+        target_name = stim_inject["Target"]
         if stim["Mode"] == "Conductance" and \
            stim["Pattern"] in ["RelativeShotNoise", "RelativeOrnsteinUhlenbeck"]:
-            target_spec = TargetSpec(target) if isinstance(target, str) else TargetSpec(target.s)
-            # NOTE: key will be None when target has no prefix, referring to the default population
-            config._cell_requirements.setdefault(target_spec.population, set()).add(prop)
-            log_verbose('[cell] %s (%s)' % (prop, target))
+            # NOTE: use target_manager to read the population names of hoc or NodeSet targets
+            target = target_manager.get_target(target_name)
+            for population in target.population_names:
+                config._cell_requirements.setdefault(population, set()).add(prop)
+                log_verbose('[cell] %s (%s:%s)' % (prop, population, target.name))

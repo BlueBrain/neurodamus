@@ -400,6 +400,9 @@ class Node:
                 prosp_hosts)
             Nd.quit(1)
 
+        # Check dynamic attributes required before loading cells
+        SimConfig.check_cell_requirements(self.target_manager)
+
         log_stage("LOADING NODES")
         if not load_balance:
             logging.info("Load-balance object not present. Continuing Round-Robin...")

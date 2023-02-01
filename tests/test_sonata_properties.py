@@ -1,4 +1,3 @@
-import logging
 import os
 import pytest
 from tempfile import NamedTemporaryFile
@@ -85,6 +84,20 @@ Target Section small_soma
 }
 """
 
+TGT_str_ns = """
+{
+    "small": {
+        "population": "All",
+        "node_id": [
+            3425773,
+            3868779,
+            2886524,
+            3099745
+        ]
+    }
+}
+"""
+
 # Prerequisites
 pytestmark = [
     pytest.mark.slow,
@@ -105,6 +118,21 @@ def blueconfig():
     # dump config to files
     with NamedTemporaryFile("w", prefix='test_input_resistance_tgt', delete=False) as tgt_file:
         tgt_file.write(TGT_str)
+    with NamedTemporaryFile("w", prefix="test_input_resistance_bc", delete=False) as bc_file:
+        bc_file.write(BC_str.format(target_file=tgt_file.name))
+
+    yield bc_file.name
+
+    os.unlink(bc_file.name)
+    os.unlink(tgt_file.name)
+
+
+@pytest.fixture(scope="module")
+def blueconfig_nodesets():
+    # dump config to files
+    with NamedTemporaryFile("w", prefix='test_input_resistance_tgt', suffix=".json", delete=False)\
+            as tgt_file:
+        tgt_file.write(TGT_str_ns)
     with NamedTemporaryFile("w", prefix="test_input_resistance_bc", delete=False) as bc_file:
         bc_file.write(BC_str.format(target_file=tgt_file.name))
 
@@ -144,11 +172,6 @@ def test_input_resistance(blueconfig):
     SimConfig.injects.hoc_map.put("inject_relativeOU", INJECT_relativeOU.hoc_map)
     SimConfig.injects._size = int(SimConfig.injects.hoc_map.count())
 
-    # check requirements again (NOTE: should be callable from SimConfig)
-    logging.info("Checking simulation requirements")
-    for requisitor in SimConfig._requisitors:
-        requisitor(SimConfig, SimConfig._config_parser)
-
     # setup sim
     n.load_targets()
     n.create_cells()
@@ -178,7 +201,7 @@ def test_input_resistance(blueconfig):
     assert nspike == 6
 
 
-def test_input_resistance_2(blueconfig):
+def test_input_resistance_2(blueconfig_nodesets):
     """
     A test of getting input resistance values from SONATA nodes file. BBPBGLIB-806
     """
@@ -186,7 +209,7 @@ def test_input_resistance_2(blueconfig):
 
     # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(blueconfig)
+    n = Node(blueconfig_nodesets)
 
     # append Stimulus and StimulusInject blocks programmatically
     # relativeSN
@@ -209,11 +232,6 @@ def test_input_resistance_2(blueconfig):
     INJECT_relativeSN["Target"] = "small"
     SimConfig.injects.hoc_map.put("inject_relativeSN", INJECT_relativeSN.hoc_map)
     SimConfig.injects._size = int(SimConfig.injects.hoc_map.count())
-
-    # check requirements again (NOTE: should be callable from SimConfig)
-    logging.info("Checking simulation requirements")
-    for requisitor in SimConfig._requisitors:
-        requisitor(SimConfig, SimConfig._config_parser)
 
     # setup sim
     n.load_targets()
