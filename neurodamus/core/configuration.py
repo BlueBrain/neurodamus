@@ -835,21 +835,24 @@ def _check_model_build_mode(config: _SimConfig, run_conf):
 
     # It's a CoreNeuron run. We have to check if build_model is AUTO or OFF
     core_data_location = config.coreneuron_datadir
-    core_data_location_shm = SHMUtil.get_datadir_shm(core_data_location)
-    core_data_exists = (
-        os.path.isfile(os.path.join(config.output_root, "sim.conf"))
-        and os.path.isfile(os.path.join(core_data_location, "files.dat"))
-    )
+
+    try:
+        # Ensure that 'sim.conf' and 'files.dat' exist, and that '/dev/shm' was not used
+        with open(os.path.join(config.output_root, "sim.conf"), 'r') as f:
+            core_data_exists = (
+                not "datpath='/dev/shm/" in f.read()
+                and os.path.isfile(os.path.join(core_data_location, "files.dat"))
+            )
+    except FileNotFoundError:
+        core_data_exists = False
 
     if config.build_model in (None, "AUTO"):
         # If enable-shm option is given we have to rebuild the model and delete any previous files
         # in /dev/shm or gpfs
         # In any case when we start model building any data in the core_data_location_shm if it
         # exists are deleted
-        if (
-            not core_data_exists
-            or core_data_location_shm and os.path.exists(core_data_location_shm)
-        ):
+        if not core_data_exists:
+            core_data_location_shm = SHMUtil.get_datadir_shm(core_data_location)
             data_location = (
                 core_data_location_shm
                 if (
@@ -857,7 +860,7 @@ def _check_model_build_mode(config: _SimConfig, run_conf):
                 )
                 else core_data_location
             )
-            logging.info("CoreNeuron input data not found in '%s'. "
+            logging.info("Valid CoreNeuron input data not found in '%s'. "
                          "Neurodamus will proceed to model building.",
                          data_location)
             config.build_model = True
