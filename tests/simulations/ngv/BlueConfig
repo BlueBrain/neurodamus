@@ -10,7 +10,7 @@ Run Default
     CircuitPath /gpfs/bbp.cscs.ch/project/proj62/Circuits/O1/20190912_spines
     nrnPath /gpfs/bbp.cscs.ch/project/proj62/Circuits/O1/20190912_spines/sonata/networks/edges/functional/All/edges.h5
     CellLibraryFile /gpfs/bbp.cscs.ch/project/proj62/Circuits/O1/20190912_spines/sonata/networks/nodes/All/nodes.h5
-    MorphologyPath /gpfs/bbp.cscs.ch/project/proj59/entities/morphologies/2017.10.31
+    MorphologyPath /gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-scx-v6/morphologies/2017.10.31
     #METypePath /gpfs/bbp.cscs.ch/project/proj64/entities/emodels/2017.11.03/hoc
     METypePath /gpfs/bbp.cscs.ch/project/proj12/jenkins/subcellular/blueconfigs_test/emodels
     MEComboInfoFile /gpfs/bbp.cscs.ch/project/proj64/entities/emodels/2017.11.03/mecombo_emodel.tsv
