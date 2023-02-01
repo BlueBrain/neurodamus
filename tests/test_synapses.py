@@ -12,7 +12,9 @@ Run Default
 {{
     CellLibraryFile /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3
     nrnPath /gpfs/bbp.cscs.ch/project/proj83/circuits/sscx-v7-plasticity/edges.sonata
-    CircuitPath /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805
+
+    # Use a fake circuit path to avoid loading the HUGE start.target of the real circuit
+    CircuitPath /gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-1k
 
     BioName /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/bioname
     Atlas /gpfs/bbp.cscs.ch/project/proj83/data/atlas/S1/MEAN/P14-MEAN
@@ -46,8 +48,8 @@ Run Default
 
 Projection Thalamocortical_input_VPM
 {{
-    Path /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/projections/2022_04_04/\
-vpm_region_by_region_flatmap/merged.sonata
+    Path /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/projections/\
+2023_01_16/vpm/edges.sonata
     Source pre_VPM
     PopulationID 1
 }}
@@ -114,7 +116,7 @@ def blueconfig1():
 @pytest.mark.skipif(
     "bluepy" not in os.environ.get("PYTHONPATH"),
     reason="Test requires bluepy run")
-def test_synapses(blueconfig1):
+def test_synapses_params(blueconfig1):
     """
     A test of the impact of eager caching of synaptic parameters. BBPBGLIB-813
     """
@@ -230,7 +232,7 @@ def test_synapses(blueconfig1):
 
     # sort lists by synapseID
     for _, x in synlist.items():
-        x = sorted(x, key=lambda d: d['synapseID'])
+        x.sort(key=lambda d: d['synapseID'])
 
     # 3) compare values: Neurodamus vs bluepy
     # mapping between Nd and bluepy properties
