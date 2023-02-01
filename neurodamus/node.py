@@ -174,15 +174,19 @@ class CircuitManager:
     def base_cell_manager(self):
         return self.get_node_manager(None)
 
-    """ Write infor in sim_conf/populations_offset.dat
-        format population name::gid offset::population alias
-    """
     @run_only_rank0
     def write_population_offsets(self):
+        """Write infor in <output_dir>/populations_offset.dat
+        format population name::gid offset::population alias
+        The virtual population offset is also written for synapse replay in restore.
+        """
         with open(self._pop_offset_file(create=True), "w") as f:
             pop_offsets, alias_pop = self.get_population_offsets()
+            virtual_pop_offsets = self.get_virtual_population_offsets()
             for alias, pop in alias_pop.items():
                 f.write("{}::{}::{}\n".format(pop or ' ', pop_offsets[pop], alias or ' '))
+            for pop, offset in virtual_pop_offsets.items():
+                f.write("{}::{}::{}\n".format(pop, offset, 'virtual'))
 
     def get_population_offsets(self):
         pop_offsets = {pop_name: node_manager.local_nodes.offset
@@ -190,8 +194,17 @@ class CircuitManager:
         alias_pop = {alias: pop_name for alias, pop_name in self.alias.items()}
         return pop_offsets, alias_pop
 
+    def get_virtual_population_offsets(self):
+        pop_offsets = {pop_name: node_manager.local_nodes.offset
+                       for pop_name, node_manager in self.virtual_node_managers.items()}
+        return pop_offsets
+
     @classmethod
-    def read_population_offsets(cls):
+    def read_population_offsets(cls, read_virtual_pop=False):
+        """Read population offsets from populations_offset.dat
+        Args:
+            read_virtual_pop: read virtual population info (for replay), no need for reporting
+        """
         pop_offsets = {}
         alias_pop = {}
         pop_offset_file = cls._pop_offset_file()
@@ -204,6 +217,8 @@ class CircuitManager:
         with open(pop_offset_file, "r") as f:
             offsets = [line.strip().split("::") for line in f]
             for entry in offsets:
+                if not read_virtual_pop and entry[2] == 'virtual':
+                    continue
                 pop_offsets[entry[0] or None] = int(entry[1])
                 alias_pop[entry[2] or None] = entry[0] or None
         return pop_offsets, alias_pop
@@ -684,7 +699,7 @@ class Node:
         dst_target = self.target_manager.get_target(target)
 
         if SimConfig.restore_coreneuron:
-            pop_offsets, alias_pop = CircuitManager.read_population_offsets()
+            pop_offsets, alias_pop = CircuitManager.read_population_offsets(read_virtual_pop=True)
 
         for src_pop in src_target.population_names:
             for dst_pop in dst_target.population_names:
