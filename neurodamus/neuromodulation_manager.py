@@ -2,7 +2,7 @@ import logging
 
 from .connection_manager import SynapseRuleManager
 from .connection import Connection, NetConType, ReplayMode
-from .core.configuration import GlobalConfig
+from .core.configuration import GlobalConfig, SimConfig
 from .io.synapse_reader import SynapseParameters, SynReaderSynTool
 from .utils.logging import log_all
 
@@ -34,7 +34,7 @@ class NeuroModulationConnection(Connection):
     def finalize(self, cell, base_seed=0, *,
                  skip_disabled=False,
                  replay_mode=ReplayMode.AS_REQUIRED,
-                 base_manager=None, **_kwargs):
+                 base_manager=None, attach_src_cell=True, **_kwargs):
         """ Override the finalize process from the base class.
             NeuroModulatory events do not create synapses but link to existing cell synapses.
             A neuromodulatory connection from projections with match to the closest cell synapse.
@@ -46,6 +46,7 @@ class NeuroModulationConnection(Connection):
         if skip_disabled and self._disabled:
             return 0
 
+        self._netcons = []
         # Initialize member lists
         self._init_artificial_stims(cell, replay_mode)
 
@@ -58,8 +59,16 @@ class NeuroModulationConnection(Connection):
             if syn_obj is None:
                 logging.warning("No cell synapse associated to the neuromodulatory event")
                 return 0
-            if self._replay is not None:
+            nc = None
+            # For coreneuron, create NetCon attached to the (virtual) source gid for replay
+            # For neuron, create NetCon with source from replay stim
+            if SimConfig.use_coreneuron:
+                nc = self._pc.gid_connect(self.sgid, syn_obj)
+                nc.delay = syn_params.delay
+                self._netcons.append(nc)
+            elif self._replay is not None:
                 nc = self._replay.create_on(self, sec, syn_obj, syn_params)
+            if nc:
                 nc.weight[0] = int(self.weight_factor > 0)  # weight is binary 1/0, default 1
                 nc.weight[1] = self.neuromod_strength or syn_params.neuromod_strength
                 nc.weight[2] = self.neuromod_dtc or syn_params.neuromod_dtc
@@ -69,9 +78,6 @@ class NeuroModulationConnection(Connection):
                             "weights: [%f, %f, %f], nc_type: %d", self.tgid,
                             nc.weight[0], nc.weight[1], nc.weight[2], NetConType.NC_NEUROMODULATOR)
 
-            # Delayed connections
-            if self._delay_vec is not None:
-                syn_obj.setup_delay_vecs(self._delay_vec, self._delayweight_vec)
         return 1
 
     def _find_closest_cell_synapse(self, syn_params, base_conns):

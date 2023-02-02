@@ -16,7 +16,7 @@ Run Default
     CurrentDir .
     OutputRoot output
     RunMode RR
-    Duration 10
+    Duration 15
     Dt 0.025
 }
 
@@ -41,6 +41,21 @@ Report soma
     EndTime 5000
 }
 
+Stimulus depol
+{
+    Mode Current
+    Pattern Noise
+    MeanPercent 95.0
+    Variance 0.001
+    Delay 0
+    Duration 15000
+}
+
+StimulusInject depol_mosaic
+{
+    Stimulus depol
+    Target Mosaic
+}
 
 # ------------------------------------------------ Stimuli --------------------------------------------------------
 Stimulus proj_spikes
