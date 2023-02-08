@@ -55,7 +55,7 @@ class EngineBase(metaclass=_EngineMeta):
     """A base class to define an engine.
 
     Engines are the fundamental blocks to handle different kinds of cells, like
-    Glia or Point-Neurons, in a plugin-like interface.
+    Glia, in a plugin-like interface.
     Engines must either implement their own create_cells and create_synapses
     methods (for full flexibility) or specify which are the Manager classes.
 

@@ -25,7 +25,6 @@ Sub-Modules
    neurodamus.metype
    neurodamus.modification_manager
    neurodamus.ngv
-   neurodamus.point_neuron
    neurodamus.replay
    neurodamus.stimulus_manager
    neurodamus.target_manager

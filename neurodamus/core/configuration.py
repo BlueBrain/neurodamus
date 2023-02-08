@@ -514,7 +514,7 @@ def _validate_circuit_morphology(config_dict, required=True):
     morph_type = config_dict.get("MorphologyType")
     if morph_path is None and required:
         raise ConfigurationError("No morphology path provided (Required!)")
-    # Some circuit types may not require morphology files (eg: Point Neurons)
+    # Some circuit types may not require morphology files
     if not morph_path:
         log_verbose(" > Morphology src: <Disabled> MorphologyType: %s, ", morph_type or "<None>")
         return
@@ -921,7 +921,7 @@ def _model_building_steps(config: _SimConfig, run_conf):
 def _report_vars(config: _SimConfig, run_conf):
     """Compartment reports read voltages or i_membrane only. Other types must be summation"""
     mandatory_fields = ("Type", "StartTime", "Target", "Dt", "ReportOn", "Unit", "Format")
-    report_types = {"compartment", "Summation", "Synapse", "PointType"}
+    report_types = {"compartment", "Summation", "Synapse"}
     non_negatives = ("StartTime", "EndTime", "Dt")
 
     for rep_name, rep_config in config.reports.items():

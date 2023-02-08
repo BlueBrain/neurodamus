@@ -36,7 +36,6 @@ from .utils.memory import trim_memory, pool_shrink
 from .utils.timeit import TimerManager, timeit
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
-from . import point_neuron as _point # NOQA
 
 
 class METypeEngine(EngineBase):
@@ -785,7 +784,7 @@ class Node:
             end_time = rep_conf.get("EndTime", sim_end)
             logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
 
-            if rep_type not in ("compartment", "Summation", "Synapse", "PointType"):
+            if rep_type not in ("compartment", "Summation", "Synapse"):
                 if MPI.rank == 0:
                     logging.error("Unsupported report type: %s.", rep_type)
                 n_errors += 1

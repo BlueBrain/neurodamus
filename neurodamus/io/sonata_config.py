@@ -332,8 +332,7 @@ class SonataConfig:
     def parsedReports(self):
         _report_type_translation = {
             "summation": "Summation",
-            "synapse": "Synapse",
-            "point_neuron": "PointType"
+            "synapse": "Synapse"
         }
         reports = {}
         for name in self._sections["reports"].keys():
