@@ -744,6 +744,10 @@ class SpontMinis(ArtificialStim):
         """object is considered False in case rate is not positive"""
         return bool(self.get_rate())
 
+    def __del__(self):
+        for ips in self.netstims:
+            ips.setRNGs()
+
 
 class InhExcSpontMinis(SpontMinis):
     """Extends SpontMinis to handle two spont rates: Inhibitory & Excitatory

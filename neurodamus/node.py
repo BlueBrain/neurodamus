@@ -32,7 +32,7 @@ from .neuromodulation_manager import NeuroModulationManager
 from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
-from .utils.memory import trim_memory, pool_shrink
+from .utils.memory import trim_memory, pool_shrink, free_event_queues
 from .utils.timeit import TimerManager, timeit
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
@@ -292,6 +292,7 @@ class Node:
         self._sim_ready = False
         self._jumpstarters = []
         self._cell_state_dump_t = None
+        self._bbss = Nd.BBSaveState()
 
         # Register the global target and cell manager
         self._target_manager.register_target(self._circuits.global_target)
@@ -316,7 +317,6 @@ class Node:
         """Checks run_config for Restore info and sets simulation accordingly"""
         if not SimConfig.restore:
             return
-        _ = Nd.BBSaveState()
         self._binreport_helper.restoretime(SimConfig.restore)
         logging.info("RESTORE: Recovered previous time: %.3f ms", Nd.t)
 
@@ -1123,12 +1123,11 @@ class Node:
         if restore_path:
             with timeit(name="restoretime"):
                 logging.info("Restoring state...")
-                bbss = Nd.BBSaveState()
-                self._stim_manager.saveStatePreparation(bbss)
-                bbss.ignore(self._binreport_helper)
+                self._stim_manager.saveStatePreparation(self._bbss)
+                self._bbss.ignore(self._binreport_helper)
                 self._binreport_helper.restorestate(restore_path)
                 self._stim_manager.reevent()
-                bbss.vector_play_init()
+                self._bbss.vector_play_init()
                 self._restart_events()  # On restore the event queue is cleared
                 return  # Upon restore sim is ready
 
@@ -1326,10 +1325,9 @@ class Node:
         @timeit(name="savetime")
         def save_f():
             logging.info("Saving State... (t=%f)", tsave)
-            bbss = Nd.BBSaveState()
             MPI.barrier()
-            self._stim_manager.saveStatePreparation(bbss)
-            bbss.ignore(self._binreport_helper)
+            self._stim_manager.saveStatePreparation(self._bbss)
+            self._bbss.ignore(self._binreport_helper)
             self._binreport_helper.pre_savestate(SimConfig.save)
             log_verbose("SaveState Initialization Done")
 
@@ -1414,8 +1412,6 @@ class Node:
         self._target_manager.clear_simulation_data()
 
         if not avoid_creating_objs:
-            bbss = Nd.BBSaveState()
-            bbss.ignore()
             if SimConfig.use_neuron:
                 if self._binreport_helper:
                     self._binreport_helper.clear()
@@ -1424,8 +1420,14 @@ class Node:
 
         Node.__init__(self, None, None)  # Reset vars
 
+        # Clear BBSaveState
+        self._bbss.ignore()
+
         # Shrink ArrayPools holding mechanism's data in NEURON
         pool_shrink()
+
+        # Free event queues in NEURON
+        free_event_queues()
 
         # Garbage collect all Python objects without references
         gc.collect()

@@ -53,3 +53,16 @@ def pool_shrink():
     except AttributeError:
         logging.warning("Cannot shrink NEURON ArrayPools. "
                         "NEURON does not support CVode().poolshrink(1)")
+
+
+def free_event_queues():
+    """
+    Apart from the NEURON SelfEventQueue and TQItem pools being clear we also free them from any
+    memory still referencing to.
+    """
+    try:
+        cv = Nd.CVode()
+        cv.free_event_queues()
+    except AttributeError:
+        logging.warning("Cannot clear NEURON event queues."
+                        "NEURON does not support CVode().free_event_queues()")
