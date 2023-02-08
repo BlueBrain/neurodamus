@@ -2,12 +2,31 @@
 Change Log
 ==========
 
+Version 2.13.0
+===============
+**8 Feb 2023**
+
+*New Features*
+  * [BBPP40-275] Set endfeet R0pas based on `vasculature.h5`
+  * [BBPBGLIB-748]: neuromodulation with coreneuron
+
+*Improvements*
+  * [BBPBGLIB-959] Clear bbss objects and SpontMini's random123 objects
+  * [BBPBGLIB-899] Improved Synapse instantiation memory and time
+  * Better warnings when synapses cannot be placed
+
+*Bug fixes*
+  * [BBPBGLIB-964] load additional cell properties to work when using Sonata nodesets
+  * [BBPBGLIB-964] Fix replay with virtual populations during coreneuron restore
+  * Fix CoreNeuron cleanup for re-running the same campaign with bbp-worfklow
+
+
 Version 2.12.11
 ===============
 **20 Dec 2022**
 
 *Improvements*
-  * [BBPBGLIB-954] Don't create hoc obj for nodeset targets 
+  * [BBPBGLIB-954] Don't create hoc obj for nodeset targets
   * [BBPBGLIB-937] Reduce memory consumption in Connection class
   * [BBPBGLIB-954] Avoid flattening nodesets
 
