@@ -32,7 +32,7 @@ from .neuromodulation_manager import NeuroModulationManager
 from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
-from .utils.memory import trim_memory, pool_shrink, free_event_queues
+from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
 from .utils.timeit import TimerManager, timeit
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
@@ -1278,7 +1278,7 @@ class Node:
                 self.spike2file("out.dat")
             self.sonata_spikes()
         if SimConfig.use_coreneuron:
-            Nd.MemUsage().print_mem_usage()
+            print_mem_usage()
             self.clear_model()
             self._run_coreneuron()
             if not SimConfig.is_sonata_config:
@@ -1434,7 +1434,7 @@ class Node:
 
         # Finally call malloc_trim to return all the freed pages back to the OS
         trim_memory()
-        Nd.MemUsage().print_mem_usage()
+        print_mem_usage()
 
     # -------------------------------------------------------------------------
     #  output
@@ -1544,7 +1544,7 @@ class Node:
         """Have the compute nodes wrap up tasks before exiting.
         """
         # MemUsage constructor will do MPI communications
-        Nd.MemUsage().print_mem_usage()
+        print_mem_usage()
 
         # Coreneuron runs clear the model before starting
         if not SimConfig.coreneuron or SimConfig.simulate_model is False:
@@ -1634,16 +1634,16 @@ class Neurodamus(Node):
     def _build_model(self):
         log_stage("================ CALCULATING LOAD BALANCE ================")
         load_bal = self.compute_load_balance()
-        Nd.MemUsage().print_mem_usage()
+        print_mem_usage()
 
         log_stage("==================== BUILDING CIRCUIT ====================")
         self.create_cells(load_bal)
         self.execute_neuron_configures()
-        Nd.MemUsage().print_mem_usage()
+        print_mem_usage()
 
         # Create connections
         self.create_synapses()
-        Nd.MemUsage().print_mem_usage()
+        print_mem_usage()
 
         log_stage("================ INSTANTIATING SIMULATION ================")
         if not SimConfig.coreneuron:
@@ -1651,7 +1651,7 @@ class Neurodamus(Node):
 
         # Apply replay
         self.enable_replay()
-        Nd.MemUsage().print_mem_usage()
+        print_mem_usage()
 
         if self._run_conf["AutoInit"]:
             self.init()
@@ -1664,15 +1664,15 @@ class Neurodamus(Node):
         base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
         for syn_manager in self._circuits.all_synapse_managers():
             syn_manager.finalize(base_seed, SimConfig.coreneuron)
-        Nd.MemUsage().print_mem_usage()
+        print_mem_usage()
 
         self.enable_stimulus()
-        Nd.MemUsage().print_mem_usage()
+        print_mem_usage()
         self.enable_modifications()
 
         if self._run_conf["EnableReports"]:
             self.enable_reports()
-        Nd.MemUsage().print_mem_usage()
+        print_mem_usage()
 
         self.sim_init()
 
@@ -1713,7 +1713,7 @@ class Neurodamus(Node):
     def _instantiate_simulation(self):
         # Keep the initial RSS for the SHM file transfer calculations
         self._initial_rss = SHMUtil.get_node_rss()
-        Nd.MemUsage().print_mem_usage()
+        print_mem_usage()
 
         self.load_targets()
 

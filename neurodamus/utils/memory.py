@@ -3,9 +3,10 @@ Collection of utility functions related to clearing the used memory in neurodamu
 """
 import ctypes
 import ctypes.util
+import math
 import os
 
-from ..core import NeurodamusCore as Nd
+from ..core import MPI, NeurodamusCore as Nd
 import logging
 
 
@@ -66,3 +67,26 @@ def free_event_queues():
     except AttributeError:
         logging.warning("Cannot clear NEURON event queues."
                         "NEURON does not support CVode().free_event_queues()")
+
+
+def print_mem_usage():
+    """
+    Print memory usage information across all ranks.
+    """
+    with open("/proc/self/statm") as fd:
+        _, data_size, _ = fd.read().split(maxsplit=2)
+    usage_mb = float(data_size) * os.sysconf("SC_PAGE_SIZE") / 1024 ** 2
+
+    min_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MIN)
+    max_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MAX)
+    avg_usage_mb = MPI.pc.allreduce(usage_mb, MPI.SUM) / MPI.size
+
+    dev_usage_mb = math.sqrt(MPI.pc.allreduce((usage_mb - avg_usage_mb) ** 2, MPI.SUM) / MPI.size)
+
+    logging.info(
+        "Memusage [MB]: Max=%.2lf, Min=%.2lf, Mean(Stdev)=%.2lf(%.2lf)",
+        max_usage_mb,
+        min_usage_mb,
+        avg_usage_mb,
+        dev_usage_mb
+    )
