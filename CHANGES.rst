@@ -2,6 +2,13 @@
 Change Log
 ==========
 
+Version 2.13.1
+===============
+**14 Feb 2023**
+
+*Bug fixes*
+  * Fix potential issues with freeing the NEURON event queues
+
 Version 2.13.0
 ===============
 **8 Feb 2023**
