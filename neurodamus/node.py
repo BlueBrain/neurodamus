@@ -1279,7 +1279,7 @@ class Node:
             self.sonata_spikes()
         if SimConfig.use_coreneuron:
             print_mem_usage()
-            self.clear_model()
+            self.clear_model(avoid_clearing_queues=False)
             self._run_coreneuron()
             if not SimConfig.is_sonata_config:
                 self.adapt_spikes("out.dat")
@@ -1397,7 +1397,7 @@ class Node:
 
     # -
     @mpi_no_errors
-    def clear_model(self, avoid_creating_objs=False):
+    def clear_model(self, avoid_creating_objs=False, avoid_clearing_queues=True):
         """Clears appropriate lists and other stored references.
         For use with intrinsic load balancing. After creating and evaluating the network using
         round robin distribution, we want to clear the cells and synapses in order to have a
@@ -1427,7 +1427,8 @@ class Node:
         pool_shrink()
 
         # Free event queues in NEURON
-        free_event_queues()
+        if not avoid_clearing_queues:
+            free_event_queues()
 
         # Garbage collect all Python objects without references
         gc.collect()
