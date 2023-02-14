@@ -597,6 +597,26 @@ class ConnectionManagerBase(object):
         return sgid_offset, tgid_offset
 
     # -
+    class ConnDebugger:
+        __slots__ = ['yielded_src_gids']
+
+        def __init__(self):
+            self.yielded_src_gids = compat.array("i") if GlobalConfig.debug_conn else None
+
+        def register(self, sgid, base_tgid, syns_params):
+            if not (debug_conn := GlobalConfig.debug_conn):
+                return
+            if debug_conn == [base_tgid]:
+                self.yielded_src_gids.append(sgid)
+            elif debug_conn == [sgid, base_tgid]:
+                log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s",
+                        sgid, base_tgid, syns_params)
+
+        def __del__(self):
+            if self.yielded_src_gids:
+                log_all(logging.DEBUG, "Source GIDs for debug cell: %s", self.yielded_src_gids)
+
+    # -
     def _iterate_conn_params(self, src_target, dst_target, gids=None, show_progress=False,
                              mod_override=None):
         """A generator which loads synapse data and yields tuples(sgid, tgid, synapses)
@@ -609,13 +629,16 @@ class ConnectionManagerBase(object):
         """
         if src_target and src_target.is_void() or dst_target and dst_target.is_void():
             return
-        if gids is None:
-            gids = self._raw_gids
-        else:
-            gids = numpy.intersect1d(gids, self._raw_gids)
-        if dst_target:
-            gids = numpy.intersect1d(gids, dst_target.get_raw_gids())
 
+        def target_gids(gids):
+            if gids is None:
+                return self._raw_gids
+            gids = numpy.intersect1d(gids, self._raw_gids)
+            if dst_target:
+                gids = numpy.intersect1d(gids, dst_target.get_raw_gids())
+            return gids
+
+        gids = target_gids(gids)
         created_conns_0 = self._cur_population.count()
         sgid_offset, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
 
@@ -623,14 +646,13 @@ class ConnectionManagerBase(object):
         self._synapse_reader.preload_data(gids)
         extra_fields = {}  # Without extra fields, reuse this object
 
-        if show_progress:
-            gids = ProgressBar.iter(gids)
-
         # NOTE: This routine is quite critical, sitting at the core of synapse processing
         # so it has been carefully optimized with numpy vectorized operations, even if
         # it might lose some readability.
         # For each tgid we obtain the synapse parameters as a record array. We then split it,
         # without copying, yielding ranges (views) of it.
+
+        gids = ProgressBar.iter(gids) if show_progress else gids
 
         for base_tgid in gids:
             tgid = base_tgid + tgid_offset
@@ -646,45 +668,34 @@ class ConnectionManagerBase(object):
             # The first row of a range is found by numpy.diff
 
             sgids = syns_params[syns_params.dtype.names[0]].astype("int64")  # src gid in field 0
-            found_conns = 0
-            yielded_conns = 0
-            _dbg_yielded_src_gids = compat.array("i")
             sgids_ranges = numpy.diff(sgids, prepend=numpy.nan, append=numpy.nan).nonzero()[0]
+            conn_count = len(sgids_ranges) - 1
+            conn_debugger = self.ConnDebugger()
 
             if src_target:
                 # create a set with the gids that belong both to the synapses and the target
                 unique_sgids = sgids[sgids_ranges[:-1]]
                 allowed_sgids = set(unique_sgids[src_target.contains(unique_sgids, raw_gids=True)])
+                n_yielded_conns = len(allowed_sgids)
+                allowed_ranges = [(sgids_ranges[i], sgids_ranges[i+1]) for i in range(conn_count)
+                                  if sgids[sgids_ranges[i]] in allowed_sgids]
+            else:
+                n_yielded_conns = conn_count
+                allowed_ranges = [(sgids_ranges[i], sgids_ranges[i+1]) for i in range(conn_count)]
 
-            for i, range_start in enumerate(sgids_ranges[:-1]):
-                # Use numpy to get all the synapses of the same gid at once
+            for range_start, range_end in allowed_ranges:
                 sgid = int(sgids[range_start])
+                final_sgid = sgid + sgid_offset
+                syn_params = syns_params[range_start:range_end]
+                extra_params = extra_fields and {  # reuse empty {}. Dont modify later!
+                    name: prop[range_start:range_end]
+                    for name, prop in extra_fields.items()
+                }
+                conn_debugger.register(sgid, base_tgid, syn_params)
+                yield final_sgid, tgid, syn_params, extra_params, range_start
 
-                if src_target is None or sgid in allowed_sgids:
-                    final_sgid = sgid + sgid_offset
-                    range_end = sgids_ranges[i+1]
-                    syn_params = syns_params[range_start:range_end]
-                    extra_params = extra_fields and {  # reuse empty {}. Dont modify later!
-                        name: prop[range_start:range_end]
-                        for name, prop in extra_fields.items()
-                    }
-
-                    if dbg_conn := GlobalConfig.debug_conn:  # Debug Logging
-                        if dbg_conn == [base_tgid]:
-                            _dbg_yielded_src_gids.append(sgid)
-                        elif dbg_conn == [sgid, base_tgid]:
-                            log_all(logging.DEBUG, "Connection (%d-%d). Params:\n%s",
-                                    sgid, base_tgid, syns_params)
-
-                    yield final_sgid, tgid, syn_params, extra_params, range_start
-                    yielded_conns += 1
-
-                found_conns += 1
-
-            if _dbg_yielded_src_gids:
-                log_all(logging.DEBUG, "Source GIDs for debug cell: %s", _dbg_yielded_src_gids)
             logging.debug(" > Yielded %d out of %d connections. (Filter by src Target: %s)",
-                          yielded_conns, found_conns, src_target and src_target.name)
+                          n_yielded_conns, conn_count, src_target and src_target.name)
 
         created_conns = self._cur_population.count() - created_conns_0
         self._total_connections += created_conns
