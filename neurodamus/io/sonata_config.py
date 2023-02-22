@@ -181,14 +181,22 @@ class SonataConfig:
     @property
     def Conditions(self):
         conditions = {}
+        blacklist = (
+            "Celsius",
+            "VInit",
+            "ExtracellularCalcium",
+            "ListModificationNames",
+            "SpikeLocation",
+        )
         for key, value in self._translate_dict("conditions", self._sim_conf.conditions).items():
-            if key not in ["Celsius", "VInit", "ExtracellularCalcium", "ListModificationNames"]:
-                if key == "Mechanisms":
-                    for suffix, dict_var in value.items():
-                        for name, val in dict_var.items():
-                            conditions[name+"_"+suffix] = val
-                else:
-                    conditions[key] = value
+            if key in blacklist:
+                continue
+            if key == "Mechanisms":
+                for suffix, dict_var in value.items():
+                    for name, val in dict_var.items():
+                        conditions[name+"_"+suffix] = val
+            else:
+                conditions[key] = value
         conditions["randomize_Gaba_risetime"] = str(conditions["randomize_Gaba_risetime"])
         return {"Conditions": conditions}
 
