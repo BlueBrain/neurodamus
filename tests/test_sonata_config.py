@@ -29,6 +29,7 @@ def test_SimConfig_from_sonata():
     assert SimConfig.run_conf['Dt'] == 0.1
     assert SimConfig.run_conf['Celsius'] == 35
     assert SimConfig.run_conf['V_Init'] == -75
+    assert SimConfig.run_conf['SpikeLocation'] == 'soma'
 
     # output section
     assert SimConfig.run_conf['SpikesFile'] == 'spikes.h5'
@@ -81,6 +82,7 @@ contents = """
         "stimulus_seed": 1122
     },
     "conditions": {
+        "spike_location": "AIS",
         "modifications": {
             "applyTTX": {
                 "node_set": "single",
@@ -127,6 +129,7 @@ def test_parse_seeds(sonataconfig):
     assert SimConfig.rng_info.getIonChannelSeed() == 0
     assert SimConfig.rng_info.getMinisSeed() == 0
     assert SimConfig.rng_info.getSynapseSeed() == 0
+    assert SimConfig.run_conf["SpikeLocation"] == "AIS"
 
 
 def test_parse_modifications(sonataconfig):

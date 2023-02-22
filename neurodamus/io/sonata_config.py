@@ -112,12 +112,10 @@ class SonataConfig:
             # Optional
             "tstart": "Start",
             "spike_threshold": "SpikeThreshold",
-            "spike_location": "SpikeLocation",
             "integration_method": "SecondOrder"
         },
         "conditions": {
-            "randomize_gaba_rise_time": "randomize_Gaba_risetime",
-            "synapses_init_depleted": "SYNAPSES__init_depleted"
+            "randomize_gaba_rise_time": "randomize_Gaba_risetime"
         },
         "projection": {
         },
@@ -176,6 +174,10 @@ class SonataConfig:
             parsed_run["Celsius"] = self._sim_conf.conditions.celsius
             parsed_run["V_Init"] = self._sim_conf.conditions.v_init
             parsed_run["ExtracellularCalcium"] = self._sim_conf.conditions.extracellular_calcium
+            if hasattr(self._sim_conf.conditions, "spike_location"):
+                # read SpikeLocation from "conditions" with libsonata parser 0.1.17+
+                # before 0.1.17 read from "run" by calling _translate_dict
+                parsed_run["SpikeLocation"] = self._sim_conf.conditions.spike_location.name
         return parsed_run
 
     @property
