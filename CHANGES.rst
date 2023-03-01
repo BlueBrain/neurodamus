@@ -2,6 +2,15 @@
 Change Log
 ==========
 
+Version 2.13.2
+===============
+**1 Mar 2023**
+
+*Bug fixes*
+  * Updates on sonata parsing to adapt changes from libsonata
+  * Don't handle SpikeLocation from Sonata conditions
+
+
 Version 2.13.1
 ===============
 **14 Feb 2023**
