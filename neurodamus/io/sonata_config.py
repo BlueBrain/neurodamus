@@ -293,6 +293,11 @@ class SonataConfig:
                 if projection.get("Type") == "NeuroGlial":
                     projection["Source"], projection["Destination"] = projection["Destination"], \
                         projection["Source"]
+                if projection.get("Type") == "GlioVascular":
+                    for node_file_info in self._circuit_networks["nodes"]:
+                        for _, pop_info in node_file_info["populations"].items():
+                            if pop_info.get("type") == "vasculature":
+                                projection["VasculaturePath"] = node_file_info["nodes_file"]
                 projections["{0.source}-{0.target}".format(edge_pop)] = projection
         return projections
 
@@ -353,6 +358,7 @@ class SonataConfig:
             rep["Format"] = "SONATA"
             rep["Type"] = _report_type_translation.get(rep["Type"], rep["Type"])
             reports[name] = rep
+            rep["Scaling"] = snake_to_camel(rep["Scaling"])
         return reports
 
     @property

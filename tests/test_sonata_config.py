@@ -42,7 +42,7 @@ def test_SimConfig_from_sonata():
     assert soma_report['ReportOn'] == 'v'
     assert soma_report['Compartments'] == 'center'
     assert soma_report['Sections'] == 'soma'
-    assert soma_report['Scaling'] == 'area'
+    assert soma_report['Scaling'] == 'Area'
     assert soma_report['StartTime'] == 0.0
     assert soma_report['EndTime'] == 50.0
     assert soma_report['Dt'] == 0.1
@@ -53,7 +53,7 @@ def test_SimConfig_from_sonata():
     assert compartment_report['ReportOn'] == 'v'
     assert compartment_report['Compartments'] == 'all'
     assert compartment_report['Sections'] == 'all'
-    assert compartment_report['Scaling'] == 'area'
+    assert compartment_report['Scaling'] == 'Area'
     assert compartment_report['StartTime'] == 0.0
     assert compartment_report['EndTime'] == 10.0
     assert compartment_report['Dt'] == 0.1

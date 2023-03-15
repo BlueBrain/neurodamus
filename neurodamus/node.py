@@ -458,7 +458,8 @@ class Node:
         for circuit in self._extra_circuits.values():
             Engine = circuit.Engine or METypeEngine
             SynManagerCls = Engine.InnerConnectivityCls
-            self._create_synapse_manager(SynManagerCls, circuit, target_manager)
+            self._create_synapse_manager(SynManagerCls, circuit, target_manager,
+                                         load_offsets=self._is_ngv_run)
 
         log_stage("Handling projections...")
         for pname, projection in SimConfig.projections.items():
