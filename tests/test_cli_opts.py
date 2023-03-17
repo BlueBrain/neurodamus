@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 
+
 SIM_DIR = Path(__file__).parent.absolute() / "simulations" / "v5_sonata"
 CONFIG_FILE_MINI = "simulation_config_mini.json"
 
@@ -36,10 +37,14 @@ def test_save_restore_cli():
             # Checkpoints inside the output good tradition w CoreNeuron
             checkpoint_dir = test_folder_path / "output-save" / "checkpoint"
 
-            subprocess.run(
-                ["neurodamus", test_folder_path / CONFIG_FILE_MINI, "--" + action, checkpoint_dir],
-                check=True
-            )
+            command = ["neurodamus", test_folder_path / CONFIG_FILE_MINI,
+                        "--" + action, checkpoint_dir]
+            # Save-Restore raises exception when using NEURON
+            if simulator == "NEURON":
+                with pytest.raises(subprocess.CalledProcessError):
+                    subprocess.run(command, check=True)
+            else:
+                subprocess.run(command, check=True)
 
 
 @pytest.mark.skipif(

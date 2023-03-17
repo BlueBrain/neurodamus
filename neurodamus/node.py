@@ -268,7 +268,6 @@ class Node:
             self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
             if SimConfig.use_neuron:
-                self._binreport_helper = Nd.BinReportHelper(Nd.dt, True)
                 self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True)
             self._base_circuit: CircuitConfig = SimConfig.base_circuit
             self._extra_circuits = SimConfig.extra_circuits
@@ -311,14 +310,6 @@ class Node:
         if not exclude_disabled or self._base_circuit.CircuitPath:
             yield self._base_circuit
         yield from self._extra_circuits.values()
-
-    # -
-    def check_resume(self):
-        """Checks run_config for Restore info and sets simulation accordingly"""
-        if not SimConfig.restore:
-            return
-        self._binreport_helper.restoretime(SimConfig.restore)
-        logging.info("RESTORE: Recovered previous time: %.3f ms", Nd.t)
 
     # -
     def load_targets(self):
@@ -758,7 +749,7 @@ class Node:
             mod_manager.interpret(target_spec, mod_info)
 
     # -
-    # @mpi_no_errors - not required since theres a call inside before _binreport_helper.make_comm
+    # @mpi_no_errors - not required since theres a call inside before make_comm()
     @timeit(name="Enable Reports")
     def enable_reports(self):
         """Iterate over reports defined in BlueConfig and instantiate them.
@@ -783,11 +774,19 @@ class Node:
             rep_type = rep_conf["Type"]
             start_time = rep_conf["StartTime"]
             end_time = rep_conf.get("EndTime", sim_end)
+            rep_format = rep_conf["Format"]
             logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
 
             if rep_type not in ("compartment", "Summation", "Synapse"):
                 if MPI.rank == 0:
                     logging.error("Unsupported report type: %s.", rep_type)
+                n_errors += 1
+                continue
+
+            if rep_format != "SONATA":
+                if MPI.rank == 0:
+                    logging.error("Unsupported report format: '%s'. "
+                                    "Use 'SONATA' instead.", rep_format)
                 n_errors += 1
                 continue
 
@@ -832,7 +831,7 @@ class Node:
                 rep_type,  # rep type is case sensitive !!
                 report_on,
                 rep_conf["Unit"],
-                rep_conf["Format"],
+                rep_format,
                 rep_dt,
                 start_time,
                 end_time,
@@ -981,11 +980,9 @@ class Node:
             # Report Buffer Size hint in MB.
             reporting_buffer_size = self._run_conf.get("ReportingBufferSize")
             if reporting_buffer_size is not None:
-                self._binreport_helper.set_max_buffer_size_hint(reporting_buffer_size)
                 self._sonatareport_helper.set_max_buffer_size_hint(reporting_buffer_size)
 
-            # once all reports are created, we finalize the communicator for any bin reports
-            self._binreport_helper.make_comm()
+            # once all reports are created, we finalize the communicator for any reports
             self._sonatareport_helper.make_comm()
             self._sonatareport_helper.prepare_datasets()
 
@@ -1125,8 +1122,6 @@ class Node:
             with timeit(name="restoretime"):
                 logging.info("Restoring state...")
                 self._stim_manager.saveStatePreparation(self._bbss)
-                self._bbss.ignore(self._binreport_helper)
-                self._binreport_helper.restorestate(restore_path)
                 self._stim_manager.reevent()
                 self._bbss.vector_play_init()
                 self._restart_events()  # On restore the event queue is cleared
@@ -1137,11 +1132,6 @@ class Node:
         logging.info("Restarting connections events (Replay and Spont Minis)")
         for syn_manager in self._circuits.all_synapse_managers():
             syn_manager.restart_events()
-
-        logging.info("Restarting Reports events")
-        nc = Nd.NetCon(None, self._binreport_helper, 10, 1, 1)
-        nc.event(Nd.t)
-        self._jumpstarters.append(nc)
 
     @contextmanager
     def _coreneuron_ensure_all_ranks_have_gids(self, corenrn_data):
@@ -1328,18 +1318,14 @@ class Node:
             logging.info("Saving State... (t=%f)", tsave)
             MPI.barrier()
             self._stim_manager.saveStatePreparation(self._bbss)
-            self._bbss.ignore(self._binreport_helper)
-            self._binreport_helper.pre_savestate(SimConfig.save)
             log_verbose("SaveState Initialization Done")
 
             # If event at the end of the sim we can actually clearModel() before savestate()
             if SimConfig.save_time is None:
                 log_verbose("Clearing model prior to final save")
-                self._binreport_helper.flush()
                 self._sonatareport_helper.flush()
 
             self.dump_cell_config()
-            self._binreport_helper.savestate()
             # Clear the model after saving state as the pointers are being recorded in reportinglib
             if SimConfig.save_time is None:
                 self.clear_model()
@@ -1392,7 +1378,6 @@ class Node:
         for _ in range(math.ceil((tstop - cur_t) / buffer_t)):
             next_flush = min(tstop, cur_t + buffer_t)
             self._pc.psolve(next_flush)
-            self._binreport_helper.flush()
             cur_t = next_flush
         Nd.t = cur_t
 
@@ -1414,8 +1399,6 @@ class Node:
 
         if not avoid_creating_objs:
             if SimConfig.use_neuron:
-                if self._binreport_helper:
-                    self._binreport_helper.clear()
                 if self._sonatareport_helper:
                     self._sonatareport_helper.clear()
 
@@ -1648,9 +1631,6 @@ class Neurodamus(Node):
         print_mem_usage()
 
         log_stage("================ INSTANTIATING SIMULATION ================")
-        if not SimConfig.coreneuron:
-            self.check_resume()  # For CoreNeuron there _coreneuron_restore
-
         # Apply replay
         self.enable_replay()
         print_mem_usage()

@@ -769,6 +769,9 @@ def _check_save(config: _SimConfig, run_conf):
             logging.warning("SaveTime/--save-time IGNORED. Reason: no 'Save' config entry")
         return
 
+    if not config.use_coreneuron:
+        raise ConfigurationError("Save-restore only available with CoreNeuron")
+
     # Handle save
     assert isinstance(save_path, str), "Save must be a string path"
     if save_time:
@@ -787,6 +790,10 @@ def _check_restore(config: _SimConfig, run_conf):
     restore = config.cli_options.restore or run_conf.get("Restore")
     if not restore:
         return
+
+    if not config.use_coreneuron:
+        raise ConfigurationError("Save-restore only available with CoreNeuron")
+
     # sync restore settings to hoc, otherwise we end up with an empty coreneuron_input dir
     run_conf["Restore"] = restore
 
