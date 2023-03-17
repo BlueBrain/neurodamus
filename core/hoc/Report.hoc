@@ -14,7 +14,7 @@ begintemplate Report
 //-----------------------------------------------------------------------------------------------
 
 strdef reportName, reportType, reportOn, unit, format, outputDir, iscParam, population_name
-objref strobj, this, binList, rec, ALUList, ALUhelper, yvec, tvec, memory_report, activeProcess, electrode
+objref strobj, this, reportList, rec, ALUList, ALUhelper, yvec, tvec, memory_report, activeProcess, electrode
 
 external cvode, terminate
 
@@ -38,7 +38,7 @@ public restartALUs
  * @param $s2 type of report - support for compartment and summation
  * @param $s3 reportOn - which variable(s) to address in the targeted items
  * @param $s4 unit - unit label to stamp in report header
- * @param $s5 format - whether report is written in ASCII, HDF5, or Bin
+ * @param $s5 format - SONATA is the only supported format
  * @param $6 Dt - time length between reporting intervals
  * @param $7 startTime - when the report begins
  * @param $8 endTime - when the report stops
@@ -76,8 +76,8 @@ proc init() { localobj nil
     //share one StringFunctions obj for access to substr function
     strobj = new StringFunctions()
 
-    //note that any BinReports need to be kept unlike ASCII and HDF5 which are stored in the cell
-    binList = new List()
+    //note that any SONATAReport need to be kept
+    reportList = new List()
 
     //variable used to catch return values from functions
     retVal = 0
@@ -227,52 +227,19 @@ func prepareReportForCell() { local node, rpt, vgid  localobj bbss
     pop_offset = $5
 
     sprint( strCellName, "a%d", gid )
-    if( 0 == strcmp( format, "Bin") || 0 == strcmp( format, "SONATA")) {
+    if(0 == strcmp( format, "SONATA")) {
         rpt = -1
-        if (0 == strcmp( format, "SONATA")) {
-            rec = new SonataReport( 0.5, reportName, outputDir, startTime, endTime, reportDt, unit, "compartment")
-            if( 0 != strcmp(pop_name, "")) {
-                rec.AddNode(gid, pop_name, pop_offset)
-            } else {
-                rec.AddNode(gid)
-            }
-        } else if (0 == strcmp( format, "Bin") && 0 == strcmp(iscParam, "")) {
-            rec = new BinReport( 0.5, reportName, strCellName, outputDir, gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit )
+        rec = new SonataReport( 0.5, reportName, outputDir, startTime, endTime, reportDt, unit, "compartment")
+        if( 0 != strcmp(pop_name, "")) {
+            rec.AddNode(gid, pop_name, pop_offset)
         } else {
-            rec = new BinReport( 0.5, reportName, strCellName, outputDir, gid, vgid, startTime, endTime, reportDt, 1, "compartment", 5, unit, iscParam )
+            rec.AddNode(gid)
         }
-        binList.append( rec )
-    } else {
-        if(0 == strcmp( format, "HDF5")) {
-            if(object_id($o1.HDF5rpt, 1) < 0) {
-                $o1.HDF5rpt = new HDF5Record( 0.5, node, outputDir, strCellName )
-            }
-            rec = $o1.HDF5rpt
-        } else if( 0 == strcmp( format, "ASCII") ) {
-            if(object_id($o1.ASCIIrpt, 1) < 0){
-                $o1.ASCIIrpt = new ASCIIRecord( 0.5, node, outputDir, strCellName )
-            }
-            rec = $o1.ASCIIrpt
-        } else {
-            return 0
-        }
-        rpt = rec.newReport(strCellName, reportName, $o2.count(), startTime, endTime, reportDt, unit )
+        reportList.append( rec )
     }
 
     bbss = new BBSaveState()
     bbss.ignore(rec)
-
-    //get section counts: nSoma, nApic, etc
-    sumSectionCounts( $o2 )
-
-    //for ascii/hdf5 reports, must give section counts now to allocate memory - can I give it to Bin reports, too?
-    if (0 == strcmp(iscParam, "") && 0 != strcmp( format, "SONATA")) {
-        if( 0 != strcmp( format, "Bin")) {
-            rec.newMapping(rpt, "compartment", nAll, nSoma, nAxon, nBasal, nApical)
-        } else {
-            rec.ExtraMapping( nAll, nSoma, nAxon, nBasal, nApical)
-        }
-    }
 
     return rpt
 }
@@ -350,7 +317,7 @@ proc addCompartmentReport() { local x, rpt, vgid  localobj bbss
             result = execute1(tstr, 1)
             if( result != 0 ) {
                 //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
-                if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
+                if(0 == strcmp(format, "SONATA") ) {
                     if( 0 != strcmp(pop_name, "")) {
                         sprint(tstr, "rec.AddVar( &%s(%lf), %d, %d, pop_name)", reportOn, x, sectionNo( $o1 ), $o1.gid)
                     } else {
@@ -682,7 +649,7 @@ proc addSynapseReport() { local x, collapsed, vgid, rpt, intrinsicIndex, ptProce
         rpt = prepareReportForCell( $o1, locTPointList, vgid, pop_name, pop_offset )
         for synIndex=0, synList.count()-1 {
             activeProcess = synList.o(synIndex)
-            if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
+            if(0 == strcmp(format, "SONATA") ) {
                 sprint(tstr, "rec.AddVar( &activeProcess.%s, %d, %d)", internalVar.s, activeProcess.synapseID, $o1.gid)
                 execute(tstr, this)
             }
@@ -707,7 +674,7 @@ proc addSummationVarAndCommitALU() { local rpt
     strdef tstr, pop_name
     pop_name = $s4
     //note that we must use the execute function in order to properly address the variable whose name we have stored in a strdef
-    if( 0 == strcmp(format, "Bin") || 0 == strcmp(format, "SONATA") ) {
+    if(0 == strcmp(format, "SONATA") ) {
         if( 0 != strcmp(pop_name, "")) {
             sprint(tstr, "rec.AddVar( &ALUhelper.output, %d, %d, pop_name)", $1, $3 )
         } else {
