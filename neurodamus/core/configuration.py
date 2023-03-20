@@ -44,6 +44,14 @@ class GlobalConfig:
         os.environ["NEURON_INIT_MPI"] = "1"
 
 
+class Feature(Enum):
+    Replay = 1
+    SpontMinis = 2
+    SynConfigure = 3
+    Stimulus = 4
+    LoadBalance = 5
+
+
 class CliOptions(ConfigT):
     build_model = None
     simulate_model = True
@@ -60,6 +68,20 @@ class CliOptions(ConfigT):
     enable_shm = False
     model_stats = False
     simulator = None
+
+    # Restricted Functionality support, mostly for testing
+
+    class NoRestriction:
+        """Provide container API, where `in` checks are always True"""
+        def __contains__(self, _) -> bool:
+            return True
+
+    NoRestriction = NoRestriction()  # Singleton
+
+    restrict_features = NoRestriction  # can also be a list
+    restrict_node_populations = NoRestriction
+    restrict_connectivity = 0          # no restriction, 1 to disable projections, 2 to disable all
+    restrict_stimulus = NoRestriction  # possible list of Stim names
 
 
 class CircuitConfig(ConfigT):
@@ -324,8 +346,12 @@ class _SimConfig(object):
             alias: A dict associating alias->real_name's
         """
         from ..target_manager import TargetSpec  # avoid cyclic deps
-        if isinstance(cls.connections, dict):
-            return  # Already processed
+
+        restrict_features = SimConfig.cli_options.restrict_features
+        if Feature.SpontMinis not in restrict_features:
+            logging.warning("Disabling SpontMinis (restrict_features)")
+        if Feature.SynConfigure not in restrict_features:
+            logging.warning("Disabling SynConfigure (restrict_features)")
 
         def update_item(conn, item):
             src_spec = TargetSpec(conn.get(item))
@@ -337,7 +363,13 @@ class _SimConfig(object):
             conn = compat.Map(conn).as_dict(True)
             update_item(conn, "Source")
             update_item(conn, "Destination")
+            if Feature.SpontMinis not in restrict_features:
+                del conn["SpontMinis"]
+            if Feature.SynConfigure not in restrict_features:
+                del conn["SynapseConfigure"]
+
             new_connections[name] = conn
+
         cls.connections = new_connections
 
     @classmethod
@@ -453,6 +485,10 @@ def _run_params(config: _SimConfig, run_conf):
 @SimConfig.validator
 def _loadbal_mode(config: _SimConfig, run_conf):
     cli_args = config.cli_options
+    if Feature.LoadBalance not in cli_args.restrict_features:
+        logging.warning("Disabled Load Balance (restrict_features)")
+        config.loadbal_mode = LoadBalanceMode.RoundRobin
+        return
     lb_mode_str = cli_args.lb_mode or run_conf.get("RunMode")
     config.loadbal_mode = LoadBalanceMode.parse(lb_mode_str)
 
@@ -851,7 +887,7 @@ def _check_model_build_mode(config: _SimConfig, run_conf):
         # Ensure that 'sim.conf' and 'files.dat' exist, and that '/dev/shm' was not used
         with open(os.path.join(config.output_root, "sim.conf"), 'r') as f:
             core_data_exists = (
-                not "datpath='/dev/shm/" in f.read()
+                "datpath='/dev/shm/" not in f.read()
                 and os.path.isfile(os.path.join(core_data_location, "files.dat"))
             )
     except FileNotFoundError:

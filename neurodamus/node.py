@@ -16,7 +16,7 @@ from shutil import copyfileobj, move
 
 from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
 from .core import NeurodamusCore as Nd
-from .core.configuration import CircuitConfig, GlobalConfig, SimConfig
+from .core.configuration import CircuitConfig, Feature, GlobalConfig, SimConfig
 from .core._engine import EngineBase
 from .core._shmutils import SHMUtil
 from .core.configuration import ConfigurationError, find_input_file, get_debug_cell_gid
@@ -409,6 +409,7 @@ class Node:
         SimConfig.check_cell_requirements(self.target_manager)
 
         log_stage("LOADING NODES")
+        config = SimConfig.cli_options
         if not load_balance:
             logging.info("Load-balance object not present. Continuing Round-Robin...")
 
@@ -421,6 +422,9 @@ class Node:
         # SUPPORT for extra/custom Circuits
         for name, circuit in self._extra_circuits.items():
             log_stage("Circuit %s", name)
+            if config.restrict_node_populations and name not in config.restrict_node_populations:
+                logging.warning("Skipped node population (restrict_node_populations)")
+                continue
             self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
 
         PopulationNodes.freeze_offsets()  # Dont offset further, could change gids
@@ -470,6 +474,10 @@ class Node:
             logging.info(" => Circuit internal connectivity has been DISABLED")
             return
 
+        if SimConfig.cli_options.restrict_connectivity >= 2:
+            logging.warning("Skipped connectivity (restrict_connectivity)")
+            return
+
         c_target = TargetSpec(conf.get("CircuitTarget"))
         if c_target.population is None:
             c_target.population = self._circuits.alias.get(conf._name)
@@ -481,6 +489,11 @@ class Node:
 
         if src and dst and src != dst:
             raise ConfigurationError("Inner connectivity with different populations")
+
+        dst = self.circuits.alias.get(dst, dst)
+        if dst not in SimConfig.cli_options.restrict_node_populations:
+            logging.warning("Skipped connectivity (restrict_node_populations)")
+            return
 
         manager = self._circuits.get_create_edge_manager(
             ctype, src, dst, c_target, (conf, *args), **kwargs
@@ -525,6 +538,13 @@ class Node:
         projection = compat.Map(projection).as_dict(True)
         ptype = projection.get("Type")  # None, GapJunctions, NeuroGlial, NeuroModulation...
         ptype_cls = EngineBase.connection_types.get(ptype)
+        source_t = TargetSpec(projection.get("Source"))
+        dest_t = TargetSpec(projection.get("Destination"))
+
+        if SimConfig.cli_options.restrict_connectivity >= 1:
+            logging.warning("Skipped projections %s->%s (restrict_connectivity)", source_t, dest_t)
+            return
+
         if not ptype_cls:
             raise RuntimeError("No Engine to handle connectivity of type '%s'" % ptype)
 
@@ -534,8 +554,6 @@ class Node:
             ppath = self._find_projection_file(ppath)
 
         logging.info("Processing Edge file: %s", ppath)
-        source_t = TargetSpec(projection.get("Source"))
-        dest_t = TargetSpec(projection.get("Destination"))
 
         # Update the target spec with the actual populations
         src_pop, dst_pop = edge_node_pop_names(
@@ -584,6 +602,10 @@ class Node:
         and passes the raw text in field/value pairs to a StimulusManager object to interpret the
         text and instantiate an actual stimulus object.
         """
+        if Feature.Stimulus not in SimConfig.cli_options.restrict_features:
+            logging.warning("Skipped Stimulus (restrict_features)")
+            return
+
         log_stage("Stimulus Apply.")
 
         # Setup of Electrode objects part of enable stimulus
@@ -648,6 +670,10 @@ class Node:
     def enable_replay(self):
         """Activate replay according to BlueConfig. Call before connManager.finalize
         """
+        if Feature.Replay not in SimConfig.cli_options.restrict_features:
+            logging.warning("Skipped Replay (restrict_features)")
+            return
+
         log_stage("Handling Replay")
 
         if SimConfig.use_coreneuron and bool(self._core_replay_file):
