@@ -770,6 +770,30 @@ proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj s
             addressSection( tobj, gid, "axon", count, $o5, $o6 )
         }
 
+        result = execute1( "{nSecLastAIS}", tobj, 0 )
+        if( result != 0 ) {
+            SecSize = tobj.nSecLastAIS
+            for count=0, SecSize-1 {
+                addressSection( tobj, gid, "ais", count, $o5, $o6 )
+            }
+        }
+
+        result = execute1( "{nSecNodal}", tobj, 0 )
+        if( result != 0 ) {
+            SecSize = tobj.nSecNodal
+            for count=0, SecSize-1 {
+                addressSection( tobj, gid, "node", count, $o5, $o6 )
+            }
+        }
+
+        result = execute1( "{nSecMyelinated}", tobj, 0 )
+        if( result != 0 ) {
+            SecSize = tobj.nSecMyelinated
+            for count=0, SecSize-1 {
+                addressSection( tobj, gid, "myelin", count, $o5, $o6 )
+            }
+        }
+
         SecSize = tobj.nSecBasal
         for count=0, SecSize-1 {
             addressSection( tobj, gid, "dend", count, $o5, $o6 )
@@ -785,6 +809,12 @@ proc addressSectionPoints(){ local gid, count, retVal, SecSize, SecNo localobj s
             return
         } else if ( 0 == strcmp( $s3, "axon" ) ) {
             SecSize = tobj.nSecAxonal
+        } else if ( 0 == strcmp( $s3, "ais" ) ) {
+            SecSize = tobj.nSecLastAIS
+        } else if ( 0 == strcmp( $s3, "node" ) ) {
+            SecSize = tobj.nSecNodal
+        } else if ( 0 == strcmp( $s3, "myelin" ) ) {
+            SecSize = tobj.nSecMyelinated
         } else if ( 0 == strcmp( $s3, "dend" ) ) {
             SecSize = tobj.nSecBasal
         } else if ( 0 == strcmp( $s3, "apic" ) ) {

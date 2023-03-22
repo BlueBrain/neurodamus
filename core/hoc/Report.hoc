@@ -132,12 +132,21 @@ func sectionNo() { local baseOffset, secIndex  localobj str
     } else if (strobj.substr( str.s, "axon") >0) {
         subset = "axon"
         baseOffset = $o1.nSecSoma
-    }else if (strobj.substr( str.s, "dend") >0) {
+    } else if (strobj.substr( str.s, "dend") >0) {
         subset = "dend"
         baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig
-    }else if (strobj.substr( str.s, "apic") > 0) {
+    } else if (strobj.substr( str.s, "apic") > 0) {
         subset = "apic"
         baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal
+    } else if (strobj.substr( str.s, "ais") >0) {
+        subset = "ais"
+        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal + $o1.nSecApical
+    } else if (strobj.substr( str.s, "node") >0) {
+        subset = "node"
+        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal + $o1.nSecApical + $o1.nSecLastAIS
+    } else if (strobj.substr( str.s, "myelin") >0) {
+        subset = "myelin"
+        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal + $o1.nSecApical + $o1.nSecLastAIS + $o1.nSecNodal
     }
     objtype = str.s
     // parse out the index from the secname
@@ -185,9 +194,15 @@ proc sumSectionCounts() { local offset, x  localobj prevSection, nil
                 nSoma = nSoma+1
             } else if (strobj.substr( secname(), "axon") >0) {
                 nAxon   = nAxon + 1
-            }else if (strobj.substr( secname(), "dend") >0) {
+            } else if (strobj.substr( secname(), "ais") >0) {
+                nAxon   = nAxon + 1
+            } else if (strobj.substr( secname(), "node") >0) {
+                nAxon   = nAxon + 1
+            } else if (strobj.substr( secname(), "myelin") >0) {
+                nAxon   = nAxon + 1
+            } else if (strobj.substr( secname(), "dend") >0) {
                 nBasal  = nBasal+ 1
-            }else if (strobj.substr( secname(), "apic") > 0) {
+            } else if (strobj.substr( secname(), "apic") > 0) {
                 nApical = nApical + 1
             }
         }
