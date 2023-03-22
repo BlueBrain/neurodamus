@@ -20,6 +20,7 @@ from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
 from .core.configuration import GlobalConfig, LoadBalanceMode, LogLevel, find_input_file, SimConfig
+from .core.configuration import ConfigurationError
 from .core.nodeset import NodeSet
 from .io import cell_readers
 from .metype import Cell_V5, Cell_V6, EmptyCell
@@ -376,6 +377,84 @@ class CellManagerBase(_CellManager):
         pass
 
 
+class LFPManager:
+    """
+    Class handling the lfp functionality
+    """
+    def __init__(self):
+        self._lfp_file = None
+
+    def load_lfp_config(self, lfp_weights_file, circuit_list):
+        """Loads lfp weigths from h5 file
+        """
+        logging.info("Reading LFP configuration info from '%s'", lfp_weights_file)
+        import h5py
+        try:
+            self._lfp_file = h5py.File(lfp_weights_file, 'r')
+        except IOError as e:
+            raise ConfigurationError(e)
+        # Check that the file contains the required groups and attributes
+        required_groups = ['electrodes', 'neuron_ids', 'sec_ids']
+        for group in required_groups:
+            if group not in self._lfp_file:
+                raise ConfigurationError("LFP weights file format is wrong.Required group "
+                                         "not found in file: {}".format(group))
+        nodeids_group = self._lfp_file["neuron_ids"]
+        try:
+            circuit = nodeids_group.attrs['circuit']
+        except KeyError:
+            raise ConfigurationError("'circuit' attribute not found in 'neuron_ids' "
+                                     "group of LFP weights file")
+        logging.info("Circuit of the lfp config file: '%s'", circuit)
+        # Check that the circuit matches with any cell manager
+        for circuit_file in circuit_list:
+            circuit_file_is_set = circuit_file != "start.ncs"
+            if not circuit_file_is_set or circuit_file == circuit:
+                break
+        else:
+            logging.warning("Circuits don't match, aborting lfp config reading...")
+            self._lfp_file.close()
+
+    def read_lfp_factors(self, gid, section_ids):
+        """
+        Reads the local field potential (LFP) factors for a specific gid
+        from an HDF5 file and returns the factors as a Nd.Vector.
+
+        Args:
+        gid (int): The unique cell identifier
+        section_ids (List[int]): A list of section ids
+
+        Returns:
+        Nd.Vector: A vector containing the LFP factors for the specified gid and section ids
+        """
+        scalar_factors = Nd.Vector()
+        if self._lfp_file:
+            try:
+                sonata_gid = int(gid)
+                electrodes_group = self._lfp_file["electrodes"]["electrode_grid"][str(sonata_gid)]
+                sections_group = self._lfp_file["sec_ids"][str(sonata_gid)]
+                for file_count, section in enumerate(sections_group):
+                    if section in section_ids:
+                        for electrode_factor in electrodes_group[file_count]:
+                            scalar_factors.append(electrode_factor)
+            except KeyError:
+                logging.warning("GID %d not found in LFP file" % sonata_gid)
+        return scalar_factors
+
+    def get_number_electrodes(self, gid):
+        """Get number of electrodes of a certain gid
+        """
+        num_electrodes = 0
+        if self._lfp_file:
+            try:
+                sonata_gid = int(gid)
+                electrodes_group = self._lfp_file["electrodes"]["electrode_grid"][str(sonata_gid)]
+                num_electrodes = electrodes_group.shape[1]
+            except KeyError:
+                logging.warning("GID %d not found in LFP file" % sonata_gid)
+        return num_electrodes
+
+
 class GlobalCellManager(_CellManager):
     """
     GlobalCellManager is a wrapper over all Cell Managers so that we can query
@@ -385,6 +464,7 @@ class GlobalCellManager(_CellManager):
     def __init__(self):
         self._cell_managers = []
         self._pc = Nd.pc
+        self._lfp_manager = LFPManager()
 
     def register_manager(self, cell_manager):
         self._cell_managers.append(cell_manager)

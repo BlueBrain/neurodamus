@@ -427,6 +427,16 @@ class Node:
                 continue
             self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
 
+        lfp_weights_file = self._run_conf.get("LFPWeightsPath")
+        if lfp_weights_file:
+            if SimConfig.use_coreneuron:
+                lfp_manager = self._circuits.global_manager._lfp_manager
+                cell_managers = self._circuits.global_manager._cell_managers
+                circuit_files = [manager._circuit_conf.CellLibraryFile for manager in cell_managers]
+                lfp_manager.load_lfp_config(lfp_weights_file, circuit_files)
+            else:
+                logging.warning("Online LFP supported only with CoreNEURON.")
+
         PopulationNodes.freeze_offsets()  # Dont offset further, could change gids
 
         # Let the cell managers have any final say in the cell objects
@@ -801,9 +811,14 @@ class Node:
             start_time = rep_conf["StartTime"]
             end_time = rep_conf.get("EndTime", sim_end)
             rep_format = rep_conf["Format"]
+
+            lfp_disabled = not self._circuits.global_manager._lfp_manager._lfp_file
+            if rep_type == "lfp" and lfp_disabled:
+                logging.warning("LFP reports are disabled. LFPWeightsPath might be missing.")
+                continue
             logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
 
-            if rep_type not in ("compartment", "Summation", "Synapse"):
+            if rep_type not in ("compartment", "Summation", "Synapse", "PointType", "lfp"):
                 if MPI.rank == 0:
                     logging.error("Unsupported report type: %s.", rep_type)
                 n_errors += 1

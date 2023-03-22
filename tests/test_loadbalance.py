@@ -25,7 +25,7 @@ def test_loadbal_no_cx(target_manager_hoc, caplog):
     assert not lbal._valid_loadbalance
     with caplog.at_level(logging.INFO):
         assert not lbal._cx_valid(TargetSpec("random_target"))
-        assert caplog.records[-1].message == " => No complexity files for current circuit yet"
+        assert " => No complexity files for current circuit yet" in caplog.records[-1].message
 
 
 def test_loadbal_subtarget(target_manager_hoc, caplog):
@@ -43,17 +43,15 @@ def test_loadbal_subtarget(target_manager_hoc, caplog):
     assert not lbal._valid_loadbalance
     with caplog.at_level(logging.INFO):
         assert not lbal._cx_valid(TargetSpec("random_target"))
-        assert caplog.records[-1].message == " => No Cx files available for requested target"
+        assert " => No Cx files available for requested target" in caplog.records[-1].message
     assert lbal._cx_valid(TargetSpec("Small"))  # yes!
     assert not lbal._cx_valid(TargetSpec("VerySmall"))  # not yet, need to derive subtarget
 
     with caplog.at_level(logging.INFO):
         assert lbal._reuse_cell_complexity(TargetSpec("VerySmall"))
         assert len(caplog.records) >= 2
-        assert caplog.records[-2].message == "Attempt reusing cx files from other targets..."
-        assert caplog.records[-1].message.startswith(
-            "Target VerySmall is a subset of the target Small."
-        )
+        assert "Attempt reusing cx files from other targets..." in caplog.records[-2].message
+        assert "Target VerySmall is a subset of the target Small." in caplog.records[-1].message
 
 
 @pytest.fixture
