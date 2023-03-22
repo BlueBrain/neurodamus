@@ -287,7 +287,7 @@ class Connection(ConnectionBase):
             synapses_params = synapses_params[mask]
             synapse_ids = synapse_ids[mask]
 
-        if not self._synapse_params:  # None or empty
+        if self._synapse_params is None or len(self._synapse_params) == 0:  # None or empty
             self._synapse_params = synapses_params
             self._synapse_ids = synapse_ids
         else:
