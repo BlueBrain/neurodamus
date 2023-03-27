@@ -8,20 +8,6 @@ from tempfile import NamedTemporaryFile
 USECASE3 = Path(__file__).parent.absolute() / "usecase3"
 
 
-@pytest.fixture
-def sonata_config():
-    return dict(
-        manifest={"$CIRCUIT_DIR": str(USECASE3)},
-        network="$CIRCUIT_DIR/circuit_config.json",
-        node_sets_file="$CIRCUIT_DIR/nodesets.json",
-        run={
-            "random_seed": 12345,
-            "dt": 0.05,
-            "tstop": 10,
-        }
-    )
-
-
 @pytest.mark.skipif(
     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
     reason="Test requires loading a neocortex model to run"
@@ -29,21 +15,20 @@ def sonata_config():
 def test_replay(sonata_config):
     from neurodamus import Neurodamus
     from neurodamus.core.configuration import Feature
-    config = sonata_config.copy()
-    config["inputs"] = {
+    sonata_config["inputs"] = {
         "spikeReplay": {
             "module": "synapse_replay",
             "input_type": "spikes",
             "spike_file": str(USECASE3 / "input.dat"),
             "delay": 0,
             "duration": 1000,
-            "node_set": "nodeA"
+            "node_set": "nodesPopA"
         }
     }
 
     # create a tmp json file to read usecase3/no_edge_circuit_config.json
     with NamedTemporaryFile("w", suffix='.json', delete=False) as config_file:
-        json.dump(config, config_file)
+        json.dump(sonata_config, config_file)
 
     nd = Neurodamus(
         config_file.name,

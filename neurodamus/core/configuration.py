@@ -364,9 +364,9 @@ class _SimConfig(object):
             update_item(conn, "Source")
             update_item(conn, "Destination")
             if Feature.SpontMinis not in restrict_features:
-                del conn["SpontMinis"]
+                conn.pop("SpontMinis", None)
             if Feature.SynConfigure not in restrict_features:
-                del conn["SynapseConfigure"]
+                conn.pop("SynapseConfigure", None)
 
             new_connections[name] = conn
 
