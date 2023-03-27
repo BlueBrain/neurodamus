@@ -291,7 +291,8 @@ class Connection(ConnectionBase):
             self._synapse_params = synapses_params
             self._synapse_ids = synapse_ids
         else:
-            self._synapse_params = numpy.concatenate((self._synapse_params, synapses_params))
+            self._synapse_params = numpy.concatenate((self._synapse_params, synapses_params),
+                                                     dtype=self._synapse_params.dtype)
             self._synapse_ids = numpy.concatenate((self._synapse_ids, synapse_ids))
 
     # -
