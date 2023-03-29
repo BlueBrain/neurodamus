@@ -1,4 +1,5 @@
 {
   "nodesPopA": {"population": "NodeA"},
+  "nodesPopB": {"population": "NodeB"},
   "l4pc": {"mtype": "L4_PC"}
 }

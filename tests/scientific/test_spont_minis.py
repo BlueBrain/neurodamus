@@ -42,7 +42,7 @@ def test_spont_minis(sonata_config_file):
     nd = Neurodamus(
         sonata_config_file.name,
         restrict_node_populations=["NodeA"],
-        restrict_features=[Feature.SpontMinis, Feature.SynConfigure],
+        restrict_features=[Feature.SpontMinis],  # Enable Feature.SynConfigure to see events
         restrict_connectivity=1,  # base restriction, no projections
         disable_reports=True,
         cleanup_atexit=False,
