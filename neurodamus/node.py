@@ -814,7 +814,9 @@ class Node:
 
             lfp_disabled = not self._circuits.global_manager._lfp_manager._lfp_file
             if rep_type == "lfp" and lfp_disabled:
-                logging.warning("LFP reports are disabled. LFPWeightsPath might be missing.")
+                if MPI.rank == 0:
+                    logging.error("LFP reports are disabled. lfp weights file might be missing.")
+                n_errors += 1
                 continue
             logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
 

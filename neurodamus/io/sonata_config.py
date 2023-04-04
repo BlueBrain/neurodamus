@@ -169,6 +169,8 @@ class SonataConfig:
         parsed_run["Simulator"] = self._sim_conf.target_simulator.name
         parsed_run["TargetFile"] = self._sim_conf.node_sets_file
         parsed_run["CircuitTarget"] = self._sim_conf.node_set
+        if self._sim_conf.beta_features and "lfp_weights_file" in self._sim_conf.beta_features:
+            parsed_run["LFPWeightsPath"] = self._sim_conf.beta_features["lfp_weights_file"]
         conditions = self._sections.get("conditions")
         if conditions:
             parsed_run["Celsius"] = self._sim_conf.conditions.celsius
