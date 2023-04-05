@@ -48,6 +48,9 @@ def test_SimConfig_from_sonata():
     assert soma_report['Dt'] == 0.1
     assert soma_report['Enabled']
     compartment_report = SimConfig.reports['compartment_report']
+    assert soma_report['FileName'] == os.path.join(
+        SimConfig.run_conf["OutputRoot"], "soma_report.h5"
+    )
     assert compartment_report['Target'] == 'l4pc'
     assert compartment_report['Type'] == 'compartment'
     assert compartment_report['ReportOn'] == 'v'
@@ -58,6 +61,9 @@ def test_SimConfig_from_sonata():
     assert compartment_report['EndTime'] == 10.0
     assert compartment_report['Dt'] == 0.1
     assert compartment_report['Enabled']
+    assert compartment_report['FileName'] == os.path.join(
+        SimConfig.run_conf["OutputRoot"], "my_compartment_report.h5"
+    )
 
     # conditions section
     conditions = list(SimConfig._blueconfig.Conditions.values())[0]

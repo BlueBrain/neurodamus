@@ -979,6 +979,14 @@ def _report_vars(config: _SimConfig, run_conf):
                                 " are still not fully supported (CoreNeuron)")
 
 
+@SimConfig.validator
+def _spikes_sort_order(config: _SimConfig, run_conf):
+    order = run_conf.get("SpikesSortOrder", "by_time")
+    if order not in ["none", "by_time"]:
+        raise ConfigurationError("Unsupported spikes sort order %s, " % order +
+                                 "BBP supports 'none' and 'by_time'")
+
+
 def get_debug_cell_gid(cli_options):
     gid = None if not cli_options else cli_options.get("dump_cell_state")
     try:

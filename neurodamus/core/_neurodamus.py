@@ -30,18 +30,19 @@ class _NeurodamusCore(_Neuron):
         return cls._h
 
     @classmethod
-    def _init(cls, *args):
+    def _init(cls, **kwargs):
         if cls._pc is not None:
             return
         # Neurodamus requires MPI. We still respect NEURON_INIT_MPI though
         _Neuron._init(int(os.environ.get("NEURON_INIT_MPI", 1)))  # if needed, sets cls._h
 
         # Init logging
+        log_name = kwargs.get("log_filename") or LOG_FILENAME
         if MPI.rank == 0:
-            open(LOG_FILENAME, "w").close()  # Truncate
+            open(log_name, "w").close()  # Truncate
         MPI.barrier()  # Sync so that all processes see the file
-        setup_logging(GlobalConfig.verbosity, LOG_FILENAME, MPI.rank)
-        log_stage("Initializing Neurodamus... Logfile: " + LOG_FILENAME)
+        setup_logging(GlobalConfig.verbosity, log_name, MPI.rank)
+        log_stage("Initializing Neurodamus... Logfile: " + log_name)
 
         # Some previous executions may have left a bad exception node file
         # This is done now so it's a very early stage and we know the mpi rank
@@ -117,8 +118,8 @@ class _NeurodamusCore(_Neuron):
         self._pc or self._init()
         return self._pc
 
-    def init(self):
-        self._pc or self._init()
+    def init(self, **kwargs):
+        self._pc or self._init(**kwargs)
 
 
 # Singleton

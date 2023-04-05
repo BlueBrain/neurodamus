@@ -251,7 +251,12 @@ class Node:
             config_file: A BlueConfig file
             options: A dictionary of run options typically coming from cmd line
         """
-        Nd.init()  # ensure/load neurodamus mods
+        if config_file and config_file.endswith(".json"):
+            import libsonata
+            conf = libsonata.SimulationConfig.from_file(config_file)
+            Nd.init(log_filename=conf.output.log_file)
+        else:
+            Nd.init()  # ensure/load neurodamus mods
         self._run_conf: dict  # Multi-cycle runs preserve this
 
         # The Recipe being None is allowed internally for e.g. setting up multi-cycle runs
@@ -868,7 +873,7 @@ class Node:
             report_on = rep_conf["ReportOn"]
             rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
                                     "start, end, output_dir, electrode, scaling, isc")(
-                rep_name,
+                os.path.basename(rep_conf.get("FileName", rep_name)),
                 rep_type,  # rep type is case sensitive !!
                 report_on,
                 rep_conf["Unit"],
@@ -945,7 +950,8 @@ class Node:
 
                 reporton_comma_separated = ",".join(report_on.split())
                 core_report_params = (
-                    (rep_name, rep_target.name, rep_type, reporton_comma_separated)
+                    (os.path.basename(rep_conf.get("FileName", rep_name)),
+                     rep_target.name, rep_type, reporton_comma_separated)
                     + rep_params[3:5] + (target_type,) + rep_params[5:8]
                     + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
                 )

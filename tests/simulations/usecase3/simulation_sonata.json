@@ -48,7 +48,8 @@
             "sections": "all",
             "dt": 0.1,
             "start_time": 0.0,
-            "end_time": 10.0
+            "end_time": 10.0,
+            "file_name": "my_compartment_report"
         }
     }
 }

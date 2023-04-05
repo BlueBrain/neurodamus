@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-USECASE3 = Path(__file__).parent.absolute() / "usecase3"
+USECASE3 = Path(__file__).parent.absolute() / "simulations" / "usecase3"
 
 
 @pytest.fixture
