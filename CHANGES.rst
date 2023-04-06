@@ -2,6 +2,26 @@
 Change Log
 ==========
 
+Version 2.14.0
+===============
+**6 Apr 2023**
+
+*New Features*
+  * [BBPBGLIB-983] Remove Bin reports
+  * [BBPBGLIB-995] [BBPBGLIB-996] [BBPBGLIB-997] SONATA config: read "log_file" and report "file_name"
+  * Add support for on-line LFP calculations
+  * [BBPBGLIB-908] API to restrict features and populations
+*Improvements*
+  * [BBPBGLIB-908] Scientific tests - Multi-population
+  * Control numpy subnormal flush to zero warnings
+  * Add test for projections connectivity
+  * [BBPBGLIB-908] Add spont-minis test
+  * [BBPP40-291] Improve Sonata configurations for ngv simulations
+*Bug fixes*
+  * Force dtype during numpy.concatenate recarrays
+  * [HPCTM-1687]: fix error of checking np.recarray None or empty
+
+
 Version 2.13.2
 ===============
 **1 Mar 2023**
