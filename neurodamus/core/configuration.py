@@ -28,7 +28,14 @@ class LogLevel:
 
 
 class ConfigurationError(Exception):
-    """Error due to invalid settings in BlueConfig"""
+    """
+    Error due to invalid settings in BlueConfig
+    ConfigurationError should be raised by all ranks to be caught
+    properly. Otherwise we might end up with deadlocks.
+    For Exceptions that are raised by a single rank Exception
+    should be used.
+    This is due to the way Exceptions are caught from commands.py.
+    """
     pass
 
 
@@ -770,7 +777,23 @@ def _current_dir(config: _SimConfig, run_conf):
 
 @SimConfig.validator
 def _output_root(config: _SimConfig, run_conf):
-    """confirm output_path exists and is usable -> use utility.mod"""
+    def check_oputput_directory(output_dir):
+        """
+        Checks if output directory exists and is a directory.
+        If it doesn't exists create it.
+        This logic is based in old utility.mod.
+        """
+        if os.path.exists(output_dir):
+            if not os.path.isdir(output_dir):
+                raise Exception(f"{output_dir} does not name a directory.")
+        else:
+            try:
+                os.makedirs(output_dir)
+            except Exception as e:
+                raise Exception(f"Failed to create OutputRoot directory {output_dir} with {e}")
+            log_verbose(f"Directory {output_dir} does not exist.  Creating...")
+
+    """confirm output_path exists and is usable"""
     output_path = run_conf.get("OutputRoot")
 
     if config.cli_options.output_path not in (None, output_path):
@@ -780,14 +803,16 @@ def _output_root(config: _SimConfig, run_conf):
     if not os.path.isabs(output_path):
         output_path = os.path.join(config.current_dir, output_path)
 
-    from ._neurodamus import NeurodamusCore as Nd, MPI
+    from ._neurodamus import MPI
     if MPI.rank == 0:
-        if Nd.checkDirectory(output_path) < 0:
-            raise ConfigurationError("Error with OutputRoot: %s" % output_path)
+        check_oputput_directory(output_path)
         # Delete coreneuron_input link since it may conflict with restore
         corenrn_input = output_path + "/coreneuron_input"
         if os.path.islink(corenrn_input):
             os.remove(corenrn_input)
+
+    # Barrier to make sure that the output_path is created in case it doesn't exist
+    MPI.barrier()
 
     log_verbose("OutputRoot = %s", output_path)
     run_conf["OutputRoot"] = output_path
