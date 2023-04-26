@@ -43,10 +43,10 @@ proc init() {
  * Given the Run block from a BlueConfig, check simulator to be used
  * $o1 ParsedRun from a BlueConfig (type is Map)
  */
-proc interpret() { localobj runInfo, pc, rng, commandString, configMorphPath
+proc interpret() { localobj runInfo, pc, rng, commandString, configMorphPath, pyobj
     runInfo = $o1
     pc = new ParallelContext()
-
+    nrnpython("import os\ndef check_output_directory(output_dir):\n\tif os.path.exists(output_dir):\n\t\tif not os.path.isdir(output_dir):\n\t\t\tprint(f\"{output_dir} does not name a directory.\")\n\t\t\treturn -1\n\t\telse:\n\t\t\treturn 0\n\telse:\n\t\ttry:\n\t\t\tos.makedirs(output_dir)\n\t\texcept Exception as e:\n\t\t\tprint(f\"Failed to create OutputRoot directory {output_dir} with {e}\")\n\t\t\treturn -1\n\t\tprint(f\"Directory {output_dir} does not exist.  Creating...\")\n\t\treturn 0")
 
     if( runInfo.exists( "MorphologyPath" ) ) {
         configMorphPath = runInfo.get( "MorphologyPath" )
@@ -90,9 +90,8 @@ proc interpret() { localobj runInfo, pc, rng, commandString, configMorphPath
         sprint(coreneuronOutputDir.s, "%s/", runInfo.get( "OutputRoot" ).s )
         if( pc.id() == 0 ) {
             commandString = new String()
-            execResult = 0
-            sprint( commandString.s, "%s.execResult = checkDirectory( \"%s\" )", this, coreneuronOutputDir.s )
-            execute( commandString.s )
+            pyobj = new PythonObject()
+            execResult = pyobj.check_output_directory(coreneuronOutputDir.s)
             if( execResult < 0 ) {
                 strdef errmsg
                 sprint( errmsg, "Error while creating directory '%s'. Terminating.", coreneuronOutputDir.s)
@@ -106,8 +105,7 @@ proc interpret() { localobj runInfo, pc, rng, commandString, configMorphPath
                 print commandString.s
                 nrnpython( commandString.s )
             } else {
-              sprint( commandString.s, "%s.execResult = checkDirectory( \"%s\" )", this, coreneuronDataDir.s )
-              execute( commandString.s )
+              execResult = pyobj.check_output_directory(coreneuronDataDir.s)
               if( execResult < 0 ) {
                 strdef errmsg
                 sprint( errmsg, "Error while creating directory '%s'. Terminating.", coreneuronOutputDir.s)
