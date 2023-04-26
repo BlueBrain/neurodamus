@@ -6,6 +6,7 @@
  * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
  */
 {load_file("fileUtils.hoc")}
+{load_file("TPointList.hoc")}
 
 begintemplate Report
 
@@ -977,4 +978,3 @@ proc restartALUs() { local aluIndex
 }
 
 endtemplate Report
-

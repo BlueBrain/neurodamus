@@ -1326,6 +1326,7 @@ class Node:
     # -
     @return_neuron_timings
     def _run_neuron(self):
+        Nd.load_hoc("ShowProgress")  # TODO: Drop this
         _ = Nd.ShowProgress(Nd.cvode, MPI.rank)
         self.solve()
         logging.info("Simulation finished.")

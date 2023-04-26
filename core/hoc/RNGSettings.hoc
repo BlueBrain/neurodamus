@@ -236,4 +236,3 @@ proc rng123ForStochKvInit() {  local channelID, hasStochKv  localobj CCell
         }
     }
 }
-

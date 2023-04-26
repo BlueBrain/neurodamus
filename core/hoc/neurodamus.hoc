@@ -1,11 +1,13 @@
 // Neurodamus core and dependencies
 // ================================
 
+// Neuron lib
 {load_file("nrngui.hoc")}
 {load_file("netparmpi.hoc")}
 {load_file("loadbal.hoc")}
 {load_file("binfo.hoc")}
-{load_file("mcomplex.hoc")}
+
+// Neurodamus - Do not change order
 {load_file("ConfigParser.hoc")}
 {load_file("TargetParser.hoc")}
 {load_file("TargetManager.hoc")}
@@ -15,6 +17,4 @@
 {load_file("Cell.hoc")}
 {load_file("TDistFunc.hoc")}
 {load_file("Report.hoc")}
-{load_file("ModificationManager.hoc")}
-{load_file("ShowProgress.hoc")}
 {load_file("ConnectionUtils.hoc")}

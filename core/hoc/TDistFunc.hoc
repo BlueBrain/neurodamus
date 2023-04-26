@@ -80,4 +80,3 @@ begintemplate TDistFunc
         return maxL
     }
 endtemplate TDistFunc
-
