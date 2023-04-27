@@ -1,0 +1,243 @@
+/**
+ * @file    SynReaders.hoc
+ * @brief   Hoc Templates encapsulating the possible synapse readers
+ *          Additionally getSynapse converts each row to a common format (Vector len 12)
+ *
+ * @author  Fernando Pereira
+ *
+ */
+
+// Note: This file is imported from SynapseRuleManager where all dependencies are met
+// It is used exclusively in HOC. Neurodamus-py has its own proxy
+
+
+/*****************************************************************************
+ * SYNAPSE READER Using the new SynTool reader
+ *****************************************************************************/
+
+begintemplate SynReaderSynTool
+
+public loadSynapseParameters, dbg, readGaps
+
+objref synapseReader, _emptyList, this
+
+
+/**
+ * @param $s1 Name of Synapse file or directory (nrn) to open.
+ * @param $2 (bool) Whether to read synapses (default 0) or GapJunctions (1)
+ * @param $2 (bool) Verbosity (default 0)
+ */
+proc init()  {
+    verbose = 0
+    dbg = 0
+    readGaps = 0
+    _emptyList = new List()
+
+    if (numarg() >= 2) readGaps = $2
+    if (numarg() == 3) verbose = $3
+
+    synapseReader = new SynapseReader($s1, verbose)
+
+    if (synapseReader.modEnabled()) {
+        hasNrrpField = synapseReader.hasNrrpField()
+        if (verbose) print "[SynReader] SynapseTool ENABLED. Has NRRP field?: ", hasNrrpField, "Gaps?: ", readGaps
+    } else {
+        hasNrrpField = -1
+        if (verbose) print "[SynReader] SynapseTool DISABLED"
+    }
+}
+
+
+/*!
+ * Read the specified dataset from the nrn.h5 file to get all synapse parameters for a post-synaptic cell
+ *
+ * @param $1 gid of the target cell whose data is needed
+ * @return List populated by SynapseParameters objects
+ */
+obfunc loadSynapseParameters() { local gid, nSyn, synIndex  localobj synParamsList, tmpParams, curParams
+    gid = $1
+
+    if (!readGaps) {
+        nSyn = synapseReader.loadSynapses(gid)
+    } else {
+        nSyn = synapseReader.loadGapJunctions(gid)
+    }
+
+    if (nSyn < 1) {
+        return _emptyList
+    }
+
+    if(dbg) printf("Loading %d synapses for Post-Neuron %d:\n", nSyn, gid)
+    synParamsList = new List()
+    tmpParams = new Vector(15)
+
+    for synIndex=0, nSyn-1 {
+        synapseReader.getSynapse(synIndex, tmpParams, 1)  // 1: no resize
+
+        // compensate for minor floating point inaccuracies in the delay
+        if (!readGaps) {
+            tmpParams.x[1] = int(tmpParams.x[1]/dt + 1e-5)*dt
+            tmpParams.x[14] = synIndex
+        }
+        if (dbg && synIndex == 0) tmpParams.printf()
+
+        curParams = new SynapseParameters(tmpParams)
+        synParamsList.append(curParams)
+    }
+
+    return synParamsList
+}
+
+
+endtemplate SynReaderSynTool
+
+
+/*****************************************************************************
+ * SYNAPSE READER Using the plain HDF5 reader
+ *****************************************************************************/
+
+begintemplate SynReaderHdf5
+
+external timeit, timeit_setVerbose, timeit_register, timeit_start, timeit_add
+
+public loadSynapseParameters, setMaskReader, dbg
+
+objref synapseReader, maskReader, this
+
+
+/*!
+ * @param $s1 Root name of Synapse file(s) to open.
+ * @param $2 nSynapseFiles - The number of synapse files
+ * @param $o3 targetManager - The target manager
+ */
+proc init() { local timeID, verboseLevel  localobj connectTemp, targetManager
+    strdef synapseFile
+    dbg = 0
+
+    sprint(synapseFile, "%s", $s1)
+    nSynapseFiles = $2
+    targetManager = $o3
+
+    timeID = timeit_register("file read")
+    timeit_start(timeID)
+
+    synapseReader = new HDF5Reader(synapseFile, nSynapseFiles, 0)
+    timeit_add(timeID)
+
+    if (nSynapseFiles > 1) {
+        timeID = timeit_register("syn exchange")
+        timeit_start(timeID)
+        synapseReader.exchangeSynapseLocations(targetManager.cellDistributor.getGidListForProcessor())
+        timeit_add(timeID)
+    }
+
+    nrnVersion = synapseReader.checkVersion()
+    maskFileLoaded = 0
+}
+
+/*!
+ * For now, only the legacy h5 reader will support the mask file used by structural plasticity.
+ * @param $o1 maskReader reference
+ */
+proc setMaskReader() {
+    maskReader = $o1
+    maskFileLoaded = 1
+}
+
+/*!
+ * Read the specified dataset from the nrn.h5 file to get all synapse parameters for a post-synaptic cell
+ *
+ * @param $1 gid of the cell whose data is needed
+ * @return $o2 List populated by SynapseParameters objects read from the nrn.h5 file
+ */
+obfunc loadSynapseParameters() { local isvalid, gid, ret, nSyn, synIndex  localobj synParamsList, activeSynParams, tmpParams
+    strdef cellName
+    gid = $1
+    sprint(cellName, "a%d", gid)
+    synParamsList = new List()
+    tmpParams = new Vector()
+    tmpParams.resize(16)
+
+    if (nSynapseFiles > 1) {
+        ret = synapseReader.loadData(gid)
+        if( maskFileLoaded ) {
+            maskReader.loadData(gid)
+        }
+    } else {
+        ret = synapseReader.loadData(cellName)
+        if( maskFileLoaded ) {
+            maskReader.loadData(cellName)
+        }
+    }
+
+    if (ret < 0) {
+        return synParamsList
+    }
+
+    nSyn = synapseReader.numberofrows(cellName)
+
+    if (dbg) printf("Loading %d synapses for Post-Neuron %d:\n", nSyn, gid)
+
+    if (nSyn > 0) {
+        for synIndex=0, nSyn-1 {
+
+            isvalid = 1
+            if( maskFileLoaded ) {
+                tmpParams.x[15] = maskReader.getData( cellName, synIndex, 0 )
+                if( tmpParams.x[15] == 0 ) {
+                    isvalid = 0
+                }
+            } else {
+                tmpParams.x[15] = -1
+            }
+
+            if( isvalid ) {
+                tmpParams.x[0] = synapseReader.getData( cellName, synIndex, 0 )  //sgid
+                tmpParams.x[1] = synapseReader.getData( cellName, synIndex, 1 )  //delay
+                tmpParams.x[2] = synapseReader.getData( cellName, synIndex, 2 )  //isec
+                tmpParams.x[3] = synapseReader.getData( cellName, synIndex, 3 )  //ipt
+                tmpParams.x[4] = synapseReader.getData( cellName, synIndex, 4 )  //offset
+                tmpParams.x[5] = synapseReader.getData( cellName, synIndex, 8 )  //weight
+                tmpParams.x[6] = synapseReader.getData( cellName, synIndex, 9 )  //U
+                tmpParams.x[7] = synapseReader.getData( cellName, synIndex, 10 ) //D
+                tmpParams.x[8] = synapseReader.getData( cellName, synIndex, 11 ) //F
+                tmpParams.x[9] = synapseReader.getData( cellName, synIndex, 12 ) //DTC
+                tmpParams.x[10] = synapseReader.getData( cellName, synIndex, 13 )//isynType
+
+                // if using newer version, we can read nrrp (older version had A_SE in column)
+                if (nrnVersion > 4) {
+                    tmpParams.x[11] = synapseReader.getData( cellName, synIndex, 17 ) //nrrp
+                } else {
+                    tmpParams.x[11] = -1
+                }
+
+                tmpParams.x[12] = 0  // place holder for u_hill_coefficient
+                tmpParams.x[13] = -1 // place holder for conductance_ratio
+                tmpParams.x[14] = synIndex // use row as index for older circuits
+
+                //compensate for minor floating point inaccuracies in the delay
+                tmpParams.x[1] = int(tmpParams.x[1]/dt + 1e-5)*dt
+                if (dbg && synIndex == 0) tmpParams.printf()
+
+                activeSynParams = new SynapseParameters(tmpParams)
+                synParamsList.append(activeSynParams)
+            } //isvalid
+        }
+    }
+
+    return synParamsList
+}
+
+endtemplate SynReaderHdf5
+
+
+/**
+ * Detection whether syntool is enabled
+ */
+func _isSyntoolEnabled() { localobj synreader
+    synreader = new SynapseReader()
+    return synreader.modEnabled()
+}
+
+// Public singleton property
+syntoolEnabled = _isSyntoolEnabled()

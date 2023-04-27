@@ -1,0 +1,38 @@
+begintemplate ConnectionUtils
+public executeConfigure
+
+// curSyn must be an instance variable, otherwise wont be found by execute1
+objref curSyn, this
+
+
+/* Helper function to execute the statements of the SynapseConfigure options on given synapses
+ *
+ * @param $o1 List of synapses to configure
+ * @param $s2 configuration command
+ */
+func executeConfigure() { local synIndex, nErr  localobj sf, synapseList
+    strdef tstr, configCmd
+    sf = new StringFunctions()
+
+    synapseList = $o1
+    configCmd = $s2
+    nErr = 0
+
+    //need to replace all '%s' with curSyn
+    while (sf.substr(configCmd, "%s") != -1 ) {
+        sf.head(configCmd, "%s", tstr)
+        sf.tail(configCmd, "%s", configCmd)
+        sprint(configCmd, "%scurSyn%s", tstr, configCmd)
+    }
+    // surround with curly braces, req'ed for multi-statement config
+    sprint(configCmd, "{%s}", configCmd)
+
+    for synIndex=0, synapseList.count()-1 {
+        curSyn = synapseList.o(synIndex)
+        if (execute1(configCmd, this) == 0) nErr += 1
+    }
+
+    return nErr
+}
+
+endtemplate ConnectionUtils

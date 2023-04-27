@@ -1,0 +1,63 @@
+/**
+ * @file TType.hoc
+ * @brief
+ * @author moor
+ * @date 2010-03-08
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+
+D__TTYPEHOC = 1
+//see help file in neuron extention help pages (wiki)
+// https://bbpteam.epfl.ch/wiki/index.php/NE:TType
+
+
+begintemplate TType
+	public classname,itype,stype,equal
+	strdef classname,stype
+	public NUMBER,OBJREF,STRDEF,POINTER,NOTEXIST
+
+
+	//0 for numbers, 1 for objref, 2 for strdef, 3 for pointers to numbers, and -1 if the arg does not exist
+
+
+	proc init(){
+		classname="TType"
+		itype = NOTEXIST //default
+		stype = "none"
+
+        	NUMBER = 0
+        	OBJREF = 1
+        	STRDEF = 2
+        	POINTER = 3
+        	NOTEXIST = -1
+	}
+
+	proc get(){local i
+		itype = NOTEXIST //default
+		stype = "none" //default
+		i = argtype(1)
+		if(i == NUMBER) {
+			stype = "number"
+			itype = NUMBER
+		}else if(i == STRDEF){
+			stype = "strdef"
+			itype = STRDEF
+		}else if(i == POINTER){
+			stype = "pointer"
+			itype = POINTER
+		}else if(i == OBJREF){
+			sprint(stype,"%s",$o1)
+			sscanf(stype,"%[^\[]",stype)
+			itype = OBJREF
+		}
+		if(numarg()>1) $s2 = stype
+	}
+
+	func equal(){
+		get($o1)
+		return !strcmp(stype,$s2)
+	}
+
+
+endtemplate TType

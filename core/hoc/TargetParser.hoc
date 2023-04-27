@@ -1,0 +1,482 @@
+/**
+ * @file TargetParser.hoc
+ * @brief Handles reading target files from disk so that such code is removed from the TargetManager class
+ * @author king
+ * @date 2009-06-12
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+{load_file("Target.hoc")}
+{load_file("fileUtils.hoc")}
+
+/*!
+ * TargetParser for reading and storing initial targets from files.  This is intended for bglib simulations as opposed
+ * to single cpu simulations.  bglib simulations will use this class to parse targets before cells are distributed, then come
+ * back later to localize (updateTargets).  The intent is to separate parsing from usage, and maybe to remove LoadBalance info from the TargetManager,
+ * ( I don't know if this does remove remove the need for LoadBalance information to be accessible since it might be necessary to get the PointLists anyways.)
+ */
+begintemplate TargetParser
+
+objref targetList
+
+//public functions
+public init, open, targetList, getTarget, updateTargets, updateTargetList, printCellCounts
+
+//allow some nodes (i.e. node 1) to output messages to the console
+public isVerbose
+
+// The whole set of gids local to this node, defined in Target.hoc
+external local_gids, terminate
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Initialize certain variables
+ */
+proc init() {
+    targetList = new List()
+    isVerbose = 0
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Counts total number of cells for every target and prints it if needed
+ */
+
+proc printCellCounts() { local targetIndex, subtargets localobj activeTarget, strf
+    strf = new StringFunctions()
+    for targetIndex=0, targetList.count()-1 {
+        activeTarget = targetList.object(targetIndex)
+        subtargets = activeTarget.subtargets.count()
+        // Skip non-relevant and avoid 1000s of minicolumn targets
+        if( (activeTarget.gidMembers.size() == 0 && subtargets < 2) || strf.substr(activeTarget.name, "MiniColumn_") == 0 ) {
+            continue
+        }
+        if( subtargets ) {
+            printf("  * Target %-15.15s %6d cells [%d subtargets]\n", activeTarget.name, activeTarget.getCellCount(), subtargets)
+        } else {
+            printf("  * Target %-15.15s %6d cells\n", activeTarget.name, activeTarget.getCellCount())
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * read the given file for targets and store them in this parser object until they are ready to
+ * be passed to the TargetManager later in the simulation (after distribution/load balancing have completed)
+ *
+ * @param $s1 Target file name, to be opened and parsed.
+ * @param $2 Print counts for this source (typically for user.target)
+ */
+proc open() { local nErrors, printCounts, i  localobj tFile, targetInstance, newTargets
+    strdef tstr, tstr1, typeString
+    tFile = new File()
+    tFile.ropen($s1)
+    printCounts = 0
+    if(numarg() > 1) printCounts = ($2 && isVerbose)
+
+    newTargets = new List()
+    nErrors = 0
+
+    if( isVerbose ) {
+        print "Reading target file ", $s1
+    }
+
+    if (tFile.isopen == 0) {
+        terminate( "Error : Could not open target file", $s1 )
+    }
+
+    //Read till end of file
+    while(tFile.gets(tstr) >= 0){
+        sscanf(tstr, "%s",tstr1)
+        if( 0 == strcmp (tstr1, "Target")) {  //have reached a target block
+            targetInstance = new Target()
+            sscanf(tstr, "%*s%s%s", typeString, targetInstance.name )  //extract target type and name
+
+            //if this target was seen before (e.g. used as subtarget), a reference already exists in the list and needs to be populated;
+            // otherwise the new reference we just made will be inserted into the list and given back directly
+            targetInstance = updateTargetList( targetInstance )
+            newTargets.append(targetInstance)
+
+            //make sure that contents for this target haven't been seen before
+            if( targetInstance.isDefined ) {
+                if ( isVerbose ) {
+                    print "Error.  Multiple definitions for Target ", targetInstance.name
+                }
+                nErrors = nErrors + 1
+            }
+
+            targetInstance.type = typeString
+
+            targetInstance.evalType()
+
+            //target contents
+            tFile.gets(tstr) //Grab '{'
+            sscanf(tstr, "%s",tstr1)
+            if( targetInstance.isCellTarget() ) {  //only need to parse into cellnames and target names
+                targetInstance.isEmpty = parseCellTargetContents( tFile, targetInstance )
+            } else {
+                targetInstance.isEmpty = parseOtherTargetContents( tFile, targetInstance )
+            }
+
+            //note that the closing '}' was grabbed during whichever parse*Contents function call
+            targetInstance.isDefined = 1
+
+            //Display msg to default output if target instance is empty
+            if (targetInstance.isEmpty && isVerbose) {
+                print "Warning: Following target is empty: ", targetInstance.name
+            }
+        }
+    }
+
+    tFile.close()
+    if (nErrors > 0) {
+        terminate ( "Target with multiple definitions" )
+    }
+    if (printCounts) for i=0, newTargets.count()-1 {
+        subtargets = newTargets.o(i).subtargets.count()
+        if( subtargets ) {
+            printf("  * Target %-15.15s %6d cells [%d subtargets]\n", newTargets.o(i).name, newTargets.o(i).getCellCount(), subtargets)
+        } else {
+            printf("  * Target %-15.15s %6d cells\n", newTargets.o(i).name, newTargets.o(i).getCellCount())
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ *  Private function used during parsing to determine if targets already exist with a given name.
+ *  If they do, return a reference to that target; otherwise, add the given reference into the list
+ *  and return the same reference.  Perhaps a reference isn't needed, but just the name.  Then this
+ *  function can create an instance if necessary.  It's not broke now, though, so fix it later as
+ *  needed
+ *
+ *  @param $o1 Reference to a target whose name needs to be searched for in the list
+ *  @return Reference to an pre-existing with same name, or the parameter reference if it was insterted
+ *  Logic           : Using the binary search, determine if a target exists with a particular name,
+ *                    if not, insert the given reference into the list at the location as derived by
+ *                    the negative return value from the binary search.  Return the true reference
+ */
+obfunc updateTargetList() { local targetIndex  localobj targetUtil
+    targetUtil = new TargetUtility()
+
+    targetIndex = targetUtil.findTarget( $o1.name, targetList )
+    if( targetIndex < 0 ) {  //not found, so insert it at indicated location
+        targetIndex = -(targetIndex+1)
+        if( targetIndex == targetList.count() ) {
+            targetList.append( $o1 )
+        } else {
+            targetList.insrt( targetIndex, $o1 )
+        }
+        return $o1
+    } else {
+        return targetList.object(targetIndex)
+    }
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * For each target in the targetList, update them so that there exist abbreviated lists
+ * related to cells local to the cpu.
+ *
+ * @param $o1 Vector containing gids that are on the local cpu
+ * @param $2 Append mode. 0 (default) will reset the vector first.
+ */
+proc updateTargets() { local targetIndex, append_mode localobj activeTarget, tmpvec
+    append_mode = 0
+    if (numarg() > 1) {
+        append_mode = $2
+    }
+    if (append_mode) {
+        tmpvec = new Vector($o1)  // o1 may be a python obj
+        local_gids.append(tmpvec)
+    } else {
+        local_gids = $o1.c
+    }
+    local_gids.sort()
+
+    for targetIndex=0, targetList.count()-1 {
+        targetList.o(targetIndex).isUpToDate = 0
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Cell Targets have a simpler structure where a line can have any number of entries, but limited to gids or other target names
+ *
+ * @param $o1 Reference to file where data is coming from
+ * @param $o2 Reference to Target object where data is stored
+ * @return Returns error code (1 if target is empty, 0 otherwise)
+ */
+func parseCellTargetContents() { local potentialGid, numberToken localobj tFile, targetInstance, addition
+    tFile = $o1
+    targetInstance = $o2
+    strdef tstr1
+
+    //the line can have any number of entries - cells or other targets
+    tFile.scanstr(tstr1)  //goto first entry
+
+    while(0 != strcmp(tstr1, "}") && 0 != strcmp( tstr1, "{" ) && !tFile.eof() ) {
+        potentialGid = addMember(tstr1, targetInstance)
+
+        //count the number of parsed token
+        numberToken = numberToken + 1
+
+        //get next string
+        tFile.scanstr(tstr1)
+    }
+
+
+    validateTargetTermination(targetInstance.name, tstr1)
+
+    //Return error code: 1 if target is empty
+    if (numberToken == 0) {
+        return 1
+    } else {
+        return 0
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * For non-Cell targets, any member (cell or subtarget) must be on separate line.  The rest of the line can potentially
+ * contain section names, section ids (int, but treated as float), normalized distances (float), or synapse ids (int)
+ *
+ * @param $o1 Reference to file where data is coming from
+ * @param $o2 Reference to Target object where data is stored
+ * @return Returns error code (1 if target is empty, 0 otherwise)
+ */
+func parseOtherTargetContents() { local offset, extraIndex, potentialGid, val, numberToken localobj tFile, targetInstance, addition, extraData, strobj, extraStrings, extraValues, pendingSubset
+    tFile = $o1
+    targetInstance = $o2
+    strdef tstr, tstr1, remake
+    strobj = new StringFunctions()
+
+    //each line contains a name, then potentially a subset and potentially a list of values
+    getTrimmedLine( tFile, tstr )
+
+    sscanf(tstr, "%s",tstr1)
+    while(0 != strcmp(tstr1, "}") && 0 != strcmp( tstr1, "{" ) && !tFile.eof() ) {
+
+        //count the number of parsed token
+        numberToken = numberToken + 1
+
+        potentialGid = addMember(tstr1, targetInstance )
+
+        //look at remainder of line for [cell|target]Extra field
+        extraData = new String()
+        strobj.right( tstr, strobj.len(tstr1) )
+        extraData.s = tstr
+
+        extraStrings = new List()
+        extraValues = new Vector()
+        pendingSubset = new String("")
+
+        if( targetInstance.isSynapseTarget() ) {
+            if( split( extraData.s, extraStrings ) > 0 ) {
+                for extraIndex=0, extraStrings.count()-1 {
+                    sscanf(extraStrings.o(extraIndex).s, "%d", &val)
+                    extraValues.append(val)
+                }
+            } else {
+                //print "no extra data"
+            }
+        } else { //section|compartment
+            if( split( extraData.s, extraStrings ) > 0 ) {
+                //test if first element is a string : soma, dend, apic, axon
+                offset = 0
+                if( (0==strcmp(extraStrings.o(0).s, "soma")) || (0==strcmp(extraStrings.o(0).s, "axon")) || \
+                    (0==strcmp(extraStrings.o(0).s, "dend")) || (0==strcmp(extraStrings.o(0).s, "apic"))) {
+                    //targetInstance.cellSections.append( extraStrings.o(0) )
+                    pendingSubset = extraStrings.o(0)
+                    offset = 1
+                }
+
+                for extraIndex=offset, extraStrings.count()-1 {
+                    sscanf(extraStrings.o(extraIndex).s, "%f", &val)
+                    extraValues.append(val)
+                }
+            } else {
+                //print "no extra data"
+            }
+        }
+
+        //look at potentialGid again to know where to store this extra data
+        // note: always append - even empty vector - so that indices correspond with gid/subtarget vecs
+        if( potentialGid != -1 ) {
+            targetInstance.cellSubsets.append( pendingSubset )
+            targetInstance.cellExtraValues.append( extraValues )
+        } else {
+            targetInstance.targetSubsets.append( pendingSubset )
+            targetInstance.targetExtraValues.append( extraValues )
+        }
+
+        //goto next line; get first string element
+        getTrimmedLine( tFile, tstr )
+        sscanf(tstr, "%s",tstr1)
+    }
+
+    validateTargetTermination(targetInstance.name, tstr1)
+
+    //Return error code: 1 if target is empty, 0 if
+    if (numberToken == 0) {
+        return 1
+    } else {
+        return 0
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Consolidate a validation action that must be performed by both parseCellTargetContents and parseOtherTargetContents.
+ * Make certain that a closing brace was found as the last string; anything else indicates a parse error.
+ * Should such a parse error be fatal and compel the program to terminate?
+ *
+ * @param $s1 The name of the target parsed
+ * @param $s2 The last string read while parsing the target
+ */
+proc validateTargetTermination() {
+    //we should have found a closing brace at the end (encountering an eof or opening brace instead indicates a parse error)
+    if( 0 != strcmp($s2, "}") ) { //failed to find closing brace
+        print "Warning: no closing brace found for Target ", $s1
+        //nErrors++?
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ * Add a member, either cell or subtarget, to a Target object.  The string with the new member's name is checked to
+ * determine if it a gid (format = "a%d") or not.  Note that the expression will be validated to make sure that
+ * certain target names (e.g. a17sources) are not mistaken for gids
+ *
+ * @param $s1 The string getting checked
+ * @param $o2 Reference to Target object to receive the member
+ * @return The numeric gid if it validated as a gid (i.e. a%d returns %d); otherwise, returns -1
+ */
+func addMember() { local potentialGid  localobj targetInstance, addition
+    strdef remake
+    targetInstance = $o2
+
+    //is this entry a cell? : make sure not to confuse some names for gids( i.e. a17sources = target, a17 = gid )
+    //  test this by trying to extract a gid then putting it back.  If either step fails, then can't be a gid
+    sscanf($s1, "a%d", &potentialGid )
+    sprint( remake, "a%d", potentialGid )
+
+    if( strcmp( $s1, remake ) == 0 )  { //cell detected
+        targetInstance.gidMembers.append( potentialGid )
+        return potentialGid
+    } else { //must be new or existing target
+        addition = new Target()
+        addition.name = $s1
+
+        //following line either replaces addition with reference to existing target, or addition is used to insert new reference into master list
+        addition = updateTargetList( addition )
+        targetInstance.subtargets.append( addition )
+        return -1
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ *  Public function which retrieve a target from the list and returns it to the caller
+ *  Required Inputs : $s1 Name of target to find and retrieve
+ *  Logic           : Use binary search to locate the target, throwing an error if the target
+ *                    is not found
+ */
+obfunc getTarget() { local targetIndex  localobj targetUtil
+    targetUtil = new TargetUtility()
+    targetIndex = targetUtil.findTarget( $s1, targetList )
+    if( targetIndex < 0 ) {  //not found, error
+        strdef errmsg
+        sprint( errmsg, "Error: target %s not found.  Attempting to terminate", $s1)
+        terminate( errmsg )
+    } else {
+        return targetList.object(targetIndex)
+    }
+}
+
+//------------------------------------------------------------------------------------------
+
+/*!
+ * Utility function for handling the retrieval of a line from a file and removing leading
+ * white space or trailing comments (trailing white space is not checked, but should not be a problem)
+ *
+ * @param $o1 Reference to file whose next line is required
+ * @param $s2 String where the read line should be stored
+ * Logic           : Read the next line, check if the first character is ws, removing all leading ws
+ *                   if it is, then check for the comment character '#' and remove it and any other
+ *                   characters after it.
+ */
+proc getTrimmedLine() { localobj targetFile, strobj
+    strdef tstr, wscheck
+    strobj = new StringFunctions()
+
+    targetFile = $o1
+    targetFile.gets(tstr)
+
+    //check for leading whitespace
+    wscheck = tstr
+    strobj.left( wscheck, 1 )
+    if( strcmp( wscheck, " " ) == 0 || strcmp( wscheck, "\t" ) == 0 ) {
+        ret = strobj.tail( tstr, "[ \t]+", tstr ) //strip leading white space
+    }
+
+    //strip comments
+    if( strobj.substr(tstr, "#" ) != -1 ) {
+        ret = strobj.head(tstr, "#", tstr )
+    }
+
+	//trailing whitespace shouldn't be a problem, but 'trimmedLine' implies none at front or rear
+	// this doesn't hurt parsing, though, so I won't deal with it
+
+    $s2 = tstr
+}
+
+//------------------------------------------------------------------------------------------------------------
+
+/*!
+ *  Split a string across whitespace into a list of many strings, returning the number of strings found
+ *  maybe this will be moved into global shared hoc file as config file parsing uses a similar function?
+ *
+ *  @param $s1 String to split
+ *  @param $o1 List which will be populated by string objects
+ *  @return The number of items collected into the final list
+ */
+func split(){ local RetVal, length localobj strobj, str, Token
+	strobj = new StringFunctions()
+    str     = new String()
+    Token   = new String()
+
+	str.s = $s1
+	i = 0
+	while(1){
+		RetVal = 0
+		RetVal = sscanf(str.s, "%s", Token.s)
+		if(RetVal <1) {
+			break
+		}
+		i = i+1
+		$o2.append(new String(Token.s))
+
+		RetVal = 0
+		RetVal = strobj.substr(str.s,Token.s)
+		if(RetVal <0){
+			break
+		}
+		length = 0
+		length = strobj.len(Token.s)
+		strobj.right(str.s, length+RetVal )
+	}
+	return i
+}
+
+endtemplate TargetParser

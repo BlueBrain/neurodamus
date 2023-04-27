@@ -1,0 +1,83 @@
+/**
+ * @file SerializedSections.hoc
+ * @brief Allow morphology sections to be accessed from an array by index.
+ * @author king
+ * @date 2009-06-12
+ * @remark Copyright © BBP/EPFL 2005-2011; All rights reserved. Do not distribute without further notice.
+ */
+
+//make sure we have some basic things loaded
+{load_file( "stdrun.hoc" )}
+{load_file( "Map.hoc" )}
+{load_file("fileUtils.hoc")}
+
+//------------------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------------------
+
+_serialized_sections_warned = 0
+
+/**
+ * When getting a location to a compartment by section index, the compartments must be serialized
+ * and stored for future access.
+ */
+begintemplate SerializedSections
+
+external _serialized_sections_warned, terminate
+
+//-----------------------------------------------------------------------------------------------
+// Declare member variables
+//-----------------------------------------------------------------------------------------------
+
+objref isec2sec[1]
+
+//-----------------------------------------------------------------------------------------------
+// public members
+//-----------------------------------------------------------------------------------------------
+
+public isec2sec, init, count
+
+//-----------------------------------------------------------------------------------------------
+// Member function implementations
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * Constructor serializes the sections of a cell for easier random access.  Note that this is possible because
+ * the v field in the section has been assigned an integer corresponding to the target index as read from the
+ * morphology file.
+ *
+ * $o1 Cell reference (basic cell, not a CCell)
+ */
+proc init() { local index
+
+    n = $o1.nSecAll
+
+    objref isec2sec[n]
+
+    index=1
+    forsec $o1.all {
+        if( v(0.0001) >= n ) {
+            printf("%s v(1)=%d n3d()=%d\n", secname(), v(1), n3d())
+			terminate("Error: failure in mk2_isec2sec()")
+        }
+        if( v(0.0001) < 0 ) {
+            if( _serialized_sections_warned == 0 ) {
+                print "[Warning] SerializedSections: v(0.0001) < 0. index=", index, " v()=", v(0.0001)
+                _serialized_sections_warned = 1  // Dont report more
+            }
+        } else {
+            isec2sec[v(0.0001)] = new SectionRef()
+        }
+        index = index+1
+    }
+}
+
+/*!
+ * @return The number of sections the cell originally had
+ */
+func count() {
+    return n
+}
+
+endtemplate SerializedSections
+
