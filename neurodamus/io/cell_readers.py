@@ -10,7 +10,6 @@ from os import path as ospath
 from ..core import NeurodamusCore as Nd
 from ..core.configuration import ConfigurationError
 from ..metype import METypeManager, METypeItem
-from ..target_manager import TargetSpec
 from ..utils import compat
 from ..utils.logging import log_verbose
 
@@ -110,7 +109,7 @@ def load_mvd3(circuit_conf, all_gids, stride=1, stride_offset=0):
         logging.warning("Cannot import mvdtool to load mvd3, will load with h5py")
         return _load_mvd3_h5py(circuit_conf, all_gids, stride, stride_offset)
 
-    return load_nodes(circuit_conf, all_gids, stride, stride_offset)
+    return load_nodes_mvd3(circuit_conf, all_gids, stride, stride_offset)
 
 
 def _load_mvd3_h5py(circuit_conf, all_gids, stride=1, stride_offset=0):
@@ -149,9 +148,8 @@ def _load_mvd3_h5py(circuit_conf, all_gids, stride=1, stride_offset=0):
     return gidvec, me_manager, total_mvd_cells
 
 
-def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *,
-               node_population=False, has_extra_data=False):
-    """Load cells from SONATA or MVD3 file.
+def load_nodes_mvd3(circuit_conf, all_gids, stride=1, stride_offset=0):
+    """Load cells from MVD3 file.
        node_population can be provided by load_sonata() and can be None. False to auto-detect
     """
     try:
@@ -159,22 +157,19 @@ def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *,
     except ImportError:
         raise ConfigurationError("load_nodes: mvdtool is not available. Please install")
     pth = circuit_conf.CellLibraryFile
-    is_mvd = pth.endswith('.mvd3')
-    if node_population is False:
-        node_population = TargetSpec(circuit_conf.CircuitTarget).population
+    assert pth.endswith('.mvd3'), "CellLibraryFile must be a mvd3 file"
     if not ospath.isfile(pth):
         pth = ospath.join(circuit_conf.CircuitPath, pth)
     if not ospath.isfile(pth):
         raise ConfigurationError("Could not find Nodes: " + circuit_conf.CellLibraryFile)
 
-    node_reader = mvdtool.open(pth, node_population or "")
+    node_reader = mvdtool.open(pth)
     combo_file = circuit_conf.MEComboInfoFile
 
-    if is_mvd:
-        if not combo_file:
-            logging.warning("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel")
-        else:
-            node_reader.open_combo_tsv(combo_file)
+    if not combo_file:
+        logging.warning("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel")
+    else:
+        node_reader.open_combo_tsv(combo_file)
 
     total_cells = len(node_reader)
     gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
@@ -189,7 +184,7 @@ def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *,
 
     morpho_names = node_reader.morphologies(indexes)
     emodels = node_reader.emodels(indexes) \
-        if not is_mvd or combo_file else None  # Rare but we may not need emodels (ngv)
+        if combo_file else None  # Rare but we may not need emodels (ngv)
     exc_mini_freqs = node_reader.exc_mini_frequencies(indexes) \
         if node_reader.hasMiniFrequencies() else None
     inh_mini_freqs = node_reader.inh_mini_frequencies(indexes) \
@@ -200,35 +195,65 @@ def load_nodes(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         if node_reader.hasCurrents() else None
     positions = node_reader.positions(indexes)
     rotations = node_reader.rotations(indexes) if node_reader.rotated else None
-    # For Sonata and new emodel hoc template, we may need additional attributes for building metype
-    add_params_list = _getNeededAttributes(node_reader, circuit_conf.METypePath, emodels, indexes) \
-        if not is_mvd and has_extra_data else None
 
     meinfo = METypeManager()
     meinfo.load_infoNP(gidvec, morpho_names, emodels, threshold_currents, holding_currents,
-                       exc_mini_freqs, inh_mini_freqs, positions, rotations, add_params_list)
+                       exc_mini_freqs, inh_mini_freqs, positions, rotations)
 
     return gidvec, meinfo, total_cells
 
 
 def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
-                node_population, load_dynamic_props=(), **kw):
+                node_population, load_dynamic_props=(), has_extra_data=False):
     """
     A reader supporting additional dynamic properties from Sonata files.
     """
-    load_nodes_base_info = lambda: load_nodes(
-        circuit_conf, all_gids, stride, stride_offset, node_population=node_population, **kw
-    )
-    # If dynamic properties are not specified simply return early
-    if not load_dynamic_props:
-        return load_nodes_base_info()
-
     import libsonata
     node_file = circuit_conf.CellLibraryFile
     node_store = libsonata.NodeStorage(node_file)
     node_pop = node_store.open_population(node_population)
     attr_names = node_pop.attribute_names
     dynamics_attr_names = node_pop.dynamics_attribute_names
+
+    def load_nodes_base_info():
+        total_cells = node_pop.size
+        gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
+        if not len(gidvec):
+            # Not enough cells to give this rank a few
+            return gidvec, METypeManager(), total_cells
+        node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
+        morpho_names = node_pop.get_attribute("morphology", node_sel)
+        emodels = [emodel.removeprefix("hoc:")
+                   for emodel in node_pop.get_attribute("model_template", node_sel)]
+        if set(["exc_mini_frequency", "inh_mini_frequency"]).issubset(attr_names):
+            exc_mini_freqs = node_pop.get_attribute("exc_mini_frequency", node_sel)
+            inh_mini_freqs = node_pop.get_attribute("inh_mini_frequency", node_sel)
+        else:
+            exc_mini_freqs = None
+            inh_mini_freqs = None
+        if set(["threshold_current", "holding_current"]).issubset(dynamics_attr_names):
+            threshold_currents = node_pop.get_dynamics_attribute("threshold_current", node_sel)
+            holding_currents = node_pop.get_dynamics_attribute("holding_current", node_sel)
+        else:
+            threshold_currents = None
+            holding_currents = None
+        positions = np.array([node_pop.get_attribute("x", node_sel),
+                              node_pop.get_attribute("y", node_sel),
+                              node_pop.get_attribute("z", node_sel)]).T
+        rotations = _get_rotations(node_pop, node_sel)
+
+        # For Sonata and new emodel hoc template, we need additional attributes for building metype
+        add_params_list = None if not has_extra_data \
+            else _getNeededAttributes(node_pop, circuit_conf.METypePath, emodels, gidvec-1)
+
+        meinfos = METypeManager()
+        meinfos.load_infoNP(gidvec, morpho_names, emodels, threshold_currents, holding_currents,
+                            exc_mini_freqs, inh_mini_freqs, positions, rotations, add_params_list)
+        return gidvec, meinfos, total_cells
+
+    # If dynamic properties are not specified simply return early
+    if not load_dynamic_props:
+        return load_nodes_base_info()
 
     # Check properties exist, eventually removing prefix
     def validate_property(prop_name):
@@ -310,24 +335,54 @@ def load_combo_metypes(combo_file, gidvec, combo_list, morph_list):
     return me_manager
 
 
-def _getNeededAttributes(node_reader, etype_path, emodels, indexes):
+def _getNeededAttributes(node_reader, etype_path, emodels, gidvec):
     """
     Read additional attributes required by emodel templates global var <emodel>__NeededAttributes
     Args:
-        node_reader: Sonata node reader
+        node_reader: libsonata node population
         etype_path: Location of emodel hoc templates
         emodels: Array of emodel names
-        indexes: Array of corresponding indexes in the node file
+        gidvec: Array of 0-based cell gids
     """
     add_params_list = []
-    for idx, emodel in zip(indexes, emodels):
+    for gid, emodel in zip(gidvec, emodels):
         Nd.h.load_file(ospath.join(etype_path, emodel) + ".hoc")  # hoc doesn't throw
         attr_names = getattr(Nd, emodel + "_NeededAttributes", None)  # format "attr1;attr2;attr3"
         vals = []
         if attr_names is not None:
-            if not hasattr(node_reader, "getAttribute"):
-                logging.error("The MVDTool API is old. Please load a newer version of neurodamus")
-                raise ConfigurationError("Please load a newer version of neurodamus")
-            vals = [node_reader.getAttribute(name, idx, 1)[0] for name in attr_names.split(";")]
+            vals = [node_reader.get_dynamics_attribute(name, gid) for name in attr_names.split(";")]
         add_params_list.append(vals)
     return add_params_list
+
+
+def _get_rotations(node_reader, selection):
+    """
+    Read rotations attributes, returns a double vector of size [N][4] with the rotation quaternions
+    in the order (x,y,z,w)
+    Args:
+        node_reader: libsonata node population
+        selection: libsonata selection
+    """
+    attr_names = node_reader.attribute_names
+    if set(["orientation_x", "orientation_y",
+            "orientation_z", "orientation_w"]).issubset(attr_names):
+        # Preferred way to present the rotation as quaternions
+        return np.array([node_reader.get_attribute("orientation_x", selection),
+                         node_reader.get_attribute("orientation_y", selection),
+                         node_reader.get_attribute("orientation_z", selection),
+                         node_reader.get_attribute("orientation_w", selection)]).T
+    elif set(["rotation_angle_xaxis",
+              "rotation_angle_yaxis",
+              "rotation_angle_zaxis"]).intersection(attr_names):
+        # Some sonata nodes files use the Euler angle rotations, convert them to quaternions
+        from scipy.spatial.transform import Rotation
+        angle_x = node_reader.get_attribute("rotation_angle_xaxis", selection) \
+            if "rotation_angle_xaxis" in attr_names else 0
+        angle_y = node_reader.get_attribute("rotation_angle_yaxis", selection) \
+            if "rotation_angle_yaxis" in attr_names else 0
+        angle_z = node_reader.get_attribute("rotation_angle_zaxis", selection) \
+            if "rotation_angle_yaxis" in attr_names else 0
+        euler_rots = np.array([angle_x, angle_y, angle_z]).T
+        return Rotation.from_euler("xyz", euler_rots).as_quat()
+    else:
+        return None

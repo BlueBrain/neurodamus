@@ -575,7 +575,7 @@ class CellDistributor(CellManagerBase):
             if cell_requirements:
                 raise Exception('Additional cell properties only available with SONATA')
             nodes_filename = self._circuit_conf.CellLibraryFile
-            loader = self._cell_loaders.get(nodes_filename, cell_readers.load_nodes)
+            loader = self._cell_loaders.get(nodes_filename, cell_readers.load_mvd3)
 
         log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader.__name__)
         return super().load_nodes(load_balancer, _loader=loader, loader_opts=loader_opts)
