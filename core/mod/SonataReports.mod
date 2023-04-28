@@ -161,12 +161,15 @@ VERBATIM {
     {
         int element_id = (int)*getarg(2);
         int node_id = (int) *getarg(3);
-        double* voltage = hoc_pgetarg(1);
         char population_name[256] = "All";
         if (ifarg(4)) {
             sprintf(population_name,"%s", gargstr(4));
         }
-        sonata_add_element(data->rptName_, population_name, node_id, element_id, voltage);
+#ifdef NRN_MECHANISM_DATA_IS_SOA
+        sonata_add_element_handle(data->rptName_, population_name, node_id, element_id, [x=hoc_hgetarg<double>(1)]() { return *x; });
+#else
+        sonata_add_element(data->rptName_, population_name, node_id, element_id, hoc_pgetarg(1));
+#endif
     }
 #endif
 #endif

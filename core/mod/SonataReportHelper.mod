@@ -19,9 +19,11 @@ VERBATIM
     extern void nrn_register_recalc_ptr_callback(void (*f)(void));
     extern double* nrn_recalc_ptr(double*);
 #endif
+#ifndef NRN_MECHANISM_DATA_IS_SOA
     void sonataRefreshPointers() { //callback function to update data locations before runtime
         sonata_refresh_pointers(nrn_recalc_ptr); //tell bin report library to update its pointers using nrn_recalc_ptr function
     }
+#endif
 #endif
 #endif
 ENDVERBATIM
@@ -65,7 +67,7 @@ VERBATIM {
     }
     Dt = *getarg(1);
     sonata_set_atomic_step(Dt);
-
+#ifndef NRN_MECHANISM_DATA_IS_SOA
     int register_recalc_ptr = 1;
     if( ifarg(2) ) {
         register_recalc_ptr = (int)*getarg(2);
@@ -73,6 +75,7 @@ VERBATIM {
     if( register_recalc_ptr ) {
         nrn_register_recalc_ptr_callback( sonataRefreshPointers );
     }
+#endif
 #endif
 #endif
 }

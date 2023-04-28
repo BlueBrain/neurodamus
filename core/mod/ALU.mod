@@ -41,9 +41,14 @@ extern Point_process* ob2pntproc(Object*);
 extern double* nrn_recalc_ptr(double*);
 #endif
 
+#ifdef NRN_MECHANISM_DATA_IS_SOA
+using handle_to_double = decltype(hoc_hgetarg<double>(42));
+#else
+typedef double* handle_to_double;
+#endif
 typedef struct {
     //! list of pointers to hoc variables
-    double** ptrs_;
+    handle_to_double* ptrs_;
 
     /*! list of scalars to apply to corresponding variables; useful for making units of variables
      * from different sources consistent (e.g. i current sources may be distributed, mA/cm^2, or point processes, nA)
@@ -57,13 +62,18 @@ typedef struct {
     int psize_;
 
     //! function pointer to execute when net_receive is triggered
+#ifdef NRN_MECHANISM_DATA_IS_SOA
+    int (*process)(_internalthreadargsproto_);
+#else
     int (*process)(_threadargsproto_);
+#endif
 } Info;
 
 #define INFOCAST Info** ip = (Info**)(&(_p_ptr))
 
 #define dp double*
 
+#ifndef NRN_MECHANISM_DATA_IS_SOA
 static void recalcptr(Info* info, int cnt, double** old_vp, double* new_v) {
     int i;
     /*printf("recalcptr np_=%d %s\n", info->np_, info->path_);*/
@@ -96,6 +106,7 @@ static void recalc_ptr_callback() {
     }
 }
 #endif
+#endif
 ENDVERBATIM
 
 NET_RECEIVE(w) {
@@ -113,16 +124,18 @@ ENDVERBATIM
 CONSTRUCTOR {
 VERBATIM {
 #ifndef CORENEURON_BUILD
+#ifndef NRN_MECHANISM_DATA_IS_SOA
     static int first = 1;
     if (first) {
         first = 0;
         nrn_register_recalc_ptr_callback(recalc_ptr_callback);
     }
+#endif
 
     INFOCAST;
     Info* info = (Info*)hoc_Emalloc(sizeof(Info)); hoc_malchk();
     info->psize_ = 10;
-    info->ptrs_ = (double**)hoc_Ecalloc(info->psize_, sizeof(double*)); hoc_malchk();
+    info->ptrs_ = (handle_to_double*)hoc_Ecalloc(info->psize_, sizeof(handle_to_double)); hoc_malchk();
     info->scalars_ = (double*)hoc_Ecalloc(info->psize_, sizeof(double)); hoc_malchk();
     info->np_ = 0;
     *ip = info;
@@ -186,11 +199,15 @@ VERBATIM {
     Info* info = *ip;
 	if (info->np_ >= info->psize_) {
 		info->psize_ += 10;
-		info->ptrs_ = (double**) hoc_Erealloc(info->ptrs_, info->psize_*sizeof(double*)); hoc_malchk();
+		info->ptrs_ = (handle_to_double*)hoc_Erealloc(info->ptrs_, info->psize_*sizeof(handle_to_double)); hoc_malchk();
         info->scalars_ = (double*) hoc_Erealloc(info->scalars_, info->psize_*sizeof(double)); hoc_malchk();
 	}
-
-	info->ptrs_[info->np_] = hoc_pgetarg(1);
+#ifdef NRN_MECHANISM_DATA_IS_SOA
+    handle_to_double var = hoc_hgetarg<double>(1);
+#else
+    handle_to_double var = hoc_pgetarg(1);
+#endif
+    info->ptrs_[info->np_] = var;
     if( ifarg(2)) {
         info->scalars_[info->np_] = *getarg(2);
     } else {
