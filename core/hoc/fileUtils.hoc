@@ -21,7 +21,7 @@
 // Checks if output_dir exists and is a directory. If it's not a direcory
 // return -1. If it doesn't exist create it.
 //
-nrnpython("import os\ndef check_output_directory(output_dir):\n\tif os.path.exists(output_dir):\n\t\tif not os.path.isdir(output_dir):\n\t\t\tprint(f\"{output_dir} does not name a directory.\")\n\t\t\treturn -1\n\t\telse:\n\t\t\treturn 0\n\telse:\n\t\ttry:\n\t\t\tos.makedirs(output_dir)\n\t\texcept Exception as e:\n\t\t\tprint(f\"Failed to create OutputRoot directory {output_dir} with {e}\")\n\t\t\treturn -1\n\t\tprint(f\"Directory {output_dir} does not exist.  Creating...\")\n\t\treturn 0")
+{nrnpython("import os\ndef check_output_directory(output_dir):\n\tif os.path.exists(output_dir):\n\t\tif not os.path.isdir(output_dir):\n\t\t\tprint(f\"{output_dir} does not name a directory.\")\n\t\t\treturn -1\n\t\telse:\n\t\t\treturn 0\n\telse:\n\t\ttry:\n\t\t\tos.makedirs(output_dir)\n\t\texcept Exception as e:\n\t\t\tprint(f\"Failed to create OutputRoot directory {output_dir} with {e}\")\n\t\t\treturn -1\n\t\tprint(f\"Directory {output_dir} does not exist.  Creating...\")\n\t\treturn 0")}
 
 // Use helper functions from python os.path
 objref _py, ospath, shutil
