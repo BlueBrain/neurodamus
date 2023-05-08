@@ -6,6 +6,7 @@ class SHMUtil:
     """Helper class for the SHM file transfer mechanism of CoreNEURON.
     """
     node_id = -1
+    local_ranks = []
     nnodes = -1
 
     @staticmethod
@@ -23,9 +24,9 @@ class SHMUtil:
         MPI.barrier()
 
         # Get a filelist sorted by rank ID and store the local node info
-        listdir = sorted(os.listdir(shmdir), key=int)
-        rank0_node = int(listdir[0])
-        nranks_node = len(listdir)
+        SHMUtil.local_ranks = sorted(os.listdir(shmdir), key=int)
+        rank0_node = int(SHMUtil.local_ranks[0])
+        nranks_node = len(SHMUtil.local_ranks)
 
         # Calculate node ID based on the entries that contain a process count
         node_info = MPI.py_gather((nranks_node if MPI.rank == rank0_node else 0), 0)

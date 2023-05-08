@@ -1346,6 +1346,35 @@ class Node:
                 self._pc.nrnbbcore_write(corenrn_data)
                 MPI.barrier()  # wait for all ranks to finish corenrn data generation
 
+        if self._shm_enabled:
+            # Below improvement should only be enabled if /dev/shm is available
+            # If /dev/shm is enabled this means the the <*_{1,2,3}.dat> files are going to
+            # be written first in /dev/shm (which is going to be used as a buffer to
+            # accelerate the writes and avoid GPFS IO)
+            # Rank 0 should move the <*_{1,2,3}.dat> files to a the coreneuron_datadir on
+            # GPFS (coreneuron_input_gpfs). Each node should move them to a separate
+            # subfolder (with name NODE_ID?) of coreneuron_datadir to increase GPFS
+            # performance. We can do that by finding out the Rank 0 of every node (already
+            # implemented).
+            # We will then create links on coreneuron_datadir for each file in the
+            # subfolders.
+            # import pdb
+            # pdb.set_trace()
+            log_verbose(str(SHMUtil.local_ranks))
+            local_node_rank0 = int(SHMUtil.local_ranks[0])
+            if MPI.rank == local_node_rank0:
+                import shutil
+                node_specific_corenrn_output_in_storage = os.path.join(corenrn_output, "coreneuron_input_" + str(SHMUtil.node_id))
+                log_verbose("node_specific_corenrn_output_in_storage: %s", node_specific_corenrn_output_in_storage)
+                allfiles = glob.glob(os.path.join(corenrn_data, '*_[1-3].dat'), recursive=False)
+                log_verbose("all_files: %s", str(allfiles))
+                os.makedirs(node_specific_corenrn_output_in_storage, exist_ok=True)
+                # f has the whole path. I need only the filename
+                for f in allfiles:
+                    filename = os.path.basename(f)
+                    shutil.move(f, node_specific_corenrn_output_in_storage)
+                    os.symlink(os.path.join(node_specific_corenrn_output_in_storage, filename), f)
+
         SimConfig.coreneuron.write_sim_config(
             corenrn_output,
             corenrn_data,
@@ -1885,17 +1914,7 @@ class Neurodamus(Node):
                 if MPI.rank == 0:
                     base_filesdat = ospath.join(SimConfig.coreneuron_datadir, 'files')
                     os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
-                    # Below improvement should only be enabled if /dev/shm is available
-                    # If /dev/shm is enabled this means the the <*_{1,2,3}.dat> files are going to
-                    # be written first in /dev/shm (which is going to be used as a buffer to
-                    # accelerate the writes and avoid GPFS IO)
-                    # Rank 0 should move the <*_{1,2,3}.dat> files to a the coreneuron_datadir on
-                    # GPFS (coreneuron_input_gpfs). Each node should move them to a separate
-                    # subfolder (with name NODE_ID?) of coreneuron_datadir to increase GPFS
-                    # performance. We can do that by finding out the Rank 0 of every node (already
-                    # implemented).
-                    # We will then create links on coreneuron_datadir for each file in the
-                    # subfolders.
+
                 # Archive timers for this cycle
                 TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
 
