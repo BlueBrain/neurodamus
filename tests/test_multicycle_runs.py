@@ -92,38 +92,6 @@ def _read_sonata_spike_file(spike_file):
 @pytest.mark.skipif(
     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
     reason="Test requires loading a neocortex model to run")
-def test_v5_sonata_multisteps():
-    import numpy.testing as npt
-    from neurodamus import Neurodamus
-
-    config_file = str(SIM_DIR / "v5_sonata" / "simulation_config.json")
-    output_dir = str(SIM_DIR / "v5_sonata" / "output_coreneuron")
-    tmp_file = _create_tmpconfig_coreneuron(config_file)
-
-    nd = Neurodamus(tmp_file.name, output_path=output_dir, modelbuilding_steps=3)
-    nd.run()
-
-    # compare spikes with refs
-    spike_gids = np.array([
-        68855, 69877, 64935, 66068, 63698, 67666, 68223, 65915, 62945,
-        69530, 63256, 64861, 66105, 68532, 64163, 68855, 62797, 65951,
-        69877
-    ])  # 0-based
-    timestamps = np.array([
-        9.15, 14.3, 15.425, 30.15, 33.2, 34.175, 35.075, 35.625,
-        36.15, 36.875, 36.95, 37.1, 37.6, 37.625, 38.075, 38.3,
-        38.45, 39.625, 39.925
-    ])
-    obtained_timestamps, obtained_spike_gids = _read_sonata_spike_file(os.path.join(output_dir,
-                                                                                    "out.h5"))
-    npt.assert_allclose(spike_gids, obtained_spike_gids)
-    npt.assert_allclose(timestamps, obtained_timestamps)
-
-
-@pytest.mark.forked
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_usecase3_sonata_multisteps():
     import numpy.testing as npt
     from neurodamus import Neurodamus

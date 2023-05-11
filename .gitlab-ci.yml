@@ -49,24 +49,6 @@ set_alt_branches:
     reports:
       dotenv: branch_variables.env
 
-blueconfig_tests:
-  variables:
-    bb5_build_dir: pipeline
-    PY_NEURODAMUS_BRANCH: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
-    PARENT_COMMIT_MESSAGE: $CI_COMMIT_MESSAGE
-  trigger:
-    project: hpc/sim/blueconfigs
-    branch: $BLUECONFIGS_PIPELINE_BRANCH
-    strategy: depend
-  needs:
-    - set_alt_branches
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
-        - neurodamus/**/*
-    - when: manual
-      allow_failure: true
-
 # The following stages are overrides. Don't rename
 # Always add the manual option to create sdist/wheel or upload
 build-package:

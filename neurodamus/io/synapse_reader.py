@@ -182,9 +182,6 @@ class SynapseReader(object):
             if fn := _get_sonata_circuit(syn_src):
                 log_verbose("[SynReader] Using SonataReader.")
                 return SonataReader(fn, conn_type, population, **kw)
-            if cls.is_syntool_enabled():
-                log_verbose("[SynReader] Using new-gen SynapseReader.")
-                return SynReaderSynTool(syn_src, conn_type, population, **kw)
             else:
                 if not os.path.isdir(syn_src) and not syn_src.endswith(".h5"):
                     raise SynToolNotAvail(
@@ -193,14 +190,6 @@ class SynapseReader(object):
                 return SynReaderNRN(syn_src, conn_type, None, *args, **kw)
         else:
             return cls(syn_src, conn_type, population, *args, **kw)
-
-    @classmethod
-    def is_syntool_enabled(cls):
-        """Checks whether Neurodamus has built-in support for SynapseTool.
-        """
-        if not hasattr(cls, '_syntool_enabled'):
-            cls._syntool_enabled = Nd.SynapseReader().modEnabled()
-        return cls._syntool_enabled
 
 
 class SonataReader(SynapseReader):
@@ -355,117 +344,6 @@ class SonataReader(SynapseReader):
                 conn_syn_params[name] = data[name]
 
         return conn_syn_params
-
-
-class SynReaderSynTool(SynapseReader):
-    """ Synapse Reader using synapse tool.
-        Currently it uses the neuron NMODL interface.
-    """
-    SYNREADER_MOD_NFIELDS_DEFAULT = 14
-    _has_warned_field_count_mismatch = False
-    _is_sonata_circuit = False
-
-    def _open_file(self, syn_src, population, verbose=False):
-        if not self.is_syntool_enabled():
-            raise SynToolNotAvail("SynapseReader support not available.")
-        if os.path.isdir(syn_src) and self._conn_type == self.GAP_JUNCTIONS:
-            alt_gj_nrn_file = os.path.join(syn_src, "nrn_gj.h5")
-            if os.path.isfile(alt_gj_nrn_file):
-                log_verbose("Found gj nrn file: nrn_gj.h5")
-                syn_src = alt_gj_nrn_file
-            # else pass the dir as is, SynapseReader can find e.g. nrn.h5
-
-        self._syn_reader = None  # Clear syn_reader before creating a new one
-        reader = self._syn_reader = Nd.SynapseReader(syn_src, verbose)
-        if population:
-            reader.selectPopulation(population)
-        self._is_sonata_circuit = bool(_get_sonata_circuit(syn_src))
-
-    def _load_synapse_parameters(self, gid):
-        reader = self._syn_reader
-        nrow, record_size, supported_nfields, conn_syn_params = self._load_reader(gid, reader)
-        if nrow < 1:
-            return SynapseParameters.empty
-
-        syn_params_mtx = conn_syn_params.view(('f8', len(conn_syn_params.dtype)))
-        tmpParams = Nd.Vector(record_size)
-
-        # Do checks for the matching of the record size
-        reader.getSynapse(0, tmpParams)
-        record_size = tmpParams.size()
-        n_fields = min(record_size, supported_nfields)
-        if supported_nfields < record_size and not self._has_warned_field_count_mismatch:
-            logging.warning("SynapseReader records are %d fields long while neurodamus-py "
-                            "only recognizes %d. Update neurodamus-py to use them.",
-                            record_size, supported_nfields)
-            SynReaderSynTool._has_warned_field_count_mismatch = True
-
-        for syn_i in range(nrow):
-            reader.getSynapse(syn_i, tmpParams)
-            # as_numpy() shares memory to ndarray[double] -> can be copied (assigned) to the view
-            syn_params_mtx[syn_i, :n_fields] = tmpParams.as_numpy()[:n_fields]
-
-        if self._extra_fields_parameters:
-            mod_override_params = self._read_extra_fields_from_mod_override(gid)
-            if mod_override_params is not None:
-                conn_syn_params = SynapseParameters.concatenate(
-                    conn_syn_params,
-                    mod_override_params
-                )
-
-        return conn_syn_params
-
-    def _load_reader(self, gid, reader):
-        """ Load synapse data from reader,
-            to be overridden in derived class for different SynapseParameters and data fields.
-        """
-        if self._is_sonata_circuit:
-            self._check_sonata_required_fields(["n_rrp_vesicles"])
-        nrow = int(reader.loadSynapses(gid))
-        if nrow < 1:
-            return nrow, 0, 0, SynapseParameters.empty
-
-        conn_syn_params = SynapseParameters.create_array(nrow)
-        supported_nfields = len(conn_syn_params.dtype) - 2  # non-mod fields: mask and location
-        return nrow, self.SYNREADER_MOD_NFIELDS_DEFAULT, supported_nfields, conn_syn_params
-
-    def has_nrrp(self):
-        return self._syn_reader.hasNrrpField()
-
-    def has_property(self, field_name):
-        return bool(self._syn_reader.hasProperty(field_name))
-
-    def get_property(self, gid, field_name, *is_pre):
-        """Retrieves a full property (vector) given a gid and the property name.
-        """
-        self._syn_reader.loadSynapseCustom(gid, field_name, *is_pre)
-        field_data = Nd.Vector()
-        self._syn_reader.getPropertyData(0, field_data)
-        return field_data.as_numpy().copy()
-
-    def _read_extra_fields_from_mod_override(self, tgid):
-        reader = self._syn_reader
-        req_fields_str = ", ".join(self._extra_fields_parameters._synapse_fields)
-        nrow = int(reader.loadSynapseCustom(tgid, req_fields_str))
-        if nrow < 1:
-            return self._extra_fields_parameters.empty
-
-        conn_syn_params = self._extra_fields_parameters.create_array(nrow)
-        syn_params_mtx = conn_syn_params.view(('f8', len(conn_syn_params.dtype)))
-        tmpParams = Nd.Vector(len(conn_syn_params.dtype))
-
-        for syn_i in range(nrow):
-            reader.getSynapse(syn_i, tmpParams)
-            syn_params_mtx[syn_i] = tmpParams.as_numpy()
-
-        return conn_syn_params
-
-    def _check_sonata_required_fields(self, fields=[]):
-        for name in fields:
-            if not self.has_property(name):
-                logging.error("Synapse parameter '" + name + "' is required in the edges file")
-                raise SynToolNotAvail("Synapse parameter '" + name +
-                                      "' is required in the edges file")
 
 
 class SynReaderNRN(SynapseReader):

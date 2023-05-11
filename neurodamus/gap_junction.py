@@ -8,8 +8,8 @@ from os import path as ospath
 
 from .connection_manager import ConnectionManagerBase
 from .core.configuration import ConfigurationError
-from .io.synapse_reader import SynapseReader, SynReaderSynTool, SynReaderNRN, SynapseParameters,\
-    SynToolNotAvail
+from .io.synapse_reader import SynapseReader, SonataReader, SynReaderNRN, SynapseParameters,\
+    _get_sonata_circuit
 from .utils import compat
 from .utils.logging import log_verbose
 
@@ -56,31 +56,8 @@ class GapJunctionConnParameters(SynapseParameters):
         return npa
 
 
-class GapJunctionSynToolReader(SynReaderSynTool):
-
-    def _get_gapjunction_fields(self):
-        """ Determine data fields to adapt to different versions of edges files """
-        if self.has_property("afferent_junction_id") and self.has_property("efferent_junction_id"):
-            return GapJunctionConnParameters._gj_sonata_fields
-        elif self.has_property("morpho_section_fraction_post"):
-            return GapJunctionConnParameters._gj_v2_fields
-        else:
-            return GapJunctionConnParameters._gj_v1_fields
-
-    def _load_reader(self, gid, reader):
-        """ Override the function from base case.
-            Call loadSynapseCustom to read customized fields rather than the default fields
-            in SynapseReader.mod
-        """
-        requested_fields = self._get_gapjunction_fields()
-        nrow = int(reader.loadSynapseCustom(gid, ",".join(requested_fields)))
-        if nrow < 1:
-            return nrow, 0, 0, GapJunctionConnParameters.empty
-
-        record_size = len(requested_fields)
-        conn_syn_params = GapJunctionConnParameters.create_array(nrow)
-        supported_nfields = len(conn_syn_params.dtype) - 1  # location is not read from data
-        return nrow, record_size, supported_nfields, conn_syn_params
+class GapJunctionSonataReader(SonataReader):
+    pass
 
 
 class GapJunctionSynapseReader(SynapseReader):
@@ -93,13 +70,10 @@ class GapJunctionSynapseReader(SynapseReader):
     def create(cls, syn_src, conn_type, population=None, *args, **kw):
         """Instantiates a synapse reader, giving preference to GapJunctionSynToolReader
         """
-        if cls.is_syntool_enabled():
-            log_verbose("[GapJunctionSynReader] Using new-gen SynapseReader.")
-            return GapJunctionSynToolReader(syn_src, conn_type, population, **kw)
+        if _get_sonata_circuit(syn_src):
+            # TODO GapJunctionSonataReader for GJ
+            raise NotImplementedError("GapJunctionSonataReader to be implemented")
         else:
-            if not ospath.isdir(syn_src) and not syn_src.endswith(".h5"):
-                raise SynToolNotAvail(
-                    "Can't load new synapse formats without syntool. File: {}".format(syn_src))
             logging.info("[GapJunctionSynReader] Attempting legacy hdf5 reader.")
             return SynReaderNRN(syn_src, conn_type, None, *args, **kw)
 

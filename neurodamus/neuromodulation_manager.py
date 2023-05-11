@@ -3,7 +3,7 @@ import logging
 from .connection_manager import SynapseRuleManager
 from .connection import Connection, NetConType, ReplayMode
 from .core.configuration import GlobalConfig, SimConfig
-from .io.synapse_reader import SynapseParameters, SynReaderSynTool
+from .io.synapse_reader import SynapseParameters, SonataReader
 from .utils.logging import log_all
 
 
@@ -114,7 +114,12 @@ class ModulationConnParameters(SynapseParameters):
                     "neuromod_strength", "neuromod_dtc")
 
 
-class NeuroModulationSynapseReader(SynReaderSynTool):
+class NeuroModulationSonataReader(SonataReader):
+    @classmethod
+    def create(cls, syn_src, conn_type, population=None, *args, **kw):
+        # TODO: SONATA reader for neurodamulation connections
+        raise NotImplementedError("GapJunctionSonataReader to be implemented")
+
     def _load_reader(self, gid, reader):
         """ Override the function from base case.
             Call loadSynapseCustom to read customized fields rather than the default fields
@@ -135,7 +140,7 @@ class NeuroModulationSynapseReader(SynReaderSynTool):
 
 class NeuroModulationManager(SynapseRuleManager):
     conn_factory = NeuroModulationConnection
-    SynapseReader = NeuroModulationSynapseReader
+    SynapseReader = NeuroModulationSonataReader
 
     def _finalize_conns(self, tgid, conns, base_seed, sim_corenrn, **kwargs):
         """ Override the function from the base class.

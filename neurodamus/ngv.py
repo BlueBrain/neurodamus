@@ -13,7 +13,7 @@ from .connection_manager import ConnectionManagerBase
 from .core import EngineBase
 from .core import NeurodamusCore as Nd, MPI
 from .core.configuration import GlobalConfig
-from .io.synapse_reader import SynapseParameters, SynReaderSynTool
+from .io.synapse_reader import SynapseParameters, SynapseReader
 from .utils import bin_search
 from .utils.logging import log_verbose
 from .utils.pyutils import append_recarray
@@ -234,7 +234,12 @@ class NeuroGliaConnParameters(SynapseParameters):
     ]
 
 
-class NeuroGlialSynapseReader(SynReaderSynTool):
+class NeuroGlialSynapseReader(SynapseReader):  # TODO: SONATA Reader for ngv
+    @classmethod
+    def create(cls, syn_src, conn_type, population=None, *args, **kw):
+        # TODO: SONATA reader for ngv connections
+        raise NotImplementedError("NeuroGlialSonataReader to be implemented")
+
     def _load_reader(self, glia_gid, reader):
         """ Override the function from base case.
             Call loadSynapseCustom to read customized fields rather than the default fields
