@@ -40,13 +40,14 @@ def sonata_config_file(sonata_config, extra_config):
     reason="Test requires loading a neocortex model to run"
 )
 @pytest.mark.parametrize("extra_config", [{
-    "connection_overrides": {
-        "nodeB-nodeB": {
+    "connection_overrides": [
+        {
+            "name": "nodeB-nodeB",
             "source": "nodesPopB",
             "target": "nodesPopB",
             "synapse_configure": "%s.verboseLevel=1"  # output when a spike is received
         },
-    }
+    ]
 }])
 def test_multipop_simple(sonata_config_file):
     """
@@ -94,23 +95,26 @@ def test_multipop_simple(sonata_config_file):
     reason="Test requires loading a neocortex model to run"
 )
 @pytest.mark.parametrize("extra_config", [{
-    "connection_overrides": {
-        "nodeB-nodeB": {
+    "connection_overrides": [
+        {
+            "name": "nodeB-nodeB",
             "source": "nodesPopB",
             "target": "nodesPopB",
             "synapse_configure": "%s.verboseLevel=1"  # use as a flag for tests
         },
-        "nodeB-nodeA": {
+        {
+            "name": "nodeB-nodeA",
             "source": "nodesPopB",
             "target": "nodesPopA",
             "synapse_configure": "%s.verboseLevel=2"
         },
-        "nodeA-nodeB": {
+        {
+            "name": "nodeA-nodeB",
             "source": "nodesPopA",
             "target": "nodesPopB",
             "synapse_configure": "%s.verboseLevel=3"
         },
-    },
+    ]
 }])
 def test_multipop_full_conn(sonata_config_file):
     """

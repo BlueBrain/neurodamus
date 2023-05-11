@@ -16,13 +16,14 @@ By applying Replay to it we should see received events
 
 @pytest.fixture
 def sonata_config_file(sonata_config):
-    sonata_config["connection_overrides"] = {
-        "nodeB-nodeA": {
+    sonata_config["connection_overrides"] = [
+        {
+            "name": "nodeB-nodeA",
             "source": "nodesPopB",
             "target": "nodesPopA",
             "synapse_configure": "%s.verboseLevel=1"  # output when a spike is received
         },
-    }
+    ]
     sonata_config["inputs"] = {
         "spikeReplay": {
             "module": "synapse_replay",

@@ -24,7 +24,7 @@ class SonataConfig:
         "network", "target_simulator", "node_sets_file", "node_set"
     )
     _config_sections = (
-        "run", "conditions", "output", "inputs", "reports", "connection_overrides"
+        "run", "conditions", "output", "inputs", "reports"
     )
     # New defaults in Sonata config (not applicable to BlueConfig)
     _defaults = {
@@ -307,12 +307,8 @@ class SonataConfig:
 
     @property
     def parsedConnects(self):
-        connections = {}
-        for conn_name in self._sections.get("connection_overrides").keys():
-            connect = self._translate_dict("connection_overrides",
-                                           self._sim_conf.connection_override(conn_name))
-            connections[conn_name] = connect
-        return connections
+        return {libsonata_conn.name: self._translate_dict("connection_overrides", libsonata_conn)
+                for libsonata_conn in self._sim_conf.connection_overrides()}
 
     @property
     def parsedStimuli(self):

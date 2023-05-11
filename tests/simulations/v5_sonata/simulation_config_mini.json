@@ -18,8 +18,8 @@
     "output": {
         "output_dir": "output_sonata2"
     },
-    "connection_overrides": {
-    },
+    "connection_overrides": [
+    ],
     "inputs": {
         "spikeReplay": {
             "module": "synapse_replay",

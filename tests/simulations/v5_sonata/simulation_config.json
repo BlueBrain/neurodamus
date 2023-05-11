@@ -19,56 +19,64 @@
     "output": {
         "output_dir": "output_sonata"
     },
-    "connection_overrides": {
-        "ConL6Exc-Uni": {
+    "connection_overrides": [
+        {
+            "name": "ConL6Exc-Uni",
             "source": "Excitatory",
             "target": "Layer6",
             "weight": 1.0,
             "spont_minis": 0.04
         },
-        "ConL5Exc-Uni": {
+        {
+              "name": "ConL5Exc-Uni",
               "source": "Excitatory",
               "target": "Layer5",
               "weight": 1.0,
               "spont_minis": 0.067
         },
-        "ConL4Exc-Uni": {
+        {
+              "name": "ConL4Exc-Uni",
               "source": "Excitatory",
               "target": "Layer4",
               "weight": 1.0,
               "spont_minis": 0.072
         },
-        "ConL3Exc-Uni": {
+        {
+              "name": "ConL3Exc-Uni",
               "source": "Excitatory",
               "target": "Layer3",
               "weight": 1.0,
               "spont_minis": 0.122
         },
-        "ConL2Exc-Uni": {
+        {
+              "name": "ConL2Exc-Uni",
               "source": "Excitatory",
               "target": "Layer2",
               "weight": 1.0,
               "spont_minis": 0.26
         },
-        "ConL1Exc-Uni": {
+        {
+              "name": "ConL1Exc-Uni",
               "source": "Excitatory",
               "target": "Layer1",
               "weight": 1.0,
               "spont_minis": 0.63
         },
-        "ConInh-Uni": {
+        {
+              "name": "ConInh-Uni",
               "source": "Inhibitory",
               "target": "Mosaic",
               "weight": 1.0,
               "spont_minis": 0.012
         },
-        "scheme_CaUse_ee": {
+        {
+            "name": "scheme_CaUse_ee",
             "source": "Excitatory",
             "target": "Excitatory",
             "weight": 1.0,
             "synapse_configure": "%s.Use *= 0.158401372855"
         }
-    },
+    ],
     "inputs": {
         "spikeReplay": {
             "module": "synapse_replay",

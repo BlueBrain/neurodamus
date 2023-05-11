@@ -101,8 +101,9 @@ contents = """
             }
         }
     },
-    "connection_overrides": {
-        "GABAB_erev": {
+    "connection_overrides": [
+        {
+            "name": "GABAB_erev",
             "source": "Inhibitory",
             "target": "Mosaic",
             "weight": 1.0,
@@ -111,7 +112,7 @@ contents = """
             "neuromodulation_dtc": 100,
             "neuromodulation_strength": 0.75
         }
-    }
+    ]
 }
 """
 
