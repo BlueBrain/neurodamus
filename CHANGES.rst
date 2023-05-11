@@ -2,6 +2,20 @@
 Change Log
 ==========
 
+Version 2.15.0
+===============
+**11 May 2023**
+
+*New Features*
+  * [BBPBGLIB-1008] Unify/Drop core submodule
+*Improvements*
+  * [BBPBGLIB-988] Migrate to libsonata node reader
+  * [BBPBGLIB-1009] Remove utility.mod and replace checkDirectory with python function
+*Bug fixes*
+  * [BBPBGLIB-1016] Read connection_overrides list insteamd of dict from libsonata
+  * CI dont rely on common submodule, Clone. Small fixes
+
+
 Version 2.14.0
 ===============
 **6 Apr 2023**
