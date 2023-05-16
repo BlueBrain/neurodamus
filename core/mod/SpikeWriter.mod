@@ -10,6 +10,7 @@ NEURON {
 }
 
 VERBATIM
+#ifndef CORENEURON_BUILD
 #include <stdlib.h>
 
 #ifndef DISABLE_MPI
@@ -23,14 +24,14 @@ extern void* vector_arg();
 #endif
 
 extern int nrnmpi_myid;
-
+#endif  // CORENEURON_BUILD
 ENDVERBATIM
 
 : write_spikes to file in parallel
 PROCEDURE write() {
 
     VERBATIM
-
+#ifndef CORENEURON_BUILD
         double *time = NULL, *gid = NULL;
         int num_spikes = 0;
         char *filePath = NULL;
@@ -135,6 +136,7 @@ PROCEDURE write() {
 #endif
 
         free(spike_data);
-
+#endif  // CORENEURON_BUILD
     ENDVERBATIM
 }
+

@@ -36,6 +36,8 @@ NET_RECEIVE(w) {
 }
 
 VERBATIM
+#ifndef CORENEURON_BUILD
+
 #if defined(NRN_VERSION_GTEQ)
 #if NRN_VERSION_GTEQ(9,0,0)
 #define NRN_VERSION_GTEQ_9_0_0
@@ -670,12 +672,14 @@ int loadDataString( Info* info, char* name, hid_t row, char **hoc_dest )
 }
 
 #endif  // DISABLE_HDF5
+#endif
 ENDVERBATIM
 
 
 
 CONSTRUCTOR { : double - loc of point process ??? ,string filename
 VERBATIM {
+#ifndef CORENEURON_BUILD
 #ifdef DISABLE_HDF5
     // Neuron might init the mechanism. With args it's the user.
     if(ifarg(1)) {
@@ -798,6 +802,7 @@ VERBATIM {
         }
     }
 #endif  // DISABLE_HDF5
+#endif  // CORENEURON_BUILD
 }
 ENDVERBATIM
 }
@@ -806,6 +811,7 @@ ENDVERBATIM
 
 DESTRUCTOR {
 VERBATIM {
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST; Info* info = *ip;
     if(info->file_>=0)
@@ -830,6 +836,7 @@ VERBATIM {
         info->datavector_ = NULL;
     }
 #endif
+#endif  // CORENEURON_BUILD
 }
 ENDVERBATIM
 }
@@ -838,6 +845,7 @@ ENDVERBATIM
 
 FUNCTION redirect() {
 VERBATIM {
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
 #ifndef DISABLE_MPI
     FILE *fout;
@@ -866,12 +874,14 @@ VERBATIM {
     }
 #endif  // DISABLE_MPI
 #endif  // DISABLE_HDF5
+#endif  // CORENEURON_BUILD
 }
 ENDVERBATIM
 }
 
 FUNCTION checkVersion() {
 VERBATIM {
+#ifndef CORENEURON_BUILD
     int versionNumber = 0;
 #ifndef DISABLE_HDF5
     INFOCAST;
@@ -903,6 +913,7 @@ VERBATIM {
 
 #endif  // DISABLE_HDF5
     return versionNumber;
+#endif  // CORENEURON_BUILD
 }
 ENDVERBATIM
 }
@@ -910,6 +921,7 @@ ENDVERBATIM
 
 FUNCTION loadData() {
 VERBATIM {
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
@@ -950,6 +962,7 @@ VERBATIM {
 
     return -1;
 #endif  // DISABLE_HDF5
+#endif  // CORENEURON_BUILD
 }
 ENDVERBATIM
 }
@@ -958,6 +971,7 @@ ENDVERBATIM
 
 FUNCTION getNoOfColumns(){ : string cellname
 VERBATIM {
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
@@ -981,6 +995,7 @@ VERBATIM {
         return 0;
     }
 #endif
+#endif  // CORENEURON_BUILD
 }
 ENDVERBATIM
 }
@@ -989,6 +1004,7 @@ ENDVERBATIM
 
 FUNCTION numberofrows() { : string cellname
 VERBATIM {
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
@@ -1013,6 +1029,7 @@ VERBATIM {
         return 0;
     }
 #endif
+#endif  // CORENEURON_BUILD
 }
 ENDVERBATIM
 }
@@ -1021,6 +1038,7 @@ ENDVERBATIM
 
 FUNCTION getData() {
 VERBATIM {
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
@@ -1057,6 +1075,7 @@ VERBATIM {
         return 0;
     }
 #endif
+#endif  // CORENEURON_BUILD
 }
 ENDVERBATIM
 }
@@ -1073,6 +1092,7 @@ e.g. The row is assumed to be within the dataset; this code is expected to be re
 ENDCOMMENT
 FUNCTION getDataInt() {
 VERBATIM
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
@@ -1087,6 +1107,7 @@ VERBATIM
         }
     }
 #endif
+#endif  // CORENEURON_BUILD
 ENDVERBATIM
 }
 
@@ -1099,6 +1120,7 @@ Note that this function doesn't apply as many checks as other functions.
 ENDCOMMENT
 PROCEDURE getDimensions() {
 VERBATIM
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
@@ -1107,6 +1129,7 @@ VERBATIM
         loadDimensions( info, gargstr(1) );
     }
 #endif
+#endif  // CORENEURON_BUILD
 ENDVERBATIM
 }
 
@@ -1122,6 +1145,7 @@ e.g. The row is assumed to be within the dataset; this code is expected to be re
 ENDCOMMENT
 PROCEDURE getDataString() {
 VERBATIM
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
@@ -1132,6 +1156,7 @@ VERBATIM
         loadDataString( info, gargstr(1), *getarg(2), hoc_pgargstr(3) );
     }
 #endif
+#endif  // CORENEURON_BUILD
 ENDVERBATIM
 }
 
@@ -1139,6 +1164,7 @@ ENDVERBATIM
 
 FUNCTION getColumnDataRange() {
 VERBATIM {
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
@@ -1182,6 +1208,7 @@ VERBATIM {
         return 0;
     }
 #endif
+#endif  // CORENEURON_BUILD
 }
 ENDVERBATIM
 }
@@ -1199,6 +1226,7 @@ COMMENT
 ENDCOMMENT
 FUNCTION getColumnData() {
 VERBATIM {
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
@@ -1237,6 +1265,7 @@ VERBATIM {
         return 0;
     }
 #endif
+#endif  // CORENEURON_BUILD
 }
 ENDVERBATIM
 }
@@ -1253,6 +1282,7 @@ COMMENT
 ENDCOMMENT
 FUNCTION getAttributeValue() {
 VERBATIM
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
@@ -1279,6 +1309,7 @@ VERBATIM
 
     return 0;
 #endif
+#endif  // CORENEURON_BUILD
 ENDVERBATIM
 }
 
@@ -1286,6 +1317,7 @@ ENDVERBATIM
 
 FUNCTION closeFile() {
 VERBATIM {
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
     INFOCAST;
     Info* info = *ip;
@@ -1301,6 +1333,7 @@ VERBATIM {
         info->datamatrix_ = NULL;
     }
 #endif
+#endif  // CORENEURON_BUILD
 }
 ENDVERBATIM
 }
@@ -1319,6 +1352,7 @@ COMMENT
 ENDCOMMENT
 FUNCTION exchangeSynapseLocations() {
 VERBATIM
+#ifndef CORENEURON_BUILD
 #ifndef DISABLE_HDF5
 #ifndef DISABLE_MPI
     INFOCAST;
@@ -1413,5 +1447,7 @@ VERBATIM
     free(foundDispls);
 #endif  // DISABLE_MPI
 #endif  // DISABLE_HDF5
+#endif  // CORENEURON_BUILD
 ENDVERBATIM
 }
+

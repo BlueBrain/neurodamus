@@ -9,6 +9,7 @@ COMMENT
 ENDCOMMENT
 
 VERBATIM
+#ifndef CORENEURON_BUILD
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -65,19 +66,21 @@ void readAndSwapFloat(float *readInto, int number, FILE *file){
 		readInto[i] = swapForFloat(tempReadArray[i]);
 	}        	
 };
-
+#endif  // CORENEURON_BUILD
 ENDVERBATIM
 
 NEURON {
-	ARTIFICIAL_CELL lookupTableV2
-	POINTER ptr
+    ARTIFICIAL_CELL lookupTableV2
+    POINTER ptr
 }
+
 ASSIGNED{
 	ptr
 }
 
 CONSTRUCTOR{
 	VERBATIM
+#ifndef CORENEURON_BUILD
 	//printf("Building lookup table...\n");
 	if(sizeof(float)!=4 || sizeof(int)!=4){
 		printf("sizeof does not match. Need to specify data type sizes more explicitly\n");
@@ -220,19 +223,23 @@ CONSTRUCTOR{
 		}   		
 	}
 	*tempTable = tbl;
+#endif  // CORENEURON_BUILD
 	ENDVERBATIM
 }
 
 FUNCTION vInfo(){
 	VERBATIM
+#ifndef CORENEURON_BUILD
 	tableStruct **tempData = (tableStruct**)(&_p_ptr);
 	tableStruct *tbl = (tableStruct*) *tempData;
 	return tbl->vInfo;
+#endif  // CORENEURON_BUILD
 	ENDVERBATIM
 }
 
 FUNCTION getValueForGid(){	
 	VERBATIM
+#ifndef CORENEURON_BUILD
 	tableStruct **tempData = (tableStruct**)(&_p_ptr);
 	tableStruct *tbl = (tableStruct*) *tempData;
 	if((tbl->numToRead)==0)
@@ -251,11 +258,13 @@ FUNCTION getValueForGid(){
 		}
 	}
 	return retVal;   
+#endif  // CORENEURON_BUILD
 	ENDVERBATIM        
 }
 
 FUNCTION getValueForSection(){
 	VERBATIM
+#ifndef CORENEURON_BUILD
 	tableStruct **tempData = (tableStruct**)(&_p_ptr);
 	tableStruct *tbl = (tableStruct*) *tempData;
 	if((tbl->numToRead)==0)
@@ -298,5 +307,7 @@ FUNCTION getValueForSection(){
 		}
 	}
 	return retVal;
+#endif  // CORENEURON_BUILD
 	ENDVERBATIM
 }
+
