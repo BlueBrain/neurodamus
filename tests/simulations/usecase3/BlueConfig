@@ -1,9 +1,9 @@
 Run Default
 {
     CircuitPath ./
-    MorphologyPath /gpfs/bbp.cscs.ch/project/proj12/example_data/sonata/v2/components/CircuitA/morphologies/asc
+    MorphologyPath CircuitA/morphologies/asc
     MorphologyType asc
-    METypePath /gpfs/bbp.cscs.ch/project/proj12/example_data/sonata/v2/components/CircuitA/hoc
+    METypePath CircuitA/hoc
     CellLibraryFile nodes_A.h5
     nrnPath local_edges_A.h5
     CircuitTarget Mosaic_A
@@ -25,9 +25,9 @@ Run Default
 Circuit B
 {
     CircuitPath ./
-    MorphologyPath /gpfs/bbp.cscs.ch/project/proj12/example_data/sonata/v2/components/CircuitB/morphologies/asc
+    MorphologyPath CircuitB/morphologies/asc
     MorphologyType asc
-    METypePath /gpfs/bbp.cscs.ch/project/proj12/example_data/sonata/v2/components/CircuitB/hoc
+    METypePath CircuitB/hoc
     CellLibraryFile nodes_B.h5
     nrnPath local_edges_B.h5
     CircuitTarget Mosaic_B

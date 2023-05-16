@@ -7,10 +7,10 @@
                 "populations": {
                     "NodeA": {
                         "type": "biophysical",
-                        "morphologies_dir": "/gpfs/bbp.cscs.ch/project/proj12/example_data/sonata/v2/components/CircuitA/morphologies/swc",
-                        "biophysical_neuron_models_dir": "/gpfs/bbp.cscs.ch/project/proj12/example_data/sonata/v2/components/CircuitA/hoc",
+                        "morphologies_dir": "CircuitA/morphologies/swc",
+                        "biophysical_neuron_models_dir": "CircuitA/hoc",
                         "alternate_morphologies": {
-                            "neurolucida-asc": "/gpfs/bbp.cscs.ch/project/proj12/example_data/sonata/v2/components/CircuitA/morphologies/asc"
+                            "neurolucida-asc": "CircuitA/morphologies/asc"
                         }
                     }
                 }
@@ -20,10 +20,10 @@
                 "populations": {
                     "NodeB": {
                         "type": "biophysical",
-                        "morphologies_dir": "/gpfs/bbp.cscs.ch/project/proj12/example_data/sonata/v2/components/CircuitB/morphologies/swc",
-                        "biophysical_neuron_models_dir": "/gpfs/bbp.cscs.ch/project/proj12/example_data/sonata/v2/components/CircuitB/hoc",
+                        "morphologies_dir": "CircuitB/morphologies/swc",
+                        "biophysical_neuron_models_dir": "CircuitB/hoc",
                         "alternate_morphologies": {
-                            "neurolucida-asc": "/gpfs/bbp.cscs.ch/project/proj12/example_data/sonata/v2/components/CircuitB/morphologies/asc"
+                            "neurolucida-asc": "CircuitB/morphologies/asc"
                         }
                     }
                 }

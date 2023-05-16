@@ -6,6 +6,11 @@ from pathlib import Path
 SIM_DIR = Path(__file__).parent.absolute() / "simulations"
 
 
+@pytest.fixture(autouse=True)
+def change_test_dir(monkeypatch, tmp_path):
+    monkeypatch.chdir(str(SIM_DIR / "usecase3"))
+
+
 @pytest.mark.forked
 def test_nodeset_target_generate_subtargets():
     from neurodamus.core.nodeset import NodeSet
@@ -119,11 +124,11 @@ def test_v5_sonata_multisteps():
 @pytest.mark.skipif(
     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
     reason="Test requires loading a neocortex model to run")
-def test_usecase3_BlueConfig_multisteps():
+def test_usecase3_sonata_multisteps():
     import numpy.testing as npt
     from neurodamus import Neurodamus
 
-    config_file = str(SIM_DIR / "usecase3" / "BlueConfig")
+    config_file = str(SIM_DIR / "usecase3" / "simulation_sonata.json")
     output_dir = str(SIM_DIR / "usecase3" / "output_coreneuron")
     tmp_file = _create_tmpconfig_coreneuron(config_file)
 
@@ -132,16 +137,13 @@ def test_usecase3_BlueConfig_multisteps():
 
     # compare spikes with refs
     spike_gids = np.array([
-        0, 2, 1, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 2, 0, 1, 2,
-        0, 1, 0, 2, 1, 0, 2, 1, 0, 2, 1, 0
+        0, 1, 2, 0, 1, 2, 0, 0, 1, 2, 2, 2, 2, 2, 0, 2, 1, 0, 2, 0, 1
     ])  # 0-based
     timestamps = np.array([
-        0.1, 0.15, 0.175, 2.275, 3.025, 3.45, 4.35, 5.7, 6.975, 7.7, 8.975,
-        11.05, 12.525, 13.95, 15.5, 16.8, 20.15, 20.225, 21.4, 25.175,
-        26.05, 26.1, 30.3, 30.6, 31.725, 35.1, 35.55, 37.125, 39.525,
-        40.925, 42.45, 43.95, 46.4, 47.75, 48.375
+        0.2, 0.3, 0.3, 2.5, 3.4, 4.2, 5.6, 7., 7.4, 8.6, 13.9, 19.6, 25.7, 32., 36.4, 38.5,
+        40.8, 42.6, 45.2, 48.3, 49.9
     ])
     obtained_timestamps, obtained_spike_gids = _read_sonata_spike_file(os.path.join(output_dir,
-                                                                                    "out.h5"))
+                                                                                    "spikes.h5"))
     npt.assert_allclose(spike_gids, obtained_spike_gids)
     npt.assert_allclose(timestamps, obtained_timestamps)

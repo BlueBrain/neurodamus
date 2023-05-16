@@ -23,7 +23,7 @@ def test_SimConfig_from_sonata():
     assert SimConfig.rng_info.getGlobalSeed() == 1122
 
     # run section
-    assert SimConfig.run_conf['CircuitTarget'] == 'l4pc'
+    assert SimConfig.run_conf['CircuitTarget'] == 'Mosaic'
     assert SimConfig.run_conf['Simulator'] == 'NEURON'
     assert SimConfig.run_conf['Duration'] == 50.0
     assert SimConfig.run_conf['Dt'] == 0.1

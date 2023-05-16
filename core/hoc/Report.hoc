@@ -114,6 +114,32 @@ proc init() { localobj nil
 //-----------------------------------------------------------------------------------------------
 
 /*!
+ * Get the number of sections of certain type
+ * @param $o1 Cell object who owns the currently accessed section
+ * @param $s2 Section name
+ * @return number of sections of certain type
+ */
+func get_num_sec() { local num_sections localobj strobj, cellref
+    strdef section_name
+    strobj = new StringFunctions()
+    cellref = $o1
+    section_name = $s2
+    num_sections = 0
+    if(strcmp( section_name, "ais" ) == 0) {
+        result = execute1( "{nSecLastAIS}", cellref, 0 )
+        if( result != 0 ) {
+            num_sections = cellref.nSecLastAIS
+        }
+    } else if(strcmp( section_name, "node" ) == 0) {
+        result = execute1( "{nSecNodal}", cellref, 0 )
+        if( result != 0 ) {
+            num_sections = cellref.nSecNodal
+        }
+    }
+    return num_sections
+}
+
+/*!
  * Determine the absolute index of a section within the cell
  *
  * @param $o1 Cell object who owns the currently accessed section
@@ -144,10 +170,10 @@ func sectionNo() { local baseOffset, secIndex  localobj str
         baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal + $o1.nSecApical
     } else if (strobj.substr( str.s, "node") >0) {
         subset = "node"
-        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal + $o1.nSecApical + $o1.nSecLastAIS
+        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal + $o1.nSecApical + get_num_sec($o1, "ais")
     } else if (strobj.substr( str.s, "myelin") >0) {
         subset = "myelin"
-        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal + $o1.nSecApical + $o1.nSecLastAIS + $o1.nSecNodal
+        baseOffset = $o1.nSecSoma + $o1.nSecAxonalOrig + $o1.nSecBasal + $o1.nSecApical + get_num_sec($o1, "ais") + get_num_sec($o1, "node")
     }
     objtype = str.s
     // parse out the index from the secname
