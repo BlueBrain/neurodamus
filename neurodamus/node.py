@@ -447,8 +447,12 @@ class Node:
             if SimConfig.use_coreneuron:
                 lfp_manager = self._circuits.global_manager._lfp_manager
                 cell_managers = self._circuits.global_manager._cell_managers
-                circuit_files = [manager._circuit_conf.CellLibraryFile for manager in cell_managers]
-                lfp_manager.load_lfp_config(lfp_weights_file, circuit_files)
+                population_list = [
+                    manager.population_name
+                    for manager in cell_managers
+                    if manager.population_name is not None
+                ]
+                lfp_manager.load_lfp_config(lfp_weights_file, population_list)
             else:
                 logging.warning("Online LFP supported only with CoreNEURON.")
 
@@ -912,9 +916,16 @@ class Node:
 
         lfp_disabled = not self._circuits.global_manager._lfp_manager._lfp_file
         if rep_type == "lfp" and lfp_disabled:
-            logging.warning("LFP reports are disabled. LFPWeightsPath might be missing.")
+            logging.error("LFP reports are disabled. Electrodes file might be missing"
+                          " or simulator is not set to CoreNEURON")
             return None
         logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
+
+        if rep_format != "SONATA":
+            if MPI.rank == 0:
+                logging.error("Unsupported report format: '%s'. "
+                              "Use 'SONATA' instead.", rep_format)
+                return None
 
         if Nd.t > 0:
             start_time += Nd.t
@@ -1036,7 +1047,8 @@ class Node:
         # TODO: Move to Cell Distributor and avoid inner loop conditions
         global_manager = self._circuits.global_manager
 
-        if rep_type not in ("compartment", "Summation", "Synapse"):
+        if rep_type not in ("compartment", "Summation", "Synapse", "lfp"):
+            logging.warning("Unsupported report type: %s.", rep_type)
             return  # Nothing to do
 
         # Go through the target members, one cell at a time. We give a cell reference
