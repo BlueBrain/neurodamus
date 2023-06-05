@@ -105,6 +105,8 @@ def get_R0pas_ref(astro_id, manager):
     ]
 
 
+@pytest.mark.skip(
+    reason="Seg fault with neurodamus-neocortex-1.12-2.15.0, see BBPBGLIB-1039")
 def test_vasccouplingB_radii():
     load_neurodamus_neocortex_multiscale()
     ndamus = Neurodamus(

@@ -61,14 +61,14 @@ def test_v5_sonata_config():
     nd.run()
 
     spike_gids = np.array([
-        68855, 69877, 64935, 66068, 62945, 63698, 67666, 68223,
-        65915, 69530, 63256, 64861, 66105, 68532, 65951, 64163,
-        68855, 62797, 69877
+        68855, 69877, 64935, 66068, 63698, 67666, 68223, 65915,
+        62945, 69530, 63256, 64861, 66105, 68532, 64163, 68855,
+        62797, 65951, 69877
     ]) + 1  # Conform to nd 1-based
     timestamps = np.array([
-        9.125, 14.3, 15.425, 29.075, 31.025, 33.2, 34.175, 35.075,
-        35.625, 36.875, 36.95, 37.1, 37.6, 37.6, 38.05, 38.075,
-        38.175, 38.45, 39.875
+        9.15, 14.3, 15.425, 30.15, 33.2, 34.175, 35.075, 35.625,
+        36.15, 36.875, 36.95, 37.1, 37.6, 37.625, 38.075, 38.3,
+        38.45, 39.625, 39.925
     ])
 
     obtained_timestamps = nd._spike_vecs[0][0].as_numpy()
@@ -87,36 +87,36 @@ def test_v5_gap_junction():
 
     cell_manager = nd.circuits.base_cell_manager
     gids = cell_manager.get_final_gids()
-    assert 74188 in gids
-    assert 74051 in gids
+    assert 75779 in gids
+    assert 80640 in gids
 
     syn_mananer = cell_manager.connection_managers[""]  # unnamed population
     syn_manager_2 = nd.circuits.get_edge_manager("", "")
     assert syn_mananer is syn_manager_2
     del syn_manager_2
 
-    assert syn_mananer.connection_count == 677
+    assert syn_mananer.connection_count == 529
     assert len(syn_mananer._populations) == 1  # connectivity and projections get merged
 
-    cell1_src_gids = np.array([c.sgid for c in syn_mananer.get_connections(74188)], dtype="int")
+    cell1_src_gids = np.array([c.sgid for c in syn_mananer.get_connections(75779)], dtype="int")
     PROJ_GID0 = 220422  # first gid in proj_Thalamocortical_VPM_Source
     projections_src_gids = cell1_src_gids[cell1_src_gids >= PROJ_GID0]
-    assert len(projections_src_gids) == 18
-    assert len(cell1_src_gids[cell1_src_gids < PROJ_GID0]) == 192
+    assert len(projections_src_gids) == 19
+    assert len(cell1_src_gids[cell1_src_gids < PROJ_GID0]) == 316
 
     gj_manager = nd.circuits.get_edge_manager("", "", GapJunctionManager)
     # Ensure we got our GJ instantiated and bi-directional
-    gjs_1 = list(gj_manager.get_connections(74188))
+    gjs_1 = list(gj_manager.get_connections(75779))
     assert len(gjs_1) == 1
-    assert gjs_1[0].sgid == 74051
-    gjs_2 = list(gj_manager.get_connections(74051))
+    assert gjs_1[0].sgid == 80640
+    gjs_2 = list(gj_manager.get_connections(80640))
     assert len(gjs_2) == 1
-    assert gjs_2[0].sgid == 74188
+    assert gjs_2[0].sgid == 75779
 
     # P2: Assert simulation went well
     # Check voltages
     from neuron import h
-    c = cell_manager.get_cell(74188)
+    c = cell_manager.get_cell(75779)
     voltage_vec = h.Vector()
     voltage_vec.record(c._cellref.soma[0](0.5)._ref_v, 0.125)
     h.finitialize()  # reinit for the recordings to be registered
@@ -139,5 +139,5 @@ def test_v5_gap_junction():
     # to occur
     spikes = nd._spike_vecs[0]
     assert spikes[1].size() == 1
-    assert spikes[1][0] == 74188
-    assert spikes[0][0] == pytest.approx(28.425)
+    assert spikes[1][0] == 75779
+    assert spikes[0][0] == pytest.approx(27.5)
