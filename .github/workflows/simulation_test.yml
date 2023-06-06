@@ -1,0 +1,35 @@
+name: neurodamus tests
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  simulation:
+    runs-on: ubuntu-20.04
+    
+    steps:
+    - name: Install libhdf5
+      run: sudo apt-get update && sudo apt-get install libhdf5-dev
+      
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        submodules: 'true'
+  
+    - name: Install libsonata
+      run: |
+          sudo apt-get install doxygen
+          pip install git+https://github.com/BlueBrain/libsonata
+
+    - name: Install libsonatareport
+      run: |
+          git clone git@github.com:BlueBrain/libsonatareport.git --recursive
+          cd libsonatareport
+          mkdir build && cd build
+          cmake -DCMAKE_INSTALL_PREFIX=$(pwd) -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON ..
+          make -j
+          make install
