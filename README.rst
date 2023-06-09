@@ -1,5 +1,5 @@
 =============
-Neurodamus-py
+Neurodamus
 =============
 
 Neurodamus is a BBP Simulation Control application for Neuron.
@@ -20,15 +20,62 @@ Such implementation effectively makes available to the user a Python module with
 API, suitable to fine control simulation aspects, as well as inspect and eventually adapt the
 simulations as intended.
 
-Main classes
-------------
+Install
+=======
 
-At the top level the user may instantiate a `Neurodamus<neurodamus.Neurodamus>` object, which will instantiate the whole simulation according to the provided BlueConfig, but stop before launching it.
-**Note**: For finer level of control of the initialization, the user may opt for instantiating a `Node<neurodamus.Node>` object, where he is responsible for every phase.
-*This is not recommended since the initialization phases cannot be arbitrarily interchanged.*
+Prerequisites
+-------------
+- hdf5
+- libsonatareport https://github.com/BlueBrain/libsonatareport
+- neuron with MPI https://github.com/neuronsimulator/nrn
 
-Once the simulation has been initialized, `Node<neurodamus.Node>` provides several data structures which can be inspected and manipulated, namely:
+Install neurodamus
+------------------
+.. code-block:: sh
 
-* `synapse_manager`: an instance of `SynapseRuleManager<neurodamus.connection_manager.SynapseRuleManager>`
-* `gj_manager`: an instance of `GapJunctionManager<neurodamus.connection_manager.GapJunctionManager>`
-* `cells`: a list of cell instances (`METype<neurodamus.metype.METype>`)
+  git clone https://github.com/BlueBrain/neurodamus.git
+  cd neurodamus
+  pip install .
+
+Build special with mod files
+----------------------------
+.. code-block:: sh
+
+  mkdir mods
+  cp -r mod-files-from-released-circuit mods/
+  cp -r neurodamus-install-prefix/share/mod/* mods/
+  nrnivmodl -incflags '-I <include-paths-of-our-dependencies>' -loadflags '-L <libs-paths-for-linking>'' mod
+
+Examples
+========
+Once installed, you should be able to find `neurodamus` in your path:
+
+.. code-block::
+
+  $ neurodamus
+    Usage:
+        neurodamus <ConfigFile> [options]
+        neurodamus --help
+
+Among the options you will find flags to tune run behavior.
+
+Neurodamus explicitly depends on MPI libraries for parallel execution.
+Therefore please use "srun" or "mpiexec" to launch it, according to your platform. If you
+don't, complicated error messages may show up. Please remember it.
+
+Even though a `neurodamus` launcher is provided, for production runs we suggest using
+`special` instead. This way has proven to take advantage of optimized math libraries.
+We hope to bring the same advantages to the launcher script soon.
+
+.. code-block:: sh
+
+ srun <srun params> <your_built_special> -mpi -python $NEURODAMUS_PYTHON/init.py <neurodamus params>
+
+
+Acknowledgment
+==============
+The development of this software was supported by funding to the Blue Brain Project,
+a research center of the École polytechnique fédérale de Lausanne (EPFL),
+from the Swiss government's ETH Board of the Swiss Federal Institutes of Technology.
+
+Copyright (c) 2005-2023 Blue Brain Project/EPFL

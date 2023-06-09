@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import subprocess
 import sys
 from setuptools import setup, find_packages
@@ -14,7 +11,7 @@ except Exception as e:
 
 
 package_info = dict(
-    name='neurodamus-py',
+    name='neurodamus',
     version=__version__,
     packages=find_packages(exclude=["tests"]),
     install_requires=[

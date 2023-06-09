@@ -22,7 +22,7 @@ def neurodamus(args=None):
     """neurodamus
 
     Usage:
-        neurodamus <BlueConfig> [options]
+        neurodamus <ConfigFile> [options]
         neurodamus --help
 
     Options:
@@ -56,7 +56,7 @@ def neurodamus(args=None):
         --model-stats           Show model stats in CoreNEURON simulations [default: False]
     """
     options = docopt_sanitize(docopt(neurodamus.__doc__, args))
-    config_file = options.pop("BlueConfig")
+    config_file = options.pop("ConfigFile")
     log_level = _pop_log_level(options)
 
     if not os.path.isfile(config_file):

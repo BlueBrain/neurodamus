@@ -1,8 +1,8 @@
 ============
-PyNeurodamus
+Neurodamus
 ============
 
-This is the documentation of **PyNeurodamus**.
+This is the documentation of **Neurodamus**.
 
 
 Contents

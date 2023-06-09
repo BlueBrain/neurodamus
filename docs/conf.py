@@ -40,7 +40,7 @@ source_suffix = ['.rst']
 master_doc = 'index'
 
 # General information about the project.
-project = u'PyNeurodamus '
+project = u'Neurodamus '
 author = u'BlueBrain HPC'
 # copyright = u'2019, Blue Brain Project, EPFL'  # Theme has fixed copyright
 
@@ -118,7 +118,7 @@ html_css_files = ['custom.css']
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-html_theme_options = {"metadata_distribution": "neurodamus-py"}
+html_theme_options = {"metadata_distribution": "neurodamus"}
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'python_doc'
