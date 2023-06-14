@@ -2,6 +2,20 @@
 Change Log
 ==========
 
+Version 2.15.1
+===============
+**13 June 2023**
+
+*New Features*
+  * [BBPBGLIB-706] Make all core mod files compatible with CoreNEURON/NMODL
+*Improvements*
+  * Docs for the open source repo
+  * All `usecase3` circuit files now are contained in neurodamus-py
+  * [HPCTM-1755] one morphio_wrapper.py in neurodamus
+*Bug fixes*
+  * Fixed unit tests due to changes in `common` MOD files
+
+
 Version 2.15.0
 ===============
 **11 May 2023**

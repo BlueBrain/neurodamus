@@ -24,6 +24,7 @@ VERBATIM
 #include <string.h>
 #include <limits.h>
 
+#ifndef CORENEURON_BUILD
 #if defined(ENABLE_CORENEURON)
 #include <coreneuron/engine.h>
 
@@ -41,6 +42,7 @@ VERBATIM
 #define CORENRN_ARG_FMT "%s="
 
 #endif  // defined(ENABLE_CORENEURON)
+#endif  // ifndef CORENEURON_BUILD
 
 #ifndef NRN_VERSION_GTEQ_8_2_0
 extern double* vector_vec();
@@ -275,6 +277,7 @@ ENDVERBATIM
 
 PROCEDURE psolve_core() {
 VERBATIM
+#ifndef CORENEURON_BUILD
 #if defined(ENABLE_CORENEURON)
     char* simConf = (char*)alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(simConf, "%s/%s", outputdir, SIM_CONFIG_FILE);
@@ -293,6 +296,7 @@ VERBATIM
     if(nrnmpi_myid == 0) {
         fprintf(stderr, "%s", "ERROR : CoreNEURON library not linked with NEURODAMUS!\n");
     }
-#endif
+#endif  // defined(ENABLE_CORENEURON)
+#endif  // ifndef CORENEURON_BUILD
 ENDVERBATIM
 }
