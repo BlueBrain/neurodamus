@@ -340,9 +340,14 @@ class Node:
         CellDistributor to split cells and balance those pieces across the available CPUs.
         """
         log_stage("Computing Load Balance")
+        is_sonata_config = SimConfig.is_sonata_config
         circuit = self._base_circuit
+        if is_sonata_config:
+            name, circuit = next(iter(self._extra_circuits.items()))
+            logging.info("Activating experimental LB for Sonata circuit '%s'", name)
+
         if not circuit.CircuitPath:
-            logging.info(" => No base circuit. Skipping... ")
+            logging.info(" => No circuit for Load Balancing. Skipping... ")
             return None
 
         _ = PopulationNodes.offset_freezer()  # Dont offset while in loadbal
@@ -364,13 +369,10 @@ class Node:
             return None
 
         # Build load balancer as per requested options
+        # Compat Note: data_src in BlueConfig mode was the nrnPath. Not anymore.
         prosp_hosts = self._run_conf.get("ProspectiveHosts")
-        load_balancer = LoadBalance(
-            lb_mode,
-            self._run_conf["nrnPath"],
-            self._target_manager,
-            prosp_hosts
-        )
+        data_src = circuit.CircuitPath if is_sonata_config else self._run_conf["nrnPath"]
+        load_balancer = LoadBalance(lb_mode, data_src, self._target_manager, prosp_hosts)
 
         if load_balancer.valid_load_distribution(target_spec):
             logging.info("Load Balancing done.")
