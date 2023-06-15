@@ -61,9 +61,11 @@ endtemplate {cls_name}"""
     def load_morphology(self, morpho_path, export_commands=False):
         """ Creates the cell compartments according to the given morphology
         """
-        h = Neuron.require("import3d")
+        h = Neuron.require("import3d", "MorphIO")
         # try and determine format
-        if morpho_path.endswith(('hoc', 'HOC')):
+        if morpho_path.endswith(('h5', 'H5')):
+            h.morphio_read(self.h, morpho_path)
+        elif morpho_path.endswith(('hoc', 'HOC')):
             h.load_file(1, morpho_path)
         else:
             if morpho_path.endswith(('asc', 'ASC')):

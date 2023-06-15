@@ -9,6 +9,7 @@
 {load_file("stdlib.hoc")}
 {load_file("import3d.hoc")}
 {load_file("fileUtils.hoc")}
+{load_file("MorphIO.hoc")}
 
 
 // In case in SimConfig there's a new extension registered, pass that info to Cell to attempt lo load it
@@ -113,10 +114,9 @@ proc AddMorph(){ localobj morph, import, strobj, morphPath, extension, global_ex
     }
 
     if( strcmp(extension.s, "h5") == 0 ) {
-        if( nrnpython("import morphio_wrapper") == 0 ) {
-            terminate( ".h5 morphlogy used but cannot load 'morphio_wrapper.py' from neurodamus-core" )
-        }
-        AddHocMorph(pyobj.morphio_wrapper.MorphIOWrapper(morphPath.s).morph_as_hoc())
+        morphio_read(this, morphPath.s)
+        indexSections()
+        geom_nsec()
         return
     }
 

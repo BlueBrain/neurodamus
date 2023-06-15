@@ -1,0 +1,34 @@
+/**
+ * @file MorphIO.hoc
+ * @brief MorphIO wrapper handler for morphology-loading.
+ * @author Alexandru Savulescu
+ * @date 2023-05-16
+ * @remark Copyright © BBP/EPFL 2005-2023; All rights reserved. Do not distribute without further notice.
+ */
+
+objref pyobj
+pyobj = new PythonObject()
+
+/**
+ *  Execute hoc commands in the cell's context.
+ * @param $o1 Cell object to execute commands in
+ * @param $o2 python List holding commands
+ */
+proc execute_commands_from_pylist () { localobj cmds
+    cmds = $o2
+    for i = 0, pyobj.len(cmds) - 1 {
+        execute(cmds._[i], $o1)
+    }
+}
+
+/**
+ *  Load hoc-based morphology.
+ * @param $o1 Cell object to load morphology into
+ * @param $s2 Morphology file path
+ */
+proc morphio_read() { 
+    if( nrnpython("from neurodamus import morphio_wrapper") == 0 ) {
+        terminate( "Cannot load 'morphio_wrapper.py' from py-neurodamus" )
+    }
+    execute_commands_from_pylist($o1, pyobj.morphio_wrapper.MorphIOWrapper($s2).morph_as_hoc())
+}

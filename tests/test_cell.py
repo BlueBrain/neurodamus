@@ -24,6 +24,16 @@ def test_load_cell(Cell):
     assert c.soma.L == pytest.approx(26.11, abs=0.01)
 
 
+def test_morphio_read(Cell):
+    d = path.dirname(__file__)
+    c = Cell(1, path.join(d, "morphology/simple.h5"))
+
+    Cell.show_topology()
+    assert len(c.all) == 7
+    assert len(list(c.h.basal)) == 3
+    assert len(list(c.h.axonal)) == 3
+
+
 def test_create_cell(Cell):
     builder = Cell.Builder
     c = (builder

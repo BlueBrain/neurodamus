@@ -275,7 +275,8 @@ class MorphIOWrapper:
         cmds.append("forall all.append")
 
         # generate 3D soma points commands. Order is reversed wrt NEURON's soma points.
-        cmds.extend(("soma {{ pt3dadd({:g}, {:g}, {:g}, {:g}) }}".format(p[0], p[1], p[2], d)
+        cmds.extend(("soma {{ pt3dadd({:.8g}, {:.8g}, {:.8g}, {:.8g}) }}"
+                     .format(p[0], p[1], p[2], d)
                      for p, d in zip(reversed(self._morph.soma.points),
                                      reversed(self._morph.soma.diameters))))
 
@@ -295,12 +296,13 @@ class MorphIOWrapper:
                 cmds.append(tstr1)
 
                 # pt3dstyle does not impact simulation numbers. This will be kept for x-reference.
-                # tstr1 = "{} {{ pt3dstyle(1, {:g}, {:g}, {:g}) }}".format
+                # tstr1 = "{} {{ pt3dstyle(1, {:.8g}, {:.8g}, {:.8g}) }}".format
                 #                   (tstr, mean[0], mean[1], mean[2])
                 # cmds.append(tstr1)
 
             # 3D point info
-            cmds.extend("{} {{ pt3dadd({:g}, {:g}, {:g}, {:g}) }}".format(tstr, p[0], p[1], p[2], d)
+            cmds.extend("{} {{ pt3dadd({:.8g}, {:.8g}, {:.8g}, {:.8g}) }}"
+                        .format(tstr, p[0], p[1], p[2], d)
                         for p, d in zip(sec.points, sec.diameters))
 
         return cmds
