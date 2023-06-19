@@ -316,3 +316,8 @@ Indeed public API represents exactly these 3 cases:
       with lbal.generate_load_balance(t1, cell_manager):
         cell_manager.finalize()
         conn_manager.create_connections()
+
+Development
+------------
+
+You can find more information `here <development.rst>`_.
