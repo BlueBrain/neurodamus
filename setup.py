@@ -12,6 +12,7 @@ except Exception as e:
 
 package_info = dict(
     name='neurodamus',
+    author='Blue Brain Project, EPFL',
     version=__version__,
     packages=find_packages(exclude=["tests"]),
     install_requires=[

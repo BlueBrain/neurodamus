@@ -1,0 +1,98 @@
+/**
+ * @file GABAABHelper.hoc
+ * @brief Encapsulate any hoc actions that are necessary to instantiate this synapse type
+ * @author king
+ * @date 2015-04-16
+ * @remark Copyright © BBP/EPFL 2005-2015; All rights reserved. Do not distribute without further notice.
+ */
+//Global that is shared/accessible from GABAABHelper
+strdef randomize_Gaba_risetime
+randomize_Gaba_risetime = "True"
+
+{load_file("RNGSettings.hoc")}
+
+/**
+ * This helper object will encapsulate the hoc actions needed to create our typical inhibitory synapse
+ */
+begintemplate GABAABHelper
+
+objref synapse, rng
+public synapse
+
+external randomize_Gaba_risetime
+
+/**
+ * @param tgid gid of Postsynaptic cell
+ * @param synParameters set of paramters loaded from default nrn.h5
+ * @param x location of the synapse along the section (0<=x<=1)
+ * @param synapseID id assigned to this synapses within the cell's context
+ * @param baseSeed for random number generator
+ * @param spopid population id of the source (presyn). Used for seeding rng
+ * @parap tpopid population id of the target (postsyn). Used for seed rng
+ */
+proc init() { local tgid, x, synapseID, baseSeed, seed2, spopid, tpopid  localobj synParams, rngInfo
+    tgid = $1
+    synParams = $o2
+    x = $3
+    synapseID = $4
+    baseSeed = $5
+    if (numarg()>=7) {
+        spopid = $6
+        tpopid = $7
+    } else {
+        spopid = 0
+        tpopid = 1
+    }
+
+    synapse = new ProbGABAAB_EMS(x)
+
+    rngInfo = new RNGSettings()
+
+    if ( strcmp( randomize_Gaba_risetime, "True") == 0 ) {
+        rng = new Random()
+        if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY ) {
+            rng.MCellRan4( synapseID*100000+100, tgid+250+baseSeed )
+        } else if( rngInfo.getRNGMode() == rngInfo.UPMCELLRAN4 ) {
+            rng.MCellRan4( synapseID*1000+100, spopid*16777216+tgid+250+baseSeed+rngInfo.getSynapseSeed() )
+        } else if( rngInfo.getRNGMode() == rngInfo.RANDOM123 ) {
+            seed2 = spopid*65536 + tpopid + rngInfo.getSynapseSeed() + 450
+            rng.Random123( tgid+250, synapseID+100, seed2 )
+        }
+        rng.lognormal(0.2, 0.1)
+        synapse.tau_r_GABAA = rng.repick()
+    }
+
+    synapse.tau_d_GABAA = synParams.DTC
+
+    synapse.Use = abs( synParams.U )
+    synapse.Dep = abs( synParams.D )
+    synapse.Fac = abs( synParams.F )
+
+    if( synParams.nrrp >= 0 ) {
+        synapse.Nrrp = synParams.nrrp
+    }
+
+    // verify that only mask value if 1 (functional) or -1 (unset)
+    if( !( synParams.maskValue == -1 || synParams.maskValue == 1 )) {
+        print "Error synapse configuration. Inh synapse should not have mask value: ", synParams.maskValue
+        quit()
+    }
+
+    if( rngInfo.getRNGMode() == rngInfo.RANDOM123 ) {
+        seed2 = spopid*65536 + tpopid + rngInfo.getSynapseSeed() + 300
+        synapse.setRNG( tgid+250, synapseID+100, seed2 )
+    } else {
+        rng = new Random()
+        if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY ) {
+            rng.MCellRan4( synapseID*100000+100, tgid+250+baseSeed )
+        } else if( rngInfo.getRNGMode() == rngInfo.UPMCELLRAN4 ) {
+            rng.MCellRan4( synapseID*1000+100, spopid*16777216+tgid+250+baseSeed+rngInfo.getSynapseSeed() )
+        }
+        rng.uniform(0,1)
+        synapse.setRNG( rng )
+    }
+    synapse.synapseID = synapseID
+}
+
+endtemplate GABAABHelper
+

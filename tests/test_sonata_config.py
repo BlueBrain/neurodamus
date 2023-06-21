@@ -69,8 +69,6 @@ def test_SimConfig_from_sonata():
     conditions = list(SimConfig._blueconfig.Conditions.values())[0]
     assert conditions['init_depleted_ProbAMPANMDA_EMS'] is False
     assert conditions['minis_single_vesicle_ProbAMPANMDA_EMS'] is True
-    assert conditions['init_depleted_GluSynapse'] is True
-    assert conditions['minis_single_vesicle_GluSynapse'] is False
     assert conditions['randomize_Gaba_risetime'] == 'False'
 
 

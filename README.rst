@@ -71,6 +71,8 @@ We hope to bring the same advantages to the launcher script soon.
 
  srun <srun params> <your_built_special> -mpi -python $NEURODAMUS_PYTHON/init.py <neurodamus params>
 
+An example of a full installation with a simulation run can be found in the workflow test
+`simulation_test.yaml <https://github.com/BlueBrain/neurodamus/blob/publicaton/sscx-2023/.github/workflows/simulation_test.yml>`__.
 
 Acknowledgment
 ==============
