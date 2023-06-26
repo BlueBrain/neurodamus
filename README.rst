@@ -1,6 +1,9 @@
 =============
 Neurodamus
 =============
+.. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.8075202.svg
+   :target: https://doi.org/10.5281/zenodo.8075202
+
 
 Neurodamus is a BBP Simulation Control application for Neuron.
 
