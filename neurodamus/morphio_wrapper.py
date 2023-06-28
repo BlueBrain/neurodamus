@@ -2,6 +2,7 @@
 A wrapper for MorphIO objects. Provides additional neuron
 features on top of MorphIO basic morphology handling.
 """
+import os
 import logging
 import numpy as np
 from numpy.linalg import eig, norm
@@ -13,6 +14,25 @@ from numpy.linalg import eig, norm
     TODO: Once we have something stable, integrate nse/morph-tool
 '''
 X, Y, Z, R = 0, 1, 2, 3
+
+
+def split_morphology_path(morphology_path):
+    '''Split `{collection_path}/{morph_name}.{ext}`'''
+
+    if os.path.exists(morphology_path):
+        collection_path = os.path.dirname(morphology_path)
+        morph_name, morph_ext = os.path.splitext(os.path.basename(morphology_path))
+        return collection_path, morph_name, morph_ext
+
+    else:
+        collection_path = morphology_path
+        while not os.path.exists(collection_path):
+            assert collection_path != os.path.dirname(collection_path), "Failed to split path."
+            collection_path = os.path.dirname(collection_path)
+
+        morph_name, morph_ext = os.path.splitext(os.path.relpath(morphology_path, collection_path))
+
+        return collection_path, morph_name, morph_ext
 
 
 def contourcenter(xyz):
@@ -157,13 +177,12 @@ class MorphIOWrapper:
     """
         A class that wraps a MorphIO object and gets everything ready for HOC usage
     """
-    morph_file = property(lambda self: self._morph_file)
     morph = property(lambda self: self._morph)
     section_index2name_dict = property(lambda self: self._sec_idx2names)
     section_typeid_distrib = property(lambda self: self._sec_typeid_distrib)
 
     def __init__(self, input_file, options=0):
-        self._morph_file = input_file
+        self._collection_dir, self._morph_name, self._morph_ext = split_morphology_path(input_file)
         self._options = options
         self._build_morph()
         self._sec_idx2names = {}
@@ -176,19 +195,26 @@ class MorphIOWrapper:
             # Lazy import morphio since it has an issue with execl
             from morphio import SomaType, Option
             from morphio import Morphology
-            from morphio.mut import Morphology as MutMorphology
+            from morphio import Collection
         except ImportError as e:
             raise RuntimeError("MorphIO is not available") from e
 
-        # We start out with a mutable morphology since we compute soma points
-        self._morph = MutMorphology(self._morph_file, self._options | Option.nrn_order)
+        collection = Collection(self._collection_dir, extensions=[self._morph_ext])
+        options = self._options | Option.nrn_order
+        self._morph = collection.load(self._morph_name, options, mutable=True)
 
         # Re-compute the soma points as they are computed in import3d_gui.hoc
         if self._morph.soma_type not in {SomaType.SOMA_SINGLE_POINT, SomaType.SOMA_SIMPLE_CONTOUR}:
             raise Exception(
                 'A H5 file morphology is not supposed to have a soma of type: {}'.format(
                     self._morph.soma_type))
-        logging.debug("{} has soma type : {}".format(self._morph_file, self._morph.soma_type))
+        logging.debug(
+            "({}, {}, {}) has soma type : {}",
+            self._collection_dir,
+            self._morph_name,
+            self._morph_ext,
+            self._morph.soma_type
+        )
 
         if self._morph.soma_type == SomaType.SOMA_SINGLE_POINT:
             ''' See NRN import3d_gui.hoc -> instantiate()

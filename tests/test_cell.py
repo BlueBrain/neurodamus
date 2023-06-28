@@ -16,9 +16,15 @@ def Cell():
     return Cell
 
 
-def test_load_cell(Cell):
+@pytest.mark.parametrize(
+    "morphology_path",
+    ["C060114A7.asc", "C060114A7.h5", "merged_container.h5/C060114A7.h5"]
+)
+def test_load_cell(morphology_path, request):
+    Cell = request.getfixturevalue("Cell")
+
     d = path.dirname(__file__)
-    c = Cell(1, path.join(d, "morphology/C060114A7.asc"))
+    c = Cell(1, path.join(d, "morphology", morphology_path))
     assert len(c.all) == 325
     assert c.axons[4].name().endswith(".axon[4]")
     assert c.soma.L == pytest.approx(26.11, abs=0.01)

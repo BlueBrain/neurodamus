@@ -65,6 +65,8 @@ endtemplate {cls_name}"""
         # try and determine format
         if morpho_path.endswith(('h5', 'H5')):
             h.morphio_read(self.h, morpho_path)
+            self._soma = self.h.soma[0]
+
         elif morpho_path.endswith(('hoc', 'HOC')):
             h.load_file(1, morpho_path)
         else:
