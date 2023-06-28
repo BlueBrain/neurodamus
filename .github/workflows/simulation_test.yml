@@ -60,7 +60,7 @@ jobs:
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
         export PATH=$(pwd)/nrn/build/install/bin:$PATH
         # copy mod files from external link, to be replaced with the Zenodo link
-        wget --output-document="O1_mods.xz" --quiet "https://drive.google.com/uc?export=download&id=1mgnOUI60ltqtXqhyfL45dLGRJL3dxxy0"
+        wget --output-document="O1_mods.xz" --quiet "https://zenodo.org/record/8026353/files/O1_mods.xz?download=1"
         tar -xf O1_mods.xz
         cp -r mod tests/share/
         cp core/mod/* tests/share/mod/
