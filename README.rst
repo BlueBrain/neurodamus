@@ -1,3 +1,5 @@
+|banner|
+
 =============
 Neurodamus
 =============
@@ -84,3 +86,6 @@ a research center of the École polytechnique fédérale de Lausanne (EPFL),
 from the Swiss government's ETH Board of the Swiss Federal Institutes of Technology.
 
 Copyright (c) 2005-2023 Blue Brain Project/EPFL
+
+.. substitutions
+.. |banner| image:: docs/img/neurodamus_banner_230701.png

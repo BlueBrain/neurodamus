@@ -59,12 +59,12 @@ jobs:
       run: |
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
         export PATH=$(pwd)/nrn/build/install/bin:$PATH
-        # copy mod files from external link, to be replaced with the Zenodo link
+        # copy mod files from the Zenodo link
         wget --output-document="O1_mods.xz" --quiet "https://zenodo.org/record/8026353/files/O1_mods.xz?download=1"
         tar -xf O1_mods.xz
         cp -r mod tests/share/
-        cp core/mod/* tests/share/mod/
-        cp core/hoc/* tests/share/hoc/
+        cp core/mod/*.mod tests/share/mod/
+        cp core/hoc/*.hoc tests/share/hoc/
         nrnivmodl -coreneuron -incflags '-DENABLE_CORENEURON -I${SONATAREPORT_DIR}/include -I/usr/include/hdf5/mpich -I/usr/lib/x86_64-linux-gnu/mpich' \
           -loadflags '-L${SONATAREPORT_DIR}/lib -lsonatareport -Wl,-rpath,${SONATAREPORT_DIR}/lib -L/usr/lib/x86_64-linux-gnu/hdf5/mpich -lhdf5 -Wl,-rpath,/usr/lib/x86_64-linux-gnu/hdf5/mpich/ -L/usr/lib/x86_64-linux-gnu/ -lmpich -Wl,-rpath,/usr/lib/x86_64-linux-gnu/' \
           tests/share/mod
