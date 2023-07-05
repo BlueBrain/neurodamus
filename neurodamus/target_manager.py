@@ -118,6 +118,8 @@ class TargetManager:
         instantiated, and potentially split.
         """
         def _is_sonata_file(file_name):
+            if file_name.endswith(".sonata"):
+                raise Exception("*.sonata node file is not supported, consider to rename it to *.h5")
             if file_name.endswith(".h5"):
                 return True
             return False
