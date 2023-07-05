@@ -17,7 +17,10 @@ def process_file(file_tuple):
         c.load_morphology(src_file, export_commands=True)
         with open(dst_file, 'w') as f:
             for cmd in c._commands:
-                f.write(cmd.s[1:] if cmd.s.startswith('~') else cmd.s)
+                if hasattr(cmd, 's'):
+                    f.write(cmd.s[1:] if cmd.s.startswith('~') else cmd.s)
+                else:
+                    f.write(cmd+'\n')
     except Exception as e:
         e.args = ("Processing " + src_file, *e.args)
         return e

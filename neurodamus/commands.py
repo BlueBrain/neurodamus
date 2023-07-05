@@ -14,7 +14,7 @@ from pathlib import Path
 from . import Neurodamus
 from .core import MPI, OtherRankError
 from .core.configuration import ConfigurationError, LogLevel, EXCEPTION_NODE_FILENAME
-from .hocify import Hocify
+from .hocify import Hocify, process_file as hocify_process_file
 from .utils.pyutils import docopt_sanitize
 
 
@@ -97,13 +97,28 @@ def hocify(args=None):
         --output-dir=<PATH>     Output directory for hoc files.
     """
     options = docopt_sanitize(docopt(hocify.__doc__, args))
-    morph_dir = abspath(options.pop("MorphologyPath"))
+    morph_path = abspath(options.pop("MorphologyPath"))
     log_level = _pop_log_level(options)
     neuron_nframe = options.pop("nframe")
     options.pop("help")  # never pass to the library
 
+    # first check if it is a file
+    if os.path.isfile(morph_path):
+        os.environ['NEURON_NFRAME'] = str(neuron_nframe)
+        # the dest file is the same as the morph file but with .hoc extension
+        dest_file = Path(morph_path).with_suffix('.hoc')
+
+        print("Hocifying {} -> {}".format(morph_path, dest_file))
+        result = hocify_process_file((morph_path, str(dest_file)))
+        if isinstance(result, Exception):
+            logging.critical(str(result), exc_info=True)
+            return 1
+        print('Done.')
+        return 0
+
+    # otherwise it is a directory, use multiprocessing
     try:
-        Hocify(morph_dir, neuron_nframe, log_level, **options).convert()
+        Hocify(morph_path, neuron_nframe, log_level, **options).convert()
     except Exception as e:
         logging.critical(str(e), exc_info=True)
         return 1

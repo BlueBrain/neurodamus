@@ -64,6 +64,9 @@ endtemplate {cls_name}"""
         h = Neuron.require("import3d", "MorphIO")
         # try and determine format
         if morpho_path.endswith(('h5', 'H5')):
+            if(export_commands):
+                from neurodamus.morphio_wrapper import MorphIOWrapper
+                self._commands = MorphIOWrapper(morpho_path).morph_as_hoc()
             h.morphio_read(self.h, morpho_path)
             self._soma = self.h.soma[0]
 
