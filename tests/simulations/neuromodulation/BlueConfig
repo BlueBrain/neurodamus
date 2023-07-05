@@ -1,7 +1,7 @@
 Run Default
 {
     CircuitPath ./minimal_circuit
-    nrnPath ./minimal_circuit/edges.sonata
+    nrnPath ./minimal_circuit/edges.h5
     CellLibraryFile circuit.mvd3
     MorphologyPath ./minimal_circuit/morph-release-2020-08-10
     MorphologyType asc
@@ -23,7 +23,7 @@ Run Default
 
 Projection proj
 {
-    Path ./minimal_circuit/projections.sonata
+    Path ./minimal_circuit/projections.h5
     PopulationID 1
     Source virtual_neurons
     Type NeuroModulation
@@ -35,7 +35,7 @@ Report soma
     Type compartment
     ReportOn v
     Unit mV
-    Format Bin
+    Format SONATA
     Dt 0.1
     StartTime 0
     EndTime 5000
