@@ -116,7 +116,11 @@ def load_ncs(circuit_conf, all_gids, stride=1, stride_offset=0):
     """
     gids = compat.Vector("I")
     gid2mefile = {}
-    ncs_path = ospath.join(circuit_conf.nrnPath, "start.ncs")
+    # NCS is historically under nrnPath which nowadays is a file path
+    ncs_dir = circuit_conf.nrnPath
+    if ospath.isfile(ncs_dir):
+        ncs_dir = ospath.dirname(ncs_dir)
+    ncs_path = ospath.join(ncs_dir, "start.ncs")
 
     with open(ncs_path, "r") as ncs_f:
         total_ncs_cells = _ncs_get_total(ncs_f)
