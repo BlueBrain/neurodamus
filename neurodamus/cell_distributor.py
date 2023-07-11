@@ -26,7 +26,8 @@ from .io import cell_readers
 from .metype import Cell_V5, Cell_V6, EmptyCell
 from .target_manager import TargetSpec
 from .utils import compat
-from .utils.logging import log_verbose
+from .utils.logging import log_verbose, log_all
+from .utils.memory import get_mem_usage
 
 
 class NodeFormat(Enum):
@@ -208,7 +209,7 @@ class CellManagerBase(_CellManager):
         loader_f = (lambda *args: _loader(*args, **loader_opts)) if loader_opts else _loader
 
         logging.info("Reading Nodes (METype) info from '%s'", conf.CellLibraryFile)
-        if not load_balancer:
+        if not load_balancer or SimConfig.dry_run:
             # Use common loading routine, providing the loader
             gidvec, me_infos, *cell_counts = self._load_nodes(loader_f)
         else:
@@ -279,6 +280,53 @@ class CellManagerBase(_CellManager):
         for gid, cell_info in gid_info_items:
             cell = CellType(gid, cell_info, self._circuit_conf)
             self._store_cell(gid + cell_offset, cell)
+
+    @mpi_no_errors
+    def _instantiate_cells_dry(self, _CellType=None):
+        CellType = _CellType or self.CellType
+        assert CellType is not None, "Undefined CellType in Manager"
+        Nd.execute("xopen_broadcast_ = 0")
+
+        logging.info(" > Dry run on cells... (%d in Rank 0)", len(self._local_nodes))
+        logging.info("Memory usage for metype combinations:")
+        cell_offset = self._local_nodes.offset
+
+        gid_info_items = self._local_nodes.items()
+
+        prev_emodel = None
+        prev_mtype = None
+        start_memory = get_mem_usage()
+        n_cells = 0
+        memory_dict = {}
+
+        for gid, cell_info in gid_info_items:
+            diff_mtype = prev_mtype != cell_info.mtype
+            diff_emodel = prev_emodel != cell_info.emodel
+            first = prev_emodel is None and prev_mtype is None
+            if (diff_mtype or diff_emodel) and not first:
+                end_memory = get_mem_usage()
+                memory_allocated = end_memory - start_memory
+                log_all(logging.INFO, " * %s %s: %f MB averaged over %d cells",
+                        prev_emodel, prev_mtype, memory_allocated/n_cells, n_cells)
+                memory_dict[(prev_emodel, prev_mtype)] = memory_allocated/n_cells
+                start_memory = end_memory
+                n_cells = 0
+
+            cell = CellType(gid, cell_info, self._circuit_conf)
+            self._store_cell(gid + cell_offset, cell)
+
+            prev_emodel = cell_info.emodel
+            prev_mtype = cell_info.mtype
+            n_cells += 1
+
+        if prev_emodel is not None and prev_mtype is not None:
+            end_memory = get_mem_usage()
+            memory_allocated = end_memory - start_memory
+            log_all(logging.INFO, " * %s %s: %f MB averaged over %d cells",
+                    prev_emodel, prev_mtype, memory_allocated/n_cells, n_cells)
+            memory_dict[(prev_emodel, prev_mtype)] = memory_allocated/n_cells
+
+        return memory_dict
 
     def _update_targets_local_gids(self):
         logging.info(" > Updating targets")
@@ -590,7 +638,10 @@ class CellDistributor(CellManagerBase):
         log_verbose("Loading metypes from: %s", conf.METypePath)
         log_verbose("Loading '%s' morphologies from: %s",
                     CellType.morpho_extension, conf.MorphologyPath)
-        super()._instantiate_cells(CellType)
+        if SimConfig.dry_run:
+            super()._instantiate_cells_dry(CellType)
+        else:
+            super()._instantiate_cells(CellType)
 
 
 class LoadBalance:

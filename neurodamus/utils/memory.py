@@ -73,9 +73,7 @@ def print_mem_usage():
     """
     Print memory usage information across all ranks.
     """
-    with open("/proc/self/statm") as fd:
-        _, data_size, _ = fd.read().split(maxsplit=2)
-    usage_mb = float(data_size) * os.sysconf("SC_PAGE_SIZE") / 1024 ** 2
+    usage_mb = get_mem_usage()
 
     min_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MIN)
     max_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MAX)
@@ -90,3 +88,14 @@ def print_mem_usage():
         avg_usage_mb,
         dev_usage_mb
     )
+
+
+def get_mem_usage():
+    """
+    Return memory usage information across all ranks.
+    """
+    with open("/proc/self/statm") as fd:
+        _, data_size, _ = fd.read().split(maxsplit=2)
+    usage_mb = float(data_size) * os.sysconf("SC_PAGE_SIZE") / 1024 ** 2
+
+    return usage_mb

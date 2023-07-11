@@ -1653,6 +1653,12 @@ class Neurodamus(Node):
         self._run_conf["EnableReports"] = enable_reports
         self._run_conf["AutoInit"] = auto_init
 
+        if SimConfig.dry_run:
+            self.load_targets()
+            self.create_cells()
+            self._init_ok = True
+            return
+
         if SimConfig.restore_coreneuron:
             self._coreneuron_restore()
         elif SimConfig.build_model:
@@ -1875,6 +1881,9 @@ class Neurodamus(Node):
         """Prepares and launches the simulation according to the loaded config.
         If '--only-build-model' option is set, simulation is skipped.
         """
+        if SimConfig.dry_run:
+            log_stage("============= DRY RUN (SKIP SIMULATION) =============")
+            return
         if not SimConfig.simulate_model:
             self.sim_init()
             log_stage("======== [SKIPPED] SIMULATION (MODEL BUILD ONLY) ========")

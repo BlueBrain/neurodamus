@@ -12,6 +12,9 @@ def change_test_dir(monkeypatch, tmp_path):
 
 
 @pytest.mark.forked
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test initialize internal structure and clashes with other tests")
 def test_nodeset_target_generate_subtargets():
     from neurodamus.core.nodeset import NodeSet
     from neurodamus.target_manager import NodesetTarget

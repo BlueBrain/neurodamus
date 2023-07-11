@@ -268,13 +268,13 @@ class METypeItem(object):
     """ Metadata about an METype, each possibly used by several cells.
     """
     __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
-                 "threshold_current", "holding_current",
+                 "mtype", "threshold_current", "holding_current",
                  "exc_mini_frequency", "inh_mini_frequency", "add_params",
                  "local_to_global_matrix",
                  "extra_attrs")
 
     def __init__(self, morph_name, layer=None, fullmtype=None, etype=None, emodel=None,
-                 combo_name=None, threshold_current=0, holding_current=0,
+                 combo_name=None, mtype=None, threshold_current=0, holding_current=0,
                  exc_mini_frequency=0, inh_mini_frequency=0, add_params=None,
                  position=None, rotation=None, scale=1.0):
         self.morph_name = morph_name
@@ -283,6 +283,7 @@ class METypeItem(object):
         self.etype = etype
         self.emodel = emodel
         self.combo_name = combo_name
+        self.mtype = mtype
         self.threshold_current = float(threshold_current)
         self.holding_current = float(holding_current)
         self.exc_mini_frequency = float(exc_mini_frequency)
@@ -334,7 +335,7 @@ class METypeManager(dict):
         """
         self[int(gid)] = METypeItem(morph_name, *me_data, **kwargs)
 
-    def load_infoNP(self, gidvec, morph_list, emodels,
+    def load_infoNP(self, gidvec, morph_list, emodels, mtypes,
                     threshold_currents=None, holding_currents=None,
                     exc_mini_freqs=None, inh_mini_freqs=None,
                     positions=None, rotations=None,
@@ -348,10 +349,12 @@ class METypeManager(dict):
             inh_mini_freq = inh_mini_freqs[idx] if inh_mini_freqs is not None else .0
             position = positions[idx] if positions is not None else None
             rotation = rotations[idx] if rotations is not None else None
+            mtype = mtypes[idx] if mtypes is not None else None
             add_params = add_params_list[idx] if add_params_list is not None else None
             self[int(gid)] = METypeItem(
                 morph_list[idx],
                 emodel=emodels and emodels[idx],
+                mtype=mtype,  # TODO: check this
                 threshold_current=th_current,
                 holding_current=hd_current,
                 exc_mini_frequency=exc_mini_freq,

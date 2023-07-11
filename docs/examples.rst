@@ -56,8 +56,11 @@ Two options exist to control this behavior:
  - ``--simulate-model=[ON, OFF]`` Controls whether neurodamus will launch the
    simulation automatically. Default: ON
 
-Resource estimation for Users
------------------------------
+Resource estimation
+-------------------
+
+Calculations
+~~~~~~~~~~~~
 When running a simulation on bb5, the number of computing nodes needed depends on the number of
 cells being simulated. A rough(1) estimation is:
 
@@ -77,6 +80,27 @@ taking into consideration that the maximum number of nodes to request for each j
 configurations (e.g. featuring heavier mechanisms) these figures can change significantly.
 This issue is being followed in https://bbpteam.epfl.ch/project/issues/browse/BBPBGLIB-556
 For now we advise users to test jobs on a small scale before submitting a full-scale one.
+
+Dry run mode
+~~~~~~~~~~~~
+In order to obtain a more accurate estimation of the resources needed for a simulation,
+users can also run Neurodamus in dry run mode. This functionality is only available
+for libsonata circuits. MVD3 circuits are not supported.
+
+This mode will instantiate all the cells but won't run the actual simulation.
+The user can then check the memory usage of the simulation as it's printed on
+the terminal and decide how to proceed.
+
+The mode also provides detailed information on the memory usage of each cell type
+and the total memory usage of the simulation.
+
+To run Neurodamus in dry run mode, the user can use the ``--dry-run`` flag when launching
+Neurodamus. For example:
+
+``neurodamus --configFile=BlueConfig --dry-run``
+
+At the moment dry run mode only supports memory estimation for cell instantiation. Evaluation
+of other resources (e.g. connections) will be added in the future. 
 
 
 Neurodamus for Developers
