@@ -343,7 +343,14 @@ class Node:
         is_sonata_config = SimConfig.is_sonata_config
         circuit = self._base_circuit
         if is_sonata_config:
-            name, circuit = next(iter(self._extra_circuits.items()))
+            for name, circuit in self._extra_circuits.items():
+                if circuit.get("PopulationType") != "virtual":
+                    break
+            if circuit.get("PopulationType") == "virtual":
+                logging.warning(
+                    "Cannot calculate the load balance because only virtual populations were found"
+                )
+                return None
             logging.info("Activating experimental LB for Sonata circuit '%s'", name)
 
         if not circuit.CircuitPath:
