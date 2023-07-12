@@ -1,0 +1,73 @@
+{
+    "run": {
+        "random_seed": 0,
+        "tstop": 10,
+        "dt": 0.025
+    },
+    "network": "circuit_config.json",
+    "node_sets_file": "node_sets.json",
+    "node_set": "testNGVSSCX_AstroMini",
+    "output": {
+        "output_dir": "output_sonata"
+    },
+    "inputs": {
+        "ThresholdIntoExc": {
+            "node_set": "src_cells",
+            "input_type": "current_clamp",
+            "module": "noise",
+            "mean_percent": 200.0,
+            "variance": 0.001,
+            "delay": 0.0,
+            "duration": 30000.0
+        },
+        "pInj": {
+            "node_set": "testNGVSSCX",
+            "input_type": "current_clamp",
+            "module": "pulse",
+            "amp_start": 20.0,
+            "amp_end": 20.0,
+            "frequency": 10.0,
+            "width": 5.0,
+            "delay": 1.0,
+            "duration": 3000.0
+        }
+    },
+    "reports": {
+        "voltage": {
+            "cells": "testNGVSSCX",
+            "type": "compartment",
+            "variable_name": "v",
+            "unit": "mV",
+            "dt": 1.0,
+            "start_time": 0.0,
+            "end_time": 2000.0
+        },
+        "NaCurrCompSum": {
+            "cells": "testNGVSSCX",
+            "type": "summation",
+            "variable_name": "ina",
+            "unit": "nA",
+            "dt": 1.0,
+            "start_time": 0.0,
+            "end_time": 2000.0
+        },
+        "NaConcAllCmps": {
+            "cells": "testNGVSSCX",
+            "type": "compartment",
+            "variable_name": "nai",
+            "unit": "mM",
+            "dt": 1.0,
+            "start_time": 0.0,
+            "end_time": 2000.0
+        },
+        "ATPConcAllCmps": {
+            "cells": "testNGVSSCX",
+            "type": "compartment",
+            "variable_name": "atpi",
+            "unit": "mM",
+            "dt": 1.0,
+            "start_time": 0.0,
+            "end_time": 2000.0
+        }
+    }
+}

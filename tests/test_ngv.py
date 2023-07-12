@@ -13,7 +13,7 @@ from neurodamus import Neurodamus
 from neurodamus.ngv import GlioVascularManager
 
 SIM_DIR = Path(__file__).parent.absolute() / "simulations" / "ngv"
-BLUECONFIG_FILE = SIM_DIR / "BlueConfig"
+SONATACONFIG_FILE = SIM_DIR / "simulation_config.json"
 
 pytestmark = [
     pytest.mark.forked,
@@ -83,16 +83,9 @@ def get_R0pas_ref(astro_id, manager):
     We need manager just for the paths (they could also be hardcoded)
     """
 
-    path = manager.circuit_conf["Path"]
-    storage = libsonata.EdgeStorage(path)
-    pop_name = list(storage.population_names)[0]
-    gliovascular_pop = storage.open_population(pop_name)
-
-    path = manager.circuit_conf["VasculaturePath"]
-    storage = libsonata.NodeStorage(path)
-    pop_name = list(storage.population_names)[0]
-    vasculature_pop = storage.open_population(pop_name)
-
+    manager.open_edge_location(manager.circuit_conf["Path"], manager.circuit_conf)
+    gliovascular_pop = manager._gliovascular
+    vasculature_pop = manager._vasculature
     endfeet = gliovascular_pop.afferent_edges(astro_id)
     vasc_node_ids = libsonata.Selection(gliovascular_pop.source_nodes(endfeet))
 
@@ -110,7 +103,7 @@ def get_R0pas_ref(astro_id, manager):
 def test_vasccouplingB_radii():
     load_neurodamus_neocortex_multiscale()
     ndamus = Neurodamus(
-        str(BLUECONFIG_FILE),
+        str(SONATACONFIG_FILE),
         enable_reports=False,
         logging_level=None,
         enable_coord_mapping=True,

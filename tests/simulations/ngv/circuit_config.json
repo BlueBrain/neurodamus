@@ -1,0 +1,71 @@
+{
+    "version": 1,
+    "manifest": {
+        "$BASE_DIR": "/gpfs/bbp.cscs.ch/project/proj12/jenkins/subcellular/blueconfigs_test/simulation-sonataconf"
+    },
+    "node_sets_file": "node_sets.json",
+    "networks": {
+        "nodes": [
+            {
+                "nodes_file": "$BASE_DIR/base_circuit/nodes.h5",
+                "populations": {
+                    "All": {
+                        "type": "biophysical",
+                        "biophysical_neuron_models_dir": "$BASE_DIR/base_circuit/emodels_atp_scan/emodels_atp_1p4",
+                        "alternate_morphologies": {
+                            "neurolucida-asc": "$BASE_DIR/base_circuit/morphologies/fixed_ais_L23PC_20201210/ascii"
+                        }
+                    }
+                }
+            },
+            {
+                "nodes_file": "$BASE_DIR/astrocytes/nodes.h5",
+                "populations": {
+                    "astrocytes": {
+                        "type": "astrocyte",
+                        "morphologies_dir": "$BASE_DIR/astrocytes/morphologies/astrocytes/h5",
+                        "biophysical_neuron_models_dir": "$BASE_DIR/emodels",
+                        "microdomains_file": "PLACEHOLDER"
+                    }
+                }
+            },
+            {
+                "nodes_file": "$BASE_DIR/vasculature/nodes.h5",
+                "populations": {
+                    "vasculature": {
+                        "type": "vasculature",
+                        "vasculature_file": "PLACEHOLDER",
+                        "vasculature_mesh": "PLACEHOLDER"
+                    }
+                }
+            }
+        ],
+        "edges": [
+            {
+                "edges_file": "$BASE_DIR/base_circuit/edges.h5",
+                "populations": {
+                    "default": {
+                        "type": "chemical"
+                    }
+                }
+            },
+            {
+                "edges_file": "$BASE_DIR/astrocytes/edges.h5",
+                "populations": {
+                    "neuroglial": {
+                        "type": "synapse_astrocyte"
+                    }
+                }
+            },
+            {
+                "edges_file": "$BASE_DIR/vasculature/edges.h5",
+                "populations": {
+                    "gliovascular": {
+                        "type": "endfoot",
+                        "endfeet_meshes_file" : "PLACEHOLDER"
+                    }
+                }
+            }
+        ]
+    }
+}
