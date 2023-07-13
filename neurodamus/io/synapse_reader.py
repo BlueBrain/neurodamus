@@ -43,6 +43,27 @@ class _SynParametersMeta(type):
         cls.dtype = np.dtype({"names": cls._synapse_fields,
                               "formats": ["f8"] * len(cls._synapse_fields)})
         cls.empty = np.recarray(0, cls.dtype)
+        if not hasattr(cls, "_optional"):
+            cls._optional = ()
+        # Reserved fields are used to hold extra info, don't come from edge files
+        if not hasattr(cls, "_reserved"):
+            cls._reserved = ()
+
+        cls.load_fields = set(cls._synapse_fields) - set(cls._reserved)
+
+    @property
+    def all_fields(cls):
+        return set(cls._synapse_fields)
+
+    def fields(cls, exclude: set = (), with_translation: dict = None):
+        fields = cls.load_fields - exclude if exclude else cls.load_fields
+        if with_translation:
+            return [(f, with_translation.get(f, f), f in cls._optional) for f in fields]
+        else:
+            return [(f, f in cls._optional) for f in fields]
+
+    def create_array(cls, length):
+        return np.recarray(length, cls.dtype)
 
 
 class SynapseParameters(metaclass=_SynParametersMeta):
@@ -51,6 +72,9 @@ class SynapseParameters(metaclass=_SynParametersMeta):
     _synapse_fields = ("sgid", "delay", "isec", "ipt", "offset", "weight", "U", "D", "F",
                        "DTC", "synType", "nrrp", "u_hill_coefficient", "conductance_ratio",
                        "maskValue", "location")  # total: 16
+
+    _optional = ("u_hill_coefficient", "conductance_ratio")
+    _reserved = ("maskValue", "location")
 
     def __new__(cls, *_):
         raise NotImplementedError()
@@ -63,16 +87,10 @@ class SynapseParameters(metaclass=_SynParametersMeta):
         npa.location = 0.5
         return npa
 
-    @classmethod
-    def concatenate(cls, syn_params, extra_syn_params):
-        from numpy.lib.recfunctions import merge_arrays
-        new_params = merge_arrays((syn_params, extra_syn_params), asrecarray=True, flatten=True)
-        return new_params
 
-
-class SynapseReader(object):
+class SynapseReader:
     """ Synapse Readers base class.
-        Factory create() will attempt to instantiate SynReaderSynTool, followed by SynReaderNRN.
+        Factory create() will attempt to instantiate a SONATA reader, followed by SynReaderNRN.
     """
     # Data types to read
     SYNAPSES = 0
@@ -87,7 +105,6 @@ class SynapseReader(object):
         # while u_hill_coefficient can always be readif avail, conductance reader may not.
         self._uhill_property_avail = self.has_property("u_hill_coefficient")
         self._extra_fields = tuple()
-        self._extra_fields_parameters = None
         self._extra_scale_vars = []
 
     def preload_data(self, ids):
@@ -104,13 +121,9 @@ class SynapseReader(object):
         attr_names = getattr(Nd, override_helper + "_NeededAttributes", None)
         if attr_names:
             log_verbose('Reading parameters "{}" for mod override: {}'.format(
-                ", ".join(attr_names.split(";")), mod_override))
-
-            class CustomSynapseParameters(SynapseParameters):
-                _synapse_fields = tuple(attr_names.split(";"))
-
+                ", ".join(attr_names.split(";")), mod_override)
+            )
             self._extra_fields = tuple(attr_names.split(";"))
-            self._extra_fields_parameters = CustomSynapseParameters
 
         # Read attribute names with format "attr1;attr2;attr3"
         attr_names = getattr(Nd, override_helper + "_UHillScaleVariables", None)
@@ -174,40 +187,30 @@ class SynapseReader(object):
 
     @classmethod
     def create(cls, syn_src, conn_type=SYNAPSES, population=None, *args, **kw):
-        """Instantiates a synapse reader, giving preference to SynReaderSynTool
+        """Instantiates a synapse reader, giving preference to SonataReader
         """
-        # If create called from this class then FACTORY, try SynReaderSynTool
-        if cls is SynapseReader:
-            kw["verbose"] = (MPI.rank == 0)
-            if fn := _get_sonata_circuit(syn_src):
-                log_verbose("[SynReader] Using SonataReader.")
-                return SonataReader(fn, conn_type, population, **kw)
-            if cls.is_syntool_enabled():
-                log_verbose("[SynReader] Using new-gen SynapseReader.")
-                return SynReaderSynTool(syn_src, conn_type, population, **kw)
-            else:
-                if not os.path.isdir(syn_src) and not syn_src.endswith(".h5"):
-                    raise SynToolNotAvail(
-                        "Can't load new synapse formats without syntool. File: {}".format(syn_src))
-                logging.info("[SynReader] Attempting legacy hdf5 reader.")
-                return SynReaderNRN(syn_src, conn_type, None, *args, **kw)
-        else:
+        # If create() called from this class then FACTORY. Otherwise instantiate directly
+        if cls is not SynapseReader:
             return cls(syn_src, conn_type, population, *args, **kw)
 
-    @classmethod
-    def is_syntool_enabled(cls):
-        """Checks whether Neurodamus has built-in support for SynapseTool.
-        """
-        if not hasattr(cls, '_syntool_enabled'):
-            cls._syntool_enabled = Nd.SynapseReader().modEnabled()
-        return cls._syntool_enabled
+        kw["verbose"] = (MPI.rank == 0)
+        if fn := _get_sonata_circuit(syn_src):
+            log_verbose("[SynReader] Using SonataReader.")
+            return SonataReader(fn, conn_type, population, **kw)
+
+        # We dropped syntool (july-2023). If not SONATA try with the old nrn reader
+        if os.path.isdir(syn_src) or syn_src.endswith(".h5"):
+            logging.info("[SynReader] Attempting legacy hdf5 reader.")
+            return SynReaderNRN(syn_src, conn_type, None, *args, **kw)
+
+        raise FormatNotSupported(f"File: {syn_src}. Please provide SONATA edges")
 
 
 class SonataReader(SynapseReader):
     """Reader for SONATA edge files.
 
     Uses libsonata directly and contains a bunch of workarounds to accomodate files
-    created in the transition to SONATA.  Also translates all GIDs from 0-based as on disk
+    created in the transition to SONATA. Also translates all GIDs from 0-based as on disk
     to the 1-based convention in Neurodamus.
 
     Will read each attribute for multiple GIDs at once and cache read data in a columnar
@@ -215,7 +218,24 @@ class SonataReader(SynapseReader):
 
     FIXME Remove the caching at the np.recarray level.
     """
-    SYNAPSE_INDEX_NAMES = set(["synapse_index"])
+
+    SYNAPSE_INDEX_NAMES = ("synapse_index",)
+    LOOKUP_BY_TARGET_IDS = True  # False to lookup by Source Ids
+    Parameters = SynapseParameters  # By default we load synapses
+
+    custom_parameters = {"isec", "ipt", "offset"}
+    """Custom parameters are skipped from direct loading and trigger _load_params_custom()"""
+
+    parameter_mapping = {
+        "weight": "conductance",
+        "U": "u_syn",
+        "D": "depression_time",
+        "F": "facilitation_time",
+        "DTC": "decay_time",
+        "synType": "syn_type_id",
+        "nrrp": "n_rrp_vesicles",
+        "conductance_ratio": "conductance_scale_factor",
+    }
 
     def _open_file(self, src, population, _):
         storage = libsonata.EdgeStorage(src)
@@ -223,6 +243,8 @@ class SonataReader(SynapseReader):
             assert len(storage.population_names) == 1
             population = next(iter(storage.population_names))
         self._population = storage.open_population(population)
+        # _data is a cache which stores all the fields for each gid
+        # E.g. {1: {"sgid": property_numpy}}
         self._data = {}
 
     def has_nrrp(self):
@@ -241,231 +263,127 @@ class SonataReader(SynapseReader):
 
     def preload_data(self, ids):
         """Preload SONATA fields for the specified IDs"""
+        compute_fields = set(("sgid", "tgid") + self.SYNAPSE_INDEX_NAMES)
         needed_ids = sorted(set(ids) - set(self._data.keys()))
-        needed_edge_ids = self._population.afferent_edges([gid - 1 for gid in needed_ids])
 
-        tgids = self._population.target_nodes(needed_edge_ids) + 1
-        sgids = self._population.source_nodes(needed_edge_ids) + 1
+        def get_edge_and_lookup_gids(needed_ids):
+            gids_0based = np.array(needed_ids, dtype="int64") - 1
+            if self.LOOKUP_BY_TARGET_IDS:
+                edge_ids = self._population.afferent_edges(gids_0based)
+                return edge_ids, self._population.target_nodes(edge_ids) + 1
+            else:
+                edge_ids = self._population.efferent_edges(gids_0based)
+                return edge_ids, self._population.source_nodes(edge_ids) + 1
+
+        needed_edge_ids, lookup_gids = get_edge_and_lookup_gids(needed_ids)
 
         def _populate(field, data):
+            # Populate cache. Unavailable entries are stored as a plain -1
+            if data is None:
+                data = -1
             for gid in needed_ids:
-                idx = tgids == gid
-                self._data.setdefault(gid, {})[field] = data[idx]
+                existing_gid_data = self._data.setdefault(gid, {})
+                existing_gid_data[field] = data if np.isscalar(data) else data[lookup_gids == gid]
 
-        def _read(attribute, optional):
+        def _read(attribute, optional=False):
             if attribute in self._population.attribute_names:
                 return self._population.get_attribute(attribute, needed_edge_ids)
             elif optional:
-                if attribute:
-                    log_verbose("Defaulting to -1.0 for attribute %s", attribute)
-                # Without the dtype, will default to unsigned int like tgids and
-                # underflow!
-                return np.full_like(tgids, -1.0, dtype="f8")
+                log_verbose("Defaulting to -1.0 for attribute %s", attribute)
+                return -1
             else:
                 raise AttributeError(f"Missing attribute {attribute} in the SONATA edge file")
 
-        _populate("tgid", tgids)
-        _populate("sgid", sgids)
-
-        # Synaptic properties
-        _populate("delay", _read("delay", False))
-        _populate("weight", _read("conductance", False))
-        _populate("U", _read("u_syn", False))
-        _populate("D", _read("depression_time", False))
-        _populate("F", _read("facilitation_time", False))
-        _populate("DTC", _read("decay_time", False))
-        _populate("synType", _read("syn_type_id", False))
-        _populate("nrrp", _read("n_rrp_vesicles", False))
-
-        # These two attributes were added later and are considered optional
-        _populate("u_hill_coefficient", _read("u_hill_coefficient", True))
-        _populate("conductance_ratio", _read("conductance_scale_factor", True))
+        # Populate the opposite node id
+        if self.LOOKUP_BY_TARGET_IDS:
+            _populate("sgid", self._population.source_nodes(needed_edge_ids) + 1)
+        else:
+            _populate("tgid", self._population.target_nodes(needed_edge_ids) + 1)
 
         # Make synapse index in the file explicit
         for name in self.SYNAPSE_INDEX_NAMES:
             _populate(name, needed_edge_ids.flatten())
 
+        # Generic synapse parameters
+        fields_load_sonata = self.Parameters.fields(exclude=self.custom_parameters | compute_fields,
+                                                    with_translation=self.parameter_mapping)
+        for (field, sonata_attr, is_optional) in fields_load_sonata:
+            _populate(field, _read(sonata_attr, is_optional))
+
+        if self.custom_parameters:
+            self._load_params_custom(_populate, _read)
+
+        # Extend Gids data with the additional requested fields
+        # This has to work for when we call preload() a second/third time
+        # so we are unsure about which gids were loaded what properties
+        # We nevertheless can skip any base fields
+        for field in set(self._extra_fields) - (self.Parameters.all_fields | compute_fields):
+            now_needed_ids = sorted(set(gid for gid in ids if field not in self._data[gid]))
+            if needed_ids != now_needed_ids:
+                needed_ids = now_needed_ids
+                needed_edge_ids, lookup_gids = get_edge_and_lookup_gids(needed_ids)
+            sonata_attr = self.parameter_mapping.get(field, field)
+            _populate(field, _read(sonata_attr))
+
+    def _load_params_custom(self, _populate, _read):
         # Position of the synapse
         if self.has_property("afferent_section_id"):
-            _populate("isec", _read("afferent_section_id", False))
+            _populate("isec", _read("afferent_section_id"))
             # SONATA compliant synapse position: (section, section_fraction) takes precedence
             # over the older (section, segment, segment_offset) synapse position.
             #
-            # Re-using field names for historical reason.
+            # Re-using field names for historical reason, where -1 means N/A.
             # FIXME Use dedicated fields
             if self.has_property("afferent_section_pos"):
-                # None shan't ever be in the `attribute_names` → defaults to -1.0
-                _populate("ipt", _read(None, True))
-                _populate("offset", _read("afferent_section_pos", False))
+                _populate("ipt", -1)
+                _populate("offset", _read("afferent_section_pos"))
             # This was a temporary naming scheme
             # FIXME Circuits using this field should be fixed
             elif self.has_property("afferent_section_fraction"):
                 logging.warning(
                     "Circuit uses non-standard compliant attribute `afferent_section_fraction`"
                 )
-                # None shan't ever be in the `attribute_names` → defaults to -1.0
-                _populate("ipt", _read(None, True))
-                _populate("offset", _read("afferent_section_fraction", False))
+                _populate("ipt", -1)
+                _populate("offset", _read("afferent_section_fraction"))
             else:
                 logging.warning(
                     "Circuit is missing standard compliant attribute `afferent_section_pos`"
                 )
-                _populate("ipt", _read("afferent_segment_id", False))
-                _populate("offset", _read("afferent_segment_offset", False))
+                _populate("ipt", _read("afferent_segment_id"))
+                _populate("offset", _read("afferent_segment_offset"))
         else:
             # FIXME All this should go the way of the dodo
             logging.warning(
                 "Circuit uses attribute notation using `morpho_` and is not SONATA compliant"
             )
-            _populate("isec", _read("morpho_section_id_post", False))
+            _populate("isec", _read("morpho_section_id_post"))
             if self.has_property("morpho_section_fraction_post"):
-                # None shan't ever be in the `attribute_names` → defaults to -1.0
-                _populate("ipt", _read(None, True))
-                _populate("offset", _read("morpho_section_fraction_post", False))
+                _populate("ipt", -1)
+                _populate("offset", _read("morpho_section_fraction_post"))
             else:
-                _populate("ipt", _read("morpho_segment_id_post", False))
-                _populate("offset", _read("morpho_offset_segment_post", False))
-
-        for name in self._extra_fields:
-            now_needed_ids = sorted(set(gid for gid in ids if name not in self._data[gid]))
-            if needed_ids != now_needed_ids:
-                needed_ids = now_needed_ids
-                needed_edge_ids = self._population.afferent_edges([gid - 1 for gid in needed_ids])
-                tgids = self._population.target_nodes(needed_edge_ids) + 1
-            _populate(name, _read(name, False))
+                _populate("ipt", _read("morpho_segment_id_post"))
+                _populate("offset", _read("morpho_offset_segment_post"))
 
     def _load_synapse_parameters(self, gid):
         if gid not in self._data:
             self.preload_data([gid])
 
         data = self._data[gid]
+        edge_count = len(next(iter(data.values())))
 
         if self._extra_fields:
-            class CustomSynapseParameters(SynapseParameters):
-                _synapse_fields = SynapseParameters._synapse_fields + self._extra_fields
-            conn_syn_params = CustomSynapseParameters.create_array(len(data["sgid"]))
+            class CustomSynapseParameters(self.Parameters):
+                _synapse_fields = self.Parameters._synapse_fields + self._extra_fields
+            conn_syn_params = CustomSynapseParameters.create_array(edge_count)
         else:
-            conn_syn_params = SynapseParameters.create_array(len(data["sgid"]))
+            conn_syn_params = self.Parameters.create_array(edge_count)
 
-        conn_syn_params["sgid"] = data["sgid"]
-        for name in SynapseParameters._synapse_fields[1:-2]:
+        for name in self.Parameters.load_fields:
             conn_syn_params[name] = data[name]
-        if self._extra_fields:
-            for name in self._extra_fields:
-                conn_syn_params[name] = data[name]
+        for name in self._extra_fields:
+            conn_syn_params[name] = data[name]
 
         return conn_syn_params
-
-
-class SynReaderSynTool(SynapseReader):
-    """ Synapse Reader using synapse tool.
-        Currently it uses the neuron NMODL interface.
-    """
-    SYNREADER_MOD_NFIELDS_DEFAULT = 14
-    _has_warned_field_count_mismatch = False
-    _is_sonata_circuit = False
-
-    def _open_file(self, syn_src, population, verbose=False):
-        if not self.is_syntool_enabled():
-            raise SynToolNotAvail("SynapseReader support not available.")
-        if os.path.isdir(syn_src) and self._conn_type == self.GAP_JUNCTIONS:
-            alt_gj_nrn_file = os.path.join(syn_src, "nrn_gj.h5")
-            if os.path.isfile(alt_gj_nrn_file):
-                log_verbose("Found gj nrn file: nrn_gj.h5")
-                syn_src = alt_gj_nrn_file
-            # else pass the dir as is, SynapseReader can find e.g. nrn.h5
-
-        self._syn_reader = None  # Clear syn_reader before creating a new one
-        reader = self._syn_reader = Nd.SynapseReader(syn_src, verbose)
-        if population:
-            reader.selectPopulation(population)
-        self._is_sonata_circuit = bool(_get_sonata_circuit(syn_src))
-
-    def _load_synapse_parameters(self, gid):
-        reader = self._syn_reader
-        nrow, record_size, supported_nfields, conn_syn_params = self._load_reader(gid, reader)
-        if nrow < 1:
-            return SynapseParameters.empty
-
-        syn_params_mtx = conn_syn_params.view(('f8', len(conn_syn_params.dtype)))
-        tmpParams = Nd.Vector(record_size)
-
-        # Do checks for the matching of the record size
-        reader.getSynapse(0, tmpParams)
-        record_size = tmpParams.size()
-        n_fields = min(record_size, supported_nfields)
-        if supported_nfields < record_size and not self._has_warned_field_count_mismatch:
-            logging.warning("SynapseReader records are %d fields long while neurodamus-py "
-                            "only recognizes %d. Update neurodamus-py to use them.",
-                            record_size, supported_nfields)
-            SynReaderSynTool._has_warned_field_count_mismatch = True
-
-        for syn_i in range(nrow):
-            reader.getSynapse(syn_i, tmpParams)
-            # as_numpy() shares memory to ndarray[double] -> can be copied (assigned) to the view
-            syn_params_mtx[syn_i, :n_fields] = tmpParams.as_numpy()[:n_fields]
-
-        if self._extra_fields_parameters:
-            mod_override_params = self._read_extra_fields_from_mod_override(gid)
-            if mod_override_params is not None:
-                conn_syn_params = SynapseParameters.concatenate(
-                    conn_syn_params,
-                    mod_override_params
-                )
-
-        return conn_syn_params
-
-    def _load_reader(self, gid, reader):
-        """ Load synapse data from reader,
-            to be overridden in derived class for different SynapseParameters and data fields.
-        """
-        if self._is_sonata_circuit:
-            self._check_sonata_required_fields(["n_rrp_vesicles"])
-        nrow = int(reader.loadSynapses(gid))
-        if nrow < 1:
-            return nrow, 0, 0, SynapseParameters.empty
-
-        conn_syn_params = SynapseParameters.create_array(nrow)
-        supported_nfields = len(conn_syn_params.dtype) - 2  # non-mod fields: mask and location
-        return nrow, self.SYNREADER_MOD_NFIELDS_DEFAULT, supported_nfields, conn_syn_params
-
-    def has_nrrp(self):
-        return self._syn_reader.hasNrrpField()
-
-    def has_property(self, field_name):
-        return bool(self._syn_reader.hasProperty(field_name))
-
-    def get_property(self, gid, field_name, *is_pre):
-        """Retrieves a full property (vector) given a gid and the property name.
-        """
-        self._syn_reader.loadSynapseCustom(gid, field_name, *is_pre)
-        field_data = Nd.Vector()
-        self._syn_reader.getPropertyData(0, field_data)
-        return field_data.as_numpy().copy()
-
-    def _read_extra_fields_from_mod_override(self, tgid):
-        reader = self._syn_reader
-        req_fields_str = ", ".join(self._extra_fields_parameters._synapse_fields)
-        nrow = int(reader.loadSynapseCustom(tgid, req_fields_str))
-        if nrow < 1:
-            return self._extra_fields_parameters.empty
-
-        conn_syn_params = self._extra_fields_parameters.create_array(nrow)
-        syn_params_mtx = conn_syn_params.view(('f8', len(conn_syn_params.dtype)))
-        tmpParams = Nd.Vector(len(conn_syn_params.dtype))
-
-        for syn_i in range(nrow):
-            reader.getSynapse(syn_i, tmpParams)
-            syn_params_mtx[syn_i] = tmpParams.as_numpy()
-
-        return conn_syn_params
-
-    def _check_sonata_required_fields(self, fields=[]):
-        for name in fields:
-            if not self.has_property(name):
-                logging.error("Synapse parameter '" + name + "' is required in the edges file")
-                raise SynToolNotAvail("Synapse parameter '" + name +
-                                      "' is required in the edges file")
 
 
 class SynReaderNRN(SynapseReader):
@@ -549,7 +467,7 @@ class SynReaderNRN(SynapseReader):
         return conn_syn_params
 
 
-class SynToolNotAvail(Exception):
+class FormatNotSupported(Exception):
     """Exception thrown when the circuit requires SynapseTool and it is NOT built-in.
     """
     pass

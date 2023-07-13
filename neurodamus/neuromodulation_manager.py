@@ -3,7 +3,7 @@ import logging
 from .connection_manager import SynapseRuleManager
 from .connection import Connection, NetConType, ReplayMode
 from .core.configuration import GlobalConfig, SimConfig
-from .io.synapse_reader import SynapseParameters, SynReaderSynTool
+from .io.synapse_reader import SynapseParameters, SonataReader
 from .utils.logging import log_all
 
 
@@ -109,28 +109,15 @@ class ModulationConnParameters(SynapseParameters):
     # weight is a placeholder for replaystim, default to 1. and overwritten by connection weight.
     _synapse_fields = ("sgid", "delay", "isec", "offset", "neuromod_strength", "neuromod_dtc",
                        "ipt", "location", "weight")
-    # Data fields to read from edges file
-    _data_fields = ("connected_neurons_pre", "delay", "afferent_section_id", "afferent_section_pos",
-                    "neuromod_strength", "neuromod_dtc")
 
 
-class NeuroModulationSynapseReader(SynReaderSynTool):
-    def _load_reader(self, gid, reader):
-        """ Override the function from base case.
-            Call loadSynapseCustom to read customized fields rather than the default fields
-            in SynapseReader.mod
-        """
-        requested_fields = ModulationConnParameters._data_fields
-        nrow = int(reader.loadSynapseCustom(gid, ",".join(requested_fields)))
-        if nrow < 1:
-            return nrow, 0, 0, ModulationConnParameters.empty
+class NeuroModulationSynapseReader(SonataReader):
+    Parameters = ModulationConnParameters
+    custom_parameters = {"isec", "ipt", "offset", "weight"}
 
-        record_size = len(requested_fields)
-        conn_syn_params = ModulationConnParameters.create_array(nrow)
-        conn_syn_params.ipt = -1
-        conn_syn_params.weight = 1.
-        supported_nfields = len(conn_syn_params.dtype) - 2  # location, ipt is not read from data
-        return nrow, record_size, supported_nfields, conn_syn_params
+    def _load_params_custom(self, _populate, _read):
+        super()._load_params_custom(_populate, _read)
+        _populate("weight", 1)
 
 
 class NeuroModulationManager(SynapseRuleManager):

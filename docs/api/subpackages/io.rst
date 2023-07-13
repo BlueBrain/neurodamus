@@ -39,10 +39,9 @@ neurodamus.io.synapse\_reader
       SynapseParameters
       SynapseReader
       SynReaderNRN
-      SynReaderSynTool
 
 
    .. rubric:: Exceptions
 
    .. autosummary::
-      SynToolNotAvail
+      FormatNotSupported

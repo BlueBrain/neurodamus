@@ -23,7 +23,7 @@ Run Default
 
 Projection gapjunction
 {
-    Path gap_junctions/gj.syn2
+    Path gap_junctions
     Type GapJunction
 }
 

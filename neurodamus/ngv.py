@@ -13,7 +13,7 @@ from .connection_manager import ConnectionManagerBase
 from .core import EngineBase
 from .core import NeurodamusCore as Nd, MPI
 from .core.configuration import GlobalConfig
-from .io.synapse_reader import SynapseParameters, SynReaderSynTool
+from .io.synapse_reader import SynapseParameters, SonataReader
 from .utils import bin_search
 from .utils.logging import log_verbose
 from .utils.pyutils import append_recarray
@@ -225,36 +225,19 @@ class AstrocyteManager(CellDistributor):
 
 
 class NeuroGliaConnParameters(SynapseParameters):
-    _synapse_fields = [
-        "connected_neurons_post",
+    _synapse_fields = (
+        "tgid",
         "synapse_id",
         "astrocyte_section_id",
         "astrocyte_segment_id",
         "astrocyte_segment_offset"
-    ]
+    )
 
 
-class NeuroGlialSynapseReader(SynReaderSynTool):
-    def _load_reader(self, glia_gid, reader):
-        """ Override the function from base case.
-            Call loadSynapseCustom to read customized fields rather than the default fields
-            in SynapseReader.mod
-        """
-        req_fields_str = ", ".join(NeuroGliaConnParameters._synapse_fields)
-        nrow = int(reader.loadSynapseCustom(glia_gid, req_fields_str, True))
-        if nrow < 1:
-            return nrow, 0, 0, NeuroGliaConnParameters.empty
-
-        conn_syn_params = NeuroGliaConnParameters.create_array(nrow)
-        record_size = len(conn_syn_params.dtype)
-        return nrow, record_size, record_size, conn_syn_params
-
-    def get_synapse_parameters(self, glia_gid, _mod=None):
-        """Returns NeuroGlia synapses parameters for a given astrocyte
-        """
-        # Direct load and return. Cache is not worth being used
-        # NOTE: thanks to _gid_offset, glia gid here is already offset
-        return self._load_synapse_parameters(glia_gid)
+class NeuroGlialSynapseReader(SonataReader):
+    LOOKUP_BY_TARGET_IDS = False
+    Parameters = NeuroGliaConnParameters
+    custom_parameters = set()
 
 
 USE_COMPAT_SYNAPSE_ID = True
