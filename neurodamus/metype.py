@@ -43,12 +43,14 @@ class METype(BaseCell):
     morpho_extension = "asc"
     """The extension to be applied to morphology files"""
 
+    KEEP_AXON_FLAG = 400
+
     __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons',
                  '_synapses', '_syn_helper_list', '_emodel_name',
                  'exc_mini_frequency', 'inh_mini_frequency',
                  'extra_attrs')
 
-    def __init__(self, gid, etype_path, emodel, morpho_path, meinfos=None):
+    def __init__(self, gid, etype_path, emodel, morpho_path, meinfos=None, detailed_axon=False):
         """Instantite a new Cell from METype
 
         Args:
@@ -69,7 +71,7 @@ class METype(BaseCell):
         self.inh_mini_frequency = None
         self.extra_attrs = None
 
-        self._instantiate_cell(gid, etype_path, emodel, morpho_path, meinfos)
+        self._instantiate_cell(gid, etype_path, emodel, morpho_path, meinfos, detailed_axon)
 
     gid = property(lambda self: int(self._cellref.gid),
                    lambda self, val: setattr(self._cellref, 'gid', val))
@@ -128,6 +130,9 @@ class METype(BaseCell):
         """
         self._ccell.re_init_rng(ion_seed)
 
+    def delete_axon(self):
+        pass
+
     def __del__(self):
         self._cellref.clear()  # cut cyclic reference
 
@@ -138,15 +143,17 @@ class Cell_V6(METype):
     def __init__(self, gid, meinfo, circuit_conf):
         mepath = circuit_conf.METypePath
         morpho_path = circuit_conf.MorphologyPath
-        super().__init__(gid, mepath, meinfo.emodel, morpho_path, meinfo)
+        detailed_axon = circuit_conf.DetailedAxon
+        super().__init__(gid, mepath, meinfo.emodel, morpho_path, meinfo, detailed_axon)
 
-    def _instantiate_cell(self, gid, etype_path, emodel, morpho_path, meinfos_v6):
+    def _instantiate_cell(self, gid, etype_path, emodel, morpho_path, meinfos_v6, detailed_axon):
         """Instantiates a SSCx v6 cell
         """
         Nd.load_hoc(ospath.join(etype_path, emodel))
         EModel = getattr(Nd, emodel)
         morpho_file = meinfos_v6.morph_name + "." + self.morpho_extension
-        add_params = meinfos_v6.add_params or ()
+        keep_axon = detailed_axon and self.KEEP_AXON_FLAG
+        add_params = meinfos_v6.add_params or (keep_axon,)  # Keep axon incompatible with add_params
 
         logging.debug("Loading Gid %d: emodel: %s, Morphology: %s", gid, emodel, morpho_file)
         self._cellref = EModel(gid, morpho_path, morpho_file, *add_params)
@@ -168,6 +175,10 @@ class Cell_V6(METype):
             raise Exception("Nodes don't provide all 3d position/rotation info")
         return vector_rotate_translate(points, self.local_to_global_matrix)
 
+    def delete_axon(self):
+        logging.info("Now deleting the axon! 🤩")
+        self._cellref.replace_axon()
+
     def __getattr__(self, item):
         prop = self.extra_attrs.get(item)
         if prop is None:
@@ -187,7 +198,7 @@ class Cell_V5(METype):
         melabel = self._load_template(meinfo, mepath)
         super().__init__(gid, mepath, melabel, morpho_path)
 
-    def _instantiate_cell(self, gid, etype_path, emodel, morpho_path, meinfos):
+    def _instantiate_cell(self, gid, _etype_path, emodel, morpho_path, _meinfos, _axon):
         """Instantiates a cell v5 or older. Assumes emodel hoc templates are loaded
         """
         EModel = getattr(Nd, emodel)

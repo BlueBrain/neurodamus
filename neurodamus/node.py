@@ -1625,8 +1625,13 @@ class Neurodamus(Node):
     """A high level interface to Neurodamus
     """
 
-    def __init__(self, config_file, auto_init=True, logging_level=None,
-                 cleanup_atexit=True, **user_opts):
+    def __init__(
+        self, config_file,
+        auto_init=True,
+        cleanup_atexit=True,
+        logging_level=None,
+        **user_opts
+    ):
         """Creates and initializes a neurodamus run node
 
         As part of Initiazation it calls:
@@ -1648,12 +1653,11 @@ class Neurodamus(Node):
             user_opts: Options to Neurodamus overriding BlueConfig
         """
         self._init_ok = False
-        if logging_level is not None:
-            GlobalConfig.verbosity = logging_level
-
+        self.cleanup_atexit = cleanup_atexit
         enable_reports = not user_opts.pop("disable_reports", False)
 
-        self.cleanup_atexit = cleanup_atexit
+        if logging_level is not None:
+            GlobalConfig.verbosity = logging_level
 
         Node.__init__(self, config_file, user_opts)
         # Use the run_conf dict to avoid passing it around
@@ -1732,7 +1736,7 @@ class Neurodamus(Node):
             with open(filename) as fd:
                 first_line = fd.readline()
                 nlines = int(fd.readline())
-                for lineNumber in range(nlines):
+                for _ in range(nlines):
                     line = fd.readline()
                     cn_entries.append(line)
 

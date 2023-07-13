@@ -19,8 +19,8 @@ from .connection_manager import ConnectionManagerBase
 from .core import MPI, mpi_no_errors, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar
-from .core.configuration import GlobalConfig, LoadBalanceMode, LogLevel, find_input_file, SimConfig
 from .core.configuration import ConfigurationError
+from .core.configuration import GlobalConfig, LoadBalanceMode, LogLevel, find_input_file, SimConfig
 from .core.nodeset import NodeSet
 from .io import cell_readers
 from .metype import Cell_V5, Cell_V6, EmptyCell
@@ -116,7 +116,7 @@ class CellManagerBase(_CellManager):
     _node_format = NodeFormat.SONATA  # NCS, Mvd, Sonata...
     """Default Node file format"""
 
-    def __init__(self, circuit_conf, target_manager, *_):
+    def __init__(self, circuit_conf, target_manager, _run_conf=None, **_kw):
         """Initializes CellDistributor
 
         Args:
@@ -139,6 +139,7 @@ class CellManagerBase(_CellManager):
         self._binfo = None
         self._pc = Nd.pc
         self._conn_managers_per_src_pop = weakref.WeakValueDictionary()
+
         if type(circuit_conf.CircuitPath) is str:
             self._init_config(circuit_conf, self._target_spec.population or '')
         else:
@@ -421,8 +422,10 @@ class CellManagerBase(_CellManager):
             self._conn_managers_per_src_pop[src_population] = conn_manager
 
     def post_stdinit(self):
-        """Post stdinit actions, sublasses may override if needed"""
-        pass
+        """Post stdinit actions"""
+        if self._circuit_conf.DetailedAxon:
+            for c in self.cells:
+                c.delete_axon()
 
 
 class LFPManager:
@@ -603,6 +606,9 @@ class CellDistributor(CellManagerBase):
             circuit_conf.nrnPath and ospath.isfile(ospath.join(circuit_conf.nrnPath, "start.ncs"))
             and not ospath.isfile(ospath.join(circuit_conf.CircuitPath, "circuit.mvd3"))
         )
+        if self._is_v5_circuit and self._circuit_conf.DetailedAxon:
+            raise ConfigurationError("V5 circuits don't support keeping detailed axons")
+
         super()._init_config(circuit_conf, _pop)
 
     def load_nodes(self, load_balancer=None, **kw):
