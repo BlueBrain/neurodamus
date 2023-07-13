@@ -2,6 +2,23 @@
 Change Log
 ==========
 
+Version 2.15.2
+===============
+**13 July 2023**
+
+*New Features*
+  * [BBPBGLIB-1027] Enable load balance for Sonata config simulations
+  * [NRN-152] MorphIO API: morphio_read
+  * Support HDF5 morphology containers via MorphIO
+  * hocify: file mode
+  * [BBPBGLIB-711] Dry run for cells instantiation
+*Improvements*
+  * [BBPBGLIB-795] Added documentation for how to install/develop/use a custom neurodamus-py
+  * Ncs with sonata
+  * [NSETM-1948] Log warning on SonataError from libsonata.NodeSets materialization
+  * Replace BlueConfig with SONATA config in ngv test
+
+
 Version 2.15.1
 ===============
 **13 June 2023**
