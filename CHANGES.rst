@@ -2,6 +2,14 @@
 Change Log
 ==========
 
+Version 2.15.3
+===============
+**14 July 2023**
+
+*Improvements*
+  * Replace sys.exit with h.quit to fix issue with MPI_Finalize
+
+
 Version 2.15.2
 ===============
 **13 July 2023**
