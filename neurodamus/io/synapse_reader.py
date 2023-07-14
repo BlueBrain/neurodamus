@@ -15,9 +15,7 @@ from ..utils.logging import log_verbose
 def _get_sonata_circuit(path):
     """Returns a SONATA edge file in path if present
     """
-    if path.endswith(".sonata"):
-        raise Exception("*.sonata edges file is not supported, consider to rename it to *.h5")
-    elif path.endswith(".h5"):
+    if path.endswith(".h5"):
         import h5py
         f = h5py.File(path, 'r')
         if "edges" in f:

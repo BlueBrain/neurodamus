@@ -510,6 +510,7 @@ def _projection_params(config: _SimConfig, run_conf):
     non_negatives = ("PopulationID",)
     for name, proj in config.projections.items():
         _check_params("Projection " + name, compat.Map(proj), required_fields, (), non_negatives)
+        _validate_file_extension(compat.Map(proj).get("Path"))
 
 
 @SimConfig.validator
@@ -553,6 +554,8 @@ def _make_circuit_config(config_dict, req_morphology=True):
     elif config_dict.get("nrnPath") == "<NONE>":
         config_dict["nrnPath"] = False
     _validate_circuit_morphology(config_dict, req_morphology)
+    _validate_file_extension(config_dict.get("CellLibraryFile"))
+    _validate_file_extension(config_dict.get("nrnPath"))
     return CircuitConfig(config_dict)
 
 
@@ -573,6 +576,14 @@ def _validate_circuit_morphology(config_dict, required=True):
         config_dict["MorphologyPath"] = morph_path
     assert morph_type in ("asc", "swc", "h5", "hoc"), "Invalid MorphologyType"
     log_verbose(" > MorphologyType = %s, src: %s", morph_type, morph_path)
+
+
+def _validate_file_extension(path):
+    if not path:
+        return
+    filepath = path.split(":")[0]  # for sonata, remove the edge_pop name appended to the file path
+    if filepath.endswith(".sonata"):
+        raise ConfigurationError("*.sonata node file is not supported, please rename it to *.h5")
 
 
 @SimConfig.validator
