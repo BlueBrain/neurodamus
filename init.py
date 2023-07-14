@@ -6,6 +6,7 @@ All rights reserved
 """
 import sys
 from neurodamus import commands
+from neuron import h
 
 
 def main():
@@ -31,5 +32,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # We truly require this so that, when launched with special, the process finishes
-    sys.exit(main())
+    # Returns exit code and calls MPI.Finalize
+    h.quit(main())
