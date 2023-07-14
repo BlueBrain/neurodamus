@@ -583,7 +583,8 @@ def _validate_file_extension(path):
         return
     filepath = path.split(":")[0]  # for sonata, remove the edge_pop name appended to the file path
     if filepath.endswith(".sonata"):
-        raise ConfigurationError("*.sonata node file is not supported, please rename it to *.h5")
+        raise ConfigurationError("*.sonata files are no longer supported, "
+                                 "please rename them to *.h5")
 
 
 @SimConfig.validator
