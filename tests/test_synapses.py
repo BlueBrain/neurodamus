@@ -149,7 +149,7 @@ def test_synapses_params(blueconfig1):
     SimConfig.connections.hoc_map.put("init_I_E", CONN_i2e.hoc_map)
     # init_VPM
     CONN_vpm = compat.Map(Nd.Map())
-    CONN_vpm["Source"] = "pre_VPM"
+    CONN_vpm["Source"] = "projections:pre_VPM"
     CONN_vpm["Destination"] = "post_L5_PC"
     CONN_vpm["Weight"] = conn_weight
     SimConfig.connections.hoc_map.put("init_VPM", CONN_vpm.hoc_map)
