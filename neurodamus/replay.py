@@ -3,6 +3,7 @@ Stimulus implementation where incoming synaptic events are replayed for a single
 """
 from __future__ import absolute_import
 import os
+import h5py
 import logging
 import numpy
 from .utils.logging import log_verbose
@@ -22,7 +23,7 @@ class SpikeManager(object):
     _ascii_spike_dtype = [('time', 'double'), ('gid', 'uint32')]
 
     @timeit(name="Replay init")
-    def __init__(self, spike_filename, delay=0):
+    def __init__(self, spike_filename, delay=0, population=None):
         """Constructor for SynapseReplay.
 
         Args:
@@ -32,10 +33,10 @@ class SpikeManager(object):
         """
         self._gid_fire_events = None
         # Nd.distributedSpikes = 0  # Wonder the effects of this
-        self.open_spike_file(spike_filename, delay)
+        self.open_spike_file(spike_filename, delay, population)
 
     #
-    def open_spike_file(self, filename, delay):
+    def open_spike_file(self, filename, delay, population=None):
         """Opens a given spike file.
 
         Args:
@@ -46,7 +47,9 @@ class SpikeManager(object):
         # TODO: filename should be able to handle relative paths,
         # using the Run.CurrentDir as an initial path
         # _read_spikes_xxx shall return numpy arrays
-        if filename.endswith(".bin"):
+        if filename.endswith(".h5"):
+            tvec, gidvec = self._read_spikes_sonata(filename, population)
+        elif filename.endswith(".bin"):
             tvec, gidvec = self._read_spikes_binary(filename)
         else:
             tvec, gidvec = self._read_spikes_ascii(filename)
@@ -55,6 +58,14 @@ class SpikeManager(object):
             tvec += delay
 
         self._store_events(tvec, gidvec)
+
+    @classmethod
+    def _read_spikes_sonata(cls, filename, population):
+        spikes_file = h5py.File(filename, "r")
+        # File should have been validated earlier
+        spikes = spikes_file.get("spikes/" + population)
+        assert spikes is not None, "Spikes population not found"
+        return spikes["timestamps"], spikes["node_ids"]
 
     @classmethod
     def _read_spikes_ascii(cls, filename):
