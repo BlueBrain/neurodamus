@@ -379,7 +379,7 @@ class Node:
         # Compat Note: data_src in BlueConfig mode was the nrnPath. Not anymore.
         prosp_hosts = self._run_conf.get("ProspectiveHosts")
         data_src = circuit.CircuitPath if is_sonata_config else self._run_conf["nrnPath"]
-        load_balancer = LoadBalance(lb_mode, data_src, self._target_manager, prosp_hosts)
+        load_balancer = LoadBalance(lb_mode, data_src, self._target_manager, self._run_conf["OutputRoot"], prosp_hosts)
 
         if load_balancer.valid_load_distribution(target_spec):
             logging.info("Load Balancing done.")

@@ -673,7 +673,7 @@ class LoadBalance:
     _cx_filename_tpl = "cx_%s#.dat"             # use # to well delimiter the target name
     _cpu_assign_filename_tpl = "cx_%s#.%s.dat"  # prefix must be same (imposed by Neuron)
 
-    def __init__(self, balance_mode, nodes_path, target_manager, target_cpu_count=None):
+    def __init__(self, balance_mode, nodes_path, target_manager, output_path, target_cpu_count=None):
         """
         Creates a new Load Balance object, associated with a given node file
         """
@@ -681,14 +681,14 @@ class LoadBalance:
         self.target_cpu_count = target_cpu_count or MPI.size
         self._target_manager = target_manager
         self._valid_loadbalance = set()
-        self._lb_dir, self._cx_targets = self._get_circuit_loadbal_dir(nodes_path)
+        self._lb_dir, self._cx_targets = self._get_circuit_loadbal_dir(nodes_path, output_path)
         log_verbose("Found existing targets with loadbal: %s", self._cx_targets)
 
     @classmethod
     @run_only_rank0
-    def _get_circuit_loadbal_dir(cls, node_file) -> tuple:
+    def _get_circuit_loadbal_dir(cls, node_file, output_path) -> tuple:
         """Ensure lbal dir exists. dir may be crated on rank 0"""
-        lb_dir = cls._loadbal_dir(node_file)
+        lb_dir = cls._loadbal_dir(node_file, output_path)
         if lb_dir.is_dir():
             return lb_dir, cls._get_lbdir_targets(lb_dir)
 
@@ -979,10 +979,10 @@ class LoadBalance:
         return Nd.BalanceInfo(bal_filename, MPI.rank, MPI.size)
 
     @classmethod
-    def _loadbal_dir(cls, nodefile) -> Path:
+    def _loadbal_dir(cls, nodefile, output_path) -> Path:
         """Returns the dir where load balance files are stored for a given nodes file"""
         nodefile_hash = hashlib.md5(nodefile.encode()).digest().hex()[:10]
-        return Path(cls._base_output_dir) / (cls._circuit_lb_dir_tpl % nodefile_hash)
+        return Path(output_path) / (cls._base_output_dir) / (cls._circuit_lb_dir_tpl % nodefile_hash)
 
     def _cx_filename(self, target_str, basename_str=False) -> Path:
         """Gets the filename of a cell complexity file for a given target"""
