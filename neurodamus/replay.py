@@ -11,7 +11,7 @@ from .utils.multimap import GroupedMultiMap
 from .utils.timeit import timeit
 
 
-class SpikeManager(object):
+class SpikeManager:
     """ Holds and manages gid spike time information, specially for Replay.
 
     A SynapseReplay stim can be used for a single gid that has all the synapses instantiated.
@@ -64,8 +64,9 @@ class SpikeManager(object):
         spikes_file = h5py.File(filename, "r")
         # File should have been validated earlier
         spikes = spikes_file.get("spikes/" + population)
-        assert spikes is not None, "Spikes population not found"
-        return spikes["timestamps"], spikes["node_ids"]
+        if spikes is None:
+            raise MissingSpikesPopulationError("Spikes population not found: " + population)
+        return spikes["timestamps"][...], spikes["node_ids"][...]
 
     @classmethod
     def _read_spikes_ascii(cls, filename):
@@ -110,7 +111,6 @@ class SpikeManager(object):
         return tvec, gidvec
 
     #
-    @timeit(name="BinEvents")
     def _store_events(self, tvec, gidvec):
         """Stores the events in the _gid_fire_events GroupedMultiMap.
 
@@ -161,3 +161,8 @@ class SpikeManager(object):
             numpy.savetxt(f, expanded_ds, fmt='%.3lf\t%d')
 
         log_verbose("Replay: Written %d entries", len(expanded_ds))
+
+
+class MissingSpikesPopulationError(Exception):
+    """An exception triggered when a given node population is not found, we may want to handle"""
+    pass
