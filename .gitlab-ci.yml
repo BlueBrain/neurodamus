@@ -49,7 +49,7 @@ set_alt_branches:
 blueconfig_tests:
   variables:
     bb5_build_dir: pipeline
-    PY_NEURODAMUS_BRANCH: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    PY_NEURODAMUS_BRANCH: $CI_COMMIT_BRANCH
     PARENT_COMMIT_MESSAGE: $CI_COMMIT_MESSAGE
   trigger:
     project: hpc/sim/blueconfigs
