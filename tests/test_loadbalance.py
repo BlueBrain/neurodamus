@@ -35,7 +35,7 @@ def test_loadbal_subtarget(target_manager_hoc, caplog):
     tmp_path = tempfile.TemporaryDirectory("test_loadbal_subtarget")
     os.chdir(tmp_path.name)
     nodes_file = "/gpfs/fake_node_path"
-    lbdir, _ = LoadBalance._get_circuit_loadbal_dir(nodes_file)
+    lbdir, _ = LoadBalance._get_circuit_loadbal_dir(nodes_file, ".")
     shutil.copyfile(SIM_DIR / "1k_v5_balance" / "cx_Small.dat", lbdir / "cx_Small#.dat")
 
     lbal = LoadBalance(1, nodes_file, target_manager_hoc, ".", 4)
