@@ -6,6 +6,8 @@ include:
       - /ci/jobs/publish-package.yml
       - /ci/jobs/docs.yml
       - /ci/jobs/publish-docs.yml
+  - project: hpc/gitlab-upload-logs
+    file: enable-upload.yml
 
 workflow:
   rules:
