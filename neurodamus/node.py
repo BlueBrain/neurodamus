@@ -1360,14 +1360,11 @@ class Node:
             # subfolders.
             # import pdb
             # pdb.set_trace()
-            log_verbose(str(SHMUtil.local_ranks))
             local_node_rank0 = int(SHMUtil.local_ranks[0])
             if MPI.rank == local_node_rank0:
                 import shutil
                 node_specific_corenrn_output_in_storage = os.path.join(corenrn_output, "coreneuron_input_" + str(SHMUtil.node_id))
-                log_verbose("node_specific_corenrn_output_in_storage: %s", node_specific_corenrn_output_in_storage)
                 allfiles = glob.glob(os.path.join(corenrn_data, '*_[1-3].dat'), recursive=False)
-                log_verbose("all_files: %s", str(allfiles))
                 os.makedirs(node_specific_corenrn_output_in_storage, exist_ok=True)
                 # f has the whole path. I need only the filename
                 for f in allfiles:
@@ -1693,6 +1690,11 @@ class Node:
                     data_folder_shm = SHMUtil.get_datadir_shm(data_folder)
                     logging.info("Deleting intermediate SHM data in %s", data_folder_shm)
                     subprocess.call(['/bin/rm', '-rf', data_folder_shm])
+                    if MPI.rank == 0:
+                        corenrn_output = SimConfig.coreneuron_outputdir
+                        allcoredatfolders = glob.glob(os.path.join(corenrn_output, "coreneuron_input_*"), recursive=False)
+                        for folder in allcoredatfolders:
+                            subprocess.call(['/bin/rm', '-rf', folder])
 
             MPI.barrier()
 
