@@ -673,7 +673,14 @@ class LoadBalance:
     _cx_filename_tpl = "cx_%s#.dat"             # use # to well delimiter the target name
     _cpu_assign_filename_tpl = "cx_%s#.%s.dat"  # prefix must be same (imposed by Neuron)
 
-    def __init__(self, balance_mode, nodes_path, target_manager, output_path, target_cpu_count=None):
+    def __init__(
+        self,
+        balance_mode,
+        nodes_path,
+        target_manager,
+        output_path,
+        target_cpu_count=None,
+    ):
         """
         Creates a new Load Balance object, associated with a given node file
         """
@@ -982,7 +989,11 @@ class LoadBalance:
     def _loadbal_dir(cls, nodefile, output_path) -> Path:
         """Returns the dir where load balance files are stored for a given nodes file"""
         nodefile_hash = hashlib.md5(nodefile.encode()).digest().hex()[:10]
-        return Path(output_path) / (cls._base_output_dir) / (cls._circuit_lb_dir_tpl % nodefile_hash)
+        return (
+            Path(output_path)
+            / (cls._base_output_dir)
+            / (cls._circuit_lb_dir_tpl % nodefile_hash)
+        )
 
     def _cx_filename(self, target_str, basename_str=False) -> Path:
         """Gets the filename of a cell complexity file for a given target"""
