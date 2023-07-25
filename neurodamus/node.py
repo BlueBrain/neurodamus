@@ -1346,7 +1346,7 @@ class Node:
                 self._pc.nrnbbcore_write(corenrn_data)
                 MPI.barrier()  # wait for all ranks to finish corenrn data generation
 
-        if self._shm_enabled:
+        if self._shm_enabled and SimConfig.cli_options.enable_shm == "CACHE":
             # Below improvement should only be enabled if /dev/shm is available
             # If /dev/shm is enabled this means the the <*_{1,2,3}.dat> files are going to
             # be written first in /dev/shm (which is going to be used as a buffer to
@@ -1368,9 +1368,10 @@ class Node:
                 os.makedirs(node_specific_corenrn_output_in_storage, exist_ok=True)
                 # f has the whole path. I need only the filename
                 for f in allfiles:
-                    filename = os.path.basename(f)
-                    shutil.move(f, node_specific_corenrn_output_in_storage)
-                    os.symlink(os.path.join(node_specific_corenrn_output_in_storage, filename), f)
+                    if not os.path.islink(f):
+                        filename = os.path.basename(f)
+                        shutil.move(f, node_specific_corenrn_output_in_storage)
+                        os.symlink(os.path.join(node_specific_corenrn_output_in_storage, filename), f)
 
         SimConfig.coreneuron.write_sim_config(
             corenrn_output,
@@ -1690,7 +1691,7 @@ class Node:
                     data_folder_shm = SHMUtil.get_datadir_shm(data_folder)
                     logging.info("Deleting intermediate SHM data in %s", data_folder_shm)
                     subprocess.call(['/bin/rm', '-rf', data_folder_shm])
-                    if MPI.rank == 0:
+                    if SimConfig.cli_options.enable_shm == "CACHE" and MPI.rank == 0:
                         corenrn_output = SimConfig.coreneuron_outputdir
                         allcoredatfolders = glob.glob(os.path.join(corenrn_output, "coreneuron_input_*"), recursive=False)
                         for folder in allcoredatfolders:
