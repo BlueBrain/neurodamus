@@ -1824,8 +1824,6 @@ class Neurodamus(Node):
                 for _ in range(nlines):
                     line = fd.readline()
                     cn_entries.append(line)
-            # Apart from merging the files.dat files we also need to create links for all the files
-            # in coreneuron_datadir_in_gpfs/<NODE_ID> to coreneuron_datadir (in /dev/shm/)
 
         cnfilename = ospath.join(coreneuron_datadir, "files.dat")
         with open(cnfilename, 'w') as cnfile:
