@@ -1358,8 +1358,6 @@ class Node:
             # implemented).
             # We will then create links on coreneuron_datadir for each file in the
             # subfolders.
-            # import pdb
-            # pdb.set_trace()
             local_node_rank0 = int(SHMUtil.local_ranks[0])
             if MPI.rank == local_node_rank0:
                 import shutil
@@ -1691,6 +1689,8 @@ class Node:
                     data_folder_shm = SHMUtil.get_datadir_shm(data_folder)
                     logging.info("Deleting intermediate SHM data in %s", data_folder_shm)
                     subprocess.call(['/bin/rm', '-rf', data_folder_shm])
+                    # Remove also the coreneuron_input_{node_id} folders
+                    # if they were created in dev shm cache mode
                     if SimConfig.cli_options.enable_shm == "CACHE" and MPI.rank == 0:
                         corenrn_output = SimConfig.coreneuron_outputdir
                         allcoredatfolders = glob.glob(os.path.join(corenrn_output, "coreneuron_input_*"), recursive=False)
