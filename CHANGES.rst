@@ -2,6 +2,18 @@
 Change Log
 ==========
 
+Version 2.16.0
+==============
+**14 July 2023**
+
+*New Features*
+* [BBPBGLIB-1036] Pure SONATA reader for gap junctions
+* [BBPBGLIB-984] Option to keep Cell axon during init
+
+*Improvements*
+* [BBPBGLIB-1035] Drop Synapsetool. Migrate all synapses loading to libsonata (no syn2 support)
+
+
 Version 2.15.3
 ===============
 **14 July 2023**
