@@ -1708,6 +1708,7 @@ class Node:
                             recursive=False,
                         )
                         for folder in allcoredatfolders:
+                            logging.info("Deleting intermediate data in %s", folder)
                             subprocess.call(["/bin/rm", "-rf", folder])
 
             MPI.barrier()
