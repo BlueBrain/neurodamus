@@ -1361,15 +1361,25 @@ class Node:
             local_node_rank0 = int(SHMUtil.local_ranks[0])
             if MPI.rank == local_node_rank0:
                 import shutil
-                node_specific_corenrn_output_in_storage = os.path.join(corenrn_output, "coreneuron_input_" + str(SHMUtil.node_id))
-                allfiles = glob.glob(os.path.join(corenrn_data, '*_[1-3].dat'), recursive=False)
+
+                node_specific_corenrn_output_in_storage = os.path.join(
+                    corenrn_output, "coreneuron_input_" + str(SHMUtil.node_id)
+                )
+                allfiles = glob.glob(
+                    os.path.join(corenrn_data, "*_[1-3].dat"), recursive=False
+                )
                 os.makedirs(node_specific_corenrn_output_in_storage, exist_ok=True)
                 # f has the whole path. I need only the filename
                 for f in allfiles:
                     if not os.path.islink(f):
                         filename = os.path.basename(f)
                         shutil.move(f, node_specific_corenrn_output_in_storage)
-                        os.symlink(os.path.join(node_specific_corenrn_output_in_storage, filename), f)
+                        os.symlink(
+                            os.path.join(
+                                node_specific_corenrn_output_in_storage, filename
+                            ),
+                            f,
+                        )
 
         SimConfig.coreneuron.write_sim_config(
             corenrn_output,
@@ -1693,9 +1703,12 @@ class Node:
                     # if they were created in dev shm cache mode
                     if SimConfig.cli_options.enable_shm == "CACHE" and MPI.rank == 0:
                         corenrn_output = SimConfig.coreneuron_outputdir
-                        allcoredatfolders = glob.glob(os.path.join(corenrn_output, "coreneuron_input_*"), recursive=False)
+                        allcoredatfolders = glob.glob(
+                            os.path.join(corenrn_output, "coreneuron_input_*"),
+                            recursive=False,
+                        )
                         for folder in allcoredatfolders:
-                            subprocess.call(['/bin/rm', '-rf', folder])
+                            subprocess.call(["/bin/rm", "-rf", folder])
 
             MPI.barrier()
 
