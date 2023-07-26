@@ -10,6 +10,7 @@ import math
 import os
 import subprocess
 from os import path as ospath
+from pathlib import Path
 from collections import Counter, namedtuple, defaultdict
 from contextlib import contextmanager
 from shutil import copyfileobj, move
@@ -1362,9 +1363,8 @@ class Node:
             if MPI.rank == local_node_rank0:
                 import shutil
 
-                node_specific_corenrn_output_in_storage = os.path.join(
-                    corenrn_output, "coreneuron_input_" + str(SHMUtil.node_id)
-                )
+                node_specific_corenrn_output_in_storage = \
+                    Path(corenrn_output) / f"coreneuron_input_{SHMUtil.node_id}"
                 allfiles = glob.glob(
                     os.path.join(corenrn_data, "*_[1-3].dat"), recursive=False
                 )
@@ -1374,12 +1374,7 @@ class Node:
                     if not os.path.islink(f):
                         filename = os.path.basename(f)
                         shutil.move(f, node_specific_corenrn_output_in_storage)
-                        os.symlink(
-                            os.path.join(
-                                node_specific_corenrn_output_in_storage, filename
-                            ),
-                            f,
-                        )
+                        os.symlink(node_specific_corenrn_output_in_storage / filename, f)
 
         SimConfig.coreneuron.write_sim_config(
             corenrn_output,
