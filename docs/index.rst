@@ -17,6 +17,7 @@ Contents
    Changelog <changes>
    Module Reference <api/modules>
    Developer Documentation <architecture>
+   Developing a Custom Neurodamus <development>
 
 
 Indices and tables

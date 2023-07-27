@@ -54,6 +54,7 @@ neurodamus.connection\_manager
 
    .. autoclass:: SynapseRuleManager
       :members:
+      :noindex:
       :inherited-members:
 
 

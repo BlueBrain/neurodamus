@@ -16,7 +16,7 @@ neurodamus.io.cell\_readers
 
       load_mvd3
       load_ncs
-      load_nodes
+      load_nodes_mvd3
       load_combo_metypes
       split_round_robin
 

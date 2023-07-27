@@ -180,7 +180,7 @@ You can clone ``neurodamus-py`` and use ``spack develop`` as follows::
 
         spack env deactivate
         spack env activate -p neurodamus
-        This tends to manifest itself in import errors: ModuleNotFoundError: No module named 'neurodamus'.
+        # This tends to manifest itself in import errors: ModuleNotFoundError: No module named 'neurodamus'.
 
 .. note::
 
@@ -190,7 +190,7 @@ You can clone ``neurodamus-py`` and use ``spack develop`` as follows::
 
         spack uninstall neurodamus-neocortex
         spack install neurodamus-neocortex
-        This is required since changing the sources in neurodamus-py doesn't trigger Spack to reinstall neurodamus-neocortex.
+        # This is required since changing the sources in neurodamus-py doesn't trigger Spack to reinstall neurodamus-neocortex.
 
 .. note::
 
