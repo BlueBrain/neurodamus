@@ -282,9 +282,9 @@ VERBATIM
     char* simConf = (char*)alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(simConf, "%s/%s", outputdir, SIM_CONFIG_FILE);
 # if CORENRN_CLI11
-    char *argv[] = {"", "--read-config", simConf, "--skip-mpi-finalize", "--mpi", NULL, NULL, NULL, NULL};
+    char *argv[] = {"coreneuron", "--read-config", simConf, "--skip-mpi-finalize", "--mpi", NULL, NULL, NULL, NULL};
 # else
-    char *argv[] = {"", "--read-config", simConf, "--skip-mpi-finalize", "-mpi", NULL, NULL, NULL, NULL};
+    char *argv[] = {"coreneuron", "--read-config", simConf, "--skip-mpi-finalize", "-mpi", NULL, NULL, NULL, NULL};
 # endif
     int argc = 5;
     int argIndex=1;
