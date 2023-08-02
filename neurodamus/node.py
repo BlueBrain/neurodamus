@@ -10,7 +10,7 @@ import math
 import os
 import subprocess
 from os import path as ospath
-from collections import namedtuple, defaultdict
+from collections import Counter, namedtuple, defaultdict
 from contextlib import contextmanager
 from shutil import copyfileobj, move
 
@@ -471,18 +471,27 @@ class Node:
         """
         log_stage("LOADING CIRCUIT CONNECTIVITY")
         target_manager = self._target_manager
-        self._create_synapse_manager(SynapseRuleManager, self._base_circuit, target_manager,
-                                      load_offsets=self._is_ngv_run)
+        manager_kwa = {"load_offsets": self._is_ngv_run}
+
+        if SimConfig.dry_run:
+            synapse_counter = Counter()
+            manager_kwa["synapse_counter"] = synapse_counter
+
+        if circuit := self._base_circuit:
+            self._create_synapse_manager(SynapseRuleManager, circuit, target_manager, **manager_kwa)
 
         for circuit in self._extra_circuits.values():
             Engine = circuit.Engine or METypeEngine
             SynManagerCls = Engine.InnerConnectivityCls
-            self._create_synapse_manager(SynManagerCls, circuit, target_manager,
-                                         load_offsets=self._is_ngv_run)
+            self._create_synapse_manager(SynManagerCls, circuit, target_manager, **manager_kwa)
 
         log_stage("Handling projections...")
         for pname, projection in SimConfig.projections.items():
             self._load_projections(pname, projection)
+
+        if SimConfig.dry_run:
+            self._collect_display_syn_counts(synapse_counter)
+            return
 
         log_stage("Configuring connections...")
         for conn_conf in SimConfig.connections.values():
@@ -615,6 +624,20 @@ class Node:
                         for path_key in path_conf_entries
                         if self._run_conf.get(path_key)]
         return find_input_file(filepath, search_paths, alt_filename)
+
+    @staticmethod
+    def _collect_display_syn_counts(local_syn_counter):
+        xelist = [local_syn_counter] + [None] * (MPI.size - 1)  # send to rank0
+        counters = MPI.py_alltoall(xelist)
+
+        if MPI.rank == 0:
+            log_stage("Synapse counts (per type)")
+            master_counter = Counter()
+            for c in counters:
+                master_counter.update(c)
+
+            for synpse_type, count in master_counter.items():
+                logging.info(f" - {synpse_type}: {count}")
 
     # -
     @mpi_no_errors
@@ -1672,6 +1695,7 @@ class Neurodamus(Node):
         if SimConfig.dry_run:
             self.load_targets()
             self.create_cells()
+            self.create_synapses()
             self._init_ok = True
             return
 

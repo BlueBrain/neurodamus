@@ -10,7 +10,7 @@ import numpy
 
 from .core import MPI, NeurodamusCore as Nd
 from .core.configuration import ConfigurationError, SimConfig, GlobalConfig, find_input_file
-from .core.nodeset import NodeSet, SelectionNodeSet
+from .core.nodeset import _NodeSetBase, NodeSet, SelectionNodeSet
 from .utils import compat
 from .utils.logging import log_verbose
 
@@ -453,7 +453,7 @@ class _HocTargetInterface:
 
 
 class NodesetTarget(_TargetInterface, _HocTargetInterface):
-    def __init__(self, name, nodesets: List[NodeSet], local_nodes=None, **_kw):
+    def __init__(self, name, nodesets: List[_NodeSetBase], local_nodes=None, **_kw):
         self.name = name
         self.nodesets = nodesets
         self.local_nodes = local_nodes
@@ -514,22 +514,26 @@ class NodesetTarget(_TargetInterface, _HocTargetInterface):
     def update_local_nodes(self, local_nodes):
         self.local_nodes = local_nodes
 
-    def get_local_gids(self):
+    def get_local_gids(self, raw_gids=False):
         """Return the list of target gids in this rank (with offset)
         """
         assert self.local_nodes, "Local nodes not set"
 
-        def pop_gid_intersect(local_nodes):
-            for n in self.nodesets:
-                if n.population_name == local_nodes.population_name:
-                    return n.intersection(local_nodes)
+        def pop_gid_intersect(nodeset: _NodeSetBase, raw_gids=False):
+            for local_ns in self.local_nodes:
+                if local_ns.population_name == nodeset.population_name:
+                    return nodeset.intersection(local_ns, raw_gids)
             return []
+
+        if raw_gids:
+            assert len(self.nodesets) != 1, "Multiple populations when asking for raw gids"
+            return pop_gid_intersect(self.nodesets[0], raw_gids=True)
 
         # If target is named Mosaic, basically we don't filter and use local_gids
         if self.name == "Mosaic" or self.name.startswith("Mosaic#"):
             gids_groups = tuple(n.final_gids() for n in self.local_nodes)
         else:
-            gids_groups = tuple(pop_gid_intersect(nodes) for nodes in self.local_nodes)
+            gids_groups = tuple(pop_gid_intersect(ns) for ns in self.nodesets)
 
         return numpy.concatenate(gids_groups)
 
