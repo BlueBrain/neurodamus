@@ -25,7 +25,7 @@ from .cell_distributor import CellDistributor, VirtualCellPopulation, GlobalCell
 from .cell_distributor import LoadBalance, LoadBalanceMode
 from .connection_manager import SynapseRuleManager, edge_node_pop_names
 from .gap_junction import GapJunctionManager
-from .replay import SpikeManager
+from .replay import MissingSpikesPopulationError, SpikeManager
 from .stimulus_manager import StimulusManager
 from .modification_manager import ModificationManager
 from .neuromodulation_manager import NeuroModulationManager
@@ -734,7 +734,6 @@ class Node:
     def _enable_replay(self, source, target, stim_conf, tshift=.0, delay=.0,
                        connectivity_type=None):
         spike_filepath = find_input_file(stim_conf["SpikeFile"])
-        spike_manager = SpikeManager(spike_filepath, tshift)  # Disposable
         ptype_cls = EngineBase.connection_types.get(connectivity_type)
         src_target = self.target_manager.get_target(source)
         dst_target = self.target_manager.get_target(target)
@@ -743,6 +742,13 @@ class Node:
             pop_offsets, alias_pop = CircuitManager.read_population_offsets(read_virtual_pop=True)
 
         for src_pop in src_target.population_names:
+            try:
+                log_verbose("Loading replay spikes for population '%s'", src_pop)
+                spike_manager = SpikeManager(spike_filepath, tshift, src_pop)  # Disposable
+            except MissingSpikesPopulationError:
+                logging.info("  > No replay for src population: '%s'", src_pop)
+                continue
+
             for dst_pop in dst_target.population_names:
                 src_pop_str, dst_pop_str = src_pop or "(base)", dst_pop or "(base)"
 
@@ -751,10 +757,9 @@ class Node:
                         else pop_offsets[alias_pop[src_pop]]
                 else:
                     conn_manager = self._circuits.get_edge_manager(src_pop, dst_pop, ptype_cls)
-                    if not conn_manager:
-                        logging.error("No edge manager found among populations %s -> %s",
-                                      src_pop_str, dst_pop_str)
-                        raise ConfigurationError("Unknown replay pathway. Check Source / Target")
+                    if not conn_manager and SimConfig.cli_options.restrict_connectivity >= 1:
+                        continue
+                    assert conn_manager, f"Missing edge manager for {src_pop_str} -> {dst_pop_str}"
                     src_pop_offset = conn_manager.src_pop_offset
 
                 logging.info("=> Population pathway %s -> %s. Source offset: %d",

@@ -131,7 +131,7 @@ class TargetManager:
     def _try_open_start_target(self, circuit):
         start_target_file = os.path.join(circuit.CircuitPath, "start.target")
         if not os.path.isfile(start_target_file):
-            logging.warning("Circuit %s start.target not available! Skipping", circuit._name)
+            log_verbose("Circuit %s start.target not available! Skipping", circuit._name)
         else:
             self.parser.open(start_target_file, False)
             self._has_hoc_targets = True
