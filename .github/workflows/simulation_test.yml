@@ -64,7 +64,6 @@ jobs:
         tar -xf O1_mods.xz
         cp -r mod tests/share/
         cp core/mod/*.mod tests/share/mod/
-        cp core/hoc/*.hoc tests/share/hoc/
         nrnivmodl -coreneuron -incflags '-DENABLE_CORENEURON -I${SONATAREPORT_DIR}/include -I/usr/include/hdf5/mpich -I/usr/lib/x86_64-linux-gnu/mpich' \
           -loadflags '-L${SONATAREPORT_DIR}/lib -lsonatareport -Wl,-rpath,${SONATAREPORT_DIR}/lib -L/usr/lib/x86_64-linux-gnu/hdf5/mpich -lhdf5 -Wl,-rpath,/usr/lib/x86_64-linux-gnu/hdf5/mpich/ -L/usr/lib/x86_64-linux-gnu/ -lmpich -Wl,-rpath,/usr/lib/x86_64-linux-gnu/' \
           tests/share/mod
@@ -72,6 +71,7 @@ jobs:
     - name: Example run
       run: |
         export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
+        cp core/hoc/* tests/share/hoc/
         export HOC_LIBRARY_PATH=$(pwd)/tests/share/hoc
         # launch simulation with NEURON
         mpirun -np 2 ./x86_64/special -mpi -python init.py --configFile=tests/simulations/usecase3/simulation_sonata.json
@@ -80,6 +80,6 @@ jobs:
         mpirun -np 2 ./x86_64/special -mpi -python init.py --configFile=tests/simulations/usecase3/simulation_sonata_coreneuron.json
         ls tests/simulations/usecase3/reporting_coreneuron/*.h5
 
-    - name: live debug session, comment out
-      if: failure()
-      uses: mxschmitt/action-tmate@v3
+    # - name: live debug session, comment out
+    #   if: failure()
+    #   uses: mxschmitt/action-tmate@v3
