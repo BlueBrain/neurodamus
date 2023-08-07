@@ -103,12 +103,14 @@ class CellManagerBase(_CellManager):
 
     CellType = NotImplemented  # please override
     """The underlying Cell type class
+
     signature:
         __init__(self, gid, cell_info, circuit_conf)
     """
 
     _node_loader = None
     """Default function implementing the loading of nodes data, a.k.a. MVD
+
     signature:
         load(circuit_conf, gidvec, stride=1, stride_offset=0)
     """
@@ -660,6 +662,7 @@ class LoadBalance:
 
     NOTE: Given the heavy costs of computing load balance, some state files are created
     which allow the balance info to be reused. These are
+
      - cx_{TARGET}.dat: File with complexity information for the cells of a given target
      - cx_{TARGET}.{CPU_COUNT}.dat: The file assigning cells/pieces to individual CPUs ranks.
 

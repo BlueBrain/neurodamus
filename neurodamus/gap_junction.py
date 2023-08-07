@@ -8,7 +8,8 @@ from os import path as ospath
 
 from .connection_manager import ConnectionManagerBase
 from .core.configuration import ConfigurationError
-from .io.synapse_reader import SynapseReader, SynReaderNRN, SynapseParameters, FormatNotSupported
+from .io.synapse_reader import SynapseReader, SynReaderNRN, SonataReader, SynapseParameters, \
+    FormatNotSupported
 from .utils import compat
 from .utils.logging import log_verbose
 
@@ -17,40 +18,9 @@ class GapJunctionConnParameters(SynapseParameters):
     # Attribute names of synapse parameters, consistent with the normal synapses
     _synapse_fields = ("sgid", "isec", "offset", "weight", "D", "F", "ipt", "location")
 
-    # Actual fields to read from conectivity files
-    _gj_v1_fields = [
-        "connected_neurons_pre",
-        "morpho_section_id_post",
-        "morpho_offset_segment_post",
-        "conductance",
-        "junction_id_pre",
-        "junction_id_post",
-        "morpho_segment_id_post",
-
-    ]
-    _gj_v2_fields = [
-        "connected_neurons_pre",
-        "morpho_section_id_post",
-        "morpho_section_fraction_post",  # v2 field
-        "conductance",
-        "junction_id_pre",
-        "junction_id_post"
-    ]
-    # SONATA fields, see conversion map in spykfunc/schema.py and
-    # synapse-tool Naming::get_property_mapping
-    _gj_sonata_fields = [
-        "connected_neurons_pre",
-        "morpho_section_id_post",
-        "morpho_section_fraction_post",
-        "conductance",
-        "efferent_junction_id",
-        "afferent_junction_id"
-    ]
-
     @classmethod
     def create_array(cls, length):
         npa = np.recarray(length, cls.dtype)
-        npa.ipt = -1
         npa.location = 0.5
         return npa
 
@@ -65,11 +35,25 @@ class GapJunctionSynapseReader(SynapseReader):
     def create(cls, syn_src, conn_type, population=None, *args, **kw):
         """Instantiates a synapse reader, giving preference to GapJunctionSynToolReader
         """
+        if fn := cls._get_sonata_circuit(syn_src):
+            log_verbose("[SynReader] Using SonataReader.")
+            return GapJunctionSonataReader(fn, conn_type, population, **kw)
+
         # Syn2 support dropped (July 2023)
         if not ospath.isdir(syn_src) and not syn_src.endswith(".h5"):
             raise FormatNotSupported("File: {syn_src}")
         logging.info("[GapJunctionSynReader] Attempting legacy hdf5 reader.")
         return SynReaderNRN(syn_src, conn_type, None, *args, **kw)
+
+
+class GapJunctionSonataReader(SonataReader):
+    Parameters = GapJunctionConnParameters
+    parameter_mapping = {
+        "weight": "conductance",
+        "D": "efferent_junction_id",
+        "F": "afferent_junction_id",
+    }
+    # "isec", "ipt", "offset" are custom parameters as in base class
 
 
 class GapJunctionManager(ConnectionManagerBase):

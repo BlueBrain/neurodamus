@@ -12,17 +12,6 @@ from ..core import NeurodamusCore as Nd, MPI
 from ..utils.logging import log_verbose
 
 
-def _get_sonata_circuit(path):
-    """Returns a SONATA edge file in path if present
-    """
-    if path.endswith(".h5"):
-        import h5py
-        f = h5py.File(path, 'r')
-        if "edges" in f:
-            return path
-    return None
-
-
 def _constrained_hill(K_half, y):
     K_half_fourth = K_half**4
     y_fourth = y**4
@@ -179,6 +168,17 @@ class SynapseReader:
         """Checks whether source data has the given additional field.
         """
 
+    @staticmethod
+    def _get_sonata_circuit(path):
+        """Returns a SONATA edge file in path if present
+        """
+        if path.endswith(".h5"):
+            import h5py
+            f = h5py.File(path, 'r')
+            if "edges" in f:
+                return path
+        return None
+
     @classmethod
     def create(cls, syn_src, conn_type=SYNAPSES, population=None, *args, **kw):
         """Instantiates a synapse reader, giving preference to SonataReader
@@ -188,7 +188,7 @@ class SynapseReader:
             return cls(syn_src, conn_type, population, *args, **kw)
 
         kw["verbose"] = (MPI.rank == 0)
-        if fn := _get_sonata_circuit(syn_src):
+        if fn := cls._get_sonata_circuit(syn_src):
             log_verbose("[SynReader] Using SonataReader.")
             return SonataReader(fn, conn_type, population, **kw)
 
