@@ -1,4 +1,4 @@
-name: neurodamus tests
+name: neurodamus build and test
 on: push
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
       run: |
         sudo apt-get install flex libfl-dev bison ninja-build
         pip install -U pip setuptools
-        pip install cython pytest sympy
+        pip install "cython<3" pytest sympy
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
         git clone https://github.com/neuronsimulator/nrn.git
         cd nrn
