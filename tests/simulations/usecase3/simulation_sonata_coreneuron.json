@@ -24,10 +24,6 @@
           "ProbAMPANMDA_EMS": {
             "init_depleted": false,
             "minis_single_vesicle": true
-          },
-          "GluSynapse" : {
-            "init_depleted": true,
-            "minis_single_vesicle": false
           }
         }
     },
