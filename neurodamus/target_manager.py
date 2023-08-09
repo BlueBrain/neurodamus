@@ -118,7 +118,7 @@ class TargetManager:
         instantiated, and potentially split.
         """
         def _is_sonata_file(file_name):
-            if file_name.endswith(".h5") or file_name.endswith(".sonata"):
+            if file_name.endswith(".h5"):
                 return True
             return False
         if circuit.CircuitPath:

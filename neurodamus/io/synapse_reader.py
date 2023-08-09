@@ -172,13 +172,7 @@ class SynapseReader:
     def _get_sonata_circuit(path):
         """Returns a SONATA edge file in path if present
         """
-        if os.path.isdir(path):
-            filename = os.path.join(path, "edges.sonata")
-            if os.path.exists(filename):
-                return filename
-        elif path.endswith(".sonata"):
-            return path
-        elif path.endswith(".h5"):
+        if path.endswith(".h5"):
             import h5py
             f = h5py.File(path, 'r')
             if "edges" in f:
