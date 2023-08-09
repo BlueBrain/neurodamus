@@ -126,7 +126,7 @@ class CircuitManager:
 
     def get_edge_manager(self, source, destination, conn_type=SynapseRuleManager):
         managers = [manager for manager in self.get_edge_managers(source, destination)
-                    if type(manager) == conn_type]
+                    if isinstance(manager, conn_type)]
         return managers[0] if managers else None
 
     def get_create_edge_manager(self, conn_type, source, destination, src_target,

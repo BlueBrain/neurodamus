@@ -11,7 +11,7 @@ BC_str = """
 Run Default
 {{
     CellLibraryFile /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3
-    nrnPath /gpfs/bbp.cscs.ch/project/proj83/circuits/sscx-v7-plasticity/edges.sonata
+    nrnPath /gpfs/bbp.cscs.ch/project/proj83/circuits/sscx-v7-plasticity/edges.h5
 
     # Use a fake circuit path to avoid loading the HUGE start.target of the real circuit
     CircuitPath /gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-1k
@@ -49,7 +49,7 @@ Run Default
 Projection Thalamocortical_input_VPM
 {{
     Path /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/projections/\
-2023_01_16/vpm/edges.sonata
+2023_01_16/vpm/edges.h5
     Source pre_VPM
     PopulationID 1
 }}
@@ -149,7 +149,7 @@ def test_synapses_params(blueconfig1):
     SimConfig.connections.hoc_map.put("init_I_E", CONN_i2e.hoc_map)
     # init_VPM
     CONN_vpm = compat.Map(Nd.Map())
-    CONN_vpm["Source"] = "pre_VPM"
+    CONN_vpm["Source"] = "projections:pre_VPM"
     CONN_vpm["Destination"] = "post_L5_PC"
     CONN_vpm["Weight"] = conn_weight
     SimConfig.connections.hoc_map.put("init_VPM", CONN_vpm.hoc_map)

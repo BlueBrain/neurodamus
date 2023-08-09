@@ -97,7 +97,7 @@ def test_eager_caching():
 
     # set nrnPath (w/plasticity)
     SimConfig.base_circuit['nrnPath'] = \
-        "/gpfs/bbp.cscs.ch/project/proj83/circuits/sscx-v7-plasticity/edges.sonata"
+        "/gpfs/bbp.cscs.ch/project/proj83/circuits/sscx-v7-plasticity/edges.h5"
 
     # append Connection blocks programmatically
     # plasticity
