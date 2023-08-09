@@ -49,7 +49,7 @@ Build special with mod files
   mkdir mods
   cp -r mod-files-from-released-circuit mods/
   cp -r neurodamus-install-prefix/share/mod/* mods/
-  nrnivmodl -incflags '-I <include-paths-of-our-dependencies>' -loadflags '-L <libs-paths-for-linking>'' mod
+  nrnivmodl -incflags '-I <include-paths-of-our-dependencies>' -loadflags '-L <libs-paths-for-linking>' mod
 
 Examples
 ========
