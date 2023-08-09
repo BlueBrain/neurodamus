@@ -803,6 +803,10 @@ class Node:
             logging.info(" * [MOD] %s: %s -> %s", name, mod_info["Type"], target_spec)
             mod_manager.interpret(target_spec, mod_info)
 
+    # Reporting
+    ReportParams = namedtuple("ReportParams", "name, type, report_on, unit, format, dt, "
+                              "start, end, output_dir, electrode, scaling, isc")
+
     # -
     # @mpi_no_errors - not required since theres a call inside before make_comm()
     @timeit(name="Enable Reports")
@@ -811,215 +815,228 @@ class Node:
         """
         log_stage("Reports Enabling")
         n_errors = 0
-        sim_end = self._run_conf["Duration"]
         reports_conf = SimConfig.reports
         self._report_list = []
 
         # Create a map of offsets so that it can be used even on coreneuron save-restore
         if self._circuits.initialized():
             self._circuits.write_population_offsets()
-            pop_offsets, alias_pop = self._circuits.get_population_offsets()
+            pop_offsets_alias = self._circuits.get_population_offsets()
         else:
-            pop_offsets, alias_pop = CircuitManager.read_population_offsets()
+            pop_offsets_alias = CircuitManager.read_population_offsets()
         if SimConfig.use_coreneuron:
             SimConfig.coreneuron.write_report_count(len(reports_conf))
 
         for rep_name, rep_conf in reports_conf.items():
-            rep_conf = compat.Map(rep_conf).as_dict(parse_strings=True)
-            rep_type = rep_conf["Type"]
-            start_time = rep_conf["StartTime"]
-            end_time = rep_conf.get("EndTime", sim_end)
-            rep_format = rep_conf["Format"]
+            target_spec = TargetSpec(rep_conf["Target"])
+            target = self._target_manager.get_target(target_spec)
 
-            lfp_disabled = not self._circuits.global_manager._lfp_manager._lfp_file
-            if rep_type == "lfp" and lfp_disabled:
-                logging.warning("LFP reports are disabled. LFPWeightsPath might be missing.")
-                continue
-            logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
-
-            if rep_type not in ("compartment", "Summation", "Synapse", "PointType", "lfp"):
-                if MPI.rank == 0:
-                    logging.error("Unsupported report type: %s.", rep_type)
+            # Build final config. On errors log, stop only after all reports processed
+            rep_params = self._report_build_params(rep_name, rep_conf, target, pop_offsets_alias)
+            if rep_params is None:
                 n_errors += 1
                 continue
 
-            if rep_format != "SONATA":
-                if MPI.rank == 0:
-                    logging.error("Unsupported report format: '%s'. "
-                                    "Use 'SONATA' instead.", rep_format)
-                n_errors += 1
-                continue
-
-            if Nd.t > 0:
-                start_time += Nd.t
-                end_time += Nd.t
-            if end_time > sim_end:
-                end_time = sim_end
-            if start_time > end_time:
-                if MPI.rank == 0:
-                    logging.error("Report/Sim End-time (%s) before Start (%g).",
-                                  end_time, start_time)
-                n_errors += 1
-                continue
-
-            electrode = self._elec_manager.getElectrode(rep_conf["Electrode"]) \
-                if SimConfig.use_neuron and "Electrode" in rep_conf else None
-            rep_target = TargetSpec(rep_conf["Target"])
-            target = self._target_manager.get_target(rep_target)
-            population_name = (rep_target.population or self._target_spec.population
-                               or self._default_population)
-            log_verbose("Report on Population: %s, Target: %s", population_name, rep_target.name)
-
-            rep_dt = rep_conf["Dt"]
-            if rep_dt < Nd.dt:
-                if MPI.rank == 0:
-                    logging.error("Invalid report dt %f < %f simulation dt", rep_dt, Nd.dt)
-                n_errors += 1
-                continue
-
-            target_population = rep_target.population or self._target_spec.population
-            cell_manager = self._circuits.get_node_manager(target_population)
-            offset = pop_offsets[target_population] if target_population in pop_offsets \
-                     else pop_offsets[alias_pop[target_population]]
-            if offset > 0:  # dont reset if not needed (recent hoc API)
-                target.set_offset(offset)
-
-            report_on = rep_conf["ReportOn"]
-            rep_params = namedtuple("ReportConf", "name, type, report_on, unit, format, dt, "
-                                    "start, end, output_dir, electrode, scaling, isc")(
-                os.path.basename(rep_conf.get("FileName", rep_name)),
-                rep_type,  # rep type is case sensitive !!
-                report_on,
-                rep_conf["Unit"],
-                rep_format,
-                rep_dt,
-                start_time,
-                end_time,
-                SimConfig.output_root,
-                electrode,
-                Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
-                rep_conf.get("ISC", "")
-            )
             if SimConfig.use_coreneuron and MPI.rank == 0:
-                corenrn_target = target
-
-                # 0=Compartment, 1=Cell, Section { 2=Soma, 3=Axon, 4=Dendrite, 5=Apical }
-                target_type = target.isCellTarget()
-                compartment_offset = 0
-
-                # Note: CoreNEURON does not support more than one Section in a Compartment target
-                if target.isCompartmentTarget():
-                    for activeTarget in target.subtargets:
-                        if activeTarget.isSectionTarget():
-                            # Ensure only one Section (i.e., number of subtargets is also 1)
-                            if target.subtargets.count() > 1:
-                                logging.error("Report '%s': only a single Section is allowed in a "
-                                              "Compartment target", rep_name)
-                                n_errors += 1
-                                break
-
-                            # If we reach this point, update original target and offset
-                            corenrn_target = activeTarget
-                            compartment_offset = 4
-
-                if corenrn_target.isSectionTarget():
-                    if (corenrn_target.subtargets.count() != 1
-                            or not corenrn_target.subtargets[0].isCellTarget()):
-                        logging.error("Report '%s': only a single Cell subtarget is allowed in a "
-                                      "Section target", rep_name)
-                        n_errors += 1
-                        continue
-
-                    section_type = corenrn_target.targetSubsets[0].s
-
-                    if section_type == "soma":
-                        target_type = 2 + compartment_offset
-                    elif section_type == "axon":
-                        target_type = 3 + compartment_offset
-                    elif section_type == "dend":
-                        target_type = 4 + compartment_offset
-                    elif section_type == "apic":
-                        target_type = 5 + compartment_offset
-                    else:
-                        target_type = 0
-
-                # for sonata config, compute target_type from user inputs
-                if "Sections" in rep_conf and "Compartments" in rep_conf:
-                    def _compute_corenrn_target_type(section_type, compartment_type):
-                        sections = ["all", "soma", "axon", "dend", "apic"]
-                        compartments = ["center", "all"]
-                        if section_type not in sections:
-                            raise ConfigurationError("Report: invalid section type '%s'",
-                                                     section_type)
-                        if compartment_type not in compartments:
-                            raise ConfigurationError("Report: invalid compartment type '%s'",
-                                                     compartment_type)
-                        if section_type == "all":  # for "all sections", support only target_type=0
-                            return 0
-                        return sections.index(section_type)+1+4*compartments.index(compartment_type)
-
-                    section_type = rep_conf.get("Sections")
-                    compartment_type = rep_conf.get("Compartments")
-                    target_type = _compute_corenrn_target_type(section_type, compartment_type)
-
-                reporton_comma_separated = ",".join(report_on.split())
-                core_report_params = (
-                    (os.path.basename(rep_conf.get("FileName", rep_name)),
-                     rep_target.name, rep_type, reporton_comma_separated)
-                    + rep_params[3:5] + (target_type,) + rep_params[5:8]
-                    + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
-                )
-                SimConfig.coreneuron.write_report_config(*core_report_params)
+                if not self._report_write_coreneuron_config(rep_name, rep_conf, target, rep_params):
+                    n_errors += 1
+                    continue
 
             if SimConfig.restore_coreneuron:
                 continue  # we dont even need to initialize reports
 
             report = Nd.Report(*rep_params)
-            if not SimConfig.use_coreneuron or rep_type == "Synapse":
-                global_manager = self._circuits.global_manager
 
-                if rep_type in ("compartment", "Summation", "Synapse"):
-                    # Go through the target members, one cell at a time. We give a cell reference
-                    # For summation targets - check if we were given a Cell target because we really
-                    # want all points of the cell which will ultimately be collapsed to a single
-                    # value on the soma. Otherwise, get target points as normal.
-                    sections = rep_conf.get("Sections")
-                    compartments = rep_conf.get("Compartments")
-                    is_cell_target = target.isCellTarget(sections=sections,
-                                                         compartments=compartments)
-                    points = self._target_manager.get_target_points(target, global_manager,
-                                                                    rep_type == "Summation",
-                                                                    sections=sections,
-                                                                    compartments=compartments)
-                    for point in points:
-                        gid = point.gid
-                        pop_name, pop_offset = global_manager.getPopulationInfo(gid)
-                        cell = global_manager.get_cellref(gid)
-                        spgid = global_manager.getSpGid(gid)
+            if not SimConfig.use_coreneuron or rep_params.rep_type == "Synapse":
+                self._report_setup(report, rep_conf, target, rep_params.rep_type)
 
-                        # may need to take different actions based on report type
-                        if rep_type == "compartment":
-                            report.addCompartmentReport(
-                                cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
-                        elif rep_type == "Summation":
-                            report.addSummationReport(
-                                cell, point, is_cell_target, spgid, SimConfig.use_coreneuron,
-                                pop_name, pop_offset)
-                        elif rep_type == "Synapse":
-                            report.addSynapseReport(
-                                cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+            # Custom reporting. TODO: Move `_report_setup` to cellManager.enable_report
+            target_population = target_spec.population or self._target_spec.population
+            cell_manager = self._circuits.get_node_manager(target_population)
+            cell_manager.enable_report(report, target, SimConfig.use_coreneuron)
 
-            # Custom reporting. TODO: Move above processing to SynRuleManager.enable_report
-            cell_manager.enable_report(report, rep_target, SimConfig.use_coreneuron)
-
-            # keep report object? Who has the ascii/hdf5 object? (1 per cell)
-            # the bin object? (1 per report)
             self._report_list.append(report)
 
         if n_errors > 0:
             raise ConfigurationError("%d reporting errors detected. Terminating" % (n_errors,))
 
         MPI.check_no_errors()
+
+        self._reports_init(pop_offsets_alias)
+
+        # electrode manager is no longer needed. free the memory
+        if self._elec_manager is not None:
+            self._elec_manager.clear()
+
+    #
+    def _report_build_params(self, rep_name, rep_conf, target, pop_offsets_alias_pop):
+        sim_end = self._run_conf["Duration"]
+        rep_type = rep_conf["Type"]
+        start_time = rep_conf["StartTime"]
+        end_time = rep_conf.get("EndTime", sim_end)
+        rep_format = rep_conf["Format"]
+
+        lfp_disabled = not self._circuits.global_manager._lfp_manager._lfp_file
+        if rep_type == "lfp" and lfp_disabled:
+            logging.warning("LFP reports are disabled. LFPWeightsPath might be missing.")
+            return None
+        logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
+
+        if Nd.t > 0:
+            start_time += Nd.t
+            end_time += Nd.t
+        if end_time > sim_end:
+            end_time = sim_end
+        if start_time > end_time:
+            if MPI.rank == 0:
+                logging.error("Report/Sim End-time (%s) before Start (%g).",
+                                end_time, start_time)
+            return None
+
+        if (rep_dt := rep_conf["Dt"]) < Nd.dt:
+            if MPI.rank == 0:
+                logging.error("Invalid report dt %f < %f simulation dt", rep_dt, Nd.dt)
+            return None
+
+        electrode = self._elec_manager.getElectrode(rep_conf["Electrode"]) \
+            if SimConfig.use_neuron and "Electrode" in rep_conf else None
+        rep_target = TargetSpec(rep_conf["Target"])
+        population_name = (rep_target.population or self._target_spec.population
+                            or self._default_population)
+        log_verbose("Report on Population: %s, Target: %s", population_name, rep_target.name)
+
+        target_population = rep_target.population or self._target_spec.population
+        pop_offsets, alias_pop = pop_offsets_alias_pop
+        offset = pop_offsets[target_population] if target_population in pop_offsets \
+                    else pop_offsets[alias_pop[target_population]]
+        if offset > 0:  # dont reset if not needed (recent hoc API)
+            target.set_offset(offset)
+
+        report_on = rep_conf["ReportOn"]
+        return self.ReportParams(
+            os.path.basename(rep_conf.get("FileName", rep_name)),
+            rep_type,  # rep type is case sensitive !!
+            report_on,
+            rep_conf["Unit"],
+            rep_format,
+            rep_dt,
+            start_time,
+            end_time,
+            SimConfig.output_root,
+            electrode,
+            Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
+            rep_conf.get("ISC", "")
+        )
+
+    #
+    def _report_write_coreneuron_config(self, rep_name, rep_conf, target, rep_params):
+        target_spec = TargetSpec(rep_conf["Target"])
+        corenrn_target = target
+
+        # 0=Compartment, 1=Cell, Section { 2=Soma, 3=Axon, 4=Dendrite, 5=Apical }
+        target_type = target.isCellTarget()
+        compartment_offset = 0
+
+        # Note: CoreNEURON does not support more than one Section in a Compartment target
+        if target.isCompartmentTarget():
+            for activeTarget in target.subtargets:
+                if activeTarget.isSectionTarget():
+                    # Ensure only one Section (i.e., number of subtargets is also 1)
+                    if target.subtargets.count() > 1:
+                        logging.error("Report '%s': only a single Section is allowed in a "
+                                      "Compartment target", rep_name)
+                        return False
+
+                    # If we reach this point, update original target and offset
+                    corenrn_target = activeTarget
+                    compartment_offset = 4
+
+        if corenrn_target.isSectionTarget():
+            if (corenrn_target.subtargets.count() != 1
+                    or not corenrn_target.subtargets[0].isCellTarget()):
+                logging.error("Report '%s': only a single Cell subtarget is allowed in a "
+                              "Section target", rep_name)
+                return False
+
+            section_type = corenrn_target.targetSubsets[0].s
+
+            if section_type == "soma":
+                target_type = 2 + compartment_offset
+            elif section_type == "axon":
+                target_type = 3 + compartment_offset
+            elif section_type == "dend":
+                target_type = 4 + compartment_offset
+            elif section_type == "apic":
+                target_type = 5 + compartment_offset
+            else:
+                target_type = 0
+
+        # for sonata config, compute target_type from user inputs
+        if "Sections" in rep_conf and "Compartments" in rep_conf:
+            def _compute_corenrn_target_type(section_type, compartment_type):
+                sections = ["all", "soma", "axon", "dend", "apic"]
+                compartments = ["center", "all"]
+                if section_type not in sections:
+                    raise ConfigurationError(f"Report: invalid section type '{section_type}'")
+                if compartment_type not in compartments:
+                    raise ConfigurationError(f"Report: invalid compartment type {compartment_type}")
+                if section_type == "all":  # for "all sections", support only target_type=0
+                    return 0
+                return sections.index(section_type)+1+4*compartments.index(compartment_type)
+
+            section_type = rep_conf.get("Sections")
+            compartment_type = rep_conf.get("Compartments")
+            target_type = _compute_corenrn_target_type(section_type, compartment_type)
+
+        reporton_comma_separated = ",".join(rep_params.report_on.split())
+        core_report_params = (
+            (os.path.basename(rep_conf.get("FileName", rep_name)),
+                target_spec.name, rep_params.rep_type, reporton_comma_separated)
+            + rep_params[3:5] + (target_type,) + rep_params[5:8]
+            + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
+        )
+        SimConfig.coreneuron.write_report_config(*core_report_params)
+        return True
+
+    def _report_setup(self, report, rep_conf, target, rep_type):
+        # TODO: Move to Cell Distributor and avoid inner loop conditions
+        global_manager = self._circuits.global_manager
+
+        if rep_type not in ("compartment", "Summation", "Synapse"):
+            return  # Nothing to do
+
+        # Go through the target members, one cell at a time. We give a cell reference
+        # For summation targets - check if we were given a Cell target because we really
+        # want all points of the cell which will ultimately be collapsed to a single
+        # value on the soma. Otherwise, get target points as normal.
+        sections = rep_conf.get("Sections")
+        compartments = rep_conf.get("Compartments")
+        is_cell_target = target.isCellTarget(sections=sections,
+                                             compartments=compartments)
+        points = self._target_manager.get_target_points(target, global_manager,
+                                                        rep_type == "Summation",
+                                                        sections=sections,
+                                                        compartments=compartments)
+        for point in points:
+            gid = point.gid
+            pop_name, pop_offset = global_manager.getPopulationInfo(gid)
+            cell = global_manager.get_cellref(gid)
+            spgid = global_manager.getSpGid(gid)
+
+            # may need to take different actions based on report type
+            if rep_type == "compartment":
+                report.addCompartmentReport(
+                    cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+            elif rep_type == "Summation":
+                report.addSummationReport(
+                    cell, point, is_cell_target, spgid, SimConfig.use_coreneuron,
+                    pop_name, pop_offset)
+            elif rep_type == "Synapse":
+                report.addSynapseReport(
+                    cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+
+    def _reports_init(self, pop_offsets_alias):
+        pop_offsets = pop_offsets_alias[0]
 
         if SimConfig.use_coreneuron:
             # write spike populations
@@ -1046,10 +1063,6 @@ class Node:
             # once all reports are created, we finalize the communicator for any reports
             self._sonatareport_helper.make_comm()
             self._sonatareport_helper.prepare_datasets()
-
-        # electrode manager is no longer needed. free the memory
-        if self._elec_manager is not None:
-            self._elec_manager.clear()
 
     # -
     @mpi_no_errors
