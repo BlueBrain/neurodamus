@@ -106,20 +106,13 @@ class SynapseMemoryUsage:
     for the memory used by each type of synapse.
     The values are in KB. The values cannot be set by the user.
     '''
-    def __init__(self):
-        self._synapse_memory_usage = {
-            "ProbAMPANMDA": 1.7,
-            "ProbGABAAB": 2.0,
-            "Gap": 2.0,
-            "Glue": 0.5
-        }
+    _synapse_memory_usage = {
+        "ProbAMPANMDA": 1.7,
+        "ProbGABAAB": 2.0,
+        "Gap": 2.0,
+        "Glue": 0.5
+    }
 
-    def __getitem__(self, item):
-        return self._synapse_memory_usage[item]
-
-    def __setitem__(self, key, value):
-        raise ValueError("Cannot set values in SynapseMemoryUsage. "
-                         "Values are hardcoded.")
-
-    def get_memory_usage(self, count, synapse_type):
-        return count * self._synapse_memory_usage[synapse_type]
+    @classmethod
+    def get_memory_usage(cls, count, synapse_type):
+        return count * cls._synapse_memory_usage[synapse_type]

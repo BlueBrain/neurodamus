@@ -631,7 +631,6 @@ class Node:
         xelist = [local_syn_counter] + [None] * (MPI.size - 1)  # send to rank0
         counters = MPI.py_alltoall(xelist)
         inh = exc = 0
-        syn_mem = SynapseMemoryUsage()
 
         if MPI.rank == 0:
             log_stage("Synapse memory estimate (per type)")
@@ -646,8 +645,8 @@ class Node:
                 if synapse_type >= 100:
                     exc += count
             logging.info(" - Estimated synapse memory usage (KB):")
-            in_mem = syn_mem.get_memory_usage(inh, "ProbGABAAB")
-            ex_mem = syn_mem.get_memory_usage(exc, "ProbAMPANMDA")
+            in_mem = SynapseMemoryUsage.get_memory_usage(inh, "ProbGABAAB")
+            ex_mem = SynapseMemoryUsage.get_memory_usage(exc, "ProbAMPANMDA")
             logging.info(f"   - Inhibitory: {in_mem}")
             logging.info(f"   - Excitatory: {ex_mem}")
 
