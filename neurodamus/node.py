@@ -33,6 +33,7 @@ from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
+from .utils.memory import SynapseMemoryUsage
 from .utils.timeit import TimerManager, timeit
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
@@ -629,15 +630,26 @@ class Node:
     def _collect_display_syn_counts(local_syn_counter):
         xelist = [local_syn_counter] + [None] * (MPI.size - 1)  # send to rank0
         counters = MPI.py_alltoall(xelist)
+        inh = exc = 0
+        syn_mem = SynapseMemoryUsage()
 
         if MPI.rank == 0:
-            log_stage("Synapse counts (per type)")
+            log_stage("Synapse memory estimate (per type)")
             master_counter = Counter()
             for c in counters:
                 master_counter.update(c)
 
-            for synpse_type, count in master_counter.items():
-                logging.info(f" - {synpse_type}: {count}")
+            for synapse_type, count in master_counter.items():
+                logging.debug(f" - {synapse_type}: {count}")
+                if synapse_type < 100:
+                    inh += count
+                if synapse_type >= 100:
+                    exc += count
+            logging.info(" - Estimated synapse memory usage (KB):")
+            in_mem = syn_mem.get_memory_usage(inh, "ProbGABAAB")
+            ex_mem = syn_mem.get_memory_usage(exc, "ProbAMPANMDA")
+            logging.info(f"   - Inhibitory: {in_mem}")
+            logging.info(f"   - Excitatory: {ex_mem}")
 
     # -
     @mpi_no_errors
