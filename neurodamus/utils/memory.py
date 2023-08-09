@@ -73,6 +73,9 @@ def print_mem_usage():
     """
     Print memory usage information across all ranks.
     """
+
+    MPI.pc.print_memory_stats()
+
     usage_mb = get_mem_usage()
 
     min_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MIN)
