@@ -1,11 +1,11 @@
 {
     "version": 1,
     "manifest": {
-        "$OUTPUT_DIR": "./reporting",
+        "$OUTPUT_DIR": "./reporting_coreneuron",
         "$INPUT_DIR": "./"
     },
     "node_sets_file": "nodesets.json",
-    "target_simulator": "NEURON",
+    "target_simulator": "CORENEURON",
     "node_set": "Mosaic",
     "run": {
         "tstop": 50.0,

@@ -1,6 +1,11 @@
+|banner|
+
 =============
 Neurodamus
 =============
+.. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.8075202.svg
+   :target: https://doi.org/10.5281/zenodo.8075202
+
 
 Neurodamus is a BBP Simulation Control application for Neuron.
 
@@ -71,6 +76,8 @@ We hope to bring the same advantages to the launcher script soon.
 
  srun <srun params> <your_built_special> -mpi -python $NEURODAMUS_PYTHON/init.py <neurodamus params>
 
+An example of a full installation with a simulation run can be found in the workflow test
+`simulation_test.yaml <https://github.com/BlueBrain/neurodamus/blob/main/.github/workflows/simulation_test.yml>`__.
 
 Acknowledgment
 ==============
@@ -79,3 +86,6 @@ a research center of the École polytechnique fédérale de Lausanne (EPFL),
 from the Swiss government's ETH Board of the Swiss Federal Institutes of Technology.
 
 Copyright (c) 2005-2023 Blue Brain Project/EPFL
+
+.. substitutions
+.. |banner| image:: docs/img/neurodamus_banner_230701.png
