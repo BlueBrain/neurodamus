@@ -37,8 +37,6 @@ from .utils.timeit import TimerManager, timeit
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
 
-from neuron import h
-
 
 class METypeEngine(EngineBase):
     CellManagerCls = CellDistributor
@@ -1473,7 +1471,7 @@ class Node:
 
         # There should be no more datahandles to the old model. Hence,
         # the stable identifiers can be deleted now.
-        h.clear_deferred_deletion_vectors()
+        Nd.clear_deferred_deletion_vectors()
 
         # Shrink ArrayPools holding mechanism's data in NEURON
         pool_shrink()
