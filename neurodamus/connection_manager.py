@@ -5,7 +5,7 @@ from __future__ import absolute_import
 import hashlib
 import logging
 import numpy
-from collections import defaultdict
+from collections import Counter, defaultdict
 from itertools import chain
 from os import path as ospath
 from typing import List, Optional
@@ -273,6 +273,9 @@ class ConnectionManagerBase(object):
         self._load_offsets = False
         self._src_target_filter = None  # filter by src target in all_connect (E.g: GapJ)
 
+        # An internal var to enable collection of synapse statistics to a Counter
+        self._synapse_counter: Counter = kw.get("synapse_counter")
+
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
             self.__class__.__name__, str(self._src_cell_manager), str(self._cell_manager))
@@ -530,6 +533,11 @@ class ConnectionManagerBase(object):
             weight_factor: Factor to scale all netcon weights (default: 1)
             only_gids: Create connections only for these tgids (default: Off)
         """
+        if self._synapse_counter is not None:
+            counts = self._get_conn_stats(self._src_target_filter, None)
+            self._synapse_counter.update(counts)
+            return
+
         conn_options = {'weight_factor': weight_factor}
         pop = self._cur_population
 
@@ -563,6 +571,11 @@ class ConnectionManagerBase(object):
         if src_target and src_target.is_void() or dst_target and dst_target.is_void():
             logging.debug("Skip void connectivity for current connectivity: %s - %s",
                           src_tname, dst_tname)
+            return
+
+        if self._synapse_counter is not None:
+            counts = self._get_conn_stats(src_target, dst_target)
+            self._synapse_counter.update(counts)
             return
 
         for sgid, tgid, syns_params, extra_params, offset in \
@@ -705,6 +718,10 @@ class ConnectionManagerBase(object):
             if src_target and dst_target:
                 pathway_repr = "Pathway {} -> {}".format(src_target.name, dst_target.name)
             logging.info(" * %s. Created %d connections", pathway_repr, all_created)
+
+    def _get_conn_stats(self, _src_target, dst_target):
+        raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
+        return self._synapse_reader.get_counts(raw_gids, group_by="syn_type_id")
 
     # -
     def get_target_connections(self, src_target_name,

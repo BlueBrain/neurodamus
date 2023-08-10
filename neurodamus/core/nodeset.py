@@ -185,7 +185,7 @@ class _NodeSetBase:
     def final_gids(self):
         return numpy.add(self.raw_gids(), self._offset, dtype="uint32")
 
-    def intersection(self, _other):
+    def intersection(self, _other, _raw_gids=False):
         return NotImplemented
 
     def intersects(self, other):
@@ -244,7 +244,7 @@ class NodeSet(_NodeSetBase):
         for gid in self._gidvec:
             yield gid + offset_add, self._gid_info.get(gid)
 
-    def intersection(self, other):
+    def intersection(self, other, raw_gids=False):
         """Computes the intersection of two NodeSet's
 
         For nodesets to intersect they must belong to the same population and
@@ -253,6 +253,8 @@ class NodeSet(_NodeSetBase):
         if self.population_name != other.population_name:
             return []
         intersect = numpy.intersect1d(self.raw_gids(), other.raw_gids(), assume_unique=True)
+        if raw_gids:
+            return intersect
         return numpy.add(intersect, self._offset, dtype="uint32")
 
     def clear_cell_info(self):
@@ -287,7 +289,7 @@ class SelectionNodeSet(_NodeSetBase):
         for gid in self.raw_gids_iter():
             yield gid + self._offset
 
-    def intersection(self, other: _NodeSetBase, _quick_check=False):
+    def intersection(self, other: _NodeSetBase, raw_gids=False, _quick_check=False):
         """Computes intersection of two nodesets.
         """
         # NOTE: A _quick_check param can be set to True so that we effectively only check for
@@ -306,6 +308,10 @@ class SelectionNodeSet(_NodeSetBase):
         if _quick_check:
             return intersect
         if len(intersect):
+            if raw_gids:
+                # TODO: We should change the return type to be another `SelectionNodeSet`
+                # Like that we could still keep ranges internally and have PROPER API to get raw ids
+                return numpy.add(intersect, 1, dtype=intersect.dtype)
             return numpy.add(intersect, self.offset + 1, dtype=intersect.dtype)
         return []
 
