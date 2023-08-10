@@ -1,0 +1,93 @@
+name: neurodamus build and test
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - '**.rst'
+      - 'docs/**'
+
+jobs:
+  simulation:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout neurodamus repository
+      uses: actions/checkout@v3
+
+    - name: Install hdf5-mpich
+      run: |
+        sudo apt-get update
+        sudo apt-get install mpich libmpich-dev libhdf5-mpich-dev hdf5-tools
+
+    - name: Install libsonata
+      run: |
+        CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata
+
+    - name: Install libsonatareport
+      run: |
+        git clone https://github.com/BlueBrain/libsonatareport.git --recursive
+        cd libsonatareport
+        mkdir build && cd build
+        cmake -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON -DSONATA_REPORT_ENABLE_MPI=ON ..
+        cmake --build . --parallel
+        cmake --build . --target install
+
+    - name: Install NEURON
+      run: |
+        sudo apt-get install flex libfl-dev bison ninja-build
+        pip install -U pip setuptools
+        pip install "cython<3" pytest sympy
+        export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
+        git clone https://github.com/neuronsimulator/nrn.git
+        cd nrn
+        mkdir build && cd build
+        cmake -G Ninja -DPYTHON_EXECUTABLE=$(which python) -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DNRN_ENABLE_MPI=ON -DNRN_ENABLE_INTERVIEWS=OFF \
+          -DNRN_ENABLE_CORENEURON=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCORENRN_ENABLE_REPORTING=ON -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR ..
+        cmake --build . --parallel
+        cmake --build . --target install
+
+    - name: Build h5py with the local hdf5
+      run: |
+        pip install -U pip setuptools
+        pip install cython numpy wheel pkgconfig
+        MPICC="mpicc -shared" pip install --no-cache-dir --no-binary=mpi4py mpi4py
+        CC="mpicc" HDF5_MPI="ON" HDF5_INCLUDEDIR=/usr/include/hdf5/mpich HDF5_LIBDIR=/usr/lib/x86_64-linux-gnu/hdf5/mpich \
+          pip install --no-cache-dir --no-binary=h5py h5py --no-build-isolation
+
+    - name: Install neurodamus
+      run: |
+        pip install .
+
+    - name: Build models
+      run: |
+        export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
+        export PATH=$(pwd)/nrn/build/install/bin:$PATH
+        # copy mod files from the Zenodo link
+        wget --output-document="O1_mods.xz" --quiet "https://zenodo.org/record/8026353/files/O1_mods.xz?download=1"
+        tar -xf O1_mods.xz
+        cp -r mod tests/share/
+        cp core/mod/*.mod tests/share/mod/
+        nrnivmodl -coreneuron -incflags '-DENABLE_CORENEURON -I${SONATAREPORT_DIR}/include -I/usr/include/hdf5/mpich -I/usr/lib/x86_64-linux-gnu/mpich' \
+          -loadflags '-L${SONATAREPORT_DIR}/lib -lsonatareport -Wl,-rpath,${SONATAREPORT_DIR}/lib -L/usr/lib/x86_64-linux-gnu/hdf5/mpich -lhdf5 -Wl,-rpath,/usr/lib/x86_64-linux-gnu/hdf5/mpich/ -L/usr/lib/x86_64-linux-gnu/ -lmpich -Wl,-rpath,/usr/lib/x86_64-linux-gnu/' \
+          tests/share/mod
+
+    - name: Example run
+      run: |
+        export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
+        cp core/hoc/* tests/share/hoc/
+        export HOC_LIBRARY_PATH=$(pwd)/tests/share/hoc
+        # launch simulation with NEURON
+        mpirun -np 2 ./x86_64/special -mpi -python init.py --configFile=tests/simulations/usecase3/simulation_sonata.json
+        ls tests/simulations/usecase3/reporting/*.h5
+        # launch simulation with CORENEURON
+        mpirun -np 2 ./x86_64/special -mpi -python init.py --configFile=tests/simulations/usecase3/simulation_sonata_coreneuron.json
+        ls tests/simulations/usecase3/reporting_coreneuron/*.h5
+
+    # - name: live debug session, comment out
+    #   if: failure()
+    #   uses: mxschmitt/action-tmate@v3
