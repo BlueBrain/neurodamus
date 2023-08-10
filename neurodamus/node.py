@@ -804,7 +804,7 @@ class Node:
             mod_manager.interpret(target_spec, mod_info)
 
     # Reporting
-    ReportParams = namedtuple("ReportParams", "name, type, report_on, unit, format, dt, "
+    ReportParams = namedtuple("ReportParams", "name, rep_type, report_on, unit, format, dt, "
                               "start, end, output_dir, electrode, scaling, isc")
 
     # -
