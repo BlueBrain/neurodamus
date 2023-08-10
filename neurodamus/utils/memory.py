@@ -99,3 +99,20 @@ def get_mem_usage():
     usage_mb = float(data_size) * os.sysconf("SC_PAGE_SIZE") / 1024 ** 2
 
     return usage_mb
+
+
+class SynapseMemoryUsage:
+    ''' A small class that works as a lookup table
+    for the memory used by each type of synapse.
+    The values are in KB. The values cannot be set by the user.
+    '''
+    _synapse_memory_usage = {
+        "ProbAMPANMDA": 1.7,
+        "ProbGABAAB": 2.0,
+        "Gap": 2.0,
+        "Glue": 0.5
+    }
+
+    @classmethod
+    def get_memory_usage(cls, count, synapse_type):
+        return count * cls._synapse_memory_usage[synapse_type]

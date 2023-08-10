@@ -379,6 +379,15 @@ class SonataReader(SynapseReader):
 
         return conn_syn_params
 
+    def get_counts(self, raw_ids, group_by):
+        """
+        Counts synapses and groups by the given field.
+        """
+        edge_ids = self._population.afferent_edges(raw_ids - 1)
+        data = self._population.get_attribute(group_by, edge_ids)
+        values, counts = np.unique(data, return_counts=True)
+        return dict(zip(values, counts))
+
 
 class SynReaderNRN(SynapseReader):
     """ Synapse Reader for NRN format only, using the hdf5_reader mod.
