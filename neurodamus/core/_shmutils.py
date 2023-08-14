@@ -1,6 +1,7 @@
 import os
 import psutil
 import subprocess
+import numpy as np
 
 class SHMUtil:
     """Helper class for the SHM file transfer mechanism of CoreNEURON.
@@ -41,13 +42,34 @@ class SHMUtil:
         subprocess.call(['/bin/rm', '-rf', shmdir])
 
     @staticmethod
-    def get_node_rss():
+    def _get_approximate_node_rss():
+        """Reliable, but imprecise estimate of the nodewide RSS.
+
+        Note: This estimate must work even if MPI ranks can't be associated with
+        a physical node.
+        """
+        vm = psutil.virtual_memory()
+        return (vm.total - vm.available)
+
+    @staticmethod
+    def is_node_id_known():
+        """Can MPI ranks be associated with physical nodes?"""
+        return SHMUtil.get_datadir_shm() is not None
+
+
+    @staticmethod
+    def get_nodewise_rss():
+        """For each node the sum of the RSS of all MPI ranks on that node.
+
+        If MPI ranks can't be associated with a node, return `None`.
+        """
+
         from . import MPI, Neuron
 
-        # If we do not have the SHM environment, ignore and return an estimate
-        if SHMUtil.get_datadir_shm() is None:
-            vm = psutil.virtual_memory()
-            return (vm.total - vm.available)
+        # If we do not have the SHM environment, we can't even know
+        # how many nodes there are. Just return `None`.
+        if not SHMUtil.is_node_id_known():
+            return None
 
         # Define the node ID for the rank and number of nodes
         if SHMUtil.nnodes < 0:
@@ -57,9 +79,19 @@ class SHMUtil:
         process = psutil.Process(os.getpid())
         rss = Neuron.Vector(SHMUtil.nnodes, 0.0)
         rss[SHMUtil.node_id] = process.memory_info().rss
+
         MPI.allreduce(rss, MPI.SUM)
 
+        return rss.as_numpy().copy()
+
+    @staticmethod
+    def get_node_rss():
+        # If we do not have the SHM environment, ignore and return an estimate
+        if not SHMUtil.is_node_id_known():
+            return SHMUtil._get_approximate_node_rss()
+
         # Return the consumption estimated for the node
+        rss = SHMUtil.get_nodewise_rss()
         return rss[SHMUtil.node_id]
 
     @staticmethod
