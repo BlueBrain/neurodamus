@@ -720,6 +720,9 @@ def _simulator_globals(config: _SimConfig, run_conf):
             else:
                 log_verbose("GLOBAL %s = %s", key, value)
                 setattr(h, key, value)
+            if "cao_CR" in key and value != config.extracellular_calcium:
+                logging.warning("Value of %s (%s) is not the same as extracellular_calcium (%s)"
+                                % (key, value, config.extracellular_calcium))
 
 
 @SimConfig.validator
