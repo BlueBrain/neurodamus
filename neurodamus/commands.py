@@ -68,9 +68,6 @@ def neurodamus(args=None):
     if not sys.argv[0].endswith("special") and not os.environ.get("neurodamus_special"):
         _attempt_launch_special(config_file)
 
-    # Warning control before starting the process
-    _filter_warnings()
-
     try:
         Neurodamus(config_file, True, log_level, **options).run()
     except ConfigurationError as e:  # Common, only show error in Rank 0
@@ -193,23 +190,3 @@ def _mpi_abort():
     import ctypes
     c_api = ctypes.CDLL(None)
     c_api.MPI_Abort(0)
-
-
-def _filter_warnings():
-    """ Control matched warning to display once in rank 0.
-
-    Warning 1:
-    "special" binaries built with %intel build_type=Release,RelWithDebInfo flushes
-    denormal results to zero, which triggers the numpy warning for subnormal in every rank.
-    Reduce this type of warning displayed once in rank0.
-    Note: "special" with build_type = FastDebug/Debug or calling the simulation process
-       in python (built with gcc) does not have such flush-to-zero warning.
-    """
-    import warnings
-    if MPI.rank == 0:
-        action = "once"
-    else:
-        action = "ignore"
-    warnings.filterwarnings(action=action,
-                            message="The value of the smallest subnormal for .* type is zero.",
-                            category=UserWarning, module="numpy")

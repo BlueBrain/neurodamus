@@ -195,3 +195,15 @@ def append_recarray(target_array, record):
         target_array.resize(nrows+1, refcheck=False)
         target_array[nrows] = record
     return target_array
+
+
+def warnings_once(message="", category=Warning, module=""):
+    """ Control matched warning to display once in rank 0.
+    """
+    import warnings
+    from ..core import MPI
+    if MPI.rank == 0:
+        action = "once"
+    else:
+        action = "ignore"
+    warnings.filterwarnings(action, message, category, module)
