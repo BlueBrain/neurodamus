@@ -1007,18 +1007,26 @@ def _report_vars(config: _SimConfig, run_conf):
     mandatory_fields = ("Type", "StartTime", "Target", "Dt", "ReportOn", "Unit", "Format")
     report_types = {"compartment", "Summation", "Synapse", "PointType", "lfp"}
     non_negatives = ("StartTime", "EndTime", "Dt")
+    report_configs_dict = {}
 
     for rep_name, rep_config in config.reports.items():
-        rep_config = compat.Map(rep_config)
+        rep_config = compat.Map(rep_config).as_dict(parse_strings=True)
+        report_configs_dict[rep_name] = rep_config
+
         _check_params("Report " + rep_name, rep_config, mandatory_fields,
                       non_negatives=non_negatives,
                       valid_values={'Type': report_types})
+
+        if rep_config["Format"] != "SONATA":
+            raise ConfigurationError(
+                f"Unsupported report format: '{rep_config['Format']}'. Use 'SONATA' instead.")
 
         if config.use_coreneuron and rep_config["Type"] == "compartment":
             if rep_config["ReportOn"] not in ("v", "i_membrane"):
                 logging.warning("Compartment reports on vars other than v and i_membrane "
                                 " are still not fully supported (CoreNeuron)")
-
+    # Overwrite config with a pure dict since we never need underlying hoc map
+    config.reports = report_configs_dict
 
 @SimConfig.validator
 def _spikes_sort_order(config: _SimConfig, run_conf):
