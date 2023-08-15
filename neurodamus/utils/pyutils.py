@@ -197,13 +197,8 @@ def append_recarray(target_array, record):
     return target_array
 
 
-def warnings_once(message="", category=Warning, module=""):
-    """ Control matched warning to display once in rank 0.
+def warnings_ignore(message="", category=Warning, module=""):
+    """ Ignore matched warning in all ranks.
     """
     import warnings
-    from ..core import MPI
-    if MPI.rank == 0:
-        action = "once"
-    else:
-        action = "ignore"
-    warnings.filterwarnings(action, message, category, module)
+    warnings.filterwarnings("ignore", message, category, module)
