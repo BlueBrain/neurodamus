@@ -1363,8 +1363,9 @@ class Node:
             if MPI.rank == local_node_rank0:
                 import shutil
 
+                group_id = int(SHMUtil.node_id / 20)
                 node_specific_corenrn_output_in_storage = \
-                    Path(corenrn_output) / f"coreneuron_input_{SHMUtil.node_id}"
+                    Path(SimConfig.coreneuron_datadir) / f"cycle_{self._cycle_i}/group_{group_id}/node_{SHMUtil.node_id}"
                 allfiles = glob.glob(
                     os.path.join(corenrn_data, "*_[1-3].dat"), recursive=False
                 )
@@ -1694,17 +1695,6 @@ class Node:
                     data_folder_shm = SHMUtil.get_datadir_shm(data_folder)
                     logging.info("Deleting intermediate SHM data in %s", data_folder_shm)
                     subprocess.call(['/bin/rm', '-rf', data_folder_shm])
-                    # Remove also the coreneuron_input_{node_id} folders
-                    # if they were created in dev shm cache mode
-                    if SimConfig.cli_options.enable_shm == "CACHE" and MPI.rank == 0:
-                        corenrn_output = SimConfig.coreneuron_outputdir
-                        allcoredatfolders = glob.glob(
-                            os.path.join(corenrn_output, "coreneuron_input_*"),
-                            recursive=False,
-                        )
-                        for folder in allcoredatfolders:
-                            logging.info("Deleting intermediate data in %s", folder)
-                            subprocess.call(["/bin/rm", "-rf", folder])
 
             MPI.barrier()
 
@@ -1924,7 +1914,6 @@ class Neurodamus(Node):
                 if MPI.rank == 0:
                     base_filesdat = ospath.join(SimConfig.coreneuron_datadir, 'files')
                     os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
-
                 # Archive timers for this cycle
                 TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
 
