@@ -10,6 +10,7 @@ import math
 import os
 import subprocess
 from os import path as ospath
+from pathlib import Path
 from collections import Counter, namedtuple, defaultdict
 from contextlib import contextmanager
 from shutil import copyfileobj, move
@@ -1346,6 +1347,36 @@ class Node:
                 self._pc.nrnbbcore_write(corenrn_data)
                 MPI.barrier()  # wait for all ranks to finish corenrn data generation
 
+        if self._shm_enabled and SimConfig.cli_options.enable_shm == "CACHE":
+            # Below improvement should only be enabled if /dev/shm is available
+            # If /dev/shm is enabled this means the the <*_{1,2,3}.dat> files are going to
+            # be written first in /dev/shm (which is going to be used as a buffer to
+            # accelerate the writes and avoid GPFS IO)
+            # Rank 0 should move the <*_{1,2,3}.dat> files to a the coreneuron_datadir on
+            # GPFS (coreneuron_input_gpfs). Each node should move them to a separate
+            # subfolder (with name NODE_ID?) of coreneuron_datadir to increase GPFS
+            # performance. We can do that by finding out the Rank 0 of every node (already
+            # implemented).
+            # We will then create links on coreneuron_datadir for each file in the
+            # subfolders.
+            local_node_rank0 = int(SHMUtil.local_ranks[0])
+            if MPI.rank == local_node_rank0:
+                import shutil
+
+                group_id = int(SHMUtil.node_id / 20)
+                node_specific_corenrn_output_in_storage = \
+                    Path(SimConfig.coreneuron_datadir) / f"cycle_{self._cycle_i}/group_{group_id}/node_{SHMUtil.node_id}"
+                allfiles = glob.glob(
+                    os.path.join(corenrn_data, "*_[1-3].dat"), recursive=False
+                )
+                os.makedirs(node_specific_corenrn_output_in_storage, exist_ok=True)
+                # f has the whole path. I need only the filename
+                for f in allfiles:
+                    if not os.path.islink(f):
+                        filename = os.path.basename(f)
+                        shutil.move(f, node_specific_corenrn_output_in_storage)
+                        os.symlink(node_specific_corenrn_output_in_storage / filename, f)
+
         SimConfig.coreneuron.write_sim_config(
             corenrn_output,
             corenrn_data,
@@ -1515,6 +1546,10 @@ class Node:
 
         # Clear BBSaveState
         self._bbss.ignore()
+
+        # # There should be no more datahandles to the old model. Hence,
+        # # the stable identifiers can be deleted now.
+        # Nd.clear_deferred_deletion_vectors()
 
         # Shrink ArrayPools holding mechanism's data in NEURON
         pool_shrink()

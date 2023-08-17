@@ -7,6 +7,9 @@ import math
 import os
 
 from ..core import MPI, NeurodamusCore as Nd
+
+import numpy as np
+
 import logging
 
 
@@ -69,10 +72,33 @@ def free_event_queues():
                         "NEURON does not support CVode().free_event_queues()")
 
 
-def print_mem_usage():
-    """
-    Print memory usage information across all ranks.
-    """
+def print_node_level_mem_usage():
+    """Print statistics of the memory usage per compute node."""
+    from ..core._shmutils import SHMUtil
+
+    # The association of MPI ranks to compute nodes isn't
+    # always know. If unknown, don't print anything.
+    if not SHMUtil.is_node_id_known():
+        return
+
+    rss = SHMUtil.get_nodewise_rss()
+
+    min_usage_mb = np.min(rss) / 2**20
+    max_usage_mb = np.max(rss) / 2**20
+    avg_usage_mb = np.mean(rss) / 2**20
+    dev_usage_mb = np.std(rss) / 2**20
+
+    logging.info(
+        "Memusage (RSS) per node [MB]: Max=%.2lf, Min=%.2lf, Mean(Stdev)=%.2lf(%.2lf)",
+        max_usage_mb,
+        min_usage_mb,
+        avg_usage_mb,
+        dev_usage_mb
+    )
+
+
+def print_task_level_mem_usage():
+    """Print statistics of the memory usage per MPI task."""
     usage_mb = get_mem_usage()
 
     min_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MIN)
@@ -82,12 +108,30 @@ def print_mem_usage():
     dev_usage_mb = math.sqrt(MPI.pc.allreduce((usage_mb - avg_usage_mb) ** 2, MPI.SUM) / MPI.size)
 
     logging.info(
-        "Memusage [MB]: Max=%.2lf, Min=%.2lf, Mean(Stdev)=%.2lf(%.2lf)",
+        "Memusage (RSS) per task [MB]: Max=%.2lf, Min=%.2lf, Mean(Stdev)=%.2lf(%.2lf)",
         max_usage_mb,
         min_usage_mb,
         avg_usage_mb,
         dev_usage_mb
     )
+
+def print_mem_usage():
+    """
+    Print memory usage information across all ranks.
+    """
+
+    MPI.pc.print_memory_stats()
+    print_task_level_mem_usage()
+
+
+def print_mem_usage():
+    """
+    Print memory usage information across all ranks.
+    """
+
+    MPI.pc.print_memory_stats()
+    print_node_level_mem_usage()
+    print_task_level_mem_usage()
 
 
 def get_mem_usage():

@@ -505,6 +505,13 @@ def _loadbal_mode(config: _SimConfig, run_conf):
 
 
 @SimConfig.validator
+def _enable_shm(config: _SimConfig, run_conf):
+    cli_args = config.cli_options
+    dev_shm_str = cli_args.enable_shm
+    config.enable_shm = True if dev_shm_str in ["CACHE", "ON"] else False
+
+
+@SimConfig.validator
 def _projection_params(config: _SimConfig, run_conf):
     required_fields = ("Path",)
     non_negatives = ("PopulationID",)

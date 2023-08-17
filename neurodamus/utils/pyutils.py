@@ -195,3 +195,10 @@ def append_recarray(target_array, record):
         target_array.resize(nrows+1, refcheck=False)
         target_array[nrows] = record
     return target_array
+
+
+def warnings_ignore(message="", category=Warning, module=""):
+    """ Ignore matched warning in all ranks.
+    """
+    import warnings
+    warnings.filterwarnings("ignore", message, category, module)
