@@ -1373,9 +1373,13 @@ class Node:
                 # f has the whole path. I need only the filename
                 for f in allfiles:
                     if not os.path.islink(f):
-                        filename = os.path.basename(f)
+                        filename = node_specific_corenrn_output_in_storage / os.path.basename(f)
                         shutil.move(f, node_specific_corenrn_output_in_storage)
-                        os.symlink(node_specific_corenrn_output_in_storage / filename, f)
+                        os.symlink(filename, f)
+
+                        # Temp. commit: If we are on IME, ensure that the data does not transfer back to GPFS
+                        if node_specific_corenrn_output_in_storage.is_relative_to("/ime"):
+                            subprocess.call(['/opt/ddn/ime/bin/ime-ctl', '--pin', filename])
 
         SimConfig.coreneuron.write_sim_config(
             corenrn_output,
