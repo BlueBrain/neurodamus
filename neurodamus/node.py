@@ -10,7 +10,6 @@ import math
 import os
 import subprocess
 from os import path as ospath
-from pathlib import Path
 from collections import Counter, namedtuple, defaultdict
 from contextlib import contextmanager
 from shutil import copyfileobj, move
@@ -1347,39 +1346,30 @@ class Node:
                 self._pc.nrnbbcore_write(corenrn_data)
                 MPI.barrier()  # wait for all ranks to finish corenrn data generation
 
-        if self._shm_enabled and SimConfig.cli_options.enable_shm == "CACHE":
-            # Below improvement should only be enabled if /dev/shm is available
-            # If /dev/shm is enabled this means the the <*_{1,2,3}.dat> files are going to
-            # be written first in /dev/shm (which is going to be used as a buffer to
-            # accelerate the writes and avoid GPFS IO)
-            # Rank 0 should move the <*_{1,2,3}.dat> files to a the coreneuron_datadir on
-            # GPFS (coreneuron_input_gpfs). Each node should move them to a separate
-            # subfolder (with name NODE_ID?) of coreneuron_datadir to increase GPFS
-            # performance. We can do that by finding out the Rank 0 of every node (already
-            # implemented).
-            # We will then create links on coreneuron_datadir for each file in the
-            # subfolders.
-            local_node_rank0 = int(SHMUtil.local_ranks[0])
-            if MPI.rank == local_node_rank0:
-                import shutil
+        # In 'CACHE' mode, files are first dumped to /dev/shm and then transferred back to the
+        # output directory in the target filesystem using an optimized file tree structure. Only
+        # the rank0 of each node transfers files, reducing the overhead by a considerable factor.
+        # The original files are linked from /dev/shm to the target filesystem, allowing us to
+        # maintain the 'coreneuron_input' folder in /dev/shm, but using the target filesystem.
+        if self._shm_enabled and SimConfig.cli_options.enable_shm == "CACHE" and MPI.rank == int(SHMUtil.local_ranks[0]):
+            node_specific_datadir = os.path.join(SimConfig.coreneuron_datadir,
+                                                 f"cycle_{self._cycle_i}",
+                                                 f"group_{int(SHMUtil.node_id / 20)}",  # Group node folders by a factor
+                                                 f"node_{SHMUtil.node_id}")
+            os.makedirs(node_specific_datadir, exist_ok=True)
 
-                group_id = int(SHMUtil.node_id / 20)
-                node_specific_corenrn_output_in_storage = \
-                    Path(SimConfig.coreneuron_datadir) / f"cycle_{self._cycle_i}/group_{group_id}/node_{SHMUtil.node_id}"
-                allfiles = glob.glob(
-                    os.path.join(corenrn_data, "*_[1-3].dat"), recursive=False
-                )
-                os.makedirs(node_specific_corenrn_output_in_storage, exist_ok=True)
-                # f has the whole path. I need only the filename
-                for f in allfiles:
-                    if not os.path.islink(f):
-                        filename = node_specific_corenrn_output_in_storage / os.path.basename(f)
-                        shutil.move(f, node_specific_corenrn_output_in_storage)
-                        os.symlink(filename, f)
+            with os.scandir(corenrn_data) as allfiles:
+                for entry in allfiles:
+                    if entry.is_file(follow_symlinks=False):
+                        filename = os.path.join(node_specific_datadir, entry.name)
 
                         # Temp. commit: If we are on IME, ensure that the data does not transfer back to GPFS
-                        if node_specific_corenrn_output_in_storage.is_relative_to("/ime"):
+                        if node_specific_datadir.startswith("/ime"):
+                            os.close(os.open(filename, os.O_CREAT))  # Create an empty file to configure it
                             subprocess.call(['/opt/ddn/ime/bin/ime-ctl', '--pin', filename])
+
+                        move(entry.path, node_specific_datadir)
+                        os.symlink(filename, entry.path)
 
         SimConfig.coreneuron.write_sim_config(
             corenrn_output,
