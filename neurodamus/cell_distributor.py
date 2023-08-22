@@ -142,6 +142,7 @@ class CellManagerBase(_CellManager):
         self._binfo = None
         self._pc = Nd.pc
         self._conn_managers_per_src_pop = weakref.WeakValueDictionary()
+        self._metype_counts = None
 
         if type(circuit_conf.CircuitPath) is str:
             self._init_config(circuit_conf, self._target_spec.population or '')
@@ -163,6 +164,7 @@ class CellManagerBase(_CellManager):
     is_default = property(lambda self: self._circuit_name is None)
     is_virtual = property(lambda self: False)
     connection_managers = property(lambda self: self._conn_managers_per_src_pop)
+    metype_counts = property(lambda self: self._metype_counts)
 
     def is_initialized(self):
         return self._local_nodes is not None
@@ -219,6 +221,7 @@ class CellManagerBase(_CellManager):
         else:
             gidvec, me_infos, *cell_counts = self._load_nodes_balance(loader_f, load_balancer)
         self._local_nodes.add_gids(gidvec, me_infos)
+        self._metype_counts = me_infos.counts
         self._total_cells = cell_counts[0]
         logging.info(" => Loaded info about %d target cells (out of %d)", *cell_counts)
 
@@ -262,10 +265,12 @@ class CellManagerBase(_CellManager):
         if self._local_nodes is None:
             return
         logging.info("Finalizing cells... Gid offset: %d", self._local_nodes.offset)
-        self._instantiate_cells()
+        memory_dict = self._instantiate_cells()
         self._update_targets_local_gids()
         self._init_cell_network()
         self._local_nodes.clear_cell_info()
+
+        return memory_dict
 
     @mpi_no_errors
     def _instantiate_cells(self, _CellType=None):
@@ -570,7 +575,7 @@ class CellDistributor(CellManagerBase):
         log_verbose("Loading '%s' morphologies from: %s",
                     CellType.morpho_extension, conf.MorphologyPath)
         if SimConfig.dry_run:
-            super()._instantiate_cells_dry(CellType)
+            return super()._instantiate_cells_dry(CellType)
         else:
             super()._instantiate_cells(CellType)
 

@@ -469,11 +469,25 @@ class Node:
         log_stage("FINALIZING CIRCUIT CELLS")
         for cell_manager in self._circuits.all_node_managers():
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
-            cell_manager.finalize()
+            memory_dict = cell_manager.finalize()
+            metype_counts = cell_manager.metype_counts
+            self._collect_display_cell_counts(memory_dict, metype_counts)
 
         # Final bits after we have all cell managers
         self._circuits.global_manager.finalize()
         SimConfig.update_connection_blocks(self._circuits.alias)
+
+    @staticmethod
+    def _collect_display_cell_counts(memory_dict, metype_counts):
+        if MPI.rank == 0:
+            logging.info("Cells created:")
+            if metype_counts is not None:
+                for metype, count in metype_counts.items():
+                    logging.info("  %s: %d", metype, count)
+            logging.info("Memory usage:")
+            if memory_dict is not None:
+                for metype, mem in memory_dict.items():
+                    logging.info("  %s: %d", metype, mem)
 
     # -
     @mpi_no_errors
