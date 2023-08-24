@@ -33,7 +33,7 @@ from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
-from .utils.memory import SynapseMemoryUsage
+from .utils.memory import SynapseMemoryUsage, export_memory_usage_to_json
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
 # Internal Plugins
@@ -493,6 +493,7 @@ class Node:
 
             mem_dict_clean = {(key[0].rstrip('0123456789'), key[1]): value for key,
                               value in full_mem_dict.items()}
+            export_memory_usage_to_json(mem_dict_clean, "memory_usage.json")
             logging.info("Memory usage:")
             for metype, mem in mem_dict_clean.items():
                 logging.info("  %s: %f", metype, mem)

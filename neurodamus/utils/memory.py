@@ -151,3 +151,11 @@ class SynapseMemoryUsage:
     @classmethod
     def get_memory_usage(cls, count, synapse_type):
         return count * cls._synapse_memory_usage[synapse_type]
+
+
+def export_memory_usage_to_json(memory_usage_dict, json_file_name):
+    import json
+    # serialize dictionary keys since dump wont accept tuples as keys
+    memory_usage_dict = {str(k): v for k, v in memory_usage_dict.items()}
+    with open(json_file_name, 'w') as fp:
+        json.dump(memory_usage_dict, fp, sort_keys=True, indent=4)
