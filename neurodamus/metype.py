@@ -339,7 +339,7 @@ def vector_rotate_translate(points, transform_matrix):
 
 class METypeManager(dict):
     """ Map to hold specific METype info and provide retrieval by gid
-    """ 
+    """
 
     counts = None
     """Store counts of cells per METype"""

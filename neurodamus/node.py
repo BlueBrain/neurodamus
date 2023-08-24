@@ -471,7 +471,10 @@ class Node:
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
             memory_dict = cell_manager.finalize()
             metype_counts = cell_manager.metype_counts
-            self._collect_display_cell_counts(memory_dict, metype_counts)
+            if SimConfig.dry_run:
+                if memory_dict is None:
+                    memory_dict = {}
+                self.grand_total = self._collect_display_cell_counts(memory_dict, metype_counts)
 
         # Final bits after we have all cell managers
         self._circuits.global_manager.finalize()
@@ -479,15 +482,28 @@ class Node:
 
     @staticmethod
     def _collect_display_cell_counts(memory_dict, metype_counts):
+
+        mem_dict_list = [memory_dict] + [None] * (MPI.size - 1)  # send to rank0
+        full_mem_list = MPI.py_alltoall(mem_dict_list)
+        grand_total = 0
         if MPI.rank == 0:
+            full_mem_dict = {}
+            for mem_dict in full_mem_list:
+                full_mem_dict.update(mem_dict)
+
+            mem_dict_clean = {(key[0].rstrip('0123456789'), key[1]): value for key,
+                              value in full_mem_dict.items()}
+            logging.info("Memory usage:")
+            for metype, mem in mem_dict_clean.items():
+                logging.info("  %s: %f", metype, mem)
             logging.info("Cells created:")
             if metype_counts is not None:
                 for metype, count in metype_counts.items():
+                    grand_total += count * mem_dict_clean[metype]
                     logging.info("  %s: %d", metype, count)
-            logging.info("Memory usage:")
-            if memory_dict is not None:
-                for metype, mem in memory_dict.items():
-                    logging.info("  %s: %d", metype, mem)
+                logging.info("  Total memory usage for cells: %f MB", grand_total)
+
+        return grand_total
 
     # -
     @mpi_no_errors
