@@ -333,7 +333,9 @@ class SonataConfig:
     @property
     def parsedInjects(self):
         injects = {}
-        for name in self._sim_conf.list_input_names:
+        # the order of stimulus injection could lead to minor difference on the results
+        # so better to preserve it as in the config file
+        for name in self._sections["inputs"].keys():
             inj = self._translate_dict("inputs", self._sim_conf.input(name))
             inj.setdefault("Stimulus", name)
             injects["inject"+name] = inj
