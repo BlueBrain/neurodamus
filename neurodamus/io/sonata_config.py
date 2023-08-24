@@ -321,7 +321,7 @@ class SonataConfig:
         }
 
         stimuli = {}
-        for name in self._sim_conf.list_input_names:
+        for name in self._sections["inputs"].keys():
             stimulus = self._translate_dict("inputs", self._sim_conf.input(name))
             self._adapt_libsonata_fields(stimulus)
             stimulus["Pattern"] = "SEClamp" if stimulus["Pattern"] == "seclamp" \
@@ -333,7 +333,7 @@ class SonataConfig:
     @property
     def parsedInjects(self):
         injects = {}
-        for name in self._sim_conf.list_input_names:
+        for name in self._sections["inputs"].keys():
             inj = self._translate_dict("inputs", self._sim_conf.input(name))
             inj.setdefault("Stimulus", name)
             injects["inject"+name] = inj
@@ -346,7 +346,7 @@ class SonataConfig:
             "synapse": "Synapse"
         }
         reports = {}
-        for name in self._sim_conf.list_report_names:
+        for name in self._sections["reports"].keys():
             rep = self._translate_dict("reports", self._sim_conf.report(name))
             # Adapt enums and variable names read from libsonata
             self._adapt_libsonata_fields(rep)
