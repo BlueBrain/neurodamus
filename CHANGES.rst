@@ -11,7 +11,7 @@ Version 2.16.1
   * [BBPBGLIB-712] Estimate memory usage for synapse and connection
 *Improvements*
   * Update CoreConfig.mod for latest CoreNEURON changes
-  * [BBPBGLIB-1030] Reject *.sonata nodes and edges file
+  * [BBPBGLIB-1030] Reject .sonata extenson for nodes and edges file
   * Breaking enable_reports code into pieces
   * [BBPBGLIB-851]Warning on cao_CR syn variable if not the same as extracellular_calcium
   * Use libsonata API to read report secton keys in the sonata config file
