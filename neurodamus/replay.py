@@ -66,7 +66,7 @@ class SpikeManager:
         spikes = spikes_file.get("spikes/" + population)
         if spikes is None:
             raise MissingSpikesPopulationError("Spikes population not found: " + population)
-        return spikes["timestamps"][...], spikes["node_ids"][...]
+        return spikes["timestamps"][...], spikes["node_ids"][...] + 1
 
     @classmethod
     def _read_spikes_ascii(cls, filename):
