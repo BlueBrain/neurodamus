@@ -316,7 +316,8 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         meinfos.load_infoNP(gidvec, morpho_names, emodels, mtypes, threshold_currents,
                             holding_currents, exc_mini_freqs, inh_mini_freqs, positions,
                             rotations, add_params_list)
-        meinfos.counts = count_per_metype
+        if SimConfig.dry_run:
+            meinfos.counts = count_per_metype
         return gidvec, meinfos, total_cells
 
     # If dynamic properties are not specified simply return early
