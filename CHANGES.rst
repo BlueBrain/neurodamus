@@ -2,6 +2,21 @@
 Change Log
 ==========
 
+Version 2.16.1
+==============
+**25 Aug 2023**
+
+*New Features*
+  * [BBPBGLIB-1044] Sonata Replay
+  * [BBPBGLIB-712] Estimate memory usage for synapse and connection
+*Improvements*
+  * Update CoreConfig.mod for latest CoreNEURON changes
+  * [BBPBGLIB-1030] Reject .sonata extenson for nodes and edges file
+  * Breaking enable_reports code into pieces
+  * [BBPBGLIB-851]Warning on cao_CR syn variable if not the same as extracellular_calcium
+  * Use libsonata API to read report secton keys in the sonata config file
+
+
 Version 2.16.0
 ==============
 **26 July 2023**
