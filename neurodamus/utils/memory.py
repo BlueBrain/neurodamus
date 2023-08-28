@@ -5,6 +5,7 @@ import ctypes
 import ctypes.util
 import math
 import os
+import json
 
 from ..core import MPI, NeurodamusCore as Nd
 
@@ -154,8 +155,14 @@ class SynapseMemoryUsage:
 
 
 def export_memory_usage_to_json(memory_usage_dict, json_file_name):
-    import json
     # serialize dictionary keys since dump wont accept tuples as keys
     memory_usage_dict = {str(k): v for k, v in memory_usage_dict.items()}
     with open(json_file_name, 'w') as fp:
         json.dump(memory_usage_dict, fp, sort_keys=True, indent=4)
+
+
+def import_memory_usage_from_json(json_file_name):
+    with open(json_file_name, 'r') as fp:
+        memory_usage_dict = json.load(fp)
+    memory_usage_dict = {eval(k): v for k, v in memory_usage_dict.items()}
+    return memory_usage_dict

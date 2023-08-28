@@ -28,7 +28,7 @@ from .metype import Cell_V5, Cell_V6, EmptyCell
 from .target_manager import TargetSpec
 from .utils import compat
 from .utils.logging import log_verbose, log_all
-from .utils.memory import get_mem_usage
+from .utils.memory import get_mem_usage, import_memory_usage_from_json
 
 
 class NodeFormat(Enum):
@@ -575,6 +575,15 @@ class CellDistributor(CellManagerBase):
         log_verbose("Loading '%s' morphologies from: %s",
                     CellType.morpho_extension, conf.MorphologyPath)
         if SimConfig.dry_run:
+            # if "memory_usage.json" exists
+            # then we can load the memory usage of the cells
+            # without instantiating them
+            # if MPI.rank == 0:
+            #     if ospath.exists("memory_usage.json"):
+            #         logging.info("Loading memory usage from memory_usage.json!!!!!!")
+            #         return import_memory_usage_from_json("memory_usage.json")
+            #     else:
+            #         logging.info("No memory_usage.json found. Running dry run on cells...")
             return super()._instantiate_cells_dry(CellType)
         else:
             super()._instantiate_cells(CellType)

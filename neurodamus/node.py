@@ -474,23 +474,29 @@ class Node:
             if SimConfig.dry_run:
                 if memory_dict is None:
                     memory_dict = {}
-                self.grand_total = self._collect_display_cell_counts(memory_dict, metype_counts)
+                self.full_mem_dict = self._collect_cell_counts(memory_dict)
+                self.cells_total_memory = self._calc_full_mem_estimate(self.full_mem_dict, metype_counts)
 
         # Final bits after we have all cell managers
         self._circuits.global_manager.finalize()
         SimConfig.update_connection_blocks(self._circuits.alias)
 
     @staticmethod
-    def _collect_display_cell_counts(memory_dict, metype_counts):
-
+    def _collect_cell_counts(memory_dict):
         mem_dict_list = [memory_dict] + [None] * (MPI.size - 1)  # send to rank0
         full_mem_list = MPI.py_alltoall(mem_dict_list)
-        grand_total = 0
         if MPI.rank == 0:
             full_mem_dict = {}
             for mem_dict in full_mem_list:
                 full_mem_dict.update(mem_dict)
+            return full_mem_dict
 
+    @staticmethod
+    def _calc_full_mem_estimate(full_mem_dict, metype_counts):
+
+        memory_total = 0
+
+        if MPI.rank == 0:
             mem_dict_clean = {(key[0].rstrip('0123456789'), key[1]): value for key,
                               value in full_mem_dict.items()}
             export_memory_usage_to_json(mem_dict_clean, "memory_usage.json")
@@ -500,11 +506,11 @@ class Node:
             logging.info("Cells created:")
             if metype_counts is not None:
                 for metype, count in metype_counts.items():
-                    grand_total += count * mem_dict_clean[metype]
+                    memory_total += count * mem_dict_clean[metype]
                     logging.info("  %s: %d", metype, count)
-                logging.info("  Total memory usage for cells: %f MB", grand_total)
+                logging.info("  Total memory usage for cells: %f MB", memory_total)
 
-        return grand_total
+        return memory_total
 
     # -
     @mpi_no_errors
@@ -533,7 +539,10 @@ class Node:
             self._load_projections(pname, projection)
 
         if SimConfig.dry_run:
-            self._collect_display_syn_counts(synapse_counter)
+            self.syn_total_memory = self._collect_display_syn_counts(synapse_counter)
+            if MPI.rank == 0:
+                logging.info("Total estimated memory usage for synapses + cells: %.2f MB",
+                              self.cells_total_memory + self.syn_total_memory/1024)
             return
 
         log_stage("Configuring connections...")
@@ -689,11 +698,14 @@ class Node:
                     inh += count
                 if synapse_type >= 100:
                     exc += count
-            logging.info(" - Estimated synapse memory usage (KB):")
+            logging.info(" - Estimated synapse memory usage (MB):")
             in_mem = SynapseMemoryUsage.get_memory_usage(inh, "ProbGABAAB")
             ex_mem = SynapseMemoryUsage.get_memory_usage(exc, "ProbAMPANMDA")
-            logging.info(f"   - Inhibitory: {in_mem}")
-            logging.info(f"   - Excitatory: {ex_mem}")
+            logging.info(f"   - Inhibitory: {in_mem/1024:.2f}")
+            logging.info(f"   - Excitatory: {ex_mem/1024:.2f}")
+            logging.info(f" - Total: {(in_mem + ex_mem)/1024:.2f}")
+
+            return in_mem + ex_mem
 
     # -
     @mpi_no_errors
