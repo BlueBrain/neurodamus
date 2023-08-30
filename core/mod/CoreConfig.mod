@@ -27,8 +27,8 @@ VERBATIM
 #ifndef CORENEURON_BUILD
 #if defined(ENABLE_CORENEURON)
 #include <coreneuron/engine.h>
-#include <nrncore_write/utils/nrncore_utils.h>
-#include <nrncore_write/callbacks/nrncore_callbacks.h>
+#include <nrncore_utils.h>
+#include <nrncore_callbacks.h>
 
 #if defined(CORENEURON_VERSION) && (CORENEURON_VERSION >= 18)
 # define CORENRN_CLI11 1
