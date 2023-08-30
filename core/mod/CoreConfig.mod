@@ -27,6 +27,8 @@ VERBATIM
 #ifndef CORENEURON_BUILD
 #if defined(ENABLE_CORENEURON)
 #include <coreneuron/engine.h>
+#include <nrncore_write/utils/nrncore_utils.h>
+#include <nrncore_write/callbacks/nrncore_callbacks.h>
 
 #if defined(CORENEURON_VERSION) && (CORENEURON_VERSION >= 18)
 # define CORENRN_CLI11 1
@@ -279,6 +281,17 @@ PROCEDURE psolve_core() {
 VERBATIM
 #ifndef CORENEURON_BUILD
 #if defined(ENABLE_CORENEURON)
+    // get coreneuron library handle
+    void* handle = [] {
+        try {
+            return get_coreneuron_handle();
+        } catch (std::runtime_error const& e) {
+            hoc_execerror(e.what(), nullptr);
+        }
+    }();
+
+    // make sure coreneuron & neuron are compatible
+    check_coreneuron_compatibility(handle);
     char* simConf = (char*)alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(simConf, "%s/%s", outputdir, SIM_CONFIG_FILE);
 # if CORENRN_CLI11

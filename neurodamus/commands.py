@@ -65,8 +65,8 @@ def neurodamus(args=None):
         return 1
 
     # Shall replace process with special? Don't if is special or already replaced
-    if not sys.argv[0].endswith("special") and not os.environ.get("neurodamus_special"):
-        _attempt_launch_special(config_file)
+    # if not sys.argv[0].endswith("special") and not os.environ.get("neurodamus_special"):
+    #     _attempt_launch_special(config_file)
 
     # Warning control before starting the process
     _filter_warnings()
