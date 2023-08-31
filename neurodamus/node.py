@@ -34,6 +34,7 @@ from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
 from .utils.memory import SynapseMemoryUsage, export_memory_usage_to_json
+from .utils.memory import import_memory_usage_from_json
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
 # Internal Plugins
@@ -467,15 +468,24 @@ class Node:
 
         # Let the cell managers have any final say in the cell objects
         log_stage("FINALIZING CIRCUIT CELLS")
+        if ospath.exists("memory_usage.json") and SimConfig.dry_run:
+            logging.info("Loading memory usage from memory_usage.json...")
+            imported_memory_dict = import_memory_usage_from_json("memory_usage.json")
+        else:
+            imported_memory_dict = None
         for cell_manager in self._circuits.all_node_managers():
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
-            memory_dict = cell_manager.finalize()
+            if SimConfig.dry_run and cell_manager.circuit_name is None:
+                logging.warning("Dry-run ignoring empty circuit...")
+                continue
+            memory_dict = cell_manager.finalize(imported_memory_dict)
             metype_counts = cell_manager.metype_counts
             if SimConfig.dry_run:
                 if memory_dict is None:
                     memory_dict = {}
                 self.full_mem_dict = self._collect_cell_counts(memory_dict)
-                self.cells_total_memory = self._calc_full_mem_estimate(self.full_mem_dict, metype_counts)
+                self.cells_total_memory = self._calc_full_mem_estimate(self.full_mem_dict,
+                                                                       metype_counts)
 
         # Final bits after we have all cell managers
         self._circuits.global_manager.finalize()

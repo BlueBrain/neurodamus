@@ -256,7 +256,7 @@ class CellManagerBase(_CellManager):
         return gidvec, me_infos, total_cells, full_size
 
     # -
-    def finalize(self, *_):
+    def finalize(self, imported_memory_dict, *_):
         """Instantiates cells and initializes the network in the simulator.
 
         Note: it should be called after all cell distributors have done load_nodes()
@@ -265,7 +265,7 @@ class CellManagerBase(_CellManager):
         if self._local_nodes is None:
             return
         logging.info("Finalizing cells... Gid offset: %d", self._local_nodes.offset)
-        memory_dict = self._instantiate_cells()
+        memory_dict = self._instantiate_cells(imported_memory_dict)
         self._update_targets_local_gids()
         self._init_cell_network()
         self._local_nodes.clear_cell_info()
@@ -291,7 +291,7 @@ class CellManagerBase(_CellManager):
             self._store_cell(gid + cell_offset, cell)
 
     @mpi_no_errors
-    def _instantiate_cells_dry(self, _CellType=None):
+    def _instantiate_cells_dry(self, _CellType=None, imported_memory_dict=None):
         CellType = _CellType or self.CellType
         assert CellType is not None, "Undefined CellType in Manager"
         Nd.execute("xopen_broadcast_ = 0")
@@ -308,7 +308,9 @@ class CellManagerBase(_CellManager):
         n_cells = 0
         memory_dict = {}
 
-        for gid, cell_info in gid_info_items:
+        filtered_gid_info_items = self._filter_memory_dict(imported_memory_dict, gid_info_items)
+
+        for gid, cell_info in filtered_gid_info_items:
             diff_mtype = prev_mtype != cell_info.mtype
             diff_emodel = prev_emodel != cell_info.emodel
             first = prev_emodel is None and prev_mtype is None
@@ -335,7 +337,23 @@ class CellManagerBase(_CellManager):
                     prev_emodel, prev_mtype, memory_allocated/n_cells, n_cells)
             memory_dict[(prev_emodel, prev_mtype)] = memory_allocated/n_cells
 
+        if imported_memory_dict is not None:
+            memory_dict.update(imported_memory_dict)
+
         return memory_dict
+
+    def _filter_memory_dict(self, imported_memory_dict, gid_info_items):
+        if imported_memory_dict is not None:
+            filtered_gid_info_items = (
+                (gid, cell_info)
+                for gid, cell_info in gid_info_items
+                if (cell_info.emodel.rstrip('0123456789'),
+                    cell_info.mtype) not in imported_memory_dict
+            )
+        else:
+            filtered_gid_info_items = gid_info_items
+
+        return filtered_gid_info_items
 
     def _update_targets_local_gids(self):
         logging.info(" > Updating targets")
@@ -564,7 +582,7 @@ class CellDistributor(CellManagerBase):
         log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader.__name__)
         return super().load_nodes(load_balancer, _loader=loader, loader_opts=loader_opts)
 
-    def _instantiate_cells(self, *_):
+    def _instantiate_cells(self, imported_memory_dict, *_):
         if self.CellType is not NotImplemented:
             return super()._instantiate_cells(self.CellType)
         conf = self._circuit_conf
@@ -575,16 +593,7 @@ class CellDistributor(CellManagerBase):
         log_verbose("Loading '%s' morphologies from: %s",
                     CellType.morpho_extension, conf.MorphologyPath)
         if SimConfig.dry_run:
-            # if "memory_usage.json" exists
-            # then we can load the memory usage of the cells
-            # without instantiating them
-            # if MPI.rank == 0:
-            #     if ospath.exists("memory_usage.json"):
-            #         logging.info("Loading memory usage from memory_usage.json!!!!!!")
-            #         return import_memory_usage_from_json("memory_usage.json")
-            #     else:
-            #         logging.info("No memory_usage.json found. Running dry run on cells...")
-            return super()._instantiate_cells_dry(CellType)
+            return super()._instantiate_cells_dry(CellType, imported_memory_dict)
         else:
             super()._instantiate_cells(CellType)
 
