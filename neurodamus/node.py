@@ -1038,7 +1038,7 @@ class Node:
             (os.path.basename(rep_conf.get("FileName", rep_name)),
                 target_spec.name, rep_params.rep_type, reporton_comma_separated)
             + rep_params[3:5] + (target_type,) + rep_params[5:8]
-            + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
+            + (target.get_gids(), SimConfig.corenrn_buff_size)
         )
         SimConfig.coreneuron.write_report_config(*core_report_params)
         return True
@@ -1407,14 +1407,6 @@ class Node:
     # -
     def _run_coreneuron(self):
         logging.info("Launching simulation with CoreNEURON")
-        core_nrn_opts = ()
-
-        for opt, core_opt in {"save": "--checkpoint", "restore": "--restore"}.items():
-            opt_value = getattr(SimConfig, opt)
-            if opt_value is not None:
-                core_nrn_opts = core_nrn_opts + (core_opt, opt_value)
-
-        log_verbose("solve_core(..., %s)", ", ".join(core_nrn_opts))
         SimConfig.coreneuron.psolve_core(*core_nrn_opts)
 
     #
