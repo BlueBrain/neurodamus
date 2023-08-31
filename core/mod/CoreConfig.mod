@@ -292,6 +292,8 @@ VERBATIM
 
     // make sure coreneuron & neuron are compatible
     check_coreneuron_compatibility(handle);
+    // setup the callback functions between neuron & coreneuron
+    map_coreneuron_callbacks(handle);
     char* simConf = (char*)alloca(strlen(outputdir) + CONFIG_FILENAME_TOTAL_LEN_MAX);
     sprintf(simConf, "%s/%s", outputdir, SIM_CONFIG_FILE);
 # if CORENRN_CLI11
