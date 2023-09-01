@@ -334,7 +334,7 @@ class _SimConfig(object):
             logging.info("User-defined RNG base seed %s", parsed_run.valueOf("BaseSeed"))
 
         if cls._simconf.coreNeuronUsed():
-            cls.coreneuron = h.CoreConfig(cls.output_root)
+            # cls.coreneuron = h.CoreConfig(cls.output_root)
             cls.coreneuron_python = CoreConfig(cls.output_root)
             # NOTE: commenting out the following lines since locations are hardcoded
             #   and therefore now we set them in python directly (and early).
@@ -501,7 +501,7 @@ class CoreConfig:
         coreneuron.sim_config = f"{self.output_root}/{self.sim_config_file}"
         coreneuron.save = getattr(SimConfig, "save", None)
         coreneuron.restore = getattr(SimConfig, "save", None)
-
+        coreneuron.only_simulate = True
         Nd.pc.psolve(h.tstop)
 
 
