@@ -500,7 +500,7 @@ class CoreConfig:
         coreneuron.sim_config = f"{self.output_root}/{self.sim_config_file}"
         coreneuron.save = getattr(SimConfig, "save", None)
         coreneuron.restore = getattr(SimConfig, "save", None)
-
+        coreneuron.only_simulate = True
         Nd.pc.psolve(h.tstop)
 
 
