@@ -333,6 +333,7 @@ class _SimConfig(object):
             logging.info("User-defined RNG base seed %s", parsed_run.valueOf("BaseSeed"))
 
         if cls._simconf.coreNeuronUsed():
+            cls.coreneuron = True
             # NOTE: commenting out the following lines since locations are hardcoded
             #   and therefore now we set them in python directly (and early).
             #   The day we need to make it configurable, SimConfig needs to extract
@@ -402,9 +403,6 @@ class _SimConfig(object):
 
 # Singleton
 SimConfig = _SimConfig()
-
-
-
 
 
 def find_input_file(filepath, search_paths=(), alt_filename=None):
