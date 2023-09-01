@@ -1,6 +1,5 @@
 import os
-
-from . import SimConfig
+import logging
 from ._utils import run_only_rank0
 
 class _CoreConfig(object):
@@ -8,11 +7,10 @@ class _CoreConfig(object):
     The CoreConfig class is responsible for managing the configuration of the CoreNEURON simulation.
     It writes the simulation / report configurations and calls the CoreNEURON solver.
     """
-    def __init__(self, output_root, sim_config_file="sim.conf", report_config_file="report.conf"):
-        self.output_root = output_root
-        self.sim_config_file = sim_config_file
-        self.report_config_file = report_config_file
-        self.default_cell_permute = 0
+    sim_config_file = "sim.conf"
+    report_config_file = "report.conf"
+    output_root = "output"
+    default_cell_permute = 0
 
     @run_only_rank0
     def write_report_config(
@@ -21,7 +19,7 @@ class _CoreConfig(object):
             buffer_size=8):
         import struct
         num_gids = len(gids)
-        print(f"Adding report {report_name} for CoreNEURON with {num_gids} gids")
+        logging.info(f"Adding report {report_name} for CoreNEURON with {num_gids} gids")
         report_conf = f"{self.output_root}/{self.report_config_file}"
         with open(report_conf, "ab") as fp:
             # Write the formatted string to the file
@@ -36,12 +34,10 @@ class _CoreConfig(object):
 
     @run_only_rank0
     def write_sim_config(
-            self, outpath, datpath, tstop, dt, forwardskip, prcellgid,
+            self, outpath, datpath, tstop, dt, forwardskip, prcellgid, celsius, v_init,
             pattern=None, seed=None, model_stats=False, enable_reports=True):
         simconf = f"{self.output_root}/{self.sim_config_file}"
-        print(f"Writing sim config file: {simconf}")
-        celsius = getattr(SimConfig, 'celsius', 34.0)
-        v_init = getattr(SimConfig, 'v_init', -65.0)
+        logging.info(f"Writing sim config file: {simconf}")
         with open(simconf, "w") as fp:
             fp.write(f"outpath='{os.path.abspath(outpath)}'\n")
             fp.write(f"datpath='{os.path.abspath(datpath)}'\n")
@@ -88,16 +84,20 @@ class _CoreConfig(object):
             fp.write(filename)
             fp.write("\n")
 
-    def psolve_core(self):
+    def psolve_core(self, save_path = None, restore_path = None):
         from neuron import h
         h.CVode().cache_efficient(1)
         from neuron import coreneuron
         from . import NeurodamusCore as Nd
         coreneuron.enable = True
+        coreneuron.file_mode = True
         coreneuron.sim_config = f"{self.output_root}/{self.sim_config_file}"
-        coreneuron.save = getattr(SimConfig, "save", None)
-        coreneuron.restore = getattr(SimConfig, "save", None)
+        if save_path:
+            coreneuron.save = save_path
+        if restore_path:
+            coreneuron.restore = restore_path
         coreneuron.only_simulate = True
+        coreneuron.data_path = f"{self.output_root}/coreneuron_input"
         Nd.pc.psolve(h.tstop)
 
 # Singleton
