@@ -92,9 +92,11 @@ def _read_sonata_spike_file(spike_file):
 
 
 @pytest.mark.forked
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
+# @pytest.mark.skipif(
+#     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+#     reason="Test requires loading a neocortex model to run")
+@pytest.mark.skip(
+    reason="Pending for a NEURON fix regarding the dynapmic MPI library")
 def test_v5_sonata_multisteps():
     import numpy.testing as npt
     from neurodamus import Neurodamus
@@ -124,9 +126,11 @@ def test_v5_sonata_multisteps():
 
 
 @pytest.mark.forked
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
+# @pytest.mark.skipif(
+#     not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+#     reason="Test requires loading a neocortex model to run")
+@pytest.mark.skip(
+    reason="Pending for a NEURON fix regarding the dynapmic MPI library")
 def test_usecase3_sonata_multisteps():
     import numpy.testing as npt
     from neurodamus import Neurodamus
