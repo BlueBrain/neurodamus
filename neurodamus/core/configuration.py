@@ -405,9 +405,6 @@ class _SimConfig(object):
 SimConfig = _SimConfig()
 
 
-
-
-
 def find_input_file(filepath, search_paths=(), alt_filename=None):
     """Determine the full path of input files.
 
