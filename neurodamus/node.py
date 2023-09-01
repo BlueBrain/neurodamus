@@ -19,6 +19,7 @@ from .core import NeurodamusCore as Nd
 from .core.configuration import CircuitConfig, Feature, GlobalConfig, SimConfig
 from .core._engine import EngineBase
 from .core._shmutils import SHMUtil
+from .core.coreneuron_configuration import CoreConfig
 from .core.configuration import ConfigurationError, find_input_file, get_debug_cell_gid
 from .core.nodeset import PopulationNodes
 from .cell_distributor import CellDistributor, VirtualCellPopulation, GlobalCellManager
@@ -863,7 +864,7 @@ class Node:
         else:
             pop_offsets_alias = CircuitManager.read_population_offsets()
         if SimConfig.use_coreneuron:
-            SimConfig.coreneuron.write_report_count(len(reports_conf))
+            CoreConfig.write_report_count(len(reports_conf))
 
         for rep_name, rep_conf in reports_conf.items():
             target_spec = TargetSpec(rep_conf["Target"])
@@ -1040,7 +1041,7 @@ class Node:
             + rep_params[3:5] + (target_type,) + rep_params[5:8]
             + (target.get_gids(), SimConfig.corenrn_buff_size)
         )
-        SimConfig.coreneuron.write_report_config(*core_report_params)
+        CoreConfig.write_report_config(*core_report_params)
         return True
 
     def _report_setup(self, report, rep_conf, target, rep_type):
@@ -1086,20 +1087,20 @@ class Node:
 
         if SimConfig.use_coreneuron:
             # write spike populations
-            if hasattr(SimConfig.coreneuron, "write_population_count"):
+            if hasattr(CoreConfig, "write_population_count"):
                 # Do not count populations with None pop_name
                 pop_count = (len(pop_offsets) - 1 if None in pop_offsets else len(pop_offsets))
-                SimConfig.coreneuron.write_population_count(pop_count)
+                CoreConfig.write_population_count(pop_count)
             for pop_name, offset in pop_offsets.items():
                 if pop_name is not None:
-                    SimConfig.coreneuron.write_spike_population(pop_name or "All", offset)
+                    CoreConfig.write_spike_population(pop_name or "All", offset)
             spike_path = self._run_conf.get("SpikesFile")
             if spike_path is not None:
                 # Get only the spike file name
                 file_name = spike_path.split('/')[-1]
             else:
                 file_name = "out.h5"
-            SimConfig.coreneuron.write_spike_filename(file_name)
+            CoreConfig.write_spike_filename(file_name)
         else:
             # Report Buffer Size hint in MB.
             reporting_buffer_size = self._run_conf.get("ReportingBufferSize")
@@ -1358,7 +1359,7 @@ class Node:
                 self._pc.nrnbbcore_write(corenrn_data)
                 MPI.barrier()  # wait for all ranks to finish corenrn data generation
 
-        SimConfig.coreneuron.write_sim_config(
+        CoreConfig.write_sim_config(
             corenrn_output,
             corenrn_data,
             Nd.tstop,
@@ -1407,7 +1408,7 @@ class Node:
     # -
     def _run_coreneuron(self):
         logging.info("Launching simulation with CoreNEURON")
-        SimConfig.coreneuron.psolve_core(*core_nrn_opts)
+        CoreConfig.psolve_core()
 
     #
     def _sim_event_handlers(self, tstart, tstop):
