@@ -271,6 +271,7 @@ class Node:
             self._spike_populations = []
             Nd.execute("cvode = new CVode()")
             SimConfig.init(config_file, options)
+            CoreConfig.output_root = SimConfig.output_root
             self._run_conf = SimConfig.run_conf
             self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
@@ -1354,6 +1355,8 @@ class Node:
             Nd.dt,
             fwd_skip,
             self._pr_cell_gid or -1,
+            getattr(SimConfig, 'celsius', 34.0),
+            getattr(SimConfig, 'v_init', -65.0),
             self._core_replay_file,
             SimConfig.rng_info.getGlobalSeed(),
             int(SimConfig.cli_options.model_stats),
@@ -1396,7 +1399,7 @@ class Node:
     # -
     def _run_coreneuron(self):
         logging.info("Launching simulation with CoreNEURON")
-        CoreConfig.psolve_core()
+        CoreConfig.psolve_core(getattr(SimConfig, "save", None), getattr(SimConfig, "restore", None))
 
     #
     def _sim_event_handlers(self, tstart, tstop):

@@ -71,7 +71,7 @@ def test_write_sim_config(tmpdir):
     pattern = "file_pattern"
     enable_reports = 1
     report_conf = f"{core_config.output_root}/{core_config.report_config_file}"
-    core_config.write_sim_config(outpath, datpath, tstop, dt, forwardskip, prcellgid,
+    core_config.write_sim_config(outpath, datpath, tstop, dt, forwardskip, prcellgid, celsius, v_init,
                                 pattern, seed, model_stats, enable_reports)
     # Check that the sim configuration file was created
     sim_config_file = os.path.join(core_config.output_root, core_config.sim_config_file)
