@@ -2,6 +2,17 @@
 Change Log
 ==========
 
+Version 2.16.2
+==============
+**1 Sep 2023**
+
+*Bug fixes*
+  * Use 0-based gid for reading GlioVascular sonata edges file
+  * import h5py in the function call to filter numpy warnings
+  * Propagate the log level correctly from the CLI option to Neurodamus class
+  * Skip CORENEURON unit tests pending for a fix from NEURON (#38)
+
+
 Version 2.16.1
 ==============
 **25 Aug 2023**
