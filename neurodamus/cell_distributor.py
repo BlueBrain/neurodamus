@@ -256,7 +256,7 @@ class CellManagerBase(_CellManager):
         return gidvec, me_infos, total_cells, full_size
 
     # -
-    def finalize(self, imported_memory_dict, *_):
+    def finalize(self, imported_memory_dict=None, *_):
         """Instantiates cells and initializes the network in the simulator.
 
         Note: it should be called after all cell distributors have done load_nodes()
