@@ -221,7 +221,8 @@ class CellManagerBase(_CellManager):
         else:
             gidvec, me_infos, *cell_counts = self._load_nodes_balance(loader_f, load_balancer)
         self._local_nodes.add_gids(gidvec, me_infos)
-        self._metype_counts = me_infos.counts
+        if SimConfig.dry_run:
+            self._metype_counts = me_infos.counts
         self._total_cells = cell_counts[0]
         logging.info(" => Loaded info about %d target cells (out of %d)", *cell_counts)
 
