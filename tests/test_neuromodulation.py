@@ -32,6 +32,9 @@ def test_neuromodulation_sims_neuron():
     npt.assert_allclose(timestamps, obtained_timestamps)
 
 
+@pytest.mark.forked
+@pytest.mark.skip(
+    reason="Pending for a NEURON fix regarding the dynapmic MPI library")
 def test_neuromodulation_sims_coreneuron():
     from neurodamus import Neurodamus
     from neurodamus.replay import SpikeManager
