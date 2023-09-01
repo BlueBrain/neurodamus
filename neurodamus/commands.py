@@ -72,7 +72,7 @@ def neurodamus(args=None):
     _filter_warnings()
 
     try:
-        Neurodamus(config_file, True, log_level, **options).run()
+        Neurodamus(config_file, True, logging_level=log_level, **options).run()
     except ConfigurationError as e:  # Common, only show error in Rank 0
         if MPI._rank == 0:           # Use _rank so that we avoid init
             logging.error(str(e))
