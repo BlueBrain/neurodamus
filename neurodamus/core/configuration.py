@@ -209,8 +209,7 @@ class _SimConfig(object):
     _blueconfig = None  # new python BlueConfig parser
     _simconf = None
     rng_info = None
-    coreneuron = None  # bridge to CoreNeuron, instance of CoreConfig
-    coreneuron_python = None
+    coreneuron = None  # True if CoreNEURON is enabled
 
     # In principle not all vars need to be required as they'r set by the parameter functions
     blueconfig_dir = None
@@ -484,7 +483,6 @@ def _check_params(section_name, data, required_fields,
         if val and val in deprecated:
             logging.warning("BlueConfig param value is deprecated: [%s] %s = %s"
                             % (section_name, param, val))
-
 
 @SimConfig.validator
 def _run_params(config: _SimConfig, run_conf):

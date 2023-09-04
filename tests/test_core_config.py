@@ -1,11 +1,12 @@
 import os
-import pytest
 import struct
-from neurodamus.core.configuration import SimConfig, CoreConfig
+
+from neurodamus.core.coreneuron_configuration import CoreConfig
 
 
 def test_write_report_config(tmpdir):
-    core_config = CoreConfig(str(tmpdir))
+    CoreConfig.outpath = str(tmpdir.join("outpath"))
+    CoreConfig.datpath = str(tmpdir.join("datpath"))
     # Define your test parameters
     report_name = "soma"
     target_name = "Mosaic"
@@ -26,16 +27,16 @@ def test_write_report_config(tmpdir):
     population_offset = 1000
     spikes_name = "spikes.h5"
     # Call the methods with the test parameters
-    core_config.write_report_count(report_count)
-    core_config.write_report_config(report_name, target_name, report_type, report_variable, unit,
+    CoreConfig.write_report_count(report_count)
+    CoreConfig.write_report_config(report_name, target_name, report_type, report_variable, unit,
                                     report_format, target_type, dt, start_time, end_time, gids,
                                     buffer_size)
-    core_config.write_population_count(population_count)
-    core_config.write_spike_population(population_name, population_offset)
-    core_config.write_spike_filename(spikes_name)
+    CoreConfig.write_population_count(population_count)
+    CoreConfig.write_spike_population(population_name, population_offset)
+    CoreConfig.write_spike_filename(spikes_name)
 
     # Check that the report configuration file was created
-    report_config_file = os.path.join(core_config.output_root, core_config.report_config_file)
+    report_config_file = os.path.join(CoreConfig.output_root, CoreConfig.report_config_file)
     assert os.path.exists(report_config_file)
 
     # Check the content of the report configuration file
@@ -56,9 +57,8 @@ def test_write_report_config(tmpdir):
 
 
 def test_write_sim_config(tmpdir):
-    core_config = CoreConfig(str(tmpdir))
-    outpath = str(tmpdir.join("outpath"))
-    datpath = str(tmpdir.join("datpath"))
+    CoreConfig.output_root = str(tmpdir.join("outpath"))
+    CoreConfig.datadir = str(tmpdir.join("datpath"))
     cell_permute = 0
     tstop = 100
     dt = 0.1
@@ -70,17 +70,27 @@ def test_write_sim_config(tmpdir):
     model_stats = True
     pattern = "file_pattern"
     enable_reports = 1
-    report_conf = f"{core_config.output_root}/{core_config.report_config_file}"
-    core_config.write_sim_config(outpath, datpath, tstop, dt, forwardskip, prcellgid, celsius, v_init,
-                                pattern, seed, model_stats, enable_reports)
+    report_conf = f"{CoreConfig.output_root}/{CoreConfig.report_config_file}"
+    CoreConfig.write_sim_config(
+        tstop,
+        dt,
+        forwardskip,
+        prcellgid,
+        celsius,
+        v_init,
+        pattern,
+        seed,
+        model_stats,
+        enable_reports
+    )
     # Check that the sim configuration file was created
-    sim_config_file = os.path.join(core_config.output_root, core_config.sim_config_file)
+    sim_config_file = os.path.join(CoreConfig.output_root, CoreConfig.sim_config_file)
     assert os.path.exists(sim_config_file)
     # Check the content of the simulation configuration file
     with open(sim_config_file, "r") as fp:
         lines = fp.readlines()
-        assert lines[0].strip() == f"outpath='{os.path.abspath(outpath)}'"
-        assert lines[1].strip() == f"datpath='{os.path.abspath(datpath)}'"
+        assert lines[0].strip() == f"outpath='{os.path.abspath(CoreConfig.output_root)}'"
+        assert lines[1].strip() == f"datpath='{os.path.abspath(CoreConfig.datadir)}'"
         assert lines[2].strip() == f"tstop={tstop}"
         assert lines[3].strip() == f"dt={dt}"
         assert lines[4].strip() == f"forwardskip={forwardskip}"
@@ -93,12 +103,3 @@ def test_write_sim_config(tmpdir):
         assert lines[11].strip() == "'model-stats'"
         assert lines[12].strip() == f"report-conf='{report_conf}'"
         assert lines[13].strip() == "mpi=true"
-
-
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run"
-)
-def test_psolve_core(tmpdir):
-    core_config = CoreConfig(str(tmpdir))
-    core_config.psolve_core()
