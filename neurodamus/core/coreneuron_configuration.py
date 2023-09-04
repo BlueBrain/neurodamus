@@ -10,6 +10,7 @@ class _CoreConfig(object):
     sim_config_file = "sim.conf"
     report_config_file = "report.conf"
     output_root = "output"
+    datadir = f"{output_root}/coreneuron_input"
     default_cell_permute = 0
 
     @run_only_rank0
@@ -34,13 +35,13 @@ class _CoreConfig(object):
 
     @run_only_rank0
     def write_sim_config(
-            self, outpath, datpath, tstop, dt, forwardskip, prcellgid, celsius, v_init,
+            self, tstop, dt, forwardskip, prcellgid, celsius, v_init,
             pattern=None, seed=None, model_stats=False, enable_reports=True):
         simconf = f"{self.output_root}/{self.sim_config_file}"
         logging.info(f"Writing sim config file: {simconf}")
         with open(simconf, "w") as fp:
-            fp.write(f"outpath='{os.path.abspath(outpath)}'\n")
-            fp.write(f"datpath='{os.path.abspath(datpath)}'\n")
+            fp.write(f"outpath='{os.path.abspath(self.output_root)}'\n")
+            fp.write(f"datpath='{os.path.abspath(self.datadir)}'\n")
             fp.write(f"tstop={tstop}\n")
             fp.write(f"dt={dt}\n")
             fp.write(f"forwardskip={forwardskip}\n")
@@ -97,7 +98,7 @@ class _CoreConfig(object):
         if restore_path:
             coreneuron.restore = restore_path
         coreneuron.only_simulate = True
-        coreneuron.data_path = f"{self.output_root}/coreneuron_input"
+        coreneuron.data_path = f"{self.datadir}"
         Nd.pc.psolve(h.tstop)
 
 # Singleton
