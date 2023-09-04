@@ -28,7 +28,7 @@ from .metype import Cell_V5, Cell_V6, EmptyCell
 from .target_manager import TargetSpec
 from .utils import compat
 from .utils.logging import log_verbose, log_all
-from .utils.memory import get_mem_usage, import_memory_usage_from_json
+from .utils.memory import get_mem_usage
 
 
 class NodeFormat(Enum):
