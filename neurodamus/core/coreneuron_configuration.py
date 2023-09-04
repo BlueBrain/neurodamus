@@ -22,6 +22,7 @@ class _CoreConfig(object):
         num_gids = len(gids)
         logging.info(f"Adding report {report_name} for CoreNEURON with {num_gids} gids")
         report_conf = f"{self.output_root}/{self.report_config_file}"
+        os.makedirs(os.path.dirname(report_conf), exist_ok=True)
         with open(report_conf, "ab") as fp:
             # Write the formatted string to the file
             fp.write((f"{report_name} {target_name} {report_type} "
@@ -39,6 +40,7 @@ class _CoreConfig(object):
             pattern=None, seed=None, model_stats=False, enable_reports=True):
         simconf = f"{self.output_root}/{self.sim_config_file}"
         logging.info(f"Writing sim config file: {simconf}")
+        os.makedirs(os.path.dirname(simconf), exist_ok=True)
         with open(simconf, "w") as fp:
             fp.write(f"outpath='{os.path.abspath(self.output_root)}'\n")
             fp.write(f"datpath='{os.path.abspath(self.datadir)}'\n")
@@ -62,6 +64,7 @@ class _CoreConfig(object):
     @run_only_rank0
     def write_report_count(self, count):
         report_config = f"{self.output_root}/{self.report_config_file}"
+        os.makedirs(os.path.dirname(report_config), exist_ok=True)
         with open(report_config, "a") as fp:
             fp.write(f"{count}\n")
 
@@ -72,6 +75,7 @@ class _CoreConfig(object):
     @run_only_rank0
     def write_spike_population(self, population_name, population_offset=None):
         report_config = f"{self.output_root}/{self.report_config_file}"
+        os.makedirs(os.path.dirname(report_config), exist_ok=True)
         with open(report_config, "a") as fp:
             fp.write(population_name)
             if population_offset is not None:
@@ -81,6 +85,7 @@ class _CoreConfig(object):
     @run_only_rank0
     def write_spike_filename(self, filename):
         report_config = f"{self.output_root}/{self.report_config_file}"
+        os.makedirs(os.path.dirname(report_config), exist_ok=True)
         with open(report_config, "a") as fp:
             fp.write(filename)
             fp.write("\n")

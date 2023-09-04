@@ -1339,7 +1339,6 @@ class Node:
     def _sim_corenrn_write_config(self, corenrn_restore=False):
         log_stage("Dataset generation for CoreNEURON")
 
-        corenrn_output = SimConfig.coreneuron_outputdir
         CoreConfig.datadir = self._sim_corenrn_configure_datadir(corenrn_restore)
         fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
@@ -1398,7 +1397,10 @@ class Node:
     # -
     def _run_coreneuron(self):
         logging.info("Launching simulation with CoreNEURON")
-        CoreConfig.psolve_core(getattr(SimConfig, "save", None), getattr(SimConfig, "restore", None))
+        CoreConfig.psolve_core(
+            getattr(SimConfig, "save", None),
+            getattr(SimConfig, "restore", None)
+        )
 
     #
     def _sim_event_handlers(self, tstart, tstop):
