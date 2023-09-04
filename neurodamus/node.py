@@ -272,6 +272,7 @@ class Node:
             Nd.execute("cvode = new CVode()")
             SimConfig.init(config_file, options)
             CoreConfig.output_root = SimConfig.output_root
+            CoreConfig.datadir = SimConfig.coreneuron_datadir
             self._run_conf = SimConfig.run_conf
             self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
@@ -1339,18 +1340,16 @@ class Node:
         log_stage("Dataset generation for CoreNEURON")
 
         corenrn_output = SimConfig.coreneuron_outputdir
-        corenrn_data = self._sim_corenrn_configure_datadir(corenrn_restore)
+        CoreConfig.datadir = self._sim_corenrn_configure_datadir(corenrn_restore)
         fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
         if not corenrn_restore:
             Nd.registerMapping(self._circuits.global_manager)
-            with self._coreneuron_ensure_all_ranks_have_gids(corenrn_data):
-                self._pc.nrnbbcore_write(corenrn_data)
+            with self._coreneuron_ensure_all_ranks_have_gids(CoreConfig.datadir):
+                self._pc.nrnbbcore_write(CoreConfig.datadir)
                 MPI.barrier()  # wait for all ranks to finish corenrn data generation
 
         CoreConfig.write_sim_config(
-            corenrn_output,
-            corenrn_data,
             Nd.tstop,
             Nd.dt,
             fwd_skip,
@@ -1365,7 +1364,7 @@ class Node:
         # Wait for rank0 to write the sim config file
         MPI.barrier()
 
-        logging.info(" => Dataset written to '{}'".format(corenrn_data))
+        logging.info(" => Dataset written to '{}'".format(CoreConfig.datadir))
 
     # -
     def run_all(self):
