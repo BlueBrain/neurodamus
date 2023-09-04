@@ -1346,6 +1346,31 @@ class Node:
                 self._pc.nrnbbcore_write(corenrn_data)
                 MPI.barrier()  # wait for all ranks to finish corenrn data generation
 
+        # In 'CACHE' mode, files are first dumped to /dev/shm and then transferred back to the
+        # output directory in the target filesystem using an optimized file tree structure. Only
+        # the rank0 of each node transfers files, reducing the overhead by a considerable factor.
+        # The original files are linked from /dev/shm to the target filesystem, allowing us to
+        # maintain the 'coreneuron_input' folder in /dev/shm, but using the target filesystem.
+        if self._shm_enabled and SimConfig.cli_options.enable_shm == "CACHE" and MPI.rank == int(SHMUtil.local_ranks[0]):
+            node_specific_datadir = os.path.join(SimConfig.coreneuron_datadir,
+                                                 f"cycle_{self._cycle_i}",
+                                                 f"group_{int(SHMUtil.node_id / 20)}",  # Group node folders by a factor
+                                                 f"node_{SHMUtil.node_id}")
+            os.makedirs(node_specific_datadir, exist_ok=True)
+
+            with os.scandir(corenrn_data) as allfiles:
+                for entry in allfiles:
+                    if entry.is_file(follow_symlinks=False):
+                        filename = os.path.join(node_specific_datadir, entry.name)
+
+                        # Temp. commit: If we are on IME, ensure that the data does not transfer back to GPFS
+                        if node_specific_datadir.startswith("/ime"):
+                            os.close(os.open(filename, os.O_CREAT))  # Create an empty file to configure it
+                            subprocess.call(['/opt/ddn/ime/bin/ime-ctl', '--pin', filename])
+
+                        move(entry.path, node_specific_datadir)
+                        os.symlink(filename, entry.path)
+
         SimConfig.coreneuron.write_sim_config(
             corenrn_output,
             corenrn_data,
