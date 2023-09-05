@@ -52,7 +52,7 @@ class _CoreConfig(object):
             fp.write(f"voltage={v_init}\n")
             fp.write(f"cell-permute={int(self.default_cell_permute)}\n")
             if pattern:
-                fp.write(f"pattern={pattern}\n")
+                fp.write(f"pattern='{pattern}'\n")
             if seed:
                 fp.write(f"seed={int(seed)}\n")
             if model_stats:

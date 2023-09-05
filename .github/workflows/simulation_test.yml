@@ -18,15 +18,17 @@ jobs:
     steps:
     - name: Checkout neurodamus repository
       uses: actions/checkout@v3
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
 
     - name: Get HEAD commit message and look for branches
-        id: read_commit_message
-        run: |
-          COMMIT_MESSAGE=${{ github.event.head_commit.message }}
-          NEURON_BRANCH=$(echo $COMMIT_MESSAGE | grep -o -e "NEURON_BRANCH=[0-9a-zA-Z/_-+.]*")
-          if [[ ! -z $NEURON_BRANCH ]]; then echo $NEURON_BRANCH >> $GITHUB_ENV; done
-          LIBSONATA_BRANCH=$(echo $COMMIT_MESSAGE | grep -o -e "LIBSONATA_BRANCH=[0-9a-zA-Z/_-+.]*")
-          if [[ ! -z $LIBSONATA_BRANCH ]]; then echo $LIBSONATA_BRANCH >> $GITHUB_ENV; done
+      run: |
+        COMMIT_MESSAGE=$(git show -s)
+        echo $COMMIT_MESSAGE
+        NEURON_BRANCH=$(echo $COMMIT_MESSAGE | grep -o NEURON_BRANCH=[0-9a-zA-Z/_-+.]*)
+        if [[ ! -z $NEURON_BRANCH ]]; then echo $NEURON_BRANCH >> $GITHUB_ENV; done
+        LIBSONATA_BRANCH=$(echo $COMMIT_MESSAGE | grep -o LIBSONATA_BRANCH=[0-9a-zA-Z/_-+.]*)
+        if [[ ! -z $LIBSONATA_BRANCH ]]; then echo $LIBSONATA_BRANCH >> $GITHUB_ENV; done
 
     - name: Install hdf5-mpich
       run: |
