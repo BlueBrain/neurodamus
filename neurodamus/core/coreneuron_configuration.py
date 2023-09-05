@@ -47,10 +47,10 @@ class _CoreConfig(object):
             fp.write(f"tstop={tstop}\n")
             fp.write(f"dt={dt}\n")
             fp.write(f"forwardskip={forwardskip}\n")
-            fp.write(f"prcellgid={prcellgid}\n")
+            fp.write(f"prcellgid={int(prcellgid)}\n")
             fp.write(f"celsius={celsius}\n")
             fp.write(f"voltage={v_init}\n")
-            fp.write(f"cell-permute={self.default_cell_permute}\n")
+            fp.write(f"cell-permute={int(self.default_cell_permute)}\n")
             if pattern:
                 fp.write(f"pattern={pattern}\n")
             if seed:
