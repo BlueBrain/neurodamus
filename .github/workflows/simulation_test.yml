@@ -19,6 +19,15 @@ jobs:
     - name: Checkout neurodamus repository
       uses: actions/checkout@v3
 
+    - name: Get HEAD commit message and look for branches
+        id: read_commit_message
+        run: |
+          COMMIT_MESSAGE=${{ github.event.head_commit.message }}
+          NEURON_BRANCH=$(echo $COMMIT_MESSAGE | grep -o -e "NEURON_BRANCH=[0-9a-zA-Z/_-+.]*")
+          if [[ ! -z $NEURON_BRANCH ]]; then echo $NEURON_BRANCH >> $GITHUB_ENV; done
+          LIBSONATA_BRANCH=$(echo $COMMIT_MESSAGE | grep -o -e "LIBSONATA_BRANCH=[0-9a-zA-Z/_-+.]*")
+          if [[ ! -z $LIBSONATA_BRANCH ]]; then echo $LIBSONATA_BRANCH >> $GITHUB_ENV; done
+
     - name: Install hdf5-mpich
       run: |
         sudo apt-get update
@@ -30,7 +39,7 @@ jobs:
 
     - name: Install libsonatareport
       run: |
-        git clone https://github.com/BlueBrain/libsonatareport.git --recursive
+        git clone --branch="${NEURON_BRANCH:-master}" https://github.com/BlueBrain/libsonatareport.git --recursive
         cd libsonatareport
         mkdir build && cd build
         cmake -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON -DSONATA_REPORT_ENABLE_MPI=ON ..
@@ -43,7 +52,7 @@ jobs:
         pip install -U pip setuptools
         pip install "cython<3" pytest sympy
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
-        git clone https://github.com/neuronsimulator/nrn.git
+        git clone --branch="${NEURON_BRANCH:-master}" https://github.com/neuronsimulator/nrn.git
         cd nrn
         mkdir build && cd build
         cmake -G Ninja -DPYTHON_EXECUTABLE=$(which python) -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DNRN_ENABLE_MPI=ON -DNRN_ENABLE_INTERVIEWS=OFF \
