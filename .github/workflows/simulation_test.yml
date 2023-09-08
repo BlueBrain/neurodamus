@@ -23,11 +23,11 @@ jobs:
 
     - name: Get HEAD commit message and look for branches
       run: |
-        COMMIT_MESSAGE=$(git show -s)
+        COMMIT_MESSAGE=$(git log -1 --pretty=%B)
         echo $COMMIT_MESSAGE
-        NEURON_BRANCH=$(echo $COMMIT_MESSAGE | grep -Po 'NEURON_BRANCH=\K[0-9a-zA-Z/_.\-]*')
+        NEURON_BRANCH=$(echo $COMMIT_MESSAGE | grep -Po 'NEURON_BRANCH=\K[0-9a-zA-Z/_.\-]*' || true)
         if [[ ! -z $NEURON_BRANCH ]]; then echo "NEURON_BRANCH=$NEURON_BRANCH" >> $GITHUB_ENV; fi
-        LIBSONATA_REPORT_BRANCH=$(echo $COMMIT_MESSAGE | grep -Po 'LIBSONATA_REPORT_BRANCH=\K[0-9a-zA-Z/_.\-]*')
+        LIBSONATA_REPORT_BRANCH=$(echo $COMMIT_MESSAGE | grep -Po 'LIBSONATA_REPORT_BRANCH=\K[0-9a-zA-Z/_.\-]*' || true)
         if [[ ! -z $LIBSONATA_REPORT_BRANCH ]]; then echo "LIBSONATA_REPORT_BRANCH=$LIBSONATA_REPORT_BRANCH" >> $GITHUB_ENV; fi
 
     - name: Install hdf5-mpich
