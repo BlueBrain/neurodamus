@@ -98,7 +98,7 @@ def test_write_sim_config(tmpdir):
         assert lines[6].strip() == f"celsius={celsius}"
         assert lines[7].strip() == f"voltage={v_init}"
         assert lines[8].strip() == f"cell-permute={cell_permute}"
-        assert lines[9].strip() == f"pattern={pattern}"
+        assert lines[9].strip() == f"pattern='{pattern}'"
         assert lines[10].strip() == f"seed={seed}"
         assert lines[11].strip() == "'model-stats'"
         assert lines[12].strip() == f"report-conf='{report_conf}'"
