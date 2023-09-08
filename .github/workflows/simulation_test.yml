@@ -25,10 +25,10 @@ jobs:
       run: |
         COMMIT_MESSAGE=$(git show -s)
         echo $COMMIT_MESSAGE
-        NEURON_BRANCH=$(echo $COMMIT_MESSAGE | grep -o NEURON_BRANCH=[0-9a-zA-Z/_-+.]*)
+        NEURON_BRANCH=$(echo $COMMIT_MESSAGE | grep -o 'NEURON_BRANCH=[0-9a-zA-Z/_\-.]*')
         if [[ ! -z $NEURON_BRANCH ]]; then echo $NEURON_BRANCH >> $GITHUB_ENV; done
-        LIBSONATA_BRANCH=$(echo $COMMIT_MESSAGE | grep -o LIBSONATA_BRANCH=[0-9a-zA-Z/_-+.]*)
-        if [[ ! -z $LIBSONATA_BRANCH ]]; then echo $LIBSONATA_BRANCH >> $GITHUB_ENV; done
+        LIBSONATA_REPORT_BRANCH=$(echo $COMMIT_MESSAGE | grep -o 'LIBSONATA_BRANCH=[0-9a-zA-Z/_\-.]*')
+        if [[ ! -z $LIBSONATA_REPORT_BRANCH ]]; then echo $LIBSONATA_REPORT_BRANCH >> $GITHUB_ENV; done
 
     - name: Install hdf5-mpich
       run: |
@@ -41,7 +41,7 @@ jobs:
 
     - name: Install libsonatareport
       run: |
-        git clone --branch="${NEURON_BRANCH:-master}" https://github.com/BlueBrain/libsonatareport.git --recursive
+        git clone --branch="${LIBSONATA_REPORT_BRANCH:-master}" https://github.com/BlueBrain/libsonatareport.git --recursive
         cd libsonatareport
         mkdir build && cd build
         cmake -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON -DSONATA_REPORT_ENABLE_MPI=ON ..
