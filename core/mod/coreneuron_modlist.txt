@@ -1,5 +1,5 @@
 ALU.mod
-CoreConfig.mod
+CoreNEURONArtificialCell.mod
 HDF5reader.mod
 lookupTableV2.mod
 netstim_inhpoisson.mod
