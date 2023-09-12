@@ -35,6 +35,7 @@ from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
 from .utils.memory import SynapseMemoryUsage
 from .utils.timeit import TimerManager, timeit
+from .core.coreneuron_configuration import CoreConfig
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
 
@@ -270,8 +271,6 @@ class Node:
             self._spike_populations = []
             Nd.execute("cvode = new CVode()")
             SimConfig.init(config_file, options)
-            # Make sure that coreneuron_configuration is imported after MPI is initialized
-            from .core.coreneuron_configuration import CoreConfig
             CoreConfig.output_root = SimConfig.output_root
             CoreConfig.datadir = SimConfig.coreneuron_datadir
             self._run_conf = SimConfig.run_conf
@@ -867,8 +866,6 @@ class Node:
         else:
             pop_offsets_alias = CircuitManager.read_population_offsets()
         if SimConfig.use_coreneuron:
-            # Make sure that coreneuron_configuration is imported after MPI is initialized
-            from .core.coreneuron_configuration import CoreConfig
             CoreConfig.write_report_count(len(reports_conf))
 
         for rep_name, rep_conf in reports_conf.items():
@@ -1094,8 +1091,6 @@ class Node:
 
         if SimConfig.use_coreneuron:
             # write spike populations
-            # Make sure that coreneuron_configuration is imported after MPI is initialized
-            from .core.coreneuron_configuration import CoreConfig
             if hasattr(CoreConfig, "write_population_count"):
                 # Do not count populations with None pop_name
                 pop_count = (len(pop_offsets) - 1 if None in pop_offsets else len(pop_offsets))
@@ -1357,8 +1352,6 @@ class Node:
     @timeit(name="corewrite")
     def _sim_corenrn_write_config(self, corenrn_restore=False):
         log_stage("Dataset generation for CoreNEURON")
-        # Make sure that coreneuron_configuration is imported after MPI is initialized
-        from .core.coreneuron_configuration import CoreConfig
         CoreConfig.datadir = self._sim_corenrn_configure_datadir(corenrn_restore)
         fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
