@@ -13,7 +13,7 @@ class _CoreConfig(object):
     output_root = "output"
     datadir = f"{output_root}/coreneuron_input"
     default_cell_permute = 0
-    artificial_cell = Nd.CoreNEURONArtificialCell()
+    artificial_cell_object = Nd.CoreNEURONArtificialCell()
 
     @run_only_rank0
     def write_report_config(

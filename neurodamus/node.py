@@ -1043,8 +1043,6 @@ class Node:
             + rep_params[3:5] + (target_type,) + rep_params[5:8]
             + (target.get_gids(), SimConfig.corenrn_buff_size)
         )
-        # Make sure that coreneuron_configuration is imported after MPI is initialized
-        from .core.coreneuron_configuration import CoreConfig
         CoreConfig.write_report_config(*core_report_params)
         return True
 
@@ -1274,7 +1272,7 @@ class Node:
         fake_gid = pop_group.offset + 1 + MPI.rank
         # Add the fake cell to the base manager
         base_manager = self._circuits.base_cell_manager
-        base_manager.load_artificial_cell(fake_gid, CoreConfig.artificial_cell)
+        base_manager.load_artificial_cell(fake_gid, CoreConfig.artificial_cell_object)
         yield
 
         # Nd.registerMapping doesn't work for this artificial cell as somatic attr is
@@ -1409,8 +1407,6 @@ class Node:
     # -
     def _run_coreneuron(self):
         logging.info("Launching simulation with CoreNEURON")
-        # Make sure that coreneuron_configuration is imported after MPI is initialized
-        from .core.coreneuron_configuration import CoreConfig
         CoreConfig.psolve_core(
             getattr(SimConfig, "save", None),
             getattr(SimConfig, "restore", None)
