@@ -1,6 +1,7 @@
 import os
 import logging
 from ._utils import run_only_rank0
+from . import NeurodamusCore as Nd
 
 class _CoreConfig(object):
     """
@@ -12,6 +13,7 @@ class _CoreConfig(object):
     output_root = "output"
     datadir = f"{output_root}/coreneuron_input"
     default_cell_permute = 0
+    artificial_cell = Nd.CoreNEURONArtificialCell()
 
     @run_only_rank0
     def write_report_config(
