@@ -241,17 +241,6 @@ class SonataConfig:
                     circuit_conf["MorphologyType"] = "h5"
             circuit_conf["Engine"] = "NGV" if node_prop.type == "astrocyte" else "METype"
 
-            # find inner connectivity
-            for edge_config in network.get("edges") or []:
-                for edge_pop_name in edge_config["populations"].keys():
-                    edge_storage = self.circuits.edge_population(edge_pop_name)
-                    edge_type = self.circuits.edge_population_properties(edge_pop_name).type
-                    if edge_storage.source == edge_storage.target == node_pop_name and \
-                            edge_type == "chemical":
-                        edges_file = edge_config["edges_file"]
-                        if not os.path.isabs(edges_file):
-                            edges_file = os.path.join(os.path.dirname(self.network), edges_file)
-                        circuit_conf["nrnPath"] = edges_file + ":" + edge_pop_name
             return circuit_conf
 
         return {
@@ -263,6 +252,10 @@ class SonataConfig:
 
     @property
     def parsedProjections(self):
+        """
+        Build the projection blocks from configuration.
+        In SONATA all connectivity is handled as projections, not using internal connectivity.
+        """
         projection_type_convert = dict(
             chemical="Synaptic",
             electrical="GapJunction",
@@ -275,9 +268,8 @@ class SonataConfig:
             for population_name, edge_pop_config in edge_config["populations"].items():
                 edge_pop = self.circuits.edge_population(population_name)
                 pop_type = edge_pop_config.get("type", "chemical")
-                # skip unhandled synapse type or inner connectivity
-                if pop_type not in projection_type_convert or \
-                        (edge_pop.source == edge_pop.target and pop_type == "chemical"):
+                # skip unhandled synapse type
+                if pop_type not in projection_type_convert:
                     logging.warning("Unhandled synapse type: " + pop_type)
                     continue
                 edges_file = edge_config["edges_file"]
@@ -299,7 +291,9 @@ class SonataConfig:
                         for _, pop_info in node_file_info["populations"].items():
                             if pop_info.get("type") == "vasculature":
                                 projection["VasculaturePath"] = node_file_info["nodes_file"]
+
                 projections["{0.source}-{0.target}".format(edge_pop)] = projection
+
         return projections
 
     @property

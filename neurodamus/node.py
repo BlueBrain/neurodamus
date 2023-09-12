@@ -516,7 +516,7 @@ class Node:
         """
         log_stage("Circuit %s", conf._name or "(default)")
         if not conf.get("nrnPath"):
-            logging.info(" => Circuit internal connectivity has been DISABLED")
+            log_verbose(" => No internal connectivity")
             return
 
         if SimConfig.cli_options.restrict_connectivity >= 2:
