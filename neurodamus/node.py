@@ -1262,8 +1262,7 @@ class Node:
         fake_gid = pop_group.offset + 1 + MPI.rank
         # Add the fake cell to the base manager
         base_manager = self._circuits.base_cell_manager
-        base_manager.load_artificial_cell(fake_gid, SimConfig.coreneuron)
-
+        base_manager.load_artificial_cell(fake_gid, Nd.CoreNEURONArtificialCell())
         yield
 
         # Nd.registerMapping doesn't work for this artificial cell as somatic attr is
