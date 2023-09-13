@@ -71,6 +71,8 @@ blueconfig_tests:
 configure-docker-image:
   image: ubuntu:22.04
   script:
+    - sudo apt-get update -y
+    - sudo apt-get install -y git
     - |
       PACKAGE_VERSION=$(git describe --tags)
       REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
