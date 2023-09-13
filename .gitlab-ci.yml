@@ -92,7 +92,7 @@ build-docker-image:
   needs: [configure-docker-image]
   extends: .build-image-using-buildah
   variables:
-    BUILD_PATH: $CI_PROJECT_DIR/docker
+    BUILD_PATH: $CI_PROJECT_DIR/Docker
     KUBERNETES_CPU_LIMIT: 8
     KUBERNETES_CPU_REQUEST: 8
     KUBERNETES_MEMORY_LIMIT: 8Gi
