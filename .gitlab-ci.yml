@@ -8,6 +8,8 @@ include:
       - /ci/jobs/publish-docs.yml
   - project: hpc/gitlab-upload-logs
     file: enable-upload.yml
+  - project: cs/gitlabci-templates
+    file: /build-image-using-buildah.yml
 
 workflow:
   rules:
@@ -65,6 +67,44 @@ blueconfig_tests:
         - neurodamus/**/*
     - when: manual
       allow_failure: true
+
+configure:
+  image: ubuntu:22.04
+  script:
+    - |
+      PACKAGE_VERSION=$(git describe --tags)
+      REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
+    - |
+      cat <<EOF > build.env
+      REGISTRY_IMAGE_TAG=$REGISTRY_IMAGE_TAG
+      EOF
+    - cat build.env
+  artifacts:
+    when: always
+    paths: [build.env]
+    reports:
+      dotenv: build.env
+
+build-docker-image:
+  timeout: 2h
+  needs: [configure-docker-image]
+  variables:
+    KUBERNETES_CPU_LIMIT: 8
+    KUBERNETES_CPU_REQUEST: 8
+    KUBERNETES_MEMORY_LIMIT: 8Gi
+    KUBERNETES_MEMORY_REQUEST: 8Gi
+    BUILDAH_EXTRA_ARGS:
+      --label org.opencontainers.image.title="neurodamus"
+      --label org.opencontainers.image.version="$REGISTRY_IMAGE_TAG"
+      --label org.opencontainers.image.revision="$CI_COMMIT_SHA"
+      --label org.opencontainers.image.authors="$GITLAB_USER_NAME <$GITLAB_USER_EMAIL>"
+      --label org.opencontainers.image.url="$CI_PROJECT_URL"
+      --label org.opencontainers.image.source="$CI_PROJECT_URL"
+      --label org.opencontainers.image.created="$CI_JOB_STARTED_AT"
+      --label ch.epfl.bbpgitlab.ci-pipeline-url="$CI_PIPELINE_URL"
+      --label ch.epfl.bbpgitlab.ci-commit-branch="$CI_COMMIT_BRANCH"
+      --build-arg GITLAB_CI="$GITLAB_CI"
+      --build-arg CI_JOB_TOKEN="$CI_JOB_TOKEN"
 
 # The following stages are overrides. Don't rename
 # Always add the manual option to create sdist/wheel or upload
