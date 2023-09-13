@@ -110,6 +110,30 @@ build-docker-image:
       --build-arg GITLAB_CI="$GITLAB_CI"
       --build-arg CI_JOB_TOKEN="$CI_JOB_TOKEN"
 
+upload-to-docker-hub:
+  image: ubuntu:22.04
+  variables:
+    KUBERNETES_CPU_LIMIT: 4
+    KUBERNETES_CPU_REQUEST: 2
+    KUBERNETES_MEMORY_LIMIT: 8Gi
+    KUBERNETES_MEMORY_REQUEST: 2Gi
+  needs: [configure-docker-image, build-docker-image]
+  script:
+    - apt-get update && apt-get install -y jq curl podman
+    - export HUB_REPO_NAME="neurodamus"
+    - export CONTAINER_NAME="neurodamus"
+    - |
+      TOKEN=$(curl -s --header "Content-Type:application/json" --request POST --data "{\"username\":\"${DOCKER_HUB_USER}\", \"password\":\"${DOCKER_HUB_AUTH_TOKEN}\"}" https://hub.docker.com/v2/users/login/ | jq -r .token)
+    - echo "Pushing to docker hub repo docker://docker.io/bluebrain/${HUB_REPO_NAME}"
+    - podman login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY_IMAGE}
+    - podman login -u ${DOCKER_HUB_USER} -p ${DOCKER_HUB_AUTH_TOKEN} docker.io
+    - podman pull ${CI_REGISTRY_IMAGE}/${CONTAINER_NAME}:${REGISTRY_IMAGE_TAG}
+    - echo podman push ${CI_REGISTRY_IMAGE}/${CONTAINER_NAME}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
+    - podman --log-level=debug push ${CI_REGISTRY_IMAGE}/${CONTAINER_NAME}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+
 # The following stages are overrides. Don't rename
 # Always add the manual option to create sdist/wheel or upload
 build-package:
