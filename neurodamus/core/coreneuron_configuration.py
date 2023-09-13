@@ -1,9 +1,11 @@
 import os
 import logging
+from pathlib import Path
 from ._utils import run_only_rank0
 from . import NeurodamusCore as Nd
 
-class _CoreConfig(object):
+
+class _CoreNEURONConfig(object):
     """
     The CoreConfig class is responsible for managing the configuration of the CoreNEURON simulation.
     It writes the simulation / report configurations and calls the CoreNEURON solver.
@@ -28,15 +30,24 @@ class _CoreConfig(object):
         import struct
         num_gids = len(gids)
         logging.info(f"Adding report {report_name} for CoreNEURON with {num_gids} gids")
-        report_conf = f"{self.output_root}/{self.report_config_file}"
-        os.makedirs(os.path.dirname(report_conf), exist_ok=True)
-        with open(report_conf, "ab") as fp:
+        report_conf = Path(self.output_root) / self.report_config_file
+        report_conf.parent.mkdir(parents=True, exist_ok=True)
+        with report_conf.open("ab") as fp:
             # Write the formatted string to the file
-            fp.write((f"{report_name} {target_name} {report_type} "
-                    f"{report_variable} {unit} {report_format} "
-                    f"{int(target_type)} {float(dt)} {float(start_time)} "
-                    f"{float(end_time)} {num_gids} {buffer_size}\n").encode())
-
+            fp.write((" ".join(map(str, [
+                report_name,
+                target_name,
+                report_type,
+                report_variable,
+                unit,
+                report_format,
+                int(target_type),
+                float(dt),
+                float(start_time),
+                float(end_time),
+                num_gids,
+                buffer_size
+            ])) + "\n").encode())
             # Write the array of integers to the file in binary format
             fp.write(struct.pack(f'{num_gids}i', *gids))
             fp.write(b'\n')
@@ -45,10 +56,10 @@ class _CoreConfig(object):
     def write_sim_config(
             self, tstop, dt, forwardskip, prcellgid, celsius, v_init,
             pattern=None, seed=None, model_stats=False, enable_reports=True):
-        simconf = f"{self.output_root}/{self.sim_config_file}"
+        simconf = Path(self.output_root) / self.sim_config_file
         logging.info(f"Writing sim config file: {simconf}")
-        os.makedirs(os.path.dirname(simconf), exist_ok=True)
-        with open(simconf, "w") as fp:
+        simconf.parent.mkdir(parents=True, exist_ok=True)
+        with simconf.open("w") as fp:
             fp.write(f"outpath='{os.path.abspath(self.output_root)}'\n")
             fp.write(f"datpath='{os.path.abspath(self.datadir)}'\n")
             fp.write(f"tstop={tstop}\n")
@@ -70,9 +81,9 @@ class _CoreConfig(object):
 
     @run_only_rank0
     def write_report_count(self, count):
-        report_config = f"{self.output_root}/{self.report_config_file}"
-        os.makedirs(os.path.dirname(report_config), exist_ok=True)
-        with open(report_config, "a") as fp:
+        report_config = Path(self.output_root) / self.report_config_file
+        report_config.parent.mkdir(parents=True, exist_ok=True)
+        with report_config.open("a") as fp:
             fp.write(f"{count}\n")
 
     @run_only_rank0
@@ -81,9 +92,9 @@ class _CoreConfig(object):
 
     @run_only_rank0
     def write_spike_population(self, population_name, population_offset=None):
-        report_config = f"{self.output_root}/{self.report_config_file}"
-        os.makedirs(os.path.dirname(report_config), exist_ok=True)
-        with open(report_config, "a") as fp:
+        report_config = Path(self.output_root) / self.report_config_file
+        report_config.parent.mkdir(parents=True, exist_ok=True)
+        with report_config.open("a") as fp:
             fp.write(population_name)
             if population_offset is not None:
                 fp.write(f" {int(population_offset)}")
@@ -91,13 +102,13 @@ class _CoreConfig(object):
 
     @run_only_rank0
     def write_spike_filename(self, filename):
-        report_config = f"{self.output_root}/{self.report_config_file}"
-        os.makedirs(os.path.dirname(report_config), exist_ok=True)
-        with open(report_config, "a") as fp:
+        report_config = Path(self.output_root) / self.report_config_file
+        report_config.parent.mkdir(parents=True, exist_ok=True)
+        with report_config.open("a") as fp:
             fp.write(filename)
             fp.write("\n")
 
-    def psolve_core(self, save_path = None, restore_path = None):
+    def psolve_core(self, save_path=None, restore_path=None):
         from neuron import h
         h.CVode().cache_efficient(1)
         from neuron import coreneuron
@@ -113,5 +124,6 @@ class _CoreConfig(object):
         coreneuron.data_path = f"{self.datadir}"
         Nd.pc.psolve(h.tstop)
 
+
 # Singleton
-CoreConfig = _CoreConfig()
+CoreConfig = _CoreNEURONConfig()
