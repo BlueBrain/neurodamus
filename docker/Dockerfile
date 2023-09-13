@@ -79,3 +79,5 @@ ENV EXTRA_MODS_DIR "$WORKDIR/neurodamus/core/mod"
 
 ADD build_neurodamus.sh $WORKDIR/script/
 ENV PATH "$WORKDIR/script:$PATH"
+
+ENTRYPOINT ["bash"]

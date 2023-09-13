@@ -27,7 +27,7 @@ bluebrain/neurodamus                  latest    4784d73155e7   11 hours ago   4.
 ## Docker containier
 With the docker image, you can start a neurodamus container with an interative Bash shell and meanwhile mount your local folder which contains your mod files and the circuit data.
 ```
-docker run --rm -it --entrypoint bash -v <folder_mods_circuit>:/mnt/mydata bluebrain/neurodamus
+docker run --rm -it -v <folder_mods_circuit>:/mnt/mydata bluebrain/neurodamus
 ```
 In the Bash shell, first build your mods:
 ```
@@ -36,6 +36,12 @@ cp $EXTRA_MODS_DIR/* <your_mod_dir>/
 build_neurodamus.sh <your_mod_dir>/
 source $USR_VENV/bin/activate
 ```
+
+If you have additional hoc files, copy them to the folder `$HOC_LIBRARY_PATH`
+```
+cp /mnt/mydata/<your_hoc_dir>/* $HOC_LIBRARY_PATH/
+```
+
 Then you are ready to start the simulation.
 
 To run with a single process
