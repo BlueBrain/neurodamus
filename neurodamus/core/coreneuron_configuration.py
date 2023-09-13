@@ -18,7 +18,7 @@ class _CoreConfig(object):
     # Instantiates the artificial cell object for CoreNEURON
     # This needs to happen only when CoreNEURON simulation is enabled
     def instantiate_artificial_cell(self):
-        artificial_cell_object = Nd.CoreNEURONArtificialCell()
+        self.artificial_cell_object = Nd.CoreNEURONArtificialCell()
 
     @run_only_rank0
     def write_report_config(
