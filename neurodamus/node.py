@@ -271,8 +271,12 @@ class Node:
             self._spike_populations = []
             Nd.execute("cvode = new CVode()")
             SimConfig.init(config_file, options)
-            CoreConfig.output_root = SimConfig.output_root
-            CoreConfig.datadir = SimConfig.coreneuron_datadir
+            if SimConfig.coreneuron:
+                CoreConfig.output_root = SimConfig.output_root
+                CoreConfig.datadir = SimConfig.coreneuron_datadir
+                # Instantiate the CoreNEURON artificial cell object which is used to fill up
+                # the empty ranks. This need to be done before the circuit is finitialized
+                CoreConfig.instantiate_artificial_cell()
             self._run_conf = SimConfig.run_conf
             self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))

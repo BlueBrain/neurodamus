@@ -13,7 +13,12 @@ class _CoreConfig(object):
     output_root = "output"
     datadir = f"{output_root}/coreneuron_input"
     default_cell_permute = 0
-    artificial_cell_object = Nd.CoreNEURONArtificialCell()
+    artificial_cell_object = None
+
+    # Instantiates the artificial cell object for CoreNEURON
+    # This needs to happen only when CoreNEURON simulation is enabled
+    def instantiate_artificial_cell(self):
+        artificial_cell_object = Nd.CoreNEURONArtificialCell()
 
     @run_only_rank0
     def write_report_config(
