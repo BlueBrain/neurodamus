@@ -46,9 +46,6 @@ def test_nodeset_target_generate_subtargets():
 
 
 @pytest.mark.forked
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test initialize internal structure and clashes with other tests")
 def test_hoc_target_generate_subtargets():
     from neurodamus.target_manager import _HocTarget
 
