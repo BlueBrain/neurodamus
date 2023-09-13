@@ -68,7 +68,7 @@ blueconfig_tests:
     - when: manual
       allow_failure: true
 
-configure:
+configure-docker-image:
   image: ubuntu:22.04
   script:
     - |
@@ -88,6 +88,7 @@ configure:
 build-docker-image:
   timeout: 2h
   needs: [configure-docker-image]
+  extends: .build-image-using-buildah
   variables:
     KUBERNETES_CPU_LIMIT: 8
     KUBERNETES_CPU_REQUEST: 8
