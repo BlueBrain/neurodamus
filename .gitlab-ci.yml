@@ -123,13 +123,13 @@ build-docker-image:
       --label ch.epfl.bbpgitlab.ci-commit-branch="$CI_COMMIT_BRANCH"
       --build-arg GITLAB_CI="$GITLAB_CI"
       --build-arg CI_JOB_TOKEN="$CI_JOB_TOKEN"
-    before_script:
-      - if [ "$BUILD_DOCKER_CONTAINER" == "false" ]; then
-      -   echo "No need to build the docker container"
-      -   exit 0
-      - else
-      -   echo "Building"
-      - fi
+  before_script:
+    - if [ "$BUILD_DOCKER_CONTAINER" == "false" ]; then
+    -   echo "No need to build the docker container"
+    -   exit 0
+    - else
+    -   echo "Building"
+    - fi
 
 upload-to-docker-hub:
   image: ubuntu:22.04
