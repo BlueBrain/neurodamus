@@ -107,13 +107,13 @@ def test_read_lfp_factors(test_file):
     lfp._lfp_file = test_file
     # Test the function with valid input (node_id is 0 based, so expected 42 in the file)
     gid = 43
-    result = lfp.read_lfp_factors(gid, 0, 2).to_python()
+    result = lfp.read_lfp_factors(gid).to_python()
     expected_result = [0.1, 0.2, 0.3, 0.4]
     assert result == expected_result, f'Expected {expected_result}, but got {result}'
 
     # Test the function with invalid input (non-existent gid)
     gid = 2
-    result = lfp.read_lfp_factors(gid, 0, 2).to_python()
+    result = lfp.read_lfp_factors(gid).to_python()
     expected_result = []
     assert result == expected_result, f'Expected {expected_result}, but got {result}'
 
