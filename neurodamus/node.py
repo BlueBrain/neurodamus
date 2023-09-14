@@ -271,7 +271,7 @@ class Node:
             self._spike_populations = []
             Nd.execute("cvode = new CVode()")
             SimConfig.init(config_file, options)
-            if SimConfig.coreneuron:
+            if SimConfig.use_coreneuron:
                 CoreConfig.output_root = SimConfig.output_root
                 CoreConfig.datadir = SimConfig.coreneuron_datadir
                 # Instantiate the CoreNEURON artificial cell object which is used to fill up
@@ -1613,7 +1613,7 @@ class Node:
         if self._cell_state_dump_t == Nd.t:   # avoid duplicating output
             return
         log_verbose("Dumping info about cell %d", self._pr_cell_gid)
-        simulator = "CoreNeuron" if SimConfig.coreneuron else "Neuron"
+        simulator = "CoreNeuron" if SimConfig.use_coreneuron else "Neuron"
         self._pc.prcellstate(self._pr_cell_gid, "py_{}_t{}".format(simulator, Nd.t))
         self._cell_state_dump_t = Nd.t
 
@@ -1652,7 +1652,7 @@ class Node:
         print_mem_usage()
 
         # Coreneuron runs clear the model before starting
-        if not SimConfig.coreneuron or SimConfig.simulate_model is False:
+        if not SimConfig.use_coreneuron or SimConfig.simulate_model is False:
             self.clear_model(avoid_creating_objs=True)
 
         if SimConfig.delete_corenrn_data:
@@ -1776,7 +1776,7 @@ class Neurodamus(Node):
         log_stage("Creating connections in the simulator")
         base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
         for syn_manager in self._circuits.all_synapse_managers():
-            syn_manager.finalize(base_seed, SimConfig.coreneuron)
+            syn_manager.finalize(base_seed, SimConfig.use_coreneuron)
         print_mem_usage()
 
         self.enable_stimulus()

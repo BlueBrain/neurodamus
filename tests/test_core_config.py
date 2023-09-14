@@ -45,8 +45,8 @@ def test_write_report_config(tmpdir):
         assert lines[0].strip().decode() == f"{report_count}"
         assert lines[1].strip().decode() == (
             f"{report_name} {target_name} {report_type} {report_variable} {unit} "
-            f"{report_format} {int(target_type)} {float(dt)} {float(start_time)} "
-            f"{float(end_time)} {len(gids)} {buffer_size}"
+            f"{report_format} {target_type} {dt} {start_time} "
+            f"{end_time} {len(gids)} {buffer_size}"
         )
         # Read the binary data and unpack it into a list of integers
         gids_from_file = struct.unpack(f'{len(gids)}i', lines[2].strip())

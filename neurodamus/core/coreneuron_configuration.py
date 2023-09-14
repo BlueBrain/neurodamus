@@ -34,20 +34,20 @@ class _CoreNEURONConfig(object):
         report_conf.parent.mkdir(parents=True, exist_ok=True)
         with report_conf.open("ab") as fp:
             # Write the formatted string to the file
-            fp.write((" ".join(map(str, [
+            fp.write(("%s %s %s %s %s %s %d %lf %lf %lf %d %d\n" % (
                 report_name,
                 target_name,
                 report_type,
                 report_variable,
                 unit,
                 report_format,
-                int(target_type),
-                float(dt),
-                float(start_time),
-                float(end_time),
+                target_type,
+                dt,
+                start_time,
+                end_time,
                 num_gids,
                 buffer_size
-            ])) + "\n").encode())
+            ) + "\n").encode())
             # Write the array of integers to the file in binary format
             fp.write(struct.pack(f'{num_gids}i', *gids))
             fp.write(b'\n')
@@ -109,10 +109,10 @@ class _CoreNEURONConfig(object):
             fp.write("\n")
 
     def psolve_core(self, save_path=None, restore_path=None):
-        from neuron import h
-        h.CVode().cache_efficient(1)
         from neuron import coreneuron
         from . import NeurodamusCore as Nd
+
+        Nd.cvode.cache_efficient(1)
         coreneuron.enable = True
         coreneuron.file_mode = True
         coreneuron.sim_config = f"{self.output_root}/{self.sim_config_file}"
@@ -122,7 +122,7 @@ class _CoreNEURONConfig(object):
             coreneuron.restore = restore_path
         coreneuron.only_simulate = True
         coreneuron.data_path = f"{self.datadir}"
-        Nd.pc.psolve(h.tstop)
+        Nd.pc.psolve(Nd.tstop)
 
 
 # Singleton

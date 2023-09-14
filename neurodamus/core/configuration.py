@@ -209,7 +209,6 @@ class _SimConfig(object):
     _blueconfig = None  # new python BlueConfig parser
     _simconf = None
     rng_info = None
-    coreneuron = None  # True if CoreNEURON is enabled
 
     # In principle not all vars need to be required as they'r set by the parameter functions
     blueconfig_dir = None
@@ -330,14 +329,6 @@ class _SimConfig(object):
         cls.rng_info.interpret(parsed_run)
         if parsed_run.exists("BaseSeed"):
             logging.info("User-defined RNG base seed %s", parsed_run.valueOf("BaseSeed"))
-
-        if cls._simconf.coreNeuronUsed():
-            cls.coreneuron = True
-            # NOTE: commenting out the following lines since locations are hardcoded
-            #   and therefore now we set them in python directly (and early).
-            #   The day we need to make it configurable, SimConfig needs to extract
-            #   the locations from the parsedRun
-            # cls.coreneuron_datadir = simconf.getCoreneuronDataDir().s
 
     @classmethod
     def validator(cls, f):

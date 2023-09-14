@@ -122,7 +122,7 @@ def test_eager_caching():
     n.create_synapses()
     # manually finalize synapse managers (otherwise netcons are not created)
     for syn_manager in n._circuits.all_synapse_managers():
-        syn_manager.finalize(n._run_conf.get("BaseSeed", 0), SimConfig.coreneuron)
+        syn_manager.finalize(n._run_conf.get("BaseSeed", 0), SimConfig.use_coreneuron)
     n.sim_init()  # not really necessary
 
     # here we get the HOC object for the post cell
