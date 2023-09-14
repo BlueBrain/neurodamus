@@ -1,6 +1,7 @@
 """
 Module to load configuration from a libsonata config
 """
+from functools import cached_property
 import json
 import libsonata
 import logging
@@ -17,7 +18,8 @@ class SonataConfig:
         '_resolved_manifest',
         'circuits',
         '_circuit_networks',
-        '_sim_conf'
+        '_sim_conf',
+        '_internal_edge_pops',
     )
 
     _config_entries = (
@@ -39,6 +41,7 @@ class SonataConfig:
         self._sim_conf = libsonata.SimulationConfig.from_file(config_path)
         self._entries = {}
         self._sections = {}
+        self._internal_edge_pops = set()
 
         with open(config_path) as config_fh:
             self._config_json: dict = json.load(config_fh)
@@ -56,6 +59,7 @@ class SonataConfig:
 
         self.circuits = libsonata.CircuitConfig.from_file(self.network)
         self._circuit_networks = json.loads(self.circuits.expanded_json)["networks"]
+        logging.debug(self.Circuit)  # compute Circuits so that it also sets _internal_edge_pops
 
     @classmethod
     def _resolve(cls, entry, name, manifest: dict):
@@ -203,7 +207,7 @@ class SonataConfig:
         conditions["randomize_Gaba_risetime"] = str(conditions["randomize_Gaba_risetime"])
         return {"Conditions": conditions}
 
-    @property
+    @cached_property
     def Circuit(self):
         node_info_to_circuit = {
             "nodes_file": "CellLibraryFile",
@@ -244,7 +248,7 @@ class SonataConfig:
             # Find inner connectivity
             # NOTE: Inner connectivity is a special kind of projection, and represents the circuit
             # default set of connections. Even though nowadays we can potentially consider
-            # all connectivity projections, under certain circuitry, like NGV, order matters and
+            # all connectivity as projections, under certain circuitry, like NGV, order matters and
             # therefore we keep inner connectivity to ensure they are created in the same order,
             # respecting engine precedence
             # For edges to be considered inner connectivity they must be named "default"
@@ -252,13 +256,19 @@ class SonataConfig:
                 for edge_pop_name in edge_config["populations"].keys():
                     edge_storage = self.circuits.edge_population(edge_pop_name)
                     edge_type = self.circuits.edge_population_properties(edge_pop_name).type
-                    if (edge_storage.source == edge_storage.target == node_pop_name
-                            and edge_type == "chemical"
-                            and edge_pop_name == "default"):
+                    inner_pop_name = "{0}__{0}__chemical".format(node_pop_name)
+                    if edge_pop_name == inner_pop_name or (
+                        edge_storage.source == edge_storage.target == node_pop_name
+                        and edge_type == "chemical"
+                        and edge_pop_name == "default"
+                    ):
                         edges_file = edge_config["edges_file"]
                         if not os.path.isabs(edges_file):
                             edges_file = os.path.join(os.path.dirname(self.network), edges_file)
-                        circuit_conf["nrnPath"] = edges_file + ":" + edge_pop_name
+                        edge_pop_path = edges_file + ":" + edge_pop_name
+                        self._internal_edge_pops.add(edge_pop_path)
+                        circuit_conf["nrnPath"] = edge_pop_path
+
             return circuit_conf
 
         return {
@@ -286,16 +296,18 @@ class SonataConfig:
                 if pop_type not in projection_type_convert:
                     logging.warning("Unhandled synapse type: " + pop_type)
                     continue
-                # Skip inner connectivity
-                is_default_pop = edge_pop_name == "default"
-                if edge_pop.source == edge_pop.target and pop_type == "chemical" and is_default_pop:
-                    continue
+
                 edges_file = edge_config["edges_file"]
                 if not os.path.isabs(edges_file):
                     edges_file = os.path.join(os.path.dirname(self.network), edges_file)
 
+                # skip inner connectivity populations
+                edge_pop_path = edges_file + ":" + edge_pop_name
+                if edge_pop_path in self._internal_edge_pops:
+                    continue
+
                 projection = dict(
-                    Path=edges_file + ":" + edge_pop_name,
+                    Path=edge_pop_path,
                     Source=edge_pop.source + ":",
                     Destination=edge_pop.target + ":",
                     Type=projection_type_convert.get(pop_type)
