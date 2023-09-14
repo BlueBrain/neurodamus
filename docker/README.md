@@ -9,7 +9,7 @@ You must have:
 You can either build your own docker image using the recipe in this repository or pull the prebuilt image from the Docker Hub.
 
 ### Option 1: Build your docker image
-Before building your own docker image, make sure that your Docker Desktop is configured with at least 4 GB memory and 2 GB swap. (Settings->Resources->Memory)
+Before building your own docker image, make sure that your Docker Desktop is configured with at least 8 GB memory. (Settings->Resources->Memory)
 ```
 cd docker/
 docker build -t neurodamus .
@@ -32,21 +32,20 @@ docker run --rm -it -v <folder_mods_circuit>:/mnt/mydata bluebrain/neurodamus
 In the Bash shell, first build your mods:
 ```
 cd /mnt/mydata/
-cp $EXTRA_MODS_DIR/* <your_mod_dir>/
+cp $NEURODAMUS_MODS_DIR/* <your_mod_dir>/
 build_neurodamus.sh <your_mod_dir>/
-source $USR_VENV/bin/activate
 ```
 
-If you have additional hoc files, copy them to the folder `$HOC_LIBRARY_PATH`
+If you have additional hoc files, add the location to `$HOC_LIBRARY_PATH`
 ```
-cp /mnt/mydata/<your_hoc_dir>/* $HOC_LIBRARY_PATH/
+export HOC_LIBRARY_PATH=/mnt/mydata/<your_hoc_dir>:$HOC_LIBRARY_PATH
 ```
 
 Then you are ready to start the simulation.
 
 To run with a single process
 ```
-./x86_64/special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=<your_folder>/simulation_config.json
+./x86_64/special -python $NEURODAMUS_PYTHON/init.py --configFile=<your_folder>/simulation_config.json
 ```
 To run with multiple processes in parallel, e.g. 4 processes
 ```
