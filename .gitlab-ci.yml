@@ -130,8 +130,8 @@ upload-to-docker-hub:
     - podman pull ${CI_REGISTRY_IMAGE}/${CONTAINER_NAME}:${REGISTRY_IMAGE_TAG}
     - echo podman push ${CI_REGISTRY_IMAGE}/${CONTAINER_NAME}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
     - podman --log-level=debug push ${CI_REGISTRY_IMAGE}/${CONTAINER_NAME}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+ #rules:
+ #  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 
 # The following stages are overrides. Don't rename
