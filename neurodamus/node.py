@@ -510,15 +510,15 @@ class Node:
             mem_dict_clean = {(key[0].rstrip('0123456789'), key[1]): value for key,
                               value in full_mem_dict.items()}
             export_memory_usage_to_json(mem_dict_clean, "memory_usage.json")
-            logging.info("Memory usage:")
+            logging.debug("Memory usage:")
             for metype, mem in mem_dict_clean.items():
-                logging.info("  %s: %f", metype, mem)
-            logging.info("Cells created:")
+                logging.debug("  %s: %f", metype, mem)
+            logging.debug("Number of cells per METype combination:")
             if metype_counts is not None:
                 for metype, count in metype_counts.items():
                     memory_total += count * mem_dict_clean[metype]
-                    logging.info("  %s: %d", metype, count)
-                logging.info("  Total memory usage for cells: %f MB", memory_total)
+                    logging.debug("  %s: %d", metype, count)
+                logging.info("  Total memory usage for cells: %.2f MB", memory_total)
 
         return memory_total
 

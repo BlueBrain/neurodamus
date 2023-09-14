@@ -313,7 +313,7 @@ class SelectionNodeSet(_NodeSetBase):
                 # Like that we could still keep ranges internally and have PROPER API to get raw ids
                 return numpy.add(intersect, 1, dtype=intersect.dtype)
             return numpy.add(intersect, self.offset + 1, dtype=intersect.dtype)
-        return []
+        return numpy.array([], dtype="uint32")
 
     def intersects(self, other):
         return self.intersection(other, _quick_check=True)

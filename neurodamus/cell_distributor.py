@@ -298,7 +298,7 @@ class CellManagerBase(_CellManager):
         Nd.execute("xopen_broadcast_ = 0")
 
         logging.info(" > Dry run on cells... (%d in Rank 0)", len(self._local_nodes))
-        logging.info("Memory usage for metype combinations:")
+        logging.info("Memory usage for newly instantiated metype combinations:")
         cell_offset = self._local_nodes.offset
 
         gid_info_items = self._local_nodes.items()
@@ -318,7 +318,7 @@ class CellManagerBase(_CellManager):
             if (diff_mtype or diff_emodel) and not first:
                 end_memory = get_mem_usage()
                 memory_allocated = end_memory - start_memory
-                log_all(logging.INFO, " * %s %s: %f MB averaged over %d cells",
+                log_all(logging.info, " * %s %s: %.2f MB averaged over %d cells",
                         prev_emodel, prev_mtype, memory_allocated/n_cells, n_cells)
                 memory_dict[(prev_emodel, prev_mtype)] = memory_allocated/n_cells
                 start_memory = end_memory
