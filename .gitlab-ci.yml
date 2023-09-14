@@ -75,11 +75,23 @@ configure-docker-image:
     - apt-get update -y
     - apt-get install -y git
     - |
-      PACKAGE_VERSION=$(git describe --tags)
-      REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
+      #PACKAGE_VERSION=$(git describe --tags)
+      #REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
+      REGISTRY_IMAGE_TAG=2.16.2.dev10
+      set +e
+      skopeo inspect docker://bluebrain/neurodamus:${REGISTRY_IMAGE_TAG}
+      if [[ $? -eq 0 ]]; then
+        echo "Container with version ${REGISTRY_IMAGE_TAG} already exists - not rebuilding"
+        BUILD_DOCKER_CONTAINER="false"
+      else
+        echo "Container with version ${REGISTRY_IMAGE_TAG} does not exist yet - building"
+        BUILD_DOCKER_CONTAINER="true"
+      fi
+      set -e
     - |
       cat <<EOF > build.env
       REGISTRY_IMAGE_TAG=$REGISTRY_IMAGE_TAG
+      BUILD_DOCKER_CONTAINER=$BUILD_DOCKER_CONTAINER
       EOF
     - cat build.env
   artifacts:
@@ -111,6 +123,8 @@ build-docker-image:
       --label ch.epfl.bbpgitlab.ci-commit-branch="$CI_COMMIT_BRANCH"
       --build-arg GITLAB_CI="$GITLAB_CI"
       --build-arg CI_JOB_TOKEN="$CI_JOB_TOKEN"
+  rules:
+    - if: $BUILD_DOCKER_CONTAINER == "true"
 
 upload-to-docker-hub:
   image: ubuntu:22.04
@@ -132,8 +146,8 @@ upload-to-docker-hub:
     - podman pull ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG}
     - echo podman push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
     - podman --log-level=debug push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
- #rules:
- #  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  rules:
+    - if: $BUILD_DOCKER_CONTAINER == "true"
 
 
 # The following stages are overrides. Don't rename
