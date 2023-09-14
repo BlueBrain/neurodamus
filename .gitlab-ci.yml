@@ -73,7 +73,7 @@ configure-docker-image:
   stage: build
   script:
     - apt-get update -y
-    - apt-get install -y git
+    - apt-get install -y git skopeo
     - |
       #PACKAGE_VERSION=$(git describe --tags)
       #REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
