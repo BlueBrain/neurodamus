@@ -58,12 +58,10 @@ class LFPManager:
 
         Args:
         gid (int): The unique cell identifier
-        section_index (int): Start index of the sections to read in the dataset
-        num_sections (int): Number of sections to read
         population_info (Pair(str, int)): Population info ("population_name", population_offset)
 
         Returns:
-        Nd.Vector: A vector containing the LFP factors for the specified gid and section ids
+        Nd.Vector: A vector containing the LFP factors for the specified gid
         """
         scalar_factors = Nd.Vector()
         if self._lfp_file:
