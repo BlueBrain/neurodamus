@@ -74,9 +74,9 @@ configure-docker-image:
     - apt-get update -y
     - apt-get install -y git skopeo
     - |
-      #PACKAGE_VERSION=$(git describe --tags)
-      #REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
-      REGISTRY_IMAGE_TAG=2.16.2.dev10
+      PACKAGE_VERSION=$(git describe --tags)
+      REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
+      #REGISTRY_IMAGE_TAG=2.16.2.dev10
       set +e
       skopeo inspect docker://bluebrain/neurodamus:${REGISTRY_IMAGE_TAG}
       if [[ $? -eq 0 ]]; then
@@ -156,7 +156,9 @@ upload-to-docker-hub:
     - podman login -u ${DOCKER_HUB_USER} -p ${DOCKER_HUB_AUTH_TOKEN} docker.io
     - podman pull ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG}
     - echo podman push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
+    - curl -s --header "Content-Type:application/json" --header "Authorization:JWT ${TOKEN}" -X DELETE "https://hub.docker.com/v2/repositories/bluebrain/neurodamus/tags/latest/"
     - podman --log-level=debug push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
+    - podman --log-level=debug push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:latest
 
 
 # The following stages are overrides. Don't rename
