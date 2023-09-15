@@ -14,9 +14,8 @@ include:
 workflow:
   rules:
     - if: '$CI_EXTERNAL_PULL_REQUEST_IID'
-    # re-define because the imported rules will be ignored
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-    - if: $CI_PIPELINE_SOURCE == "web"  # run for manually started pipelines from -/pipelines/new
+    - if: $CI_PIPELINE_SOURCE == "web"
 
 variables:
   BLUECONFIGS_BRANCH:
