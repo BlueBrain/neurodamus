@@ -9,10 +9,13 @@ You must have:
 You can either build your own docker image using the recipe in this repository or pull the prebuilt image from the Docker Hub.
 
 ### Option 1: Build your docker image
-Before building your own docker image, make sure that your Docker Desktop is configured with at least 8 GB memory. (Settings->Resources->Memory)
+Before building your own docker image, make sure that your Docker Desktop is configured with at least 6 GB memory. (Settings->Resources->Memory)
 ```
 cd docker/
+# build the neurodamus with the latest version of libsonata, libsonatareport and neuron
 docker build -t neurodamus .
+# or specify the version of the dependencies
+docker build -t neurodamus --build-arg LIBSONATA_TAG=v0.1.21 --build-arg LIBSONATAREPORT_TAG=1.2.1 --build-arg NEURON_TAG=9.0a .
 ```
 ### Option 2: Pull the prebuilt image from Docker Hub
 ```
