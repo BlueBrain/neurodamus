@@ -47,7 +47,7 @@ class _CoreNEURONConfig(object):
                 end_time,
                 num_gids,
                 buffer_size
-            ) + "\n").encode())
+            )).encode())
             # Write the array of integers to the file in binary format
             fp.write(struct.pack(f'{num_gids}i', *gids))
             fp.write(b'\n')

@@ -43,11 +43,19 @@ def test_write_report_config(tmpdir):
     with open(report_config_file, "rb") as fp:
         lines = fp.readlines()
         assert lines[0].strip().decode() == f"{report_count}"
-        assert lines[1].strip().decode() == (
-            f"{report_name} {target_name} {report_type} {report_variable} {unit} "
-            f"{report_format} {target_type} {dt} {start_time} "
-            f"{end_time} {len(gids)} {buffer_size}"
-        )
+        parts = lines[1].strip().decode().split()
+        assert parts[0] == report_name
+        assert parts[1] == target_name
+        assert parts[2] == report_type
+        assert parts[3] == report_variable
+        assert parts[4] == unit
+        assert parts[5] == report_format
+        assert int(parts[6]) == target_type
+        assert float(parts[7]) == dt
+        assert float(parts[8]) == start_time
+        assert float(parts[9]) == end_time
+        assert int(parts[10]) == len(gids)
+        assert int(parts[11]) == buffer_size
         # Read the binary data and unpack it into a list of integers
         gids_from_file = struct.unpack(f'{len(gids)}i', lines[2].strip())
         assert gids_from_file == tuple(gids), "GIDs from file do not match original GIDs"
