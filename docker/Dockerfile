@@ -5,6 +5,9 @@ MAINTAINER Weina Ji <weina.ji@epfl.ch>
 # Using SHELL instruction to change default shell for subsequent RUN instructions
 SHELL ["/bin/bash", "-c"]
 
+ARG LIBSONATA_TAG=master
+ARG LIBSONATAREPORT_TAG=master
+ARG NEURON_TAG=master
 ARG WORKDIR=/opt/software
 ARG INSTALL_DIR=/opt/software/install
 ARG USR_VENV=$WORKDIR/venv
@@ -33,12 +36,12 @@ RUN apt-get --yes -qq update \
 
 # Install libsonata
 RUN source $USR_VENV/bin/activate \
- && CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata
+ &&CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata@$LIBSONATA_TAG
 
 # Install libsonatareport
 RUN mkdir -p $WORKDIR \
  && cd $WORKDIR \
- && git clone https://github.com/BlueBrain/libsonatareport.git --recursive \
+ && git clone https://github.com/BlueBrain/libsonatareport.git --recursive --depth 1 -b $LIBSONATAREPORT_TAG \
  && cd libsonatareport \
  && mkdir build && cd build \
  && cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON -DSONATA_REPORT_ENABLE_MPI=ON .. \
@@ -49,7 +52,7 @@ ENV SONATAREPORT_DIR "$INSTALL_DIR"
 # Install neuron
 RUN source $USR_VENV/bin/activate \ 
  && cd $WORKDIR \
- && git clone https://github.com/neuronsimulator/nrn.git \
+ && git clone https://github.com/neuronsimulator/nrn.git --depth 1 -b $NEURON_TAG \
  && cd nrn && mkdir build && cd build \
  && cmake -DPYTHON_EXECUTABLE=$(which python) -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DNRN_ENABLE_MPI=ON -DNRN_ENABLE_INTERVIEWS=OFF -DNRN_ENABLE_RX3D=OFF \
  -DNRN_ENABLE_CORENEURON=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCORENRN_ENABLE_REPORTING=ON -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR .. \
@@ -70,12 +73,16 @@ RUN source $USR_VENV/bin/activate \
  && pip install . \
  && cp tests/share/hoc/* core/hoc/
 
-ADD build_neurodamus.sh $INSTALL_DIR/bin
-
 ENV HOC_LIBRARY_PATH "$WORKDIR/neurodamus/core/hoc"
 ENV NEURODAMUS_PYTHON "$WORKDIR/neurodamus/"
 ENV NEURODAMUS_MODS_DIR "$WORKDIR/neurodamus/core/mod"
 ENV PATH "$INSTALL_DIR/bin:$USR_VENV/bin:$PATH"
 ENV PYTHONPATH "$INSTALL_DIR/python:$PYTHONPATH"
+
+# Copy module building script and test build
+ADD build_neurodamus.sh $INSTALL_DIR/bin
+RUN build_neurodamus.sh $NEURODAMUS_MODS_DIR \
+ && ./x86_64/special -python -c "from neuron import h; from neurodamus import Neurodamus; h.quit()" \
+ && rm -rf x86_64/
 
 ENTRYPOINT ["bash"]
