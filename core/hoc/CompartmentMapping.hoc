@@ -10,6 +10,7 @@
 objref secvec
 objref segvec
 objref lfp_factors
+objref all_lfp_factors
 
 /*!
  * Get the number of sections of certain type
@@ -91,8 +92,8 @@ func sectionNo() { local baseOffset, secIndex  localobj str, strobj
  * @param $o2 target object
  */
 
-proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic, nSec, nSeg, val, num_electrodes \
-  localobj gidvec, cellref, pyobj, commstr, target, cellDistributor, pc, python_obj
+proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic, nSec, indexSec, nSeg, val, num_electrodes \
+  localobj gidvec, cellref, pyobj, pop_info, commstr, target, cellDistributor, pc, python_obj
   strdef tstr
 
   cellDistributor = $o1
@@ -104,10 +105,12 @@ proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic
 
   // list of gids on current rank
   gidvec = cellDistributor.getGidListForProcessor()
+  pop_info = new PythonObject()
 
   for cellIndex=0, gidvec.size()-1 {
     activegid = gidvec.x[cellIndex]
     cellref = cellDistributor.getCell(activegid)
+    pop_info = cellDistributor.getPopulationInfo(activegid)
 
     // skip gids that we don't want to report, instead of skipping
     // we should add a flag in mapping
@@ -123,11 +126,13 @@ proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic
     nNode = 0
     nMyel = 0
     nSec = 0
+    indexSec = 0
 
     // vectors holding section and segments
     secvec = new Vector()
     segvec = new Vector()
     lfp_factors = new Vector()
+    all_lfp_factors = new Vector()
 
     // gather all somas and register somas with neuron
     forsec cellref.somatic {
@@ -142,11 +147,15 @@ proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic
     python_obj = new PythonObject()
     has_lfp_manager = python_obj.hasattr(cellDistributor, "_lfp_manager")
     if( has_lfp_manager != 0 ) {
-        num_electrodes = cellDistributor._lfp_manager.get_number_electrodes(activegid)
-        lfp_factors = cellDistributor._lfp_manager.read_lfp_factors(activegid, secvec)
+        num_electrodes = cellDistributor._lfp_manager.get_number_electrodes(activegid, pop_info)
+        all_lfp_factors = cellDistributor._lfp_manager.read_lfp_factors(activegid, pop_info)
+        if ( all_lfp_factors.size() > 0 && nSoma != 0 ) {
+            // Filter the factors of each section
+            lfp_factors = all_lfp_factors.c(indexSec*num_electrodes, (indexSec+nSoma)*num_electrodes-1)
+        }
     }
     pc.nrnbbcore_register_mapping(activegid, "soma", secvec, segvec, lfp_factors, num_electrodes )
-
+    indexSec = indexSec + nSoma
     // gather axonal compartments and register with neuron
 
     nSec = 0
@@ -161,12 +170,11 @@ proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic
         nrnpython( commstr.s )
         nAxon = pyobj.mappinginfo
     }
-
-    if( has_lfp_manager != 0 ) {
-        lfp_factors = cellDistributor._lfp_manager.read_lfp_factors(activegid, secvec)
+    if( has_lfp_manager != 0 && all_lfp_factors.size() > 0 && nAxon != 0 ) {
+        lfp_factors = all_lfp_factors.c(indexSec*num_electrodes, (indexSec+nAxon)*num_electrodes-1)
     }
     pc.nrnbbcore_register_mapping(activegid, "axon", secvec, segvec, lfp_factors, num_electrodes )
-
+    indexSec = indexSec + nAxon
     // gather basal compartments and register with neuron
 
     nSec = 0
@@ -181,11 +189,11 @@ proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic
         nrnpython( commstr.s )
         nDend = pyobj.mappinginfo
     }
-
-    if( has_lfp_manager != 0 ) {
-        lfp_factors = cellDistributor._lfp_manager.read_lfp_factors(activegid, secvec)
+    if( has_lfp_manager != 0 && all_lfp_factors.size() > 0 && nDend != 0 ) {
+        lfp_factors = all_lfp_factors.c(indexSec*num_electrodes, (indexSec+nDend)*num_electrodes-1)
     }
     pc.nrnbbcore_register_mapping(activegid, "dend", secvec, segvec, lfp_factors, num_electrodes )
+    indexSec = indexSec + nDend
 
     nSec = 0
     secvec = new Vector()
@@ -202,10 +210,11 @@ proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic
         nApic = pyobj.mappinginfo
     }
 
-    if( has_lfp_manager != 0 ) {
-        lfp_factors = cellDistributor._lfp_manager.read_lfp_factors(activegid, secvec)
+    if( has_lfp_manager != 0 && all_lfp_factors.size() > 0 && nApic != 0 ) {
+        lfp_factors = all_lfp_factors.c(indexSec*num_electrodes, (indexSec+nApic)*num_electrodes-1)
     }
     pc.nrnbbcore_register_mapping(activegid, "apic", secvec, segvec, lfp_factors, num_electrodes )
+    indexSec = indexSec + nApic
 
     nSec = 0
     secvec = new Vector()
@@ -221,10 +230,11 @@ proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic
             nrnpython( commstr.s )
             nAis = pyobj.mappinginfo
         }
-        if( has_lfp_manager != 0 ) {
-            lfp_factors = cellDistributor._lfp_manager.read_lfp_factors(activegid, secvec)
+        if( has_lfp_manager != 0 && all_lfp_factors.size() > 0 && nAis != 0 ) {
+            lfp_factors = all_lfp_factors.c(indexSec*num_electrodes, (indexSec+nAis)*num_electrodes-1)
         }
         pc.nrnbbcore_register_mapping(activegid, "ais", secvec, segvec, lfp_factors, num_electrodes )
+        indexSec = indexSec + nAis
     }
 
     // gather nodal compartments and register with neuron
@@ -242,10 +252,11 @@ proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic
             nrnpython( commstr.s )
             nNode = pyobj.mappinginfo
         }
-        if( has_lfp_manager != 0 ) {
-            lfp_factors = cellDistributor._lfp_manager.read_lfp_factors(activegid, secvec)
+        if( has_lfp_manager != 0 && all_lfp_factors.size() > 0 && nNode != 0 ) {
+            lfp_factors = all_lfp_factors.c(indexSec*num_electrodes, (indexSec+nNode)*num_electrodes-1)
         }
         pc.nrnbbcore_register_mapping(activegid, "node", secvec, segvec, lfp_factors, num_electrodes )
+        indexSec = indexSec + nNode
     }
 
     // gather myelinated compartments and register with neuron
@@ -263,10 +274,11 @@ proc registerMapping () { local cellIndex, activegid, nSoma, nAxon, nDend, nApic
             nrnpython( commstr.s )
             nMyel = pyobj.mappinginfo
         }
-        if( has_lfp_manager != 0 ) {
-            lfp_factors = cellDistributor._lfp_manager.read_lfp_factors(activegid, secvec)
+        if( has_lfp_manager != 0 && all_lfp_factors.size() > 0 && nMyel != 0 ) {
+            lfp_factors = all_lfp_factors.c(indexSec*num_electrodes, (indexSec+nMyel)*num_electrodes-1)
         }
         pc.nrnbbcore_register_mapping(activegid, "myelin", secvec, segvec, lfp_factors, num_electrodes )
+        indexSec = indexSec + nMyel
     }
 
   }  // end for gidIndex

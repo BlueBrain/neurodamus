@@ -112,7 +112,8 @@ class SonataConfig:
             # Optional
             "tstart": "Start",
             "spike_threshold": "SpikeThreshold",
-            "integration_method": "SecondOrder"
+            "integration_method": "SecondOrder",
+            "electrodes_file": "LFPWeightsPath"
         },
         "conditions": {
             "randomize_gaba_rise_time": "randomize_Gaba_risetime"
