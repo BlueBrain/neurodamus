@@ -98,6 +98,8 @@ configure-docker-image:
     paths: [build.env]
     reports:
       dotenv: build.env
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 build-docker-image:
   timeout: 2h
@@ -129,6 +131,8 @@ build-docker-image:
     - else
     -   echo "Building"
     - fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 upload-to-docker-hub:
   image: ubuntu:22.04
@@ -159,6 +163,8 @@ upload-to-docker-hub:
     - curl -s --header "Content-Type:application/json" --header "Authorization:JWT ${TOKEN}" -X DELETE "https://hub.docker.com/v2/repositories/bluebrain/neurodamus/tags/latest/"
     - podman --log-level=debug push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
     - podman --log-level=debug push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 
 # The following stages are overrides. Don't rename
