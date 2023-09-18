@@ -18,18 +18,18 @@ docker build -t neurodamus .
 ```
 ### Option 2: Pull the prebuilt image from Docker Hub
 ```
-docker pull weinaji/neurodamus:0.0.2
+docker pull bluebrain/neurodamus:latest
 ```
 You can verify your image with the command `docker image ls`, for example:
 ```
 $ docker image ls
 REPOSITORY                            TAG       IMAGE ID       CREATED        SIZE
-weinaji/neurodamus                    0.0.2     4784d73155e7   11 hours ago   4.08GB
+bluebrain/neurodamus                  latest    4784d73155e7   11 hours ago   4.08GB
 ```
 ## Run your neurodamus docker containier
 With the docker image, you can start a neurodamus container with an interative Bash shell and meanwhile mount your local folder which contains your mod files and the circuit data.
 ```
-docker run --rm -it --entrypoint bash -v <folder_mods_circuit>:/mnt/mydata weinaji/neurodamus:0.0.2
+docker run --rm -it --entrypoint bash -v <folder_mods_circuit>:/mnt/mydata bluebrain/neurodamus:latest
 ```
 In the Bash shell, first build your mods:
 ```
