@@ -261,8 +261,8 @@ def fetch_MEinfo(node_reader, gidvec, combo_file, meinfo):
     positions = node_reader.positions(indexes)
     rotations = node_reader.rotations(indexes) if node_reader.rotated else None
 
-    meinfo.load_infoNP(gidvec, morpho_names, emodels, mtypes, etypes, threshold_currents, holding_currents,
-                       exc_mini_freqs, inh_mini_freqs, positions, rotations)
+    meinfo.load_infoNP(gidvec, morpho_names, emodels, mtypes, etypes, threshold_currents,
+                       holding_currents, exc_mini_freqs, inh_mini_freqs, positions, rotations)
 
 
 def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
@@ -291,7 +291,11 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
         morpho_names = node_pop.get_attribute("morphology", node_sel)
         mtypes = node_pop.get_attribute("mtype", node_sel)
-        etypes = node_pop.get_attribute("etype", node_sel)
+        try:
+            etypes = node_pop.get_attribute("etype", node_sel)
+        except KeyError:
+            logging.warning("etype not found in node population, setting to None")
+            etypes = None
         _model_templates = node_pop.get_attribute("model_template", node_sel)
         emodel_templates = [emodel.removeprefix("hoc:") for emodel in _model_templates]
         if set(["exc_mini_frequency", "inh_mini_frequency"]).issubset(attr_names):

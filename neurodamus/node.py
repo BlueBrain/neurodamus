@@ -509,16 +509,14 @@ class Node:
         memory_total = 0
 
         if MPI.rank == 0:
-            mem_dict_clean = {(key[0].rstrip('0123456789'), key[1]): value for key,
-                              value in full_mem_dict.items()}
-            export_memory_usage_to_json(mem_dict_clean, "memory_usage.json")
+            export_memory_usage_to_json(full_mem_dict, "memory_usage.json")
             logging.debug("Memory usage:")
-            for metype, mem in mem_dict_clean.items():
+            for metype, mem in full_mem_dict.items():
                 logging.debug("  %s: %f", metype, mem)
             logging.debug("Number of cells per METype combination:")
             if metype_counts is not None:
                 for metype, count in metype_counts.items():
-                    memory_total += count * mem_dict_clean[metype]
+                    memory_total += count * full_mem_dict[metype]
                     logging.debug("  %s: %d", metype, count)
                 logging.info("  Total memory usage for cells: %.2f MB", memory_total)
 
