@@ -293,7 +293,7 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         mtypes = node_pop.get_attribute("mtype", node_sel)
         try:
             etypes = node_pop.get_attribute("etype", node_sel)
-        except KeyError:
+        except libsonata.SonataError:
             logging.warning("etype not found in node population, setting to None")
             etypes = None
         _model_templates = node_pop.get_attribute("model_template", node_sel)
