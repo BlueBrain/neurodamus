@@ -120,8 +120,8 @@ class _CoreNEURONConfig(object):
             coreneuron.save_path = save_path
         if restore_path:
             coreneuron.restore_path = restore_path
-        # Model is already dumped to disk by calling pc.nrncore_write()
-        coreneuron.skip_dump_model_to_disk = True
+        # Model is already written to disk by calling pc.nrncore_write()
+        coreneuron.skip_write_model_to_disk = True
         coreneuron.model_path = f"{self.datadir}"
         Nd.pc.psolve(Nd.tstop)
 
