@@ -468,11 +468,13 @@ class Node:
 
         # Let the cell managers have any final say in the cell objects
         log_stage("FINALIZING CIRCUIT CELLS")
+
         if ospath.exists("memory_usage.json") and SimConfig.dry_run:
             logging.info("Loading memory usage from memory_usage.json...")
             imported_memory_dict = import_memory_usage_from_json("memory_usage.json")
         else:
             imported_memory_dict = None
+
         for cell_manager in self._circuits.all_node_managers():
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
             if SimConfig.dry_run and cell_manager.circuit_name is None:

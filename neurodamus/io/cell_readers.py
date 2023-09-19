@@ -289,8 +289,9 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
         morpho_names = node_pop.get_attribute("morphology", node_sel)
         mtypes = node_pop.get_attribute("mtype", node_sel)
-        emodels = [emodel.removeprefix("hoc:")
-                   for emodel in node_pop.get_attribute("model_template", node_sel)]
+        etypes = node_pop.get_attribute("etype", node_sel)
+        _model_templates = node_pop.get_attribute("model_template", node_sel)
+        emodel_templates = [emodel.removeprefix("hoc:") for emodel in _model_templates]
         if set(["exc_mini_frequency", "inh_mini_frequency"]).issubset(attr_names):
             exc_mini_freqs = node_pop.get_attribute("exc_mini_frequency", node_sel)
             inh_mini_freqs = node_pop.get_attribute("inh_mini_frequency", node_sel)
@@ -309,13 +310,15 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         rotations = _get_rotations(node_pop, node_sel)
 
         # For Sonata and new emodel hoc template, we need additional attributes for building metype
+        # TODO: validate it's really the emodel_templates var we should pass here, or etype
         add_params_list = None if not has_extra_data \
-            else _getNeededAttributes(node_pop, circuit_conf.METypePath, emodels, gidvec-1)
+            else _getNeededAttributes(node_pop, circuit_conf.METypePath, emodel_templates, gidvec-1)
 
         meinfos = METypeManager()
-        meinfos.load_infoNP(gidvec, morpho_names, emodels, mtypes, threshold_currents,
-                            holding_currents, exc_mini_freqs, inh_mini_freqs, positions,
-                            rotations, add_params_list)
+        meinfos.load_infoNP(gidvec, morpho_names, emodel_templates, mtypes, etypes,
+                            threshold_currents, holding_currents,
+                            exc_mini_freqs, inh_mini_freqs, positions, rotations,
+                            add_params_list)
         if SimConfig.dry_run:
             meinfos.counts = count_per_metype
         return gidvec, meinfos, total_cells

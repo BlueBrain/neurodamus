@@ -303,7 +303,7 @@ class CellManagerBase(_CellManager):
 
         gid_info_items = self._local_nodes.items()
 
-        prev_emodel = None
+        prev_etype = None
         prev_mtype = None
         start_memory = get_mem_usage()
         n_cells = 0
@@ -313,30 +313,30 @@ class CellManagerBase(_CellManager):
 
         for gid, cell_info in filtered_gid_info_items:
             diff_mtype = prev_mtype != cell_info.mtype
-            diff_emodel = prev_emodel != cell_info.emodel
-            first = prev_emodel is None and prev_mtype is None
-            if (diff_mtype or diff_emodel) and not first:
+            diff_etype = prev_etype != cell_info.etype
+            first = prev_etype is None and prev_mtype is None
+            if (diff_mtype or diff_etype) and not first:
                 end_memory = get_mem_usage()
                 memory_allocated = end_memory - start_memory
                 log_all(logging.info, " * %s %s: %.2f MB averaged over %d cells",
-                        prev_emodel, prev_mtype, memory_allocated/n_cells, n_cells)
-                memory_dict[(prev_emodel, prev_mtype)] = memory_allocated/n_cells
+                        prev_etype, prev_mtype, memory_allocated/n_cells, n_cells)
+                memory_dict[(prev_etype, prev_mtype)] = memory_allocated/n_cells
                 start_memory = end_memory
                 n_cells = 0
 
             cell = CellType(gid, cell_info, self._circuit_conf)
             self._store_cell(gid + cell_offset, cell)
 
-            prev_emodel = cell_info.emodel
+            prev_etype = cell_info.etype
             prev_mtype = cell_info.mtype
             n_cells += 1
 
-        if prev_emodel is not None and prev_mtype is not None:
+        if prev_etype is not None and prev_mtype is not None:
             end_memory = get_mem_usage()
             memory_allocated = end_memory - start_memory
             log_all(logging.INFO, " * %s %s: %f MB averaged over %d cells",
-                    prev_emodel, prev_mtype, memory_allocated/n_cells, n_cells)
-            memory_dict[(prev_emodel, prev_mtype)] = memory_allocated/n_cells
+                    prev_etype, prev_mtype, memory_allocated/n_cells, n_cells)
+            memory_dict[(prev_etype, prev_mtype)] = memory_allocated/n_cells
 
         if imported_memory_dict is not None:
             memory_dict.update(imported_memory_dict)
@@ -348,8 +348,7 @@ class CellManagerBase(_CellManager):
             filtered_gid_info_items = (
                 (gid, cell_info)
                 for gid, cell_info in gid_info_items
-                if (cell_info.emodel.rstrip('0123456789'),
-                    cell_info.mtype) not in imported_memory_dict
+                if (cell_info.etype, cell_info.mtype) not in imported_memory_dict
             )
         else:
             filtered_gid_info_items = gid_info_items
