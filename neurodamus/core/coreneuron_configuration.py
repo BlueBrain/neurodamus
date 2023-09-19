@@ -117,11 +117,12 @@ class _CoreNEURONConfig(object):
         coreneuron.file_mode = True
         coreneuron.sim_config = f"{self.output_root}/{self.sim_config_file}"
         if save_path:
-            coreneuron.save = save_path
+            coreneuron.save_path = save_path
         if restore_path:
-            coreneuron.restore = restore_path
-        coreneuron.only_simulate = True
-        coreneuron.data_path = f"{self.datadir}"
+            coreneuron.restore_path = restore_path
+        # Model is already dumped to disk by calling pc.nrncore_write()
+        coreneuron.skip_dump_model_to_disk = True
+        coreneuron.model_path = f"{self.datadir}"
         Nd.pc.psolve(Nd.tstop)
 
 
