@@ -1713,7 +1713,7 @@ class Node:
         if not SimConfig.use_coreneuron or SimConfig.simulate_model is False:
             self.clear_model(avoid_creating_objs=True)
 
-        if SimConfig.delete_corenrn_data:
+        if SimConfig.delete_corenrn_data and not SimConfig.dry_run:
             data_folder = SimConfig.coreneuron_datadir
             logging.info("Deleting intermediate data in %s", data_folder)
 

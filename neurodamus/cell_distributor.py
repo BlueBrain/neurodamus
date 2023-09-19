@@ -318,7 +318,7 @@ class CellManagerBase(_CellManager):
             if (diff_mtype or diff_etype) and not first:
                 end_memory = get_mem_usage()
                 memory_allocated = end_memory - start_memory
-                log_all(logging.info, " * %s %s: %.2f MB averaged over %d cells",
+                log_all(logging.INFO, " * %s %s: %.2f MB averaged over %d cells",
                         prev_etype, prev_mtype, memory_allocated/n_cells, n_cells)
                 memory_dict[(prev_etype, prev_mtype)] = memory_allocated/n_cells
                 start_memory = end_memory

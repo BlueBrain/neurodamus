@@ -278,7 +278,7 @@ class EmptyCell(BaseCell):
 class METypeItem(object):
     """ Metadata about an METype, each possibly used by several cells.
     """
-    __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
+    __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel_tpl", "combo_name",
                  "mtype", "threshold_current", "holding_current",
                  "exc_mini_frequency", "inh_mini_frequency", "add_params",
                  "local_to_global_matrix",
@@ -367,7 +367,7 @@ class METypeManager(dict):
             add_params = add_params_list[idx] if add_params_list is not None else None
             self[int(gid)] = METypeItem(
                 morph_list[idx],
-                etype=etypes and etypes[idx],
+                etype=etypes[idx] if etypes is not None else None,
                 emodel_tpl=model_templates and model_templates[idx],
                 mtype=mtype,  # TODO: check this
                 threshold_current=th_current,
