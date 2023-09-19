@@ -248,6 +248,8 @@ def fetch_MEinfo(node_reader, gidvec, combo_file, meinfo):
     mtypes = node_reader.mtypes(indexes)
     emodels = node_reader.emodels(indexes) \
         if combo_file else None  # Rare but we may not need emodels (ngv)
+    etypes = node_reader.etypes(indexes) \
+        if combo_file else None
     exc_mini_freqs = node_reader.exc_mini_frequencies(indexes) \
         if node_reader.hasMiniFrequencies() else None
     inh_mini_freqs = node_reader.inh_mini_frequencies(indexes) \
@@ -259,7 +261,7 @@ def fetch_MEinfo(node_reader, gidvec, combo_file, meinfo):
     positions = node_reader.positions(indexes)
     rotations = node_reader.rotations(indexes) if node_reader.rotated else None
 
-    meinfo.load_infoNP(gidvec, morpho_names, emodels, mtypes, threshold_currents, holding_currents,
+    meinfo.load_infoNP(gidvec, morpho_names, emodels, mtypes, etypes, threshold_currents, holding_currents,
                        exc_mini_freqs, inh_mini_freqs, positions, rotations)
 
 
