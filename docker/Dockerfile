@@ -68,7 +68,7 @@ RUN source $USR_VENV/bin/activate \
 # Install neurodamus and prepare HOC_LIBRARY_PATH
 RUN source $USR_VENV/bin/activate \
  && cd $WORKDIR \
- && git clone https://github.com/BlueBrain/neurodamus.git \
+ && git clone https://github.com/BlueBrain/neurodamus.git --depth 1 \
  && cd neurodamus \
  && pip install . \
  && cp tests/share/hoc/* core/hoc/
