@@ -32,6 +32,7 @@ def test_neuromodulation_sims_neuron():
     npt.assert_allclose(timestamps, obtained_timestamps)
 
 
+@pytest.mark.forked
 def test_neuromodulation_sims_coreneuron():
     from neurodamus import Neurodamus
     from neurodamus.replay import SpikeManager
@@ -40,7 +41,7 @@ def test_neuromodulation_sims_coreneuron():
     config_file = str(SIM_DIR / "BlueConfig")
     os.chdir(SIM_DIR)
     nd = Neurodamus(config_file, disable_reports=True, simulator="CORENEURON",
-                    output_path="oupput_coreneuron")
+                    output_path="output_coreneuron")
     nd.run()
 
     # compare spikes with refs
