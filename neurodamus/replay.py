@@ -3,7 +3,6 @@ Stimulus implementation where incoming synaptic events are replayed for a single
 """
 from __future__ import absolute_import
 import os
-import h5py
 import logging
 import numpy
 from .utils.logging import log_verbose
@@ -61,12 +60,13 @@ class SpikeManager:
 
     @classmethod
     def _read_spikes_sonata(cls, filename, population):
+        import h5py
         spikes_file = h5py.File(filename, "r")
         # File should have been validated earlier
         spikes = spikes_file.get("spikes/" + population)
         if spikes is None:
             raise MissingSpikesPopulationError("Spikes population not found: " + population)
-        return spikes["timestamps"][...], spikes["node_ids"][...]
+        return spikes["timestamps"][...], spikes["node_ids"][...] + 1
 
     @classmethod
     def _read_spikes_ascii(cls, filename):

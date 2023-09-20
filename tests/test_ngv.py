@@ -98,8 +98,6 @@ def get_R0pas_ref(astro_id, manager):
     ]
 
 
-@pytest.mark.skip(
-    reason="Seg fault with neurodamus-neocortex-1.12-2.15.0, see BBPBGLIB-1039")
 def test_vasccouplingB_radii():
     load_neurodamus_neocortex_multiscale()
     ndamus = Neurodamus(
@@ -113,7 +111,7 @@ def test_vasccouplingB_radii():
     astro_ids = manager._astro_ids
 
     R0pas = [r for astro_id in astro_ids for r in get_R0pas(astro_id, manager)]
-    R0pas_ref = [r for astro_id in astro_ids for r in get_R0pas_ref(astro_id, manager)]
+    R0pas_ref = [r for astro_id in astro_ids for r in get_R0pas_ref(astro_id-1, manager)]
 
     assert np.allclose(R0pas, R0pas_ref)
 

@@ -112,7 +112,8 @@ class SonataConfig:
             # Optional
             "tstart": "Start",
             "spike_threshold": "SpikeThreshold",
-            "integration_method": "SecondOrder"
+            "integration_method": "SecondOrder",
+            "electrodes_file": "LFPWeightsPath"
         },
         "conditions": {
             "randomize_gaba_rise_time": "randomize_Gaba_risetime"
@@ -321,7 +322,7 @@ class SonataConfig:
         }
 
         stimuli = {}
-        for name in self._sections["inputs"].keys():
+        for name in self._sim_conf.list_input_names:
             stimulus = self._translate_dict("inputs", self._sim_conf.input(name))
             self._adapt_libsonata_fields(stimulus)
             stimulus["Pattern"] = "SEClamp" if stimulus["Pattern"] == "seclamp" \
@@ -333,6 +334,8 @@ class SonataConfig:
     @property
     def parsedInjects(self):
         injects = {}
+        # the order of stimulus injection could lead to minor difference on the results
+        # so better to preserve it as in the config file
         for name in self._sections["inputs"].keys():
             inj = self._translate_dict("inputs", self._sim_conf.input(name))
             inj.setdefault("Stimulus", name)
@@ -346,7 +349,7 @@ class SonataConfig:
             "synapse": "Synapse"
         }
         reports = {}
-        for name in self._sections["reports"].keys():
+        for name in self._sim_conf.list_report_names:
             rep = self._translate_dict("reports", self._sim_conf.report(name))
             # Adapt enums and variable names read from libsonata
             self._adapt_libsonata_fields(rep)

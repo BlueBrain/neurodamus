@@ -2,6 +2,32 @@
 Change Log
 ==========
 
+Version 2.16.2
+==============
+**1 Sep 2023**
+
+*Bug fixes*
+  * Use 0-based gid for reading GlioVascular sonata edges file
+  * import h5py in the function call to filter numpy warnings
+  * Propagate the log level correctly from the CLI option to Neurodamus class
+  * Skip CORENEURON unit tests pending for a fix from NEURON (#38)
+
+
+Version 2.16.1
+==============
+**25 Aug 2023**
+
+*New Features*
+  * [BBPBGLIB-1044] Sonata Replay
+  * [BBPBGLIB-712] Estimate memory usage for synapse and connection
+*Improvements*
+  * Update CoreConfig.mod for latest CoreNEURON changes
+  * [BBPBGLIB-1030] Reject .sonata extenson for nodes and edges file
+  * Breaking enable_reports code into pieces
+  * [BBPBGLIB-851]Warning on cao_CR syn variable if not the same as extracellular_calcium
+  * Use libsonata API to read report secton keys in the sonata config file
+
+
 Version 2.16.0
 ==============
 **26 July 2023**
