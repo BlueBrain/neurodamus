@@ -41,7 +41,7 @@ jobs:
 
     - name: Install libsonatareport
       run: |
-        git clone --branch="${LIBSONATA_REPORT_BRANCH:-master}" https://github.com/BlueBrain/libsonatareport.git --recursive
+        git clone --branch="${LIBSONATA_REPORT_BRANCH:-master}" https://github.com/BlueBrain/libsonatareport.git --recursive --depth=1
         cd libsonatareport
         mkdir build && cd build
         cmake -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON -DSONATA_REPORT_ENABLE_MPI=ON ..
@@ -54,7 +54,7 @@ jobs:
         pip install -U pip setuptools
         pip install "cython<3" pytest sympy
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
-        git clone --branch="${NEURON_BRANCH:-master}" https://github.com/neuronsimulator/nrn.git
+        git clone --branch="${NEURON_BRANCH:-master}" https://github.com/neuronsimulator/nrn.git --depth=1
         cd nrn
         mkdir build && cd build
         cmake -G Ninja -DPYTHON_EXECUTABLE=$(which python) -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DNRN_ENABLE_MPI=ON -DNRN_ENABLE_INTERVIEWS=OFF \
