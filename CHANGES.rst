@@ -2,6 +2,16 @@
 Change Log
 ==========
 
+Version 2.16.3
+==============
+**21 Sep 2023**
+
+*New Features*
+  * Share GluSynapseHelper.hoc with public users (#47)
+  * Read 'electrodes_file' field from libsonata (#23)
+  * [BBPBGLIB-1060] Remove CoreConfig.mod and enable CoreNEURON execution via NEURON Python API (#41)
+
+
 Version 2.16.2
 ==============
 **1 Sep 2023**
