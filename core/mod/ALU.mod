@@ -135,7 +135,7 @@ VERBATIM {
     INFOCAST;
     Info* info = (Info*)hoc_Emalloc(sizeof(Info)); hoc_malchk();
     info->psize_ = 10;
-#ifdef NRN_MECHANISM_DATA_IS_SOA
+#ifdef NRN_VERSION_GTEQ_9_0_0
     info->ptrs_ = new handle_to_double[info->psize_]; hoc_malchk();
 #else
     info->ptrs_ = (handle_to_double*)hoc_Ecalloc(info->psize_, sizeof(handle_to_double)); hoc_malchk();
@@ -160,7 +160,7 @@ VERBATIM {
 #ifndef CORENEURON_BUILD
     INFOCAST;
     Info* info = *ip;
-#ifdef NRN_MECHANISM_DATA_IS_SOA
+#ifdef NRN_VERSION_GTEQ_9_0_0
     delete[] info->ptrs_;
 #else
     free(info->ptrs_);
@@ -207,7 +207,7 @@ VERBATIM {
     Info* info = *ip;
     if (info->np_ >= info->psize_) {
         info->psize_ += 10;
-#ifdef NRN_MECHANISM_DATA_IS_SOA
+#ifdef NRN_VERSION_GTEQ_9_0_0
         auto old_ptrs = info->ptrs_;
         info->ptrs_ = new handle_to_double[info->psize_]; hoc_malchk();
         std::copy(old_ptrs, old_ptrs+info->np_, info->ptrs_);
