@@ -8,6 +8,7 @@ SHELL ["/bin/bash", "-c"]
 ARG LIBSONATA_TAG=master
 ARG LIBSONATAREPORT_TAG=master
 ARG NEURON_TAG=master
+ARG NEURON_COMMIT_ID
 ARG WORKDIR=/opt/software
 ARG INSTALL_DIR=/opt/software/install
 ARG USR_VENV=$WORKDIR/venv
@@ -52,7 +53,13 @@ ENV SONATAREPORT_DIR "$INSTALL_DIR"
 # Install neuron
 RUN source $USR_VENV/bin/activate \ 
  && cd $WORKDIR \
- && git clone https://github.com/neuronsimulator/nrn.git --depth 1 -b $NEURON_TAG \
+ && if [[ ! -z $NEURON_COMMIT_ID ]]; then \
+    git clone https://github.com/neuronsimulator/nrn.git ;\
+    cd nrn ; \
+    git checkout $NEURON_COMMIT_ID ; \
+    cd .. ; \
+    else git clone https://github.com/neuronsimulator/nrn.git --depth 1 -b $NEURON_TAG ; \
+    fi \
  && cd nrn && mkdir build && cd build \
  && cmake -DPYTHON_EXECUTABLE=$(which python) -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DNRN_ENABLE_MPI=ON -DNRN_ENABLE_INTERVIEWS=OFF -DNRN_ENABLE_RX3D=OFF \
  -DNRN_ENABLE_CORENEURON=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCORENRN_ENABLE_REPORTING=ON -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR .. \
