@@ -48,7 +48,7 @@ Then you are ready to start the simulation.
 
 To run with a single process
 ```
-./x86_64/special -python $NEURODAMUS_PYTHON/init.py --configFile=<your_folder>/simulation_config.json
+./x86_64/special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=<your_folder>/simulation_config.json
 ```
 To run with multiple processes in parallel, e.g. 4 processes
 ```
