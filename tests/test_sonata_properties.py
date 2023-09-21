@@ -192,7 +192,7 @@ def test_input_resistance(blueconfig):
 
     # manually finalize synapse managers (otherwise netcons are not created)
     for syn_manager in n._circuits.all_synapse_managers():
-        syn_manager.finalize(n._run_conf.get("BaseSeed", 0), SimConfig.coreneuron)
+        syn_manager.finalize(n._run_conf.get("BaseSeed", 0), SimConfig.use_coreneuron)
     n.sim_init()
     n.solve()
 
@@ -240,7 +240,7 @@ def test_input_resistance_2(blueconfig_nodesets):
     n.enable_stimulus()
     # manually finalize synapse managers (otherwise netcons are not created)
     for syn_manager in n._circuits.all_synapse_managers():
-        syn_manager.finalize(n._run_conf.get("BaseSeed", 0), SimConfig.coreneuron)
+        syn_manager.finalize(n._run_conf.get("BaseSeed", 0), SimConfig.use_coreneuron)
     n.sim_init()
     n.solve()
 

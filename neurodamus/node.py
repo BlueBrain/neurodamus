@@ -35,6 +35,7 @@ from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
 from .utils.memory import SynapseMemoryUsage
 from .utils.timeit import TimerManager, timeit
+from .core.coreneuron_configuration import CoreConfig
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
 
@@ -270,6 +271,12 @@ class Node:
             self._spike_populations = []
             Nd.execute("cvode = new CVode()")
             SimConfig.init(config_file, options)
+            if SimConfig.use_coreneuron:
+                CoreConfig.output_root = SimConfig.output_root
+                CoreConfig.datadir = SimConfig.coreneuron_datadir
+                # Instantiate the CoreNEURON artificial cell object which is used to fill up
+                # the empty ranks. This need to be done before the circuit is finitialized
+                CoreConfig.instantiate_artificial_cell()
             self._run_conf = SimConfig.run_conf
             self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
@@ -863,7 +870,7 @@ class Node:
         else:
             pop_offsets_alias = CircuitManager.read_population_offsets()
         if SimConfig.use_coreneuron:
-            SimConfig.coreneuron.write_report_count(len(reports_conf))
+            CoreConfig.write_report_count(len(reports_conf))
 
         for rep_name, rep_conf in reports_conf.items():
             target_spec = TargetSpec(rep_conf["Target"])
@@ -1038,9 +1045,9 @@ class Node:
             (os.path.basename(rep_conf.get("FileName", rep_name)),
                 target_spec.name, rep_params.rep_type, reporton_comma_separated)
             + rep_params[3:5] + (target_type,) + rep_params[5:8]
-            + (compat.hoc_vector(target.get_gids()), SimConfig.corenrn_buff_size)
+            + (target.get_gids(), SimConfig.corenrn_buff_size)
         )
-        SimConfig.coreneuron.write_report_config(*core_report_params)
+        CoreConfig.write_report_config(*core_report_params)
         return True
 
     def _report_setup(self, report, rep_conf, target, rep_type):
@@ -1086,20 +1093,20 @@ class Node:
 
         if SimConfig.use_coreneuron:
             # write spike populations
-            if hasattr(SimConfig.coreneuron, "write_population_count"):
+            if hasattr(CoreConfig, "write_population_count"):
                 # Do not count populations with None pop_name
                 pop_count = (len(pop_offsets) - 1 if None in pop_offsets else len(pop_offsets))
-                SimConfig.coreneuron.write_population_count(pop_count)
+                CoreConfig.write_population_count(pop_count)
             for pop_name, offset in pop_offsets.items():
                 if pop_name is not None:
-                    SimConfig.coreneuron.write_spike_population(pop_name or "All", offset)
+                    CoreConfig.write_spike_population(pop_name or "All", offset)
             spike_path = self._run_conf.get("SpikesFile")
             if spike_path is not None:
                 # Get only the spike file name
                 file_name = spike_path.split('/')[-1]
             else:
                 file_name = "out.h5"
-            SimConfig.coreneuron.write_spike_filename(file_name)
+            CoreConfig.write_spike_filename(file_name)
         else:
             # Report Buffer Size hint in MB.
             reporting_buffer_size = self._run_conf.get("ReportingBufferSize")
@@ -1269,8 +1276,7 @@ class Node:
         fake_gid = pop_group.offset + 1 + MPI.rank
         # Add the fake cell to the base manager
         base_manager = self._circuits.base_cell_manager
-        base_manager.load_artificial_cell(fake_gid, SimConfig.coreneuron)
-
+        base_manager.load_artificial_cell(fake_gid, CoreConfig.artificial_cell_object)
         yield
 
         # Nd.registerMapping doesn't work for this artificial cell as somatic attr is
@@ -1347,24 +1353,22 @@ class Node:
     @timeit(name="corewrite")
     def _sim_corenrn_write_config(self, corenrn_restore=False):
         log_stage("Dataset generation for CoreNEURON")
-
-        corenrn_output = SimConfig.coreneuron_outputdir
-        corenrn_data = self._sim_corenrn_configure_datadir(corenrn_restore)
+        CoreConfig.datadir = self._sim_corenrn_configure_datadir(corenrn_restore)
         fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
         if not corenrn_restore:
             Nd.registerMapping(self._circuits.global_manager)
-            with self._coreneuron_ensure_all_ranks_have_gids(corenrn_data):
-                self._pc.nrnbbcore_write(corenrn_data)
+            with self._coreneuron_ensure_all_ranks_have_gids(CoreConfig.datadir):
+                self._pc.nrnbbcore_write(CoreConfig.datadir)
                 MPI.barrier()  # wait for all ranks to finish corenrn data generation
 
-        SimConfig.coreneuron.write_sim_config(
-            corenrn_output,
-            corenrn_data,
+        CoreConfig.write_sim_config(
             Nd.tstop,
             Nd.dt,
             fwd_skip,
             self._pr_cell_gid or -1,
+            getattr(SimConfig, 'celsius', 34.0),
+            getattr(SimConfig, 'v_init', -65.0),
             self._core_replay_file,
             SimConfig.rng_info.getGlobalSeed(),
             int(SimConfig.cli_options.model_stats),
@@ -1373,7 +1377,7 @@ class Node:
         # Wait for rank0 to write the sim config file
         MPI.barrier()
 
-        logging.info(" => Dataset written to '{}'".format(corenrn_data))
+        logging.info(" => Dataset written to '{}'".format(CoreConfig.datadir))
 
     # -
     def run_all(self):
@@ -1407,15 +1411,10 @@ class Node:
     # -
     def _run_coreneuron(self):
         logging.info("Launching simulation with CoreNEURON")
-        core_nrn_opts = ()
-
-        for opt, core_opt in {"save": "--checkpoint", "restore": "--restore"}.items():
-            opt_value = getattr(SimConfig, opt)
-            if opt_value is not None:
-                core_nrn_opts = core_nrn_opts + (core_opt, opt_value)
-
-        log_verbose("solve_core(..., %s)", ", ".join(core_nrn_opts))
-        SimConfig.coreneuron.psolve_core(*core_nrn_opts)
+        CoreConfig.psolve_core(
+            getattr(SimConfig, "save", None),
+            getattr(SimConfig, "restore", None)
+        )
 
     #
     def _sim_event_handlers(self, tstart, tstop):
@@ -1614,7 +1613,7 @@ class Node:
         if self._cell_state_dump_t == Nd.t:   # avoid duplicating output
             return
         log_verbose("Dumping info about cell %d", self._pr_cell_gid)
-        simulator = "CoreNeuron" if SimConfig.coreneuron else "Neuron"
+        simulator = "CoreNeuron" if SimConfig.use_coreneuron else "Neuron"
         self._pc.prcellstate(self._pr_cell_gid, "py_{}_t{}".format(simulator, Nd.t))
         self._cell_state_dump_t = Nd.t
 
@@ -1653,7 +1652,7 @@ class Node:
         print_mem_usage()
 
         # Coreneuron runs clear the model before starting
-        if not SimConfig.coreneuron or SimConfig.simulate_model is False:
+        if not SimConfig.use_coreneuron or SimConfig.simulate_model is False:
             self.clear_model(avoid_creating_objs=True)
 
         if SimConfig.delete_corenrn_data:
@@ -1777,7 +1776,7 @@ class Neurodamus(Node):
         log_stage("Creating connections in the simulator")
         base_seed = self._run_conf.get("BaseSeed", 0)  # base seed for synapse RNG
         for syn_manager in self._circuits.all_synapse_managers():
-            syn_manager.finalize(base_seed, SimConfig.coreneuron)
+            syn_manager.finalize(base_seed, SimConfig.use_coreneuron)
         print_mem_usage()
 
         self.enable_stimulus()

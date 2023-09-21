@@ -33,8 +33,6 @@ def test_neuromodulation_sims_neuron():
 
 
 @pytest.mark.forked
-@pytest.mark.skip(
-    reason="Pending for a NEURON fix regarding the dynapmic MPI library")
 def test_neuromodulation_sims_coreneuron():
     from neurodamus import Neurodamus
     from neurodamus.replay import SpikeManager
@@ -43,7 +41,7 @@ def test_neuromodulation_sims_coreneuron():
     config_file = str(SIM_DIR / "BlueConfig")
     os.chdir(SIM_DIR)
     nd = Neurodamus(config_file, disable_reports=True, simulator="CORENEURON",
-                    output_path="oupput_coreneuron")
+                    output_path="output_coreneuron")
     nd.run()
 
     # compare spikes with refs

@@ -18,7 +18,7 @@ pytestmark = [
 
 
 @pytest.mark.skipif(
-    os.environ.get("SLURM_JOB_ID") is None and os.environ.get("RUN_MPI") is None,
+    os.environ.get("SLURM_JOB_ID") is None or os.environ.get("RUN_MPI") is None,
     reason="Simulation tests require MPI")
 def test_quick_v6():
     """ A full-execution quick v6 test

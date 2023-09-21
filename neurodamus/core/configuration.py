@@ -209,7 +209,6 @@ class _SimConfig(object):
     _blueconfig = None  # new python BlueConfig parser
     _simconf = None
     rng_info = None
-    coreneuron = None  # bridge to CoreNeuron, instance of CoreConfig
 
     # In principle not all vars need to be required as they'r set by the parameter functions
     blueconfig_dir = None
@@ -330,14 +329,6 @@ class _SimConfig(object):
         cls.rng_info.interpret(parsed_run)
         if parsed_run.exists("BaseSeed"):
             logging.info("User-defined RNG base seed %s", parsed_run.valueOf("BaseSeed"))
-
-        if cls._simconf.coreNeuronUsed():
-            cls.coreneuron = h.CoreConfig(cls.output_root)
-            # NOTE: commenting out the following lines since locations are hardcoded
-            #   and therefore now we set them in python directly (and early).
-            #   The day we need to make it configurable, SimConfig needs to extract
-            #   the locations from the parsedRun
-            # cls.coreneuron_datadir = simconf.getCoreneuronDataDir().s
 
     @classmethod
     def validator(cls, f):
@@ -483,7 +474,6 @@ def _check_params(section_name, data, required_fields,
         if val and val in deprecated:
             logging.warning("BlueConfig param value is deprecated: [%s] %s = %s"
                             % (section_name, param, val))
-
 
 @SimConfig.validator
 def _run_params(config: _SimConfig, run_conf):
@@ -1030,6 +1020,7 @@ def _report_vars(config: _SimConfig, run_conf):
                                 " are still not fully supported (CoreNeuron)")
     # Overwrite config with a pure dict since we never need underlying hoc map
     config.reports = report_configs_dict
+
 
 @SimConfig.validator
 def _spikes_sort_order(config: _SimConfig, run_conf):

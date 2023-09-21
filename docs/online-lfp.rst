@@ -11,7 +11,7 @@ Required Format
 To perform online LFP calculation, a weights file is required. The weights file should follow a specific format to ensure proper functioning. 
 More information about this file can be found in the `SONATA Simulation Specification <https://github.com/BlueBrain/sonata-extension/blob/master/source/sonata_tech.rst#format-of-the-electrodes_file>`_
 
-Generating the Electrodes File (WIP)
+Generating the Electrodes File
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The electrodes file can be generated using specific steps and considerations. Follow the instructions below to generate the file:
@@ -23,6 +23,8 @@ The electrodes file can be generated using specific steps and considerations. Fo
 3. Run the file writeH5_MPI_prelim.py, using the bash script WriteH5Prelim.sh. This will create the weights file, populating all coefficients with 1s. The script writeH5_MPI_prelim.py will have to be modified depending on the desired electrode array; it currently creates the weights file for a Neuropixels probe.
 
 4. Run the file writeH5_MPI.py, using the bash script WriteH5.sh. This populates the weights file with the correct coefficients. This step requires the use of a version of h5py built with MPI support. This two-step procedure is used because the calculation of the LFP coefficients is not feasible without parallelization, but MPI cannot be used when H5 files are created.
+
+The files mentioned can be found `here <https://github.com/joseph-tharayil/create_lfp_weights_for_neurodamus>`_
 
 Generating the LFP report
 --------------------------
