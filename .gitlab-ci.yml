@@ -197,6 +197,7 @@ publish-package:
 docs:
   variables:
     TOXENV: docs
+    GIT_DEPTH: 0
   artifacts:
     paths:
       - docs/_build
