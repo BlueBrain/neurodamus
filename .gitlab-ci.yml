@@ -97,7 +97,7 @@ configure-docker-image:
       source ./share/spack/setup-env.sh
       LIBSONATAREPORT_TAG=$(spack info libsonata-report | awk 'matched{print $NF;matched=0} /Preferred/{matched=1}')
       LIBSONATA_TAG=v$(spack info py-libsonata | awk 'matched{print $1;matched=0} /Preferred/{matched=1}')
-      NEURON_COMMIT_ID=v$(spack info neuron | awk 'matched{print $NF;matched=0} /Preferred/{matched=1}')
+      NEURON_COMMIT_ID=$(spack info neuron | awk 'matched{print $NF;matched=0} /Preferred/{matched=1}')
       cd ..
     - |
       cat <<EOF > build.env
