@@ -111,8 +111,8 @@ configure-docker-image:
     paths: [build.env]
     reports:
       dotenv: build.env
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+ #rules:
+ #  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 build-docker-image:
   timeout: 2h
@@ -147,8 +147,8 @@ build-docker-image:
     - else
     -   echo "Building"
     - fi
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+ #rules:
+ #  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 upload-to-docker-hub:
   image: ubuntu:22.04
