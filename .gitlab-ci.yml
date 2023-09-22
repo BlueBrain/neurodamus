@@ -122,7 +122,7 @@ build-docker-image:
   stage: build
   extends: .build-image-using-buildah
   variables:
-    BUILD_PATH: $CI_PROJECT_DIR/Docker
+    BUILD_PATH: $CI_PROJECT_DIR/docker
     KUBERNETES_CPU_LIMIT: 8
     KUBERNETES_CPU_REQUEST: 8
     KUBERNETES_MEMORY_LIMIT: 8Gi
@@ -143,6 +143,7 @@ build-docker-image:
       --build-arg LIBSONATA_TAG="$LIBSONATA_TAG"
       --build-arg NEURON_COMMIT_ID="$NEURON_COMMIT_ID"
   before_script:
+    - set -x
     - if [ "$BUILD_DOCKER_CONTAINER" == "false" ]; then
     -   echo "No need to build the docker container"
     -   exit 0
