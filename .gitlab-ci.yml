@@ -70,6 +70,8 @@ blueconfig_tests:
 configure-docker-image:
   image: ubuntu:22.04
   stage: build
+  variables:
+    GIT_DEPTH: 0
   script:
     - set -x
     - apt-get update -y
