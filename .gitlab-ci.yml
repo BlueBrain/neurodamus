@@ -71,12 +71,13 @@ configure-docker-image:
   image: ubuntu:22.04
   stage: build
   script:
+    - set -x
     - apt-get update -y
     - apt-get install -y git skopeo
     - |
+      echo "Getting package version and checking whether we need to build the container"
       PACKAGE_VERSION=$(git describe --tags)
       REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
-      #REGISTRY_IMAGE_TAG=2.16.2.dev10
       set +e
       skopeo inspect docker://bluebrain/neurodamus:${REGISTRY_IMAGE_TAG}
       if [[ $? -eq 0 ]]; then
@@ -88,9 +89,21 @@ configure-docker-image:
       fi
       set -e
     - |
+      echo "Getting dependency versions from spack"
+      git clone https://github.com/bluebrain/spack
+      cd spack
+      source ./share/spack/setup-env.sh
+      LIBSONATAREPORT_TAG=$(spack info libsonata-report | awk 'matched{print $NF;matched=0} /Preferred/{matched=1}')
+      LIBSONATA_TAG=v$(spack info py-libsonata | awk 'matched{print $1;matched=0} /Preferred/{matched=1}')
+      NEURON_COMMIT_ID=v$(spack info neuron | awk 'matched{print $NF;matched=0} /Preferred/{matched=1}')
+      cd ..
+    - |
       cat <<EOF > build.env
       REGISTRY_IMAGE_TAG=$REGISTRY_IMAGE_TAG
       BUILD_DOCKER_CONTAINER=$BUILD_DOCKER_CONTAINER
+      LIBSONATAREPORT_TAG=${LIBSONATAREPORT_TAG}
+      LIBSONATA_TAG=${LIBSONATA_TAG}
+      NEURON_COMMIT_ID=${NEURON_COMMIT_ID}
       EOF
     - cat build.env
   artifacts:
@@ -124,6 +137,9 @@ build-docker-image:
       --label ch.epfl.bbpgitlab.ci-commit-branch="$CI_COMMIT_BRANCH"
       --build-arg GITLAB_CI="$GITLAB_CI"
       --build-arg CI_JOB_TOKEN="$CI_JOB_TOKEN"
+      --build-arg LIBSONATAREPORT_TAG="$LIBSONATAREPORT_TAG"
+      --build-arg LIBSONATA_TAG="$LIBSONATA_TAG"
+      --build-arg NEURON_COMMIT_ID="$NEURON_COMMIT_ID"
   before_script:
     - if [ "$BUILD_DOCKER_CONTAINER" == "false" ]; then
     -   echo "No need to build the docker container"
