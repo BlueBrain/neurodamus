@@ -128,7 +128,7 @@ configure-docker-image:
     reports:
       dotenv: build.env
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
     - if: $CI_PIPELINE_SOURCE == "web"
 
 build-docker-image:
@@ -166,7 +166,7 @@ build-docker-image:
     -   echo "Building"
     - fi
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
     - if: $CI_PIPELINE_SOURCE == "web"
 
 upload-to-docker-hub:
@@ -199,7 +199,7 @@ upload-to-docker-hub:
     - podman --log-level=debug push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
     - podman --log-level=debug push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:latest
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
     - if: $CI_PIPELINE_SOURCE == "web"
 
 
