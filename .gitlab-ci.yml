@@ -77,20 +77,6 @@ configure-docker-image:
     - apt-get update -y
     - apt-get install -y git skopeo python3
     - |
-      echo "Checking whether we're on a tagged commit"
-      set +e
-      git describe --tags --exact-match
-      if [[ $? -ne 0 ]]; then
-          echo "Not a tagged commit - skipping container build"
-          BUILD_DOCKER_CONTAINER="false"
-          cat <<EOF > build.env
-          BUILD_DOCKER_CONTAINER=$BUILD_DOCKER_CONTAINER
-          EOF
-          cat build.env
-          exit 0
-      fi
-      set -e
-    - |
       echo "Getting package version and checking whether we need to build the container"
       PACKAGE_VERSION=$(git describe --tags)
       REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
