@@ -545,7 +545,7 @@ class NodesetTarget(_TargetInterface, _HocTargetInterface):
         else:
             gids_groups = tuple(pop_gid_intersect(ns) for ns in self.nodesets)
 
-        return numpy.concatenate(gids_groups)
+        return numpy.concatenate(gids_groups) if gids_groups else numpy.empty(0)
 
     def getPointList(self, cell_manager, **kw):
         """ Retrieve a TPointList containing compartments (based on section type and
