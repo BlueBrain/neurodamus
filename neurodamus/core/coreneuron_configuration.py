@@ -96,7 +96,7 @@ class _CoreNEURONConfig(object):
         report_conf = Path(self.output_root) / self.report_config_file
         report_conf.parent.mkdir(parents=True, exist_ok=True)
         with report_conf.open("ab") as fp:
-            # Write the formatted strfing to the file
+            # Write the formatted string to the file
             fp.write(("%s %s %s %s %s %s %d %lf %lf %lf %d %d\n" % (
                 report_name,
                 target_name,
@@ -175,7 +175,7 @@ class _CoreNEURONConfig(object):
         from neuron import coreneuron
         from . import NeurodamusCore as Nd
 
-        # Nd.cvode.cache_efficient(1)
+        Nd.cvode.cache_efficient(1)
         coreneuron.enable = True
         if not direct:
             coreneuron.file_mode = True
@@ -190,7 +190,6 @@ class _CoreNEURONConfig(object):
         else:
             logging.info(f"++WJI coreneuron.file_mode {coreneuron.file_mode}")
             coreneuron.sim_config = f"{self.output_root}/{self.sim_config_file}"
-        # Nd.stdinit()
         Nd.pc.psolve(Nd.tstop)
 
 
