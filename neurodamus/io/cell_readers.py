@@ -13,7 +13,6 @@ from ..core.configuration import ConfigurationError, SimConfig
 from ..core import run_only_rank0
 from ..metype import METypeManager, METypeItem
 from ..utils import compat
-from ..utils.memory import print_mem_usage, get_task_level_mem_usage
 from ..utils.logging import log_verbose
 
 
