@@ -1132,9 +1132,6 @@ class Node:
         # This is incompatible with efficient caching atm AND Incompatible with mcd & Glut
         if not self._is_ngv_run:
             Nd.cvode.cache_efficient("ElectrodesPath" not in self._run_conf)
-        else:
-            Nd.cvode.cache_efficient(1)
-
         self._pc.set_maxstep(4)
         with timeit(name="stdinit"):
             Nd.stdinit()
@@ -1456,8 +1453,8 @@ class Node:
         pool_shrink()
 
         # Free event queues in NEURON
-        # if not avoid_clearing_queues:
-        #     free_event_queues()
+        if not avoid_clearing_queues:
+            free_event_queues()
 
         # Garbage collect all Python objects without references
         gc.collect()
