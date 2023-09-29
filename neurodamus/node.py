@@ -33,7 +33,7 @@ from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
-from .utils.memory import SynapseMemoryUsage, export_memory_usage_to_json
+from .utils.memory import SynapseMemoryUsage, export_memory_usage_to_json, get_task_level_mem_usage
 from .utils.memory import import_memory_usage_from_json
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
@@ -419,6 +419,11 @@ class Node:
         """Instantiate and distributes the cells of the network.
         Any targets will be updated to know which cells are local to the cpu.
         """
+        if SimConfig.dry_run:
+            logging.info("Memory usage after inizialization:")
+            print_mem_usage()
+            _, _, self.avg_tasks_usage_mb, _ = get_task_level_mem_usage()
+
         # We wont go further if ProspectiveHosts is defined to some other cpu count
         prosp_hosts = self._run_conf.get("ProspectiveHosts")
         if load_balance and prosp_hosts not in (None, MPI.size):
@@ -552,7 +557,9 @@ class Node:
             self.syn_total_memory = self._collect_display_syn_counts(synapse_counter)
             if MPI.rank == 0:
                 logging.info("Total estimated memory usage for synapses + cells: %.2f MB",
-                              self.cells_total_memory + self.syn_total_memory/1024)
+                              self.cells_total_memory +
+                              self.syn_total_memory/1024 +
+                              self.avg_tasks_usage_mb*MPI.size)
             return
 
         log_stage("Configuring connections...")

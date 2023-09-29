@@ -98,8 +98,8 @@ def print_node_level_mem_usage():
     )
 
 
-def print_task_level_mem_usage():
-    """Print statistics of the memory usage per MPI task."""
+def get_task_level_mem_usage():
+    """Return statistics of the memory usage per MPI task."""
     usage_mb = get_mem_usage()
 
     min_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MIN)
@@ -107,6 +107,14 @@ def print_task_level_mem_usage():
     avg_usage_mb = MPI.pc.allreduce(usage_mb, MPI.SUM) / MPI.size
 
     dev_usage_mb = math.sqrt(MPI.pc.allreduce((usage_mb - avg_usage_mb) ** 2, MPI.SUM) / MPI.size)
+
+    return min_usage_mb, max_usage_mb, avg_usage_mb, dev_usage_mb
+
+
+def print_task_level_mem_usage():
+    """Print statistics of the memory usage per MPI task."""
+
+    min_usage_mb, max_usage_mb, avg_usage_mb, dev_usage_mb = get_task_level_mem_usage()
 
     logging.info(
         "Memusage (RSS) per task [MB]: Max=%.2lf, Min=%.2lf, Mean(Stdev)=%.2lf(%.2lf)",
