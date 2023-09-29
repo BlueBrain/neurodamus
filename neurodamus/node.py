@@ -34,7 +34,7 @@ from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
 from .utils.memory import SynapseMemoryUsage, export_memory_usage_to_json, get_task_level_mem_usage
-from .utils.memory import import_memory_usage_from_json
+from .utils.memory import import_memory_usage_from_json, pretty_printing_memory_mb
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
 # Internal Plugins
@@ -556,10 +556,10 @@ class Node:
         if SimConfig.dry_run:
             self.syn_total_memory = self._collect_display_syn_counts(synapse_counter)
             if MPI.rank == 0:
-                logging.info("Total estimated memory usage for synapses + cells: %.2f MB",
-                              self.cells_total_memory +
-                              self.syn_total_memory/1024 +
-                              self.avg_tasks_usage_mb*MPI.size)
+                total_memory = self.cells_total_memory + self.syn_total_memory/1024
+                + self.avg_tasks_usage_mb*MPI.size
+                logging.info("Total estimated memory usage for overhead + synapses + cells: %s",
+                             pretty_printing_memory_mb(total_memory))
             return
 
         log_stage("Configuring connections...")

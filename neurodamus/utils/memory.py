@@ -145,6 +145,21 @@ def get_mem_usage():
     return usage_mb
 
 
+def pretty_printing_memory_mb(memory_mb):
+    """
+    A simple function that given a memory usage in MB
+    returns a string with the most appropriate unit.
+    """
+    if memory_mb < 1024:
+        return "%.2lf MB" % memory_mb
+    elif memory_mb < 1024 ** 2:
+        return "%.2lf GB" % (memory_mb / 1024)
+    elif memory_mb < 1024 ** 3:
+        return "%.2lf TB" % (memory_mb / 1024 ** 2)
+    else:
+        return "%.2lf PB" % (memory_mb / 1024 ** 3)
+
+
 class SynapseMemoryUsage:
     ''' A small class that works as a lookup table
     for the memory used by each type of synapse.
