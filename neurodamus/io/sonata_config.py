@@ -251,6 +251,9 @@ class SonataConfig:
             # respecting engine precedence
             # For edges to be considered inner connectivity they must be named "default"
             for edge_config in network.get("edges") or []:
+                if "nrnPath" in circuit_conf:
+                    break  # Already found
+
                 for edge_pop_name in edge_config["populations"].keys():
                     edge_storage = self.circuits.edge_population(edge_pop_name)
                     edge_type = self.circuits.edge_population_properties(edge_pop_name).type
@@ -265,9 +268,10 @@ class SonataConfig:
                             edges_file = os.path.join(os.path.dirname(self.network), edges_file)
                         edge_pop_path = edges_file + ":" + edge_pop_name
                         circuit_conf["nrnPath"] = edge_pop_path
-                    else:
-                        circuit_conf["nrnPath"] = False
+                        break
 
+            circuit_conf.setdefault("nrnPath", False)
+            logging.debug("Circuit config for node pop '%s': %s", node_pop_name, circuit_conf)
             return circuit_conf
 
         return {
