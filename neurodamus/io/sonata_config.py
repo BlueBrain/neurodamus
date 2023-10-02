@@ -1,7 +1,6 @@
 """
 Module to load configuration from a libsonata config
 """
-from functools import cached_property
 import json
 import libsonata
 import logging
@@ -19,7 +18,7 @@ class SonataConfig:
         'circuits',
         '_circuit_networks',
         '_sim_conf',
-        '_internal_edge_pops',
+        '_bc_circuits',
     )
 
     _config_entries = (
@@ -41,7 +40,6 @@ class SonataConfig:
         self._sim_conf = libsonata.SimulationConfig.from_file(config_path)
         self._entries = {}
         self._sections = {}
-        self._internal_edge_pops = set()
 
         with open(config_path) as config_fh:
             self._config_json: dict = json.load(config_fh)
@@ -59,7 +57,7 @@ class SonataConfig:
 
         self.circuits = libsonata.CircuitConfig.from_file(self.network)
         self._circuit_networks = json.loads(self.circuits.expanded_json)["networks"]
-        logging.debug(self.Circuit)  # compute Circuits so that it also sets _internal_edge_pops
+        self._bc_circuits = self._blueconfig_circuits()
 
     @classmethod
     def _resolve(cls, entry, name, manifest: dict):
@@ -207,8 +205,8 @@ class SonataConfig:
         conditions["randomize_Gaba_risetime"] = str(conditions["randomize_Gaba_risetime"])
         return {"Conditions": conditions}
 
-    @cached_property
-    def Circuit(self):
+    def _blueconfig_circuits(self):
+        """yield blue-config-style circuits"""
         node_info_to_circuit = {
             "nodes_file": "CellLibraryFile",
             "type": "PopulationType"
@@ -266,8 +264,9 @@ class SonataConfig:
                         if not os.path.isabs(edges_file):
                             edges_file = os.path.join(os.path.dirname(self.network), edges_file)
                         edge_pop_path = edges_file + ":" + edge_pop_name
-                        self._internal_edge_pops.add(edge_pop_path)
                         circuit_conf["nrnPath"] = edge_pop_path
+                    else:
+                        circuit_conf["nrnPath"] = False
 
             return circuit_conf
 
@@ -278,6 +277,9 @@ class SonataConfig:
             if pop_info.get("type") != "vasculature"
         }
 
+    # Compat with BlueConfig circuit definitions
+    Circuit = property(lambda self: self._bc_circuits)
+
     @property
     def parsedProjections(self):
         projection_type_convert = dict(
@@ -286,6 +288,7 @@ class SonataConfig:
             synapse_astrocyte="NeuroGlial",
             endfoot="GlioVascular"
         )
+        internal_edge_pops = set(c_conf["nrnPath"] for c_conf in self._bc_circuits.values())
         projections = {}
 
         for edge_config in self._circuit_networks.get("edges") or []:
@@ -303,7 +306,7 @@ class SonataConfig:
 
                 # skip inner connectivity populations
                 edge_pop_path = edges_file + ":" + edge_pop_name
-                if edge_pop_path in self._internal_edge_pops:
+                if edge_pop_path in internal_edge_pops:
                     continue
 
                 projection = dict(
