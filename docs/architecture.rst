@@ -317,6 +317,57 @@ Indeed public API represents exactly these 3 cases:
         cell_manager.finalize()
         conn_manager.create_connections()
 
+Dry Run
+-------
+
+A dry run mode was introduced to help users in understanding how many nodes and tasks are
+necessary to run a specific circuit. In the future this mode will also be used to improve
+load balancing.
+
+By running a dry run, using the `--dry-run` flag, the user will NOT run an actual simulation but
+will get a summary of the estimated memory used for cells and synapses, including also the overhead
+memory necessary to load libraries and neurodamus data structures.
+A grand total is provided to the user as well as a per-cell type and per-synapse type breakdown.
+
+In this paragraph we will go a bit more into details on how the estimation is done.
+
+Below you can see the workflow of the dry run mode:
+
+.. image:: ./img/neurodamus_dry_run.png
+
+First of all, since memory usage of cells is strongly connected to their metypes, we create a dictionary
+of all the gids corresponding to a certain metype combination. This dictionary is then crosschecked
+with the one imported from the external `memory_usage.json` file, which contains the memory usage
+of metype combinations coming from a previous execution of dry run on this or any other circuits.
+As long as the `memory_usage.json` file is present in the working directory, it will be loaded.
+
+If the metype combination is not present in the external file, we compute the memory usage of the
+metype combination by instantiating a group of (maximum) 50 cells per metype combination and then
+measuring memory usage before and after the instantiation. The memory usage is then averaged over
+the number of cells instantiated and the result are saved internally and added to the external
+`memory_usage.json` file. Any combination already present in the external file is simply imported
+and is not instantiated again in order to speed up the execution. One can simply delete the `memory_usage.json`
+file (or any relevant lines) in order to force the re-evaluation of all (or some) metype
+combinations.
+
+The memory usage of synapses is instead estimated using a pre-computed look up table, which is
+hardcoded in the `SynapseMemoryUsage` class. The values used for this look up table were computed by using an external script
+to instantiate 1M synapses of each type, each with 1K connections, and then measuring the memory
+usage before and after the instantiation. The memory usage is then averaged over the number of
+synapses instantiated. The script used to perform this operation `synstat.py` is available for the user
+and is archived in this repo in the `_benchmarks` folder.
+
+Having these pre-computed values allows us to simply count the amount of synapses of each type
+and multiply it by the corresponding memory usage value.
+
+Apart from both cells and synapses, we also need to take into account the memory usage of neurodamus
+itself, e.g. data structures, loaded libraries and so on. This is done by measuring the RSS of the neurodamus
+process before any of the actual instantiation is done. This value, since it's averaged over all ranks that take
+part in the execution, is then multiplied by the number of ranks used in the execution.
+
+The final result is then printed to the user in a human readable format.
+
+
 Development
 ------------
 
