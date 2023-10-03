@@ -104,12 +104,14 @@ class TargetManager:
 
     @classmethod
     def _init_nodesets(cls, run_conf):
-        nodesets_file = run_conf.get("node_sets_file")
-        if not nodesets_file and "TargetFile" in run_conf:
+        config_nodeset_file = run_conf.get("TargetFileBase", None)
+        simulation_nodesets_file = run_conf.get("node_sets_file")
+        if not simulation_nodesets_file and "TargetFile" in run_conf:
             target_file = run_conf["TargetFile"]
             if target_file.endswith(".json"):
-                nodesets_file = target_file
-        return nodesets_file and NodeSetReader(nodesets_file)
+                simulation_nodesets_file = target_file
+        return (config_nodeset_file or simulation_nodesets_file) and \
+               NodeSetReader(config_nodeset_file, simulation_nodesets_file)
 
     def load_targets(self, circuit):
         """Provided that the circuit location is known and whether a user.target file has been
@@ -282,9 +284,17 @@ class NodeSetReader:
     Implements reading Sonata Nodesets
     """
 
-    def __init__(self, nodeset_file):
-        self.nodesets = libsonata.NodeSets.from_file(nodeset_file)
+    def __init__(self, config_nodeset_file, simulation_nodesets_file):
+        def _load_nodesets_from_file(nodeset_file):
+            if not nodeset_file:
+                return libsonata.NodeSets("{}")
+            return libsonata.NodeSets.from_file(nodeset_file)
         self._population_stores = {}
+        self.nodesets = _load_nodesets_from_file(config_nodeset_file)
+        simulation_nodesets = _load_nodesets_from_file(simulation_nodesets_file)
+        duplicate_nodesets = self.nodesets.update(simulation_nodesets)
+        if duplicate_nodesets:
+            logging.warning("Some node set rules were replaced from %s", simulation_nodesets_file)
 
     def register_node_file(self, node_file):
         storage = libsonata.NodeStorage(node_file)
