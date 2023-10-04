@@ -1,16 +1,8 @@
 name: neurodamus build and test
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - '**.md'
-      - '**.rst'
-      - 'docs/**'
-      - 'docker/**'
+  schedule:
+    # every evening at 20:00 UTC
+    - cron: '0 20 * * *'
 
 jobs:
   simulation:
