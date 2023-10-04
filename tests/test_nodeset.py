@@ -1,6 +1,7 @@
 import pytest
 from neurodamus.core.nodeset import NodeSet, _ranges_overlap, _ranges_vec_overlap
 import numpy
+import json
 
 
 @pytest.mark.forked
@@ -66,3 +67,54 @@ def test_ranges_overlap(ranges1, ranges2, expected):
 def test_ranges_vec_overlap(ranges1, vec, expected):
     out = _ranges_vec_overlap(ranges1, vec)
     numpy.testing.assert_array_equal(out, expected)
+
+
+@pytest.fixture
+def nodeset_files(tmpdir):
+    """
+    Generates example nodeset files
+    """
+    # Define nodesets
+    config_nodeset_file = {
+        "Mosaic": {
+            "population": "default"
+        },
+        "Layer1": {
+            "layer": 1
+        },
+    }
+
+    simulation_nodesets_file = {
+        "Mosaic": {
+            "population": "All"
+        },
+        "Layer2": {
+            "layer": 2
+        },
+    }
+
+    # Create the test JSON files with nodesets
+    config_nodeset = tmpdir.join("node_sets_circuit.json")
+    with open(config_nodeset, 'w') as f:
+        json.dump(config_nodeset_file, f)
+
+    simulation_nodeset = tmpdir.join("node_sets_simulation.json")
+    with open(simulation_nodeset, 'w') as f:
+        json.dump(simulation_nodesets_file, f)
+
+    yield config_nodeset, simulation_nodeset
+
+
+def test_read_nodesets_from_file(nodeset_files):
+    from neurodamus.target_manager import NodeSetReader
+
+    ns_reader = NodeSetReader(*nodeset_files)
+    assert ns_reader.names == {'Mosaic', 'Layer1', 'Layer2'}
+    assert ns_reader.read_nodeset("Mosaic") is not None
+    assert ns_reader.read_nodeset("Layer3") is None
+    expected_output = {
+        "Layer1": {"layer": [1]},
+        "Layer2": {"layer": [2]},
+        "Mosaic": {"population": ["All"]}
+    }
+    assert json.loads(ns_reader.nodesets.toJSON()) == json.loads(json.dumps(expected_output))
