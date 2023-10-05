@@ -40,15 +40,17 @@ def test_retrieve_unique_metypes():
 
     # Call the function
     with unittest.mock.patch('neurodamus.io.cell_readers.isinstance', return_value=True):
-        result = _retrieve_unique_metypes(node_reader, all_gids)
+        result_list, result_int = _retrieve_unique_metypes(node_reader, all_gids)
 
     # Assertion checks
-    assert isinstance(result, list)
-    assert all(isinstance(lst, list) for lst in result)
+    assert isinstance(result_list, list)
+    assert all(isinstance(lst, list) for lst in result_list)
 
     # Check the expected output based on the test inputs
-    expected_result = [[1, 3, 5], [2, 4]]
-    assert result == expected_result
+    expected_result_list = [[1, 3, 5], [2, 4]]
+    assert result_list == expected_result_list
+    expected_result_int = {('emodel1', 'mtype1'): 3, ('emodel2', 'mtype2'): 2}
+    assert result_int == expected_result_int
 
 
 class DummyNodeReader:

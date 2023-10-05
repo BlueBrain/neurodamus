@@ -33,7 +33,8 @@ from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
-from .utils.memory import SynapseMemoryUsage
+from .utils.memory import SynapseMemoryUsage, export_memory_usage_to_json, get_task_level_mem_usage
+from .utils.memory import import_memory_usage_from_json, pretty_printing_memory_mb
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
 # Internal Plugins
@@ -418,6 +419,11 @@ class Node:
         """Instantiate and distributes the cells of the network.
         Any targets will be updated to know which cells are local to the cpu.
         """
+        if SimConfig.dry_run:
+            logging.info("Memory usage after inizialization:")
+            print_mem_usage()
+            _, _, self.avg_tasks_usage_mb, _ = get_task_level_mem_usage()
+
         # We wont go further if ProspectiveHosts is defined to some other cpu count
         prosp_hosts = self._run_conf.get("ProspectiveHosts")
         if load_balance and prosp_hosts not in (None, MPI.size):
@@ -467,13 +473,59 @@ class Node:
 
         # Let the cell managers have any final say in the cell objects
         log_stage("FINALIZING CIRCUIT CELLS")
+
+        if ospath.exists("memory_usage.json") and SimConfig.dry_run:
+            logging.info("Loading memory usage from memory_usage.json...")
+            imported_memory_dict = import_memory_usage_from_json("memory_usage.json")
+        else:
+            imported_memory_dict = None
+
         for cell_manager in self._circuits.all_node_managers():
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
-            cell_manager.finalize()
+            if SimConfig.dry_run and cell_manager.circuit_name is None:
+                logging.warning("Dry-run ignoring empty circuit...")
+                continue
+            memory_dict = cell_manager.finalize(imported_memory_dict)
+            metype_counts = cell_manager.metype_counts
+            if SimConfig.dry_run:
+                if memory_dict is None:
+                    memory_dict = {}
+                self.full_mem_dict = self._collect_cell_counts(memory_dict)
+                self.cells_total_memory = self._calc_full_mem_estimate(self.full_mem_dict,
+                                                                       metype_counts)
 
         # Final bits after we have all cell managers
         self._circuits.global_manager.finalize()
         SimConfig.update_connection_blocks(self._circuits.alias)
+
+    @staticmethod
+    def _collect_cell_counts(memory_dict):
+        mem_dict_list = [memory_dict] + [None] * (MPI.size - 1)  # send to rank0
+        full_mem_list = MPI.py_alltoall(mem_dict_list)
+        if MPI.rank == 0:
+            full_mem_dict = {}
+            for mem_dict in full_mem_list:
+                full_mem_dict.update(mem_dict)
+            return full_mem_dict
+
+    @staticmethod
+    def _calc_full_mem_estimate(full_mem_dict, metype_counts):
+
+        memory_total = 0
+
+        if MPI.rank == 0:
+            export_memory_usage_to_json(full_mem_dict, "memory_usage.json")
+            logging.debug("Memory usage:")
+            for metype, mem in full_mem_dict.items():
+                logging.debug("  %s: %f", metype, mem)
+            logging.debug("Number of cells per METype combination:")
+            if metype_counts is not None:
+                for metype, count in metype_counts.items():
+                    memory_total += count * full_mem_dict[metype]
+                    logging.debug("  %s: %d", metype, count)
+                logging.info("  Total memory usage for cells: %.2f MB", memory_total)
+
+        return memory_total
 
     # -
     @mpi_no_errors
@@ -502,7 +554,13 @@ class Node:
             self._load_projections(pname, projection)
 
         if SimConfig.dry_run:
-            self._collect_display_syn_counts(synapse_counter)
+            self.syn_total_memory = self._collect_display_syn_counts(synapse_counter)
+            total_memory_overhead = self.avg_tasks_usage_mb*MPI.size
+            if MPI.rank == 0:
+                total_memory = self.cells_total_memory + self.syn_total_memory/1024 \
+                    + total_memory_overhead
+                logging.info("Total estimated memory usage for overhead + synapses + cells: %s",
+                             pretty_printing_memory_mb(total_memory))
             return
 
         log_stage("Configuring connections...")
@@ -658,11 +716,14 @@ class Node:
                     inh += count
                 if synapse_type >= 100:
                     exc += count
-            logging.info(" - Estimated synapse memory usage (KB):")
+            logging.info(" - Estimated synapse memory usage (MB):")
             in_mem = SynapseMemoryUsage.get_memory_usage(inh, "ProbGABAAB")
             ex_mem = SynapseMemoryUsage.get_memory_usage(exc, "ProbAMPANMDA")
-            logging.info(f"   - Inhibitory: {in_mem}")
-            logging.info(f"   - Excitatory: {ex_mem}")
+            logging.info(f"   - Inhibitory: {in_mem/1024:.2f}")
+            logging.info(f"   - Excitatory: {ex_mem/1024:.2f}")
+            logging.info(f" - Total: {(in_mem + ex_mem)/1024:.2f}")
+
+            return in_mem + ex_mem
 
     # -
     @mpi_no_errors
@@ -1658,7 +1719,7 @@ class Node:
         if not SimConfig.use_coreneuron or SimConfig.simulate_model is False:
             self.clear_model(avoid_creating_objs=True)
 
-        if SimConfig.delete_corenrn_data:
+        if SimConfig.delete_corenrn_data and not SimConfig.dry_run:
             data_folder = SimConfig.coreneuron_datadir
             logging.info("Deleting intermediate data in %s", data_folder)
 

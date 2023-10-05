@@ -9,7 +9,7 @@ Neurodamus
 
 Neurodamus is a BBP Simulation Control application for Neuron.
 
-The Python implementation offers a comprehensive Python API for fine tunning of the simulation, initially defined by a BlueConfig file.
+The Python implementation offers a comprehensive Python API for fine tuning of the simulation, initially defined by a BlueConfig file.
 
 
 Description
@@ -81,7 +81,7 @@ An example of a full installation with a simulation run can be found in the work
 
 Docker container
 ================
-Alternaltively, you can start directly a neurodamus docker container where all the packages are built.
+Alternatively, you can start directly a neurodamus docker container where all the packages are built.
 With the container, you can build your mod files and run simulations.
 See instructions in `docker/README.md <https://github.com/BlueBrain/neurodamus/blob/main/docker/README.md>`_.
 
