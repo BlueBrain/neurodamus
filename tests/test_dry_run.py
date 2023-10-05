@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+import numpy.testing as npt
 import unittest.mock
 
 
@@ -17,17 +18,17 @@ def test_dry_run_distribution():
 
     # Test with stride=1 (single rank)
     expected_output = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-    assert np.array_equal(dry_run_distribution(gid_metype_bundle, stride=1), expected_output)
+    npt.assert_equal(dry_run_distribution(gid_metype_bundle, stride=1), expected_output)
 
     # Test with stride=2 and stride_offset=0 (two ranks total, first rank)
     expected_output = np.array([1, 2, 3, 7, 8, 9])
-    assert np.array_equal(dry_run_distribution(gid_metype_bundle, stride=2, stride_offset=0),
-                          expected_output)
+    npt.assert_equal(dry_run_distribution(gid_metype_bundle, stride=2, stride_offset=0),
+                     expected_output)
 
     # Test with stride=2 and stride_offset=1 (two ranks total, second rank)
     expected_output = np.array([4, 5, 6, 10])
-    assert np.array_equal(dry_run_distribution(gid_metype_bundle, stride=2, stride_offset=1),
-                          expected_output)
+    npt.assert_equal(dry_run_distribution(gid_metype_bundle, stride=2, stride_offset=1),
+                     expected_output)
 
 
 @pytest.mark.forked
@@ -40,17 +41,17 @@ def test_retrieve_unique_metypes():
 
     # Call the function
     with unittest.mock.patch('neurodamus.io.cell_readers.isinstance', return_value=True):
-        result_list, result_int = _retrieve_unique_metypes(node_reader, all_gids)
+        result_list, metype_counts = _retrieve_unique_metypes(node_reader, all_gids)
 
     # Assertion checks
     assert isinstance(result_list, list)
-    assert all(isinstance(lst, list) for lst in result_list)
+    assert all(isinstance(lst, np.ndarray) for lst in result_list)
 
     # Check the expected output based on the test inputs
     expected_result_list = [[1, 3, 5], [2, 4]]
-    assert result_list == expected_result_list
-    expected_result_int = {('emodel1', 'mtype1'): 3, ('emodel2', 'mtype2'): 2}
-    assert result_int == expected_result_int
+    npt.assert_equal(result_list, expected_result_list)
+    expected_metype_counts = {'mtype1-emodel1': 3, 'mtype2-emodel2': 2}
+    assert metype_counts == expected_metype_counts
 
 
 class DummyNodeReader:

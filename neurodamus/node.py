@@ -34,7 +34,7 @@ from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
 from .utils.memory import SynapseMemoryUsage, export_memory_usage_to_json, get_task_level_mem_usage
-from .utils.memory import import_memory_usage_from_json, pretty_printing_memory_mb
+from .utils.memory import pretty_printing_memory_mb
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
 # Internal Plugins
@@ -474,57 +474,47 @@ class Node:
         # Let the cell managers have any final say in the cell objects
         log_stage("FINALIZING CIRCUIT CELLS")
 
-        if ospath.exists("memory_usage.json") and SimConfig.dry_run:
-            logging.info("Loading memory usage from memory_usage.json...")
-            imported_memory_dict = import_memory_usage_from_json("memory_usage.json")
-        else:
-            imported_memory_dict = None
+        if SimConfig.dry_run:
+            # For dry run we pass in these two structures which are modified IN-PLACE
+            cell_memory_dict = SimConfig.metype_mem_usage
+            cell_counts = Counter()
 
         for cell_manager in self._circuits.all_node_managers():
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
-            if SimConfig.dry_run and cell_manager.circuit_name is None:
-                logging.warning("Dry-run ignoring empty circuit...")
-                continue
-            memory_dict = cell_manager.finalize(imported_memory_dict)
-            metype_counts = cell_manager.metype_counts
             if SimConfig.dry_run:
-                if memory_dict is None:
-                    memory_dict = {}
-                self.full_mem_dict = self._collect_cell_counts(memory_dict)
-                self.cells_total_memory = self._calc_full_mem_estimate(self.full_mem_dict,
-                                                                       metype_counts)
+                cell_manager.finalize(dry_run_dicts=(cell_memory_dict, cell_counts))
+            else:
+                cell_manager.finalize()
+
+        if SimConfig.dry_run:
+            # We combine memory dict via update(). That means if a previous circuit computed
+            # cells for the same METype (hopefully unlikely!) the last estimate prevails.
+            metype_memory = MPI.py_reduce(cell_memory_dict, {}, lambda x, y: x.update(y))
+            self.cell_counts = MPI.py_sum(cell_counts, Counter())
+            export_memory_usage_to_json(metype_memory, "memory_usage.json")
+            self.cells_total_memory = self._calc_full_mem_estimate(metype_memory, self.cell_counts)
 
         # Final bits after we have all cell managers
         self._circuits.global_manager.finalize()
         SimConfig.update_connection_blocks(self._circuits.alias)
 
-    @staticmethod
-    def _collect_cell_counts(memory_dict):
-        mem_dict_list = [memory_dict] + [None] * (MPI.size - 1)  # send to rank0
-        full_mem_list = MPI.py_alltoall(mem_dict_list)
-        if MPI.rank == 0:
-            full_mem_dict = {}
-            for mem_dict in full_mem_list:
-                full_mem_dict.update(mem_dict)
-            return full_mem_dict
-
-    @staticmethod
-    def _calc_full_mem_estimate(full_mem_dict, metype_counts):
-
+    @classmethod
+    @run_only_rank0
+    def _calc_full_mem_estimate(_cls, full_mem_dict, metype_counts):
         memory_total = 0
+        log_verbose("+{:=^81}+".format(" METype Memory Estimates (KiB) "))
+        log_verbose("| {:^40s} | {:^10s} | {:^10s} | {:^10s} |".format(
+            'METype', 'Mem/cell', 'N Cells', 'Mem Total'))
+        log_verbose("+{:-^81}+".format(""))
+        for metype, count in metype_counts.items():
+            metype_mem = full_mem_dict[metype]
+            metype_total = count * full_mem_dict[metype]
+            memory_total += metype_total
+            log_verbose("| {:<40s} | {:10.1f} | {:10.0f} | {:10.1f} |".format(
+                metype, metype_mem, count, metype_total))
+        log_verbose("+{:-^81}+".format(""))
 
-        if MPI.rank == 0:
-            export_memory_usage_to_json(full_mem_dict, "memory_usage.json")
-            logging.debug("Memory usage:")
-            for metype, mem in full_mem_dict.items():
-                logging.debug("  %s: %f", metype, mem)
-            logging.debug("Number of cells per METype combination:")
-            if metype_counts is not None:
-                for metype, count in metype_counts.items():
-                    memory_total += count * full_mem_dict[metype]
-                    logging.debug("  %s: %d", metype, count)
-                logging.info("  Total memory usage for cells: %.2f MB", memory_total)
-
+        logging.info("  Total memory usage for cells: %.3f MiB", memory_total / 1024)
         return memory_total
 
     # -
@@ -700,30 +690,33 @@ class Node:
 
     @staticmethod
     def _collect_display_syn_counts(local_syn_counter):
-        xelist = [local_syn_counter] + [None] * (MPI.size - 1)  # send to rank0
-        counters = MPI.py_alltoall(xelist)
-        inh = exc = 0
+        master_counter = MPI.py_sum(local_syn_counter, Counter())
 
-        if MPI.rank == 0:
-            log_stage("Synapse memory estimate (per type)")
-            master_counter = Counter()
-            for c in counters:
-                master_counter.update(c)
+        # Done with MPI. Use rank0 to display
+        if MPI.rank != 0:
+            return 0
 
-            for synapse_type, count in master_counter.items():
-                logging.debug(f" - {synapse_type}: {count}")
-                if synapse_type < 100:
-                    inh += count
-                if synapse_type >= 100:
-                    exc += count
-            logging.info(" - Estimated synapse memory usage (MB):")
-            in_mem = SynapseMemoryUsage.get_memory_usage(inh, "ProbGABAAB")
-            ex_mem = SynapseMemoryUsage.get_memory_usage(exc, "ProbAMPANMDA")
-            logging.info(f"   - Inhibitory: {in_mem/1024:.2f}")
-            logging.info(f"   - Excitatory: {ex_mem/1024:.2f}")
-            logging.info(f" - Total: {(in_mem + ex_mem)/1024:.2f}")
+        logging.info(" - Estimated synapse memory usage (MB):")
+        inh_count = exc_count = 0
+        log_verbose("+{:=^68}+".format(" Synapse Count "))
+        log_verbose("| {:^40s} | {:^10s} | {:^10s} |".format("Synapse Type", "Family", "Count"))
+        log_verbose("+{:-^68}+".format(""))
+        for synapse_type, count in master_counter.items():
+            is_inh = synapse_type < 100
+            log_verbose("| {:40.0f} | {:<10s} | {:10.0f} |".format(
+                synapse_type, "INH" if is_inh else "EXC", count))
+            if is_inh:
+                inh_count += count
+            else:
+                exc_count += count
+        log_verbose("+{:-^68}+".format(""))
 
-            return in_mem + ex_mem
+        in_mem = SynapseMemoryUsage.get_memory_usage(inh_count, "ProbGABAAB")
+        ex_mem = SynapseMemoryUsage.get_memory_usage(exc_count, "ProbAMPANMDA")
+        logging.info(f"   - Inhibitory (MB): {in_mem/1024:.2f}")
+        logging.info(f"   - Excitatory (MB): {ex_mem/1024:.2f}")
+        logging.info(f" - TOTAL : {(in_mem + ex_mem)/1024:.2f}")
+        return in_mem + ex_mem
 
     # -
     @mpi_no_errors

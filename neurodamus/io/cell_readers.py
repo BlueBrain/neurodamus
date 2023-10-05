@@ -95,12 +95,14 @@ def dry_run_distribution(gid_metype_bundle, stride=1, stride_offset=0, total_cel
     """
     logging.info("Dry run distribution")
 
+    if not gid_metype_bundle:
+        return np.array([], dtype="uint32")
+
     # if mpi_size is 1, return all gids flattened
     if stride == 1:
-        return np.array([item for sublist in gid_metype_bundle for item in sublist])
+        return np.concatenate(gid_metype_bundle)
     else:
-        gidvec = gid_metype_bundle[stride_offset::stride]
-        return np.array([item for sublist in gidvec for item in sublist])
+        return np.concatenate(gid_metype_bundle[stride_offset::stride])
 
 
 def load_ncs(circuit_conf, all_gids, stride=1, stride_offset=0):
@@ -278,16 +280,19 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
     dynamics_attr_names = node_pop.dynamics_attribute_names
 
     def load_nodes_base_info():
+        meinfos = METypeManager()
         total_cells = node_pop.size
         if SimConfig.dry_run:
             logging.info("Sonata dry run mode: looking for unique metype instances")
-            gid_metype_bundle, count_per_metype = _retrieve_unique_metypes(node_pop, all_gids)
+            gid_metype_bundle, meinfos.counts = _retrieve_unique_metypes(node_pop, all_gids)
             gidvec = dry_run_distribution(gid_metype_bundle, stride, stride_offset, total_cells)
         else:
             gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
+
         if not len(gidvec):
             # Not enough cells to give this rank a few
-            return gidvec, METypeManager(), total_cells
+            return gidvec, meinfos, total_cells
+
         node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
         morpho_names = node_pop.get_attribute("morphology", node_sel)
         mtypes = node_pop.get_attribute("mtype", node_sel)
@@ -320,13 +325,10 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         add_params_list = None if not has_extra_data \
             else _getNeededAttributes(node_pop, circuit_conf.METypePath, emodel_templates, gidvec-1)
 
-        meinfos = METypeManager()
         meinfos.load_infoNP(gidvec, morpho_names, emodel_templates, mtypes, etypes,
                             threshold_currents, holding_currents,
                             exc_mini_freqs, inh_mini_freqs, positions, rotations,
                             add_params_list)
-        if SimConfig.dry_run:
-            meinfos.counts = count_per_metype
         return gidvec, meinfos, total_cells
 
     # If dynamic properties are not specified simply return early
@@ -485,30 +487,32 @@ def _retrieve_unique_metypes(node_reader, all_gids) -> dict:
         indexes = indexes.tolist()
 
     if isinstance(node_reader, libsonata.NodePopulation):
-        emodels = node_reader.get_attribute("etype", libsonata.Selection(indexes))
+        etypes = node_reader.get_attribute("etype", libsonata.Selection(indexes))
         mtypes = node_reader.get_attribute("mtype", libsonata.Selection(indexes))
     else:
         raise Exception(f"Reader type {type(node_reader)} incompatible with dry run.")
 
-    unique_metypes = defaultdict(list)
+    gids_per_metype = defaultdict(list)
     count_per_metype = defaultdict(int)
-    for gid, emodel, mtype in zip(gidvec, emodels, mtypes):
-        unique_metypes[(emodel, mtype)].append(gid)
-        count_per_metype[(emodel, mtype)] += 1
+    for gid, mtype, etype in zip(gidvec, mtypes, etypes):
+        metype = f"{mtype}-{etype}"
+        gids_per_metype[metype].append(gid)
+        count_per_metype[metype] += 1
 
     logging.info("Out of %d cells, found %d unique mtype+emodel combination",
-                 len(gidvec), len(unique_metypes))
-    for metype, gid_list in unique_metypes.items():
-        logging.debug("Mtype+Emodel: %-30s instances: %-8d gid: %s",
+                 len(gidvec), len(gids_per_metype))
+    for metype, gid_list in gids_per_metype.items():
+        logging.debug("METype: %-20s instances: %-8d gids: %s",
                       metype, len(gid_list), gid_list)
 
     # For each key in unique_metypes dictionary, add the relative value to a list.
     # If the list is longer than 50, truncate it to 50 elements.
+    # If the metype is already computed, skip it
     gid_metype_bundle = []
-    for key in unique_metypes:
-        if len(unique_metypes[key]) > 50:
-            gid_metype_bundle.append(unique_metypes[key][:50])
+    for metype, gid_list in gids_per_metype.items():
+        if metype not in SimConfig.metype_mem_usage:
+            gid_metype_bundle.append(np.array(gid_list[:50], dtype="uint32"))
         else:
-            gid_metype_bundle.append(unique_metypes[key])
+            log_verbose("Skipping METype '%s' since it's already known", metype)
 
     return gid_metype_bundle, count_per_metype
