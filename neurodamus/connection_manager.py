@@ -322,7 +322,7 @@ class ConnectionManagerBase(object):
 
     # - override if needed
     def _open_synapse_file(self, synapse_file, pop_name, n_nrn_files=None):
-        logging.info("Opening Synapse file %s, population: %s", synapse_file, pop_name)
+        logging.debug("Opening Synapse file %s, population: %s", synapse_file, pop_name)
         return self.SynapseReader.create(
             synapse_file, self.CONNECTIONS_TYPE, pop_name,
             n_nrn_files, self._raw_gids,  # Used eventually by NRN reader

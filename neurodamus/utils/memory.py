@@ -5,6 +5,7 @@ import ctypes
 import ctypes.util
 import math
 import os
+import json
 
 from ..core import MPI, NeurodamusCore as Nd
 
@@ -97,8 +98,8 @@ def print_node_level_mem_usage():
     )
 
 
-def print_task_level_mem_usage():
-    """Print statistics of the memory usage per MPI task."""
+def get_task_level_mem_usage():
+    """Return statistics of the memory usage per MPI task."""
     usage_mb = get_mem_usage()
 
     min_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MIN)
@@ -106,6 +107,14 @@ def print_task_level_mem_usage():
     avg_usage_mb = MPI.pc.allreduce(usage_mb, MPI.SUM) / MPI.size
 
     dev_usage_mb = math.sqrt(MPI.pc.allreduce((usage_mb - avg_usage_mb) ** 2, MPI.SUM) / MPI.size)
+
+    return min_usage_mb, max_usage_mb, avg_usage_mb, dev_usage_mb
+
+
+def print_task_level_mem_usage():
+    """Print statistics of the memory usage per MPI task."""
+
+    min_usage_mb, max_usage_mb, avg_usage_mb, dev_usage_mb = get_task_level_mem_usage()
 
     logging.info(
         "Memusage (RSS) per task [MB]: Max=%.2lf, Min=%.2lf, Mean(Stdev)=%.2lf(%.2lf)",
@@ -136,6 +145,21 @@ def get_mem_usage():
     return usage_mb
 
 
+def pretty_printing_memory_mb(memory_mb):
+    """
+    A simple function that given a memory usage in MB
+    returns a string with the most appropriate unit.
+    """
+    if memory_mb < 1024:
+        return "%.2lf MB" % memory_mb
+    elif memory_mb < 1024 ** 2:
+        return "%.2lf GB" % (memory_mb / 1024)
+    elif memory_mb < 1024 ** 3:
+        return "%.2lf TB" % (memory_mb / 1024 ** 2)
+    else:
+        return "%.2lf PB" % (memory_mb / 1024 ** 3)
+
+
 class SynapseMemoryUsage:
     ''' A small class that works as a lookup table
     for the memory used by each type of synapse.
@@ -151,3 +175,17 @@ class SynapseMemoryUsage:
     @classmethod
     def get_memory_usage(cls, count, synapse_type):
         return count * cls._synapse_memory_usage[synapse_type]
+
+
+def export_memory_usage_to_json(memory_usage_dict, json_file_name):
+    # serialize dictionary keys since dump wont accept tuples as keys
+    memory_usage_dict = {str(k): v for k, v in memory_usage_dict.items()}
+    with open(json_file_name, 'w') as fp:
+        json.dump(memory_usage_dict, fp, sort_keys=True, indent=4)
+
+
+def import_memory_usage_from_json(json_file_name):
+    with open(json_file_name, 'r') as fp:
+        memory_usage_dict = json.load(fp)
+    memory_usage_dict = {eval(k): v for k, v in memory_usage_dict.items()}
+    return memory_usage_dict

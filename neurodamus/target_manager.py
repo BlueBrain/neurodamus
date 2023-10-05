@@ -526,7 +526,7 @@ class NodesetTarget(_TargetInterface, _HocTargetInterface):
             return []
 
         if raw_gids:
-            assert len(self.nodesets) != 1, "Multiple populations when asking for raw gids"
+            assert len(self.nodesets) == 1, "Multiple populations when asking for raw gids"
             return pop_gid_intersect(self.nodesets[0], raw_gids=True)
 
         # If target is named Mosaic, basically we don't filter and use local_gids

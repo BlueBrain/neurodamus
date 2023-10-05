@@ -17,7 +17,8 @@ class SonataConfig:
         '_resolved_manifest',
         'circuits',
         '_circuit_networks',
-        '_sim_conf'
+        '_sim_conf',
+        '_bc_circuits',
     )
 
     _config_entries = (
@@ -56,6 +57,7 @@ class SonataConfig:
 
         self.circuits = libsonata.CircuitConfig.from_file(self.network)
         self._circuit_networks = json.loads(self.circuits.expanded_json)["networks"]
+        self._bc_circuits = self._blueconfig_circuits()
 
     @classmethod
     def _resolve(cls, entry, name, manifest: dict):
@@ -203,8 +205,8 @@ class SonataConfig:
         conditions["randomize_Gaba_risetime"] = str(conditions["randomize_Gaba_risetime"])
         return {"Conditions": conditions}
 
-    @property
-    def Circuit(self):
+    def _blueconfig_circuits(self):
+        """yield blue-config-style circuits"""
         node_info_to_circuit = {
             "nodes_file": "CellLibraryFile",
             "type": "PopulationType"
@@ -241,17 +243,35 @@ class SonataConfig:
                     circuit_conf["MorphologyType"] = "h5"
             circuit_conf["Engine"] = "NGV" if node_prop.type == "astrocyte" else "METype"
 
-            # find inner connectivity
+            # Find inner connectivity
+            # NOTE: Inner connectivity is a special kind of projection, and represents the circuit
+            # default set of connections. Even though nowadays we can potentially consider
+            # all connectivity as projections, under certain circuitry, like NGV, order matters and
+            # therefore we keep inner connectivity to ensure they are created in the same order,
+            # respecting engine precedence
+            # For edges to be considered inner connectivity they must be named "default"
             for edge_config in network.get("edges") or []:
+                if "nrnPath" in circuit_conf:
+                    break  # Already found
+
                 for edge_pop_name in edge_config["populations"].keys():
                     edge_storage = self.circuits.edge_population(edge_pop_name)
                     edge_type = self.circuits.edge_population_properties(edge_pop_name).type
-                    if edge_storage.source == edge_storage.target == node_pop_name and \
-                            edge_type == "chemical":
+                    inner_pop_name = "{0}__{0}__chemical".format(node_pop_name)
+                    if edge_pop_name == inner_pop_name or (
+                        edge_storage.source == edge_storage.target == node_pop_name
+                        and edge_type == "chemical"
+                        and edge_pop_name == "default"
+                    ):
                         edges_file = edge_config["edges_file"]
                         if not os.path.isabs(edges_file):
                             edges_file = os.path.join(os.path.dirname(self.network), edges_file)
-                        circuit_conf["nrnPath"] = edges_file + ":" + edge_pop_name
+                        edge_pop_path = edges_file + ":" + edge_pop_name
+                        circuit_conf["nrnPath"] = edge_pop_path
+                        break
+
+            circuit_conf.setdefault("nrnPath", False)
+            logging.debug("Circuit config for node pop '%s': %s", node_pop_name, circuit_conf)
             return circuit_conf
 
         return {
@@ -261,6 +281,9 @@ class SonataConfig:
             if pop_info.get("type") != "vasculature"
         }
 
+    # Compat with BlueConfig circuit definitions
+    Circuit = property(lambda self: self._bc_circuits)
+
     @property
     def parsedProjections(self):
         projection_type_convert = dict(
@@ -269,23 +292,29 @@ class SonataConfig:
             synapse_astrocyte="NeuroGlial",
             endfoot="GlioVascular"
         )
+        internal_edge_pops = set(c_conf["nrnPath"] for c_conf in self._bc_circuits.values())
         projections = {}
 
         for edge_config in self._circuit_networks.get("edges") or []:
-            for population_name, edge_pop_config in edge_config["populations"].items():
-                edge_pop = self.circuits.edge_population(population_name)
+            for edge_pop_name, edge_pop_config in edge_config["populations"].items():
+                edge_pop = self.circuits.edge_population(edge_pop_name)
                 pop_type = edge_pop_config.get("type", "chemical")
-                # skip unhandled synapse type or inner connectivity
-                if pop_type not in projection_type_convert or \
-                        (edge_pop.source == edge_pop.target and pop_type == "chemical"):
+                # skip unhandled synapse type
+                if pop_type not in projection_type_convert:
                     logging.warning("Unhandled synapse type: " + pop_type)
                     continue
+
                 edges_file = edge_config["edges_file"]
                 if not os.path.isabs(edges_file):
                     edges_file = os.path.join(os.path.dirname(self.network), edges_file)
-                # projection
+
+                # skip inner connectivity populations
+                edge_pop_path = edges_file + ":" + edge_pop_name
+                if edge_pop_path in internal_edge_pops:
+                    continue
+
                 projection = dict(
-                    Path=edges_file + ":" + population_name,
+                    Path=edge_pop_path,
                     Source=edge_pop.source + ":",
                     Destination=edge_pop.target + ":",
                     Type=projection_type_convert.get(pop_type)
@@ -299,7 +328,10 @@ class SonataConfig:
                         for _, pop_info in node_file_info["populations"].items():
                             if pop_info.get("type") == "vasculature":
                                 projection["VasculaturePath"] = node_file_info["nodes_file"]
-                projections["{0.source}-{0.target}".format(edge_pop)] = projection
+
+                proj_name = "{0}__{1.source}-{1.target}".format(edge_pop_name, edge_pop)
+                projections[proj_name] = projection
+
         return projections
 
     @property
