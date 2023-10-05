@@ -516,7 +516,7 @@ class Node:
         """
         log_stage("Circuit %s", conf._name or "(default)")
         if not conf.get("nrnPath"):
-            logging.info(" => Circuit internal connectivity has been DISABLED")
+            logging.info(" => No connectivity set as internal. See projections")
             return
 
         if SimConfig.cli_options.restrict_connectivity >= 2:
@@ -528,9 +528,12 @@ class Node:
             c_target.population = self._circuits.alias.get(conf._name)
 
         edge_file, *pop = conf.get("nrnPath").split(":")
+        edge_pop = pop[0] if pop else None
         if not os.path.isabs(edge_file):
             edge_file = find_input_file(edge_file)
-        src, dst = edge_node_pop_names(edge_file, pop[0] if pop else None)
+        src, dst = edge_node_pop_names(edge_file, edge_pop)
+
+        logging.info("Processing edge file %s, pop: %s", edge_file, edge_pop)
 
         if src and dst and src != dst:
             raise ConfigurationError("Inner connectivity with different populations")

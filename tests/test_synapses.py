@@ -343,7 +343,7 @@ def test_no_edge_creation(capsys):
     n.create_synapses()
 
     captured = capsys.readouterr()
-    assert "Circuit internal connectivity has been DISABLED" in captured.out
+    assert "No connectivity set as internal" in captured.out
     assert len(n.circuits.edge_managers) == 0
 
     os.unlink(tmp_config.name)
