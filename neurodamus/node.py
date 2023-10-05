@@ -555,9 +555,10 @@ class Node:
 
         if SimConfig.dry_run:
             self.syn_total_memory = self._collect_display_syn_counts(synapse_counter)
+            total_memory_overhead = self.avg_tasks_usage_mb*MPI.size
             if MPI.rank == 0:
-                total_memory = self.cells_total_memory + self.syn_total_memory/1024
-                + self.avg_tasks_usage_mb*MPI.size
+                total_memory = self.cells_total_memory + self.syn_total_memory/1024 \
+                    + total_memory_overhead
                 logging.info("Total estimated memory usage for overhead + synapses + cells: %s",
                              pretty_printing_memory_mb(total_memory))
             return
