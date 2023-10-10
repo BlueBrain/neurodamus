@@ -491,7 +491,8 @@ class Node:
             # cells for the same METype (hopefully unlikely!) the last estimate prevails.
             metype_memory = MPI.py_reduce(cell_memory_dict, {}, lambda x, y: x.update(y))
             self.cell_counts = MPI.py_sum(cell_counts, Counter())
-            export_memory_usage_to_json(metype_memory, "memory_usage.json")
+            if MPI.rank == 0:
+                export_memory_usage_to_json(metype_memory, "memory_usage.json")
             self.cells_total_memory = self._calc_full_mem_estimate(metype_memory, self.cell_counts)
 
         # Final bits after we have all cell managers

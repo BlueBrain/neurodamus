@@ -15,6 +15,8 @@ from ..metype import METypeManager, METypeItem
 from ..utils import compat
 from ..utils.logging import log_verbose
 
+EMPTY_GIDVEC = np.empty(0, dtype="uint32")
+
 
 class CellReaderError(Exception):
     pass
@@ -96,13 +98,14 @@ def dry_run_distribution(gid_metype_bundle, stride=1, stride_offset=0, total_cel
     logging.info("Dry run distribution")
 
     if not gid_metype_bundle:
-        return np.array([], dtype="uint32")
+        return EMPTY_GIDVEC
 
     # if mpi_size is 1, return all gids flattened
     if stride == 1:
         return np.concatenate(gid_metype_bundle)
     else:
-        return np.concatenate(gid_metype_bundle[stride_offset::stride])
+        groups = gid_metype_bundle[stride_offset::stride]
+        return np.concatenate(groups) if groups else EMPTY_GIDVEC
 
 
 def load_ncs(circuit_conf, all_gids, stride=1, stride_offset=0):
