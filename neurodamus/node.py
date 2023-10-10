@@ -500,7 +500,7 @@ class Node:
 
     @classmethod
     @run_only_rank0
-    def _calc_full_mem_estimate(_cls, full_mem_dict, metype_counts):
+    def _calc_full_mem_estimate(_cls, full_mem_dict, metype_counts) -> float:
         memory_total = 0
         log_verbose("+{:=^81}+".format(" METype Memory Estimates (KiB) "))
         log_verbose("| {:^40s} | {:^10s} | {:^10s} | {:^10s} |".format(
@@ -513,7 +513,6 @@ class Node:
             log_verbose("| {:<40s} | {:10.1f} | {:10.0f} | {:10.1f} |".format(
                 metype, metype_mem, count, metype_total))
         log_verbose("+{:-^81}+".format(""))
-
         logging.info("  Total memory usage for cells: %.3f MiB", memory_total / 1024)
         return memory_total
 
