@@ -1,3 +1,4 @@
+import os
 import pytest
 from neurodamus.core.nodeset import NodeSet, _ranges_overlap, _ranges_vec_overlap
 import numpy
@@ -103,6 +104,10 @@ def nodeset_files(tmpdir):
         json.dump(simulation_nodesets_file, f)
 
     yield config_nodeset, simulation_nodeset
+
+    # Delete the files after they're used
+    os.unlink(config_nodeset)
+    os.unlink(simulation_nodeset)
 
 
 def test_read_nodesets_from_file(nodeset_files):
