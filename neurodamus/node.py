@@ -33,7 +33,6 @@ from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import DryRunStats, trim_memory, pool_shrink, free_event_queues, print_mem_usage
-from .utils.memory import pretty_printing_memory_mb
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
 # Internal Plugins
@@ -291,6 +290,7 @@ class Node:
             self._cycle_i = 0
             self._n_cycles = 1
             self._shm_enabled = False
+            self._dry_run_stats = None
         else:
             self._run_conf  # Assert this is defined (if not multicyle runs are not properly set)
 
@@ -429,11 +429,11 @@ class Node:
         if SimConfig.dry_run:
             logging.info("Memory usage after inizialization:")
             print_mem_usage()
-            self._stats = DryRunStats()
+            self._dry_run_stats = DryRunStats()
             # We load the memory usage rather early since it will be needed at the moment we load
             # the cell ids. This way we can avoid gidvec from having gids of known metype cells.
-            self._stats.try_import_cell_memory_usage()
-            loader_opts = {"dry_run_stats": self._stats}
+            self._dry_run_stats.try_import_cell_memory_usage()
+            loader_opts = {"dry_run_stats": self._dry_run_stats}
         else:
             loader_opts = {}
 
@@ -457,8 +457,8 @@ class Node:
             if config.restrict_node_populations and name not in config.restrict_node_populations:
                 logging.warning("Skipped node population (restrict_node_populations)")
                 continue
-            self._circuits.new_node_manager(
-                circuit, self._target_manager, self._run_conf, loader_opts=loader_opts)
+            self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf,
+                                            loader_opts=loader_opts)
 
         lfp_weights_file = self._run_conf.get("LFPWeightsPath")
         if lfp_weights_file:
@@ -482,15 +482,14 @@ class Node:
         for cell_manager in self._circuits.all_node_managers():
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
             if SimConfig.dry_run:
-                cell_manager.finalize(dry_run_stats_obj=self._stats)
+                cell_manager.finalize(dry_run_stats_obj=self._dry_run_stats)
             else:
                 cell_manager.finalize()
 
         if SimConfig.dry_run:
-            self._stats.collect_all_mpi()
-            self._stats.export_cell_memory_usage()
-            memory_total = self._stats.estimate_cell_memory()
-            logging.info("  Total memory usage for cells: %.3f MiB", memory_total / 1024)
+            self._dry_run_stats.collect_all_mpi()
+            self._dry_run_stats.export_cell_memory_usage()
+            self._dry_run_stats.estimate_cell_memory()
 
         # Final bits after we have all cell managers
         self._circuits.global_manager.finalize()
@@ -504,7 +503,7 @@ class Node:
         """
         log_stage("LOADING CIRCUIT CONNECTIVITY")
         target_manager = self._target_manager
-        manager_kwa = {"load_offsets": self._is_ngv_run, "dry_run_stats": self._stats}
+        manager_kwa = {"load_offsets": self._is_ngv_run, "dry_run_stats": self._dry_run_stats}
 
         if circuit := self._base_circuit:
             self._create_synapse_manager(SynapseRuleManager, circuit, target_manager, **manager_kwa)
@@ -516,16 +515,10 @@ class Node:
 
         log_stage("Handling projections...")
         for pname, projection in SimConfig.projections.items():
-            self._load_projections(pname, projection)
+            self._load_projections(pname, projection, dry_run_stats=self._dry_run_stats)
 
         if SimConfig.dry_run:
-            self.syn_total_memory = self._stats.collect_display_syn_counts()
-            total_memory_overhead = self._stats.base_memory * MPI.size
-            if MPI.rank == 0:
-                total_memory = self._stats.cell_memory_total + self.syn_total_memory/1024 \
-                    + total_memory_overhead
-                logging.info("Total estimated memory usage for overhead + synapses + cells: %s",
-                             pretty_printing_memory_mb(total_memory))
+            self.syn_total_memory = self._dry_run_stats.collect_display_syn_counts()
             return
 
         log_stage("Configuring connections...")
@@ -602,7 +595,7 @@ class Node:
 
     # -
     @mpi_no_errors
-    def _load_projections(self, pname, projection):
+    def _load_projections(self, pname, projection, **kw):
         """Check for Projection blocks
         """
         target_manager = self._target_manager
@@ -642,7 +635,7 @@ class Node:
                 logging.info(" * %s (Type: %s, Src: %s, Dst: %s)", pname, ptype, src_pop, dst_pop)
                 conn_manager = self._circuits.get_create_edge_manager(
                     ptype_cls, src_pop, dst_pop, source_t,
-                    (projection, target_manager)  # args to ptype_cls if creating
+                    (projection, target_manager), **kw  # args to ptype_cls if creating
                 )
                 logging.debug("Using connection manager: %s", conn_manager)
                 proj_source = ":".join([ppath] + pop_name)
@@ -1960,6 +1953,7 @@ class Neurodamus(Node):
         """
         if SimConfig.dry_run:
             log_stage("============= DRY RUN (SKIP SIMULATION) =============")
+            self._dry_run_stats.display_total()
             return
         if not SimConfig.simulate_model:
             self.sim_init()

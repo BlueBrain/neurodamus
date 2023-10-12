@@ -537,7 +537,8 @@ class ConnectionManagerBase(object):
         """
         if SimConfig.dry_run:
             counts = self._get_conn_stats(self._src_target_filter, None)
-            self._dry_run_stats.synapse_counts.update(counts)
+            print("Stats:", self._dry_run_stats)
+            self._dry_run_stats.synapse_counts += counts
             return
 
         conn_options = {'weight_factor': weight_factor}
@@ -577,7 +578,7 @@ class ConnectionManagerBase(object):
 
         if SimConfig.dry_run:
             counts = self._get_conn_stats(src_target, dst_target)
-            self._dry_run_stats.synapse_counts.update(counts)
+            self._dry_run_stats.synapse_counts += counts
             return
 
         for sgid, tgid, syns_params, extra_params, offset in \

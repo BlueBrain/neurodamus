@@ -190,18 +190,19 @@ class DryRunStats:
     def estimate_cell_memory(self) -> float:
         from .logging import log_verbose
         memory_total = 0
-        log_verbose("+{:=^81}+".format(" METype Memory Estimates (KiB) "))
+        log_verbose("+{:=^81}+".format(" METype Memory Estimates (MiB) "))
         log_verbose("| {:^40s} | {:^10s} | {:^10s} | {:^10s} |".format(
             'METype', 'Mem/cell', 'N Cells', 'Mem Total'))
         log_verbose("+{:-^81}+".format(""))
         for metype, count in self.metype_counts.items():
-            metype_mem = self.metype_memory[metype]
+            metype_mem = self.metype_memory[metype] / 1024
             metype_total = count * metype_mem
             memory_total += metype_total
-            log_verbose("| {:<40s} | {:10.1f} | {:10.0f} | {:10.1f} |".format(
+            log_verbose("| {:<40s} | {:10.2f} | {:10.0f} | {:10.1f} |".format(
                 metype, metype_mem, count, metype_total))
         log_verbose("+{:-^81}+".format(""))
         self.cell_memory_total = memory_total
+        logging.info("  Total memory usage for cells: %s", pretty_printing_memory_mb(memory_total))
         return memory_total
 
     def add(self, other):
@@ -231,7 +232,7 @@ class DryRunStats:
 
         # Done with MPI. Use rank0 to display
         if MPI.rank != 0:
-            return 0
+            return
 
         logging.info(" - Estimated synapse memory usage (MB):")
         from .logging import log_verbose
@@ -249,9 +250,24 @@ class DryRunStats:
                 exc_count += count
         log_verbose("+{:-^68}+".format(""))
 
-        in_mem = SynapseMemoryUsage.get_memory_usage(inh_count, "ProbGABAAB")
-        ex_mem = SynapseMemoryUsage.get_memory_usage(exc_count, "ProbAMPANMDA")
-        logging.info(f"   - Inhibitory (MB): {in_mem/1024:.2f}")
-        logging.info(f"   - Excitatory (MB): {ex_mem/1024:.2f}")
-        logging.info(f" - TOTAL : {(in_mem + ex_mem)/1024:.2f}")
-        return in_mem + ex_mem
+        in_mem = SynapseMemoryUsage.get_memory_usage(inh_count, "ProbGABAAB") / 1024
+        ex_mem = SynapseMemoryUsage.get_memory_usage(exc_count, "ProbAMPANMDA") / 1024
+        self.synapse_memory_total = in_mem + ex_mem
+        logging.info("   - Inhibitory: %s", pretty_printing_memory_mb(in_mem))
+        logging.info("   - Excitatory: %s", pretty_printing_memory_mb(ex_mem))
+        logging.info(" - TOTAL : %s", pretty_printing_memory_mb(self.synapse_memory_total))
+
+    @run_only_rank0
+    def display_total(self):
+        logging.info("+{:=^57}+".format(" Total Memory Estimates "))
+        logging.info("| {:^40s} | {:^12s} |".format("Item", "Memory (MiB)"))
+        logging.info("+{:-^57}+".format(""))
+        full_overhead = self.base_memory * MPI.size
+        logging.info("| {:<40s} | {:12.1f} |".format(f"Overhead (ranks={MPI.size})", full_overhead))
+        logging.info("| {:<40s} | {:12.1f} |".format("Cells", self.cell_memory_total))
+        logging.info("| {:<40s} | {:12.1f} |".format("Synapses", self.synapse_memory_total))
+        logging.info("+{:-^57}+".format(""))
+        grand_total = full_overhead + self.cell_memory_total + self.synapse_memory_total
+        grand_total = pretty_printing_memory_mb(grand_total)
+        logging.info("| {:<40s} | {:>12s} |".format("GRAND TOTAL", grand_total))
+        logging.info("+{:-^57}+".format(""))

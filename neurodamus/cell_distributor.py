@@ -286,7 +286,7 @@ class CellManagerBase(_CellManager):
             self._store_cell(gid + cell_offset, cell)
 
     @mpi_no_errors
-    def _instantiate_cells_dry(self, CellType, **_opts):
+    def _instantiate_cells_dry(self, CellType, skip_metypes, **_opts):
         """
         Instantiates the subset of selected cells while measuring memory taken by each metype
 
@@ -317,18 +317,20 @@ class CellManagerBase(_CellManager):
             prev_memory = end_memory
 
         for gid, cell_info in gid_info_items:
-            metype = f"{cell_info.mtype}-{cell_info.etype}"
+            metype = "{0.mtype}-{0.etype}".format(cell_info)
+            if metype in skip_metypes:
+                continue
             if prev_metype is not None and metype != prev_metype:
                 store_metype_stats(prev_metype, metype_n_cells)
                 metype_n_cells = 0
             if metype_n_cells >= MAX_CELLS:
-                continue  # Skip if over the limit
+                continue
             cell = CellType(gid, cell_info, self._circuit_conf)
             self._store_cell(gid + cell_offset, cell)
             prev_metype = metype
             metype_n_cells += 1
 
-        if prev_metype is not None:
+        if prev_metype is not None and metype_n_cells > 0:
             store_metype_stats(prev_metype, metype_n_cells)
 
         return memory_dict
@@ -556,6 +558,7 @@ class CellDistributor(CellManagerBase):
                 raise Exception('Additional cell properties only available with SONATA')
             nodes_filename = self._circuit_conf.CellLibraryFile
             loader = self._cell_loaders.get(nodes_filename, cell_readers.load_mvd3)
+            loader_opts = {}
 
         log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader.__name__)
         return super().load_nodes(load_balancer, _loader=loader, loader_opts=loader_opts)
@@ -580,9 +583,10 @@ class CellDistributor(CellManagerBase):
         if dry_run_stats_obj is None:
             super()._instantiate_cells(CellType, **opts)
         else:
-            memory_dict = self._instantiate_cells_dry(CellType, **opts)
+            cur_metypes_mem = dry_run_stats_obj.metype_memory
+            memory_dict = self._instantiate_cells_dry(CellType, cur_metypes_mem, **opts)
             log_verbose("Updating global dry-run memory counters with %d items", len(memory_dict))
-            dry_run_stats_obj.metype_memory.update(memory_dict)
+            cur_metypes_mem.update(memory_dict)
 
 
 class LoadBalance:
