@@ -984,7 +984,13 @@ class Node:
             logging.error("LFP reports are disabled. Electrodes file might be missing"
                           " or simulator is not set to CoreNEURON")
             return None
-        logging.info(" * %s (Type: %s, Target: %s, Dt: %f)", rep_name, rep_type, rep_conf["Target"], rep_dt)
+        logging.info(
+            " * %s (Type: %s, Target: %s, Dt: %f)",
+            rep_name,
+            rep_type,
+            rep_conf["Target"],
+            rep_dt
+        )
 
         if rep_format != "SONATA":
             if MPI.rank == 0:
