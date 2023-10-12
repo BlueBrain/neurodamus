@@ -5,10 +5,11 @@ from __future__ import absolute_import
 import hashlib
 import logging
 import numpy
-from collections import Counter, defaultdict
+from collections import defaultdict
 from itertools import chain
 from os import path as ospath
 from typing import List, Optional
+
 
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
@@ -19,6 +20,7 @@ from .io.synapse_reader import SynapseReader
 from .target_manager import TargetManager, TargetSpec
 from .utils import compat, bin_search, dict_filter_map
 from .utils.logging import log_verbose, log_all
+from .utils.memory import DryRunStats
 from .utils.timeit import timeit
 
 
@@ -274,7 +276,7 @@ class ConnectionManagerBase(object):
         self._src_target_filter = None  # filter by src target in all_connect (E.g: GapJ)
 
         # An internal var to enable collection of synapse statistics to a Counter
-        self._synapse_counter: Counter = kw.get("synapse_counter")
+        self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
 
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
@@ -533,9 +535,9 @@ class ConnectionManagerBase(object):
             weight_factor: Factor to scale all netcon weights (default: 1)
             only_gids: Create connections only for these tgids (default: Off)
         """
-        if self._synapse_counter is not None:
+        if SimConfig.dry_run:
             counts = self._get_conn_stats(self._src_target_filter, None)
-            self._synapse_counter.update(counts)
+            self._dry_run_stats.synapse_counts.update(counts)
             return
 
         conn_options = {'weight_factor': weight_factor}
@@ -573,9 +575,9 @@ class ConnectionManagerBase(object):
                           src_tname, dst_tname)
             return
 
-        if self._synapse_counter is not None:
+        if SimConfig.dry_run:
             counts = self._get_conn_stats(src_target, dst_target)
-            self._synapse_counter.update(counts)
+            self._dry_run_stats.synapse_counts.update(counts)
             return
 
         for sgid, tgid, syns_params, extra_params, offset in \

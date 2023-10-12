@@ -28,7 +28,7 @@ from .metype import Cell_V5, Cell_V6, EmptyCell
 from .target_manager import TargetSpec
 from .utils import compat
 from .utils.logging import log_verbose, log_all
-from .utils.memory import get_mem_usage_kb
+from .utils.memory import DryRunStats, get_mem_usage_kb
 
 
 class NodeFormat(Enum):
@@ -142,7 +142,6 @@ class CellManagerBase(_CellManager):
         self._binfo = None
         self._pc = Nd.pc
         self._conn_managers_per_src_pop = weakref.WeakValueDictionary()
-        self._metype_counts = None
 
         if type(circuit_conf.CircuitPath) is str:
             self._init_config(circuit_conf, self._target_spec.population or '')
@@ -221,8 +220,6 @@ class CellManagerBase(_CellManager):
             gidvec, me_infos, *cell_counts = self._load_nodes_balance(loader_f, load_balancer)
         self._local_nodes.add_gids(gidvec, me_infos)
         self._total_cells = cell_counts[0]
-        if SimConfig.dry_run:
-            self._metype_counts = me_infos.counts
         logging.info(" => Loaded info about %d target cells (out of %d)", *cell_counts)
 
     def _load_nodes(self, loader_f):
@@ -308,6 +305,7 @@ class CellManagerBase(_CellManager):
         prev_memory = get_mem_usage_kb()
         metype_n_cells = 0
         memory_dict = {}
+        MAX_CELLS = 50
 
         def store_metype_stats(metype, n_cells):
             nonlocal prev_memory
@@ -323,7 +321,8 @@ class CellManagerBase(_CellManager):
             if prev_metype is not None and metype != prev_metype:
                 store_metype_stats(prev_metype, metype_n_cells)
                 metype_n_cells = 0
-
+            if metype_n_cells >= MAX_CELLS:
+                continue  # Skip if over the limit
             cell = CellType(gid, cell_info, self._circuit_conf)
             self._store_cell(gid + cell_offset, cell)
             prev_metype = metype
@@ -561,12 +560,12 @@ class CellDistributor(CellManagerBase):
         log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader.__name__)
         return super().load_nodes(load_balancer, _loader=loader, loader_opts=loader_opts)
 
-    def _instantiate_cells(self, dry_run_dicts=None, **opts):
+    def _instantiate_cells(self, dry_run_stats_obj: DryRunStats = None, **opts):
         """
         Instantiates cells, honouring dry_run if provided
 
         Args:
-            dry_run_dicts: Do a dry-run and update the inner dicts accordingly
+            dry_run_store_stats: Do a dry-run and update the inner fields accordingly
         """
         if self.CellType is not NotImplemented:
             return super()._instantiate_cells(self.CellType)
@@ -578,14 +577,12 @@ class CellDistributor(CellManagerBase):
         log_verbose("Loading metypes from: %s", conf.METypePath)
         log_verbose("Loading '%s' morphologies from: %s",
                     CellType.morpho_extension, conf.MorphologyPath)
-        if dry_run_dicts is None:
+        if dry_run_stats_obj is None:
             super()._instantiate_cells(CellType, **opts)
         else:
-            (full_memory_dict, cell_counts) = dry_run_dicts
             memory_dict = self._instantiate_cells_dry(CellType, **opts)
             log_verbose("Updating global dry-run memory counters with %d items", len(memory_dict))
-            full_memory_dict.update(memory_dict)
-            cell_counts += self._metype_counts
+            dry_run_stats_obj.metype_memory.update(memory_dict)
 
 
 class LoadBalance:

@@ -1,17 +1,17 @@
 """
 Collection of utility functions related to clearing the used memory in neurodamus-py or NEURON
 """
+from collections import Counter
 import ctypes
 import ctypes.util
+import logging
 import math
 import os
 import json
 
-from ..core import MPI, NeurodamusCore as Nd
+from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
 
 import numpy as np
-
-import logging
 
 
 def trim_memory():
@@ -177,11 +177,81 @@ class SynapseMemoryUsage:
         return count * cls._synapse_memory_usage[synapse_type]
 
 
-def export_memory_usage_to_json(memory_usage_dict, json_file_name):
-    with open(json_file_name, 'w') as fp:
-        json.dump(memory_usage_dict, fp, sort_keys=True, indent=4)
+class DryRunStats:
+    _MEMORY_USAGE_FILENAME = "cell_memory_usage.json"
 
+    def __init__(self) -> None:
+        self.metype_memory = {}
+        self.metype_counts = Counter()
+        self.synapse_counts = Counter()
+        _, _, self.base_memory, _ = get_task_level_mem_usage()
 
-def import_memory_usage_from_json(json_file_name):
-    with open(json_file_name, 'r') as fp:
-        return json.load(fp)
+    @run_only_rank0
+    def estimate_cell_memory(self) -> float:
+        from .logging import log_verbose
+        memory_total = 0
+        log_verbose("+{:=^81}+".format(" METype Memory Estimates (KiB) "))
+        log_verbose("| {:^40s} | {:^10s} | {:^10s} | {:^10s} |".format(
+            'METype', 'Mem/cell', 'N Cells', 'Mem Total'))
+        log_verbose("+{:-^81}+".format(""))
+        for metype, count in self.metype_counts.items():
+            metype_mem = self.metype_memory[metype]
+            metype_total = count * metype_mem
+            memory_total += metype_total
+            log_verbose("| {:<40s} | {:10.1f} | {:10.0f} | {:10.1f} |".format(
+                metype, metype_mem, count, metype_total))
+        log_verbose("+{:-^81}+".format(""))
+        self.cell_memory_total = memory_total
+        return memory_total
+
+    def add(self, other):
+        self.metype_memory.update(other.metype_memory)
+        self.metype_counts += other.metype_counts
+
+    def collect_all_mpi(self):
+        # We combine memory dict via update(). That means if a previous circuit computed
+        # cells for the same METype (hopefully unlikely!) the last estimate prevails.
+        self.metype_memory = MPI.py_reduce(self.metype_memory, {}, lambda x, y: x.update(y))
+        self.metype_counts = self.metype_counts  # Cell counts is complete in every rank
+
+    @run_only_rank0
+    def export_cell_memory_usage(self):
+        with open(self._MEMORY_USAGE_FILENAME, 'w') as fp:
+            json.dump(self.metype_memory, fp, sort_keys=True, indent=4)
+
+    def try_import_cell_memory_usage(self):
+        if not os.path.exists(self._MEMORY_USAGE_FILENAME):
+            return
+        logging.info("Loading memory usage from %s...", self._MEMORY_USAGE_FILENAME)
+        with open(self._MEMORY_USAGE_FILENAME, 'r') as fp:
+            self.metype_memory = json.load(fp)
+
+    def collect_display_syn_counts(self):
+        master_counter = MPI.py_sum(self.synapse_counts, Counter())
+
+        # Done with MPI. Use rank0 to display
+        if MPI.rank != 0:
+            return 0
+
+        logging.info(" - Estimated synapse memory usage (MB):")
+        from .logging import log_verbose
+        inh_count = exc_count = 0
+        log_verbose("+{:=^68}+".format(" Synapse Count "))
+        log_verbose("| {:^40s} | {:^10s} | {:^10s} |".format("Synapse Type", "Family", "Count"))
+        log_verbose("+{:-^68}+".format(""))
+        for synapse_type, count in master_counter.items():
+            is_inh = synapse_type < 100
+            log_verbose("| {:40.0f} | {:<10s} | {:10.0f} |".format(
+                synapse_type, "INH" if is_inh else "EXC", count))
+            if is_inh:
+                inh_count += count
+            else:
+                exc_count += count
+        log_verbose("+{:-^68}+".format(""))
+
+        in_mem = SynapseMemoryUsage.get_memory_usage(inh_count, "ProbGABAAB")
+        ex_mem = SynapseMemoryUsage.get_memory_usage(exc_count, "ProbAMPANMDA")
+        logging.info(f"   - Inhibitory (MB): {in_mem/1024:.2f}")
+        logging.info(f"   - Excitatory (MB): {ex_mem/1024:.2f}")
+        logging.info(f" - TOTAL : {(in_mem + ex_mem)/1024:.2f}")
+        return in_mem + ex_mem

@@ -234,7 +234,6 @@ class _SimConfig(object):
     spike_location = "soma"
     spike_threshold = -30
     dry_run = False
-    metype_mem_usage = {}
 
     _validators = []
     _requisitors = []
@@ -290,16 +289,6 @@ class _SimConfig(object):
         if not cls.is_sonata_config:
             cls._parsed_run.update(run_conf)  # sync hoc config
         cls._init_hoc_config_objs()
-
-        if cls.dry_run and os.path.exists("memory_usage.json"):
-            # We load the memory usage rather early since it will be needed at the moment we load
-            # the cell ids. This way we can avoid gidvec from having gids of known metype cells.
-            # We also don't load in a CellManager since this data is trully global.
-            # Avoiding instantiating cells alone will NOT work since a mismatch with gidvec
-            # will create connections for cells which are not there!
-            logging.info("Loading memory usage from memory_usage.json...")
-            from ..utils.memory import import_memory_usage_from_json  # avoid circuit dep
-            cls.metype_mem_usage = import_memory_usage_from_json("memory_usage.json")
 
     @classmethod
     def get_blueconfig_hoc_section(cls, section_name):
