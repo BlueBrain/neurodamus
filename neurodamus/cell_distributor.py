@@ -28,7 +28,7 @@ from .metype import Cell_V5, Cell_V6, EmptyCell
 from .target_manager import TargetSpec
 from .utils import compat
 from .utils.logging import log_verbose, log_all
-from .utils.memory import get_mem_usage
+from .utils.memory import get_mem_usage_kb
 
 
 class NodeFormat(Enum):
@@ -164,7 +164,6 @@ class CellManagerBase(_CellManager):
     is_default = property(lambda self: self._circuit_name is None)
     is_virtual = property(lambda self: False)
     connection_managers = property(lambda self: self._conn_managers_per_src_pop)
-    metype_counts = property(lambda self: self._metype_counts)
 
     def is_initialized(self):
         return self._local_nodes is not None
@@ -221,9 +220,9 @@ class CellManagerBase(_CellManager):
         else:
             gidvec, me_infos, *cell_counts = self._load_nodes_balance(loader_f, load_balancer)
         self._local_nodes.add_gids(gidvec, me_infos)
+        self._total_cells = cell_counts[0]
         if SimConfig.dry_run:
             self._metype_counts = me_infos.counts
-        self._total_cells = cell_counts[0]
         logging.info(" => Loaded info about %d target cells (out of %d)", *cell_counts)
 
     def _load_nodes(self, loader_f):
@@ -257,7 +256,7 @@ class CellManagerBase(_CellManager):
         return gidvec, me_infos, total_cells, full_size
 
     # -
-    def finalize(self, imported_memory_dict=None, *_):
+    def finalize(self, **opts):
         """Instantiates cells and initializes the network in the simulator.
 
         Note: it should be called after all cell distributors have done load_nodes()
@@ -266,15 +265,13 @@ class CellManagerBase(_CellManager):
         if self._local_nodes is None:
             return
         logging.info("Finalizing cells... Gid offset: %d", self._local_nodes.offset)
-        memory_dict = self._instantiate_cells(imported_memory_dict)
+        self._instantiate_cells(**opts)
         self._update_targets_local_gids()
         self._init_cell_network()
         self._local_nodes.clear_cell_info()
 
-        return memory_dict
-
     @mpi_no_errors
-    def _instantiate_cells(self, _CellType=None):
+    def _instantiate_cells(self, _CellType=None, **_opts):
         CellType = _CellType or self.CellType
         assert CellType is not None, "Undefined CellType in Manager"
         Nd.execute("xopen_broadcast_ = 0")
@@ -292,68 +289,50 @@ class CellManagerBase(_CellManager):
             self._store_cell(gid + cell_offset, cell)
 
     @mpi_no_errors
-    def _instantiate_cells_dry(self, _CellType=None, imported_memory_dict=None):
-        CellType = _CellType or self.CellType
+    def _instantiate_cells_dry(self, CellType, **_opts):
+        """
+        Instantiates the subset of selected cells while measuring memory taken by each metype
+
+        Args:
+            CellType: The cell type class
+            full_memory_counter: The memory counter to be updated for each metype
+        """
         assert CellType is not None, "Undefined CellType in Manager"
         Nd.execute("xopen_broadcast_ = 0")
 
         logging.info(" > Dry run on cells... (%d in Rank 0)", len(self._local_nodes))
-        logging.info("Memory usage for newly instantiated metype combinations:")
         cell_offset = self._local_nodes.offset
-
         gid_info_items = self._local_nodes.items()
 
-        prev_etype = None
-        prev_mtype = None
-        start_memory = get_mem_usage()
-        n_cells = 0
+        prev_metype = None
+        prev_memory = get_mem_usage_kb()
+        metype_n_cells = 0
         memory_dict = {}
 
-        filtered_gid_info_items = self._filter_memory_dict(imported_memory_dict, gid_info_items)
+        def store_metype_stats(metype, n_cells):
+            nonlocal prev_memory
+            end_memory = get_mem_usage_kb()
+            memory_allocated = end_memory - prev_memory
+            log_all(logging.DEBUG, " * METype %s: %.1f KiB averaged over %d cells",
+                    metype, memory_allocated/n_cells, n_cells)
+            memory_dict[metype] = memory_allocated / n_cells
+            prev_memory = end_memory
 
-        for gid, cell_info in filtered_gid_info_items:
-            diff_mtype = prev_mtype != cell_info.mtype
-            diff_etype = prev_etype != cell_info.etype
-            first = prev_etype is None and prev_mtype is None
-            if (diff_mtype or diff_etype) and not first:
-                end_memory = get_mem_usage()
-                memory_allocated = end_memory - start_memory
-                log_all(logging.INFO, " * %s %s: %.2f MB averaged over %d cells",
-                        prev_etype, prev_mtype, memory_allocated/n_cells, n_cells)
-                memory_dict[(prev_etype, prev_mtype)] = memory_allocated/n_cells
-                start_memory = end_memory
-                n_cells = 0
+        for gid, cell_info in gid_info_items:
+            metype = f"{cell_info.mtype}-{cell_info.etype}"
+            if prev_metype is not None and metype != prev_metype:
+                store_metype_stats(prev_metype, metype_n_cells)
+                metype_n_cells = 0
 
             cell = CellType(gid, cell_info, self._circuit_conf)
             self._store_cell(gid + cell_offset, cell)
+            prev_metype = metype
+            metype_n_cells += 1
 
-            prev_etype = cell_info.etype
-            prev_mtype = cell_info.mtype
-            n_cells += 1
-
-        if prev_etype is not None and prev_mtype is not None:
-            end_memory = get_mem_usage()
-            memory_allocated = end_memory - start_memory
-            log_all(logging.INFO, " * %s %s: %f MB averaged over %d cells",
-                    prev_etype, prev_mtype, memory_allocated/n_cells, n_cells)
-            memory_dict[(prev_etype, prev_mtype)] = memory_allocated/n_cells
-
-        if imported_memory_dict is not None:
-            memory_dict.update(imported_memory_dict)
+        if prev_metype is not None:
+            store_metype_stats(prev_metype, metype_n_cells)
 
         return memory_dict
-
-    def _filter_memory_dict(self, imported_memory_dict, gid_info_items):
-        if imported_memory_dict is not None:
-            filtered_gid_info_items = (
-                (gid, cell_info)
-                for gid, cell_info in gid_info_items
-                if (cell_info.etype, cell_info.mtype) not in imported_memory_dict
-            )
-        else:
-            filtered_gid_info_items = gid_info_items
-
-        return filtered_gid_info_items
 
     def _update_targets_local_gids(self):
         logging.info(" > Updating targets")
@@ -582,20 +561,31 @@ class CellDistributor(CellManagerBase):
         log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader.__name__)
         return super().load_nodes(load_balancer, _loader=loader, loader_opts=loader_opts)
 
-    def _instantiate_cells(self, imported_memory_dict, *_):
+    def _instantiate_cells(self, dry_run_dicts=None, **opts):
+        """
+        Instantiates cells, honouring dry_run if provided
+
+        Args:
+            dry_run_dicts: Do a dry-run and update the inner dicts accordingly
+        """
         if self.CellType is not NotImplemented:
             return super()._instantiate_cells(self.CellType)
         conf = self._circuit_conf
         CellType = Cell_V5 if self._is_v5_circuit else Cell_V6
         if conf.MorphologyType:
             CellType.morpho_extension = conf.MorphologyType
+
         log_verbose("Loading metypes from: %s", conf.METypePath)
         log_verbose("Loading '%s' morphologies from: %s",
                     CellType.morpho_extension, conf.MorphologyPath)
-        if SimConfig.dry_run:
-            return super()._instantiate_cells_dry(CellType, imported_memory_dict)
+        if dry_run_dicts is None:
+            super()._instantiate_cells(CellType, **opts)
         else:
-            super()._instantiate_cells(CellType)
+            (full_memory_dict, cell_counts) = dry_run_dicts
+            memory_dict = self._instantiate_cells_dry(CellType, **opts)
+            log_verbose("Updating global dry-run memory counters with %d items", len(memory_dict))
+            full_memory_dict.update(memory_dict)
+            cell_counts += self._metype_counts
 
 
 class LoadBalance:

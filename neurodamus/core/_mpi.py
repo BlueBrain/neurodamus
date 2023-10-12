@@ -83,6 +83,30 @@ class _MPI(object):
         self._init_pc()
         return getattr(self._pc, name)
 
+    def py_sum(self, local_counter, aggregated_object):
+        """
+        An MPI function which gathers all local objects to rank 0 and sums them
+        This is best suited for non-pod python objects which support sum, like `Counter`
+        """
+        all_counters = [local_counter] + [None] * (MPI.size - 1)  # send to rank0
+        all_counters = self.pc.py_alltoall(all_counters)
+        if MPI.rank == 0:
+            for counter in all_counters:
+                aggregated_object += counter
+        return aggregated_object
+
+    def py_reduce(self, local_counter, aggregated_object, reduce_f):
+        """
+        An MPI function which gathers all local objects to rank 0 and reduces them according to a
+        reducing function. This is best suited for non-pod Python objects
+        """
+        all_objects = [local_counter] + [None] * (MPI.size - 1)  # send to rank0
+        all_objects = self.pc.py_alltoall(all_objects)
+        if MPI.rank == 0:
+            for obj in all_objects:
+                reduce_f(aggregated_object, obj)
+        return aggregated_object
+
 
 MPI = _MPI()
 """A singleton of MPI runtime information"""

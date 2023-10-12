@@ -100,7 +100,7 @@ def print_node_level_mem_usage():
 
 def get_task_level_mem_usage():
     """Return statistics of the memory usage per MPI task."""
-    usage_mb = get_mem_usage()
+    usage_mb = get_mem_usage_kb() / 1024
 
     min_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MIN)
     max_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MAX)
@@ -134,15 +134,15 @@ def print_mem_usage():
     print_task_level_mem_usage()
 
 
-def get_mem_usage():
+def get_mem_usage_kb():
     """
-    Return memory usage information across all ranks.
+    Return memory usage information across all ranks, in KiloBytes
     """
     with open("/proc/self/statm") as fd:
         _, data_size, _ = fd.read().split(maxsplit=2)
-    usage_mb = float(data_size) * os.sysconf("SC_PAGE_SIZE") / 1024 ** 2
+    usage_kb = float(data_size) * os.sysconf("SC_PAGE_SIZE") / 1024
 
-    return usage_mb
+    return usage_kb
 
 
 def pretty_printing_memory_mb(memory_mb):
@@ -178,14 +178,10 @@ class SynapseMemoryUsage:
 
 
 def export_memory_usage_to_json(memory_usage_dict, json_file_name):
-    # serialize dictionary keys since dump wont accept tuples as keys
-    memory_usage_dict = {str(k): v for k, v in memory_usage_dict.items()}
     with open(json_file_name, 'w') as fp:
         json.dump(memory_usage_dict, fp, sort_keys=True, indent=4)
 
 
 def import_memory_usage_from_json(json_file_name):
     with open(json_file_name, 'r') as fp:
-        memory_usage_dict = json.load(fp)
-    memory_usage_dict = {eval(k): v for k, v in memory_usage_dict.items()}
-    return memory_usage_dict
+        return json.load(fp)
