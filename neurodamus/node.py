@@ -976,6 +976,7 @@ class Node:
         rep_type = rep_conf["Type"]
         start_time = rep_conf["StartTime"]
         end_time = rep_conf.get("EndTime", sim_end)
+        rep_dt = rep_conf["Dt"]
         rep_format = rep_conf["Format"]
 
         lfp_disabled = not self._circuits.global_manager._lfp_manager._lfp_file
@@ -983,7 +984,7 @@ class Node:
             logging.error("LFP reports are disabled. Electrodes file might be missing"
                           " or simulator is not set to CoreNEURON")
             return None
-        logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
+        logging.info(" * %s (Type: %s, Target: %s, Dt: %f)", rep_name, rep_type, rep_conf["Target"], rep_dt)
 
         if rep_format != "SONATA":
             if MPI.rank == 0:
@@ -1002,7 +1003,7 @@ class Node:
                                 end_time, start_time)
             return None
 
-        if (rep_dt := rep_conf["Dt"]) < Nd.dt:
+        if rep_dt < Nd.dt:
             if MPI.rank == 0:
                 logging.error("Invalid report dt %f < %f simulation dt", rep_dt, Nd.dt)
             return None
