@@ -60,7 +60,6 @@ def test_v5_sonata_config():
     nd = Neurodamus(config_file, disable_reports=True)
     nd.run()
 
-
     spike_gids = np.array([
         68855, 69877, 64935, 66068, 63698, 67666, 68223, 65915,
         62945, 63256, 69530, 64861, 68532, 66105, 64163, 68855,
