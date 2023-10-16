@@ -67,9 +67,7 @@ class LFPManager:
         if self._lfp_file:
             try:
                 population_name, node_id = self.get_sonata_node_id(gid, population_info)
-                print("node_id: ", node_id, flush=True)
                 subset_data = self.get_node_id_subsets(node_id, population_name)
-                print("size sections: ", len(subset_data), flush=True)
                 for electrode_factors in subset_data:
                     scalar_factors.append(Nd.Vector(electrode_factors))
             except (KeyError, IndexError) as e:
@@ -86,7 +84,6 @@ class LFPManager:
                 population_name, node_id = self.get_sonata_node_id(gid, population_info)
                 subset_data = self.get_node_id_subsets(node_id, population_name)
                 num_electrodes = subset_data.shape[1]
-                print("electrodes: ", num_electrodes, flush=True)
             except (KeyError, IndexError) as e:
                 logging.warning("Node id {} not found in the electrodes file for population {}: {}"
                                 .format(node_id, population_name, str(e)))
