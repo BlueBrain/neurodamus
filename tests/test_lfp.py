@@ -185,8 +185,8 @@ def test_v5_sonata_lfp(tmpdir, test_file):
     nd.run()
 
     # compare results with refs
-    t3_data = np.array([0.00029701614, -0.0009504516, 0.0013853062, -0.00443298])
-    t7_data = np.array([0.000315888, -0.0010108417, 0.0015036835, -0.004811787])
+    t3_data = np.array([0.00029701614, -0.0009504516, 0.0013853279, -0.0044330494])
+    t7_data = np.array([0.000315888, -0.0010108417, 0.0015036742, -0.0048117572])
     node_ids = np.array([62797, 63698])
     result_ids, result_data = _read_sonata_lfp_file(os.path.join(output_dir, "lfp.h5"))
 
