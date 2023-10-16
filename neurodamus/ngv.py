@@ -387,7 +387,7 @@ class NeuroGliaConnManager(ConnectionManagerBase):
         Netcon ids are directly the synapse id (hence we are limited in number space)
         """
         pc = Nd.pc
-        syn_gid_base = 1_000_000  # Below 1M is reserved for cell ids
+        syn_gid_base = 10_000_000  # Below 1M is reserved for cell ids
         total_created = 0
 
         for conn in base_manager.all_connections():
