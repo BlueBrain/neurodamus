@@ -57,10 +57,62 @@ def split_round_robin(all_gids, stride=1, stride_offset=0, total_cells=None):
         gidvec = all_gids[stride_offset::stride] if stride > 1 else all_gids
         gidvec.sort()
     else:
-        assert total_cells, "split_round_robin: total_cells required without gids"
+        assert total_cells is not None, "split_round_robin: total_cells required without gids"
         cell_i = stride_offset + 1  # gids start from 1
         gidvec = np.arange(cell_i, total_cells + 1, stride, dtype="uint32")
     return gidvec
+
+
+def fair_chunk(n_chunks, k_chunk, n_elements):
+    """Start and past-the-end index of a fair chunk.
+
+    "Fair chunks" are intervals of indexes of nearly equal size. The size
+    differs by at most one and the length of the interval monotonically
+    decreases in `k_chunk`. Meaning the first few might be one larger that the
+    rest.
+
+    Note, that `i_end - i_begin` is the number of indexes in the chunk; and
+    it spans `i = i_begin, ..., i_end - 1` (inclusively).
+    """
+    # This is slightly too small in general:
+    chunk_size = n_elements // n_chunks
+
+    # The first `n_large_chunks` are one larger than the rest.
+    n_large_chunks = n_elements % n_chunks
+
+    i_begin = k_chunk * chunk_size + min(k_chunk, n_large_chunks)
+    i_end = i_begin + chunk_size + (1 if k_chunk < n_large_chunks else 0)
+    i_end = min(i_end, n_elements)
+
+    return i_begin, i_end
+
+
+def split_fair_chunks(all_gids, n_chunks=1, k_chunk=0, total_cells=None):
+    """Returns a numpy array of GIDs.
+
+    The array of GIDs is either `all_gids` or implicitely defined via
+    `total_cells`. This list (if needed) is sorted and then split into
+    contiguous parts of (nearly) equal size.
+
+    Note that the function, like `split_round_robin`, might modify its input and
+    might return a slice of `all_gids` or a new array.
+    """
+
+    if all_gids is not None:
+        if n_chunks == 1:
+            return all_gids
+
+        n_elements = len(all_gids)
+        i_begin, i_end = fair_chunk(n_chunks, k_chunk, n_elements)
+
+        all_gids.sort()
+        return all_gids[i_begin:i_end]
+
+    else:
+        assert total_cells is not None, "split_fair_chunks: total_cells required without gids."
+
+        i_begin, i_end = fair_chunk(n_chunks, k_chunk, total_cells)
+        return np.arange(i_begin, i_end, dtype="uint32")
 
 
 def dry_run_distribution(gid_metype_bundle, stride=1, stride_offset=0, total_cells=None):
@@ -175,7 +227,8 @@ def _load_mvd3_h5py(circuit_conf, all_gids, stride=1, stride_offset=0):
     mecombo_ds = mvd["/cells/properties/me_combo"]
     total_mvd_cells = len(mecombo_ds)
 
-    gidvec = split_round_robin(all_gids, stride, stride_offset, total_mvd_cells)
+    # gidvec = split_round_robin(all_gids, stride, stride_offset, total_mvd_cells)
+    gidvec = split_fair_chunks(all_gids, stride, stride_offset, total_mvd_cells)
 
     if not len(gidvec):
         # Not enough cells to give this rank a few
@@ -230,9 +283,9 @@ def load_nodes_mvd3(circuit_conf, all_gids, stride=1, stride_offset=0):
 
     if SimConfig.dry_run:
         raise Exception("Dry run is not supported for MVD3")
-    else:
-        gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
 
+    # gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
+    gidvec = split_fair_chunks(all_gids, stride, stride_offset, total_cells)
     if not len(gidvec):
         # Not enough cells to give this rank a few
         return gidvec, METypeManager(), total_cells
@@ -293,8 +346,8 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
             gid_metype_bundle = list(metype_gids.values())
             gidvec = dry_run_distribution(gid_metype_bundle, stride, stride_offset, total_cells)
         else:
-            gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
-
+            # gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
+            gidvec = split_fair_chunks(all_gids, stride, stride_offset, total_cells)
         if not len(gidvec):
             # Not enough cells to give this rank a few
             return gidvec, meinfos, total_cells
