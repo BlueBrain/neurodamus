@@ -166,6 +166,7 @@ class SonataConfig:
         # "OutputRoot" and "SpikesFile" will be read from self._sim_conf.output
         # once libsonata resolves the manifest info
         parsed_run["OutputRoot"] = self._sim_conf.output.output_dir
+        parsed_run["config_node_sets_file"] = self.circuits.node_sets_path
         parsed_run["TargetFile"] = self.circuits.node_sets_path
         parsed_run["SpikesFile"] = self._sim_conf.output.spikes_file
         parsed_run["SpikesSortOrder"] = self._sim_conf.output.spikes_sort_order.name
