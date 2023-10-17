@@ -547,7 +547,6 @@ class CellDistributor(CellManagerBase):
         cell_requirements = all_cell_requirements.get(self._population_name) or (
             self.is_default and all_cell_requirements.get(None)
         )
-
         if self._node_format == NodeFormat.SONATA:
             loader = cell_readers.load_sonata
             loader_opts["node_population"] = self._population_name  # mandatory in Sonata

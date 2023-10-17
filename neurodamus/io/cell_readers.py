@@ -487,7 +487,6 @@ def _retrieve_unique_metypes(node_reader, all_gids, skip_metypes=()) -> dict:
     Returns:
         list of lists of unique mtype+emodel combinations
     """
-    LIMIT = None
     gidvec = np.array(all_gids)
     indexes = gidvec - 1
     if len(indexes) < 10:  # Ensure array is not too small (pybind11 #1392)
@@ -517,10 +516,7 @@ def _retrieve_unique_metypes(node_reader, all_gids, skip_metypes=()) -> dict:
     gid_metype_instantiate = {}
     for metype, gid_list in gids_per_metype.items():
         if metype not in skip_metypes:
-            if LIMIT:
-                gid_metype_instantiate[metype] = np.array(gid_list[:50], dtype="uint32")
-            else:
-                gid_metype_instantiate[metype] = np.array(gid_list, dtype="uint32")
+            gid_metype_instantiate[metype] = np.array(gid_list, dtype="uint32")
         else:
             log_verbose("Skipping METype '%s' since it's already known", metype)
 
