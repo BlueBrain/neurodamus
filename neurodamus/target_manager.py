@@ -104,7 +104,7 @@ class TargetManager:
 
     @classmethod
     def _init_nodesets(cls, run_conf):
-        config_nodeset_file = run_conf.get("TargetFileBase", None)
+        config_nodeset_file = run_conf.get("config_node_sets_file", None)
         simulation_nodesets_file = run_conf.get("node_sets_file")
         if not simulation_nodesets_file and "TargetFile" in run_conf:
             target_file = run_conf["TargetFile"]
