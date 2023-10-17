@@ -49,7 +49,7 @@ class ACellManager(CellManagerBase):
     _node_format = "fake"
 
     @staticmethod
-    def _node_loader(circuit_conf, gidvec, stride=1, stride_offset=0):
+    def _node_loader(circuit_conf, gidvec, stride=1, stride_offset=0, **_kw):
         logging.info(" * HELLO from loading ACELL info")
         total_cells = 50
 

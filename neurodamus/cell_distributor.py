@@ -542,7 +542,7 @@ class CellDistributor(CellManagerBase):
     def load_nodes(self, load_balancer=None, **kw):
         """gets gids from target, splits and returns a GidSet with all metadata
         """
-        loader_opts = kw.pop("loader_opts", {})
+        loader_opts = kw.pop("loader_opts", {}).copy()
         all_cell_requirements = SimConfig.cell_requirements
         cell_requirements = all_cell_requirements.get(self._population_name) or (
             self.is_default and all_cell_requirements.get(None)
