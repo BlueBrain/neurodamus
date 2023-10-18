@@ -752,7 +752,7 @@ class ConnectionManagerBase(object):
             else self._populations.values()
 
         # temporary set for faster lookup
-        src_gids = set(src_target.get_gids())
+        src_gids = src_target and set(src_target.get_gids())
         for population in populations:
             logging.debug("Connections from population %s", population)
             tgids = numpy.fromiter(population.target_gids(), 'uint32')
