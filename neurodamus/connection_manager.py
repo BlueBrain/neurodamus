@@ -751,6 +751,8 @@ class ConnectionManagerBase(object):
         populations: List[ConnectionSet] = (conn_population,) if conn_population is not None \
             else self._populations.values()
 
+        # temporary set for faster lookup
+        src_gids = src_target and set(src_target.get_gids())
         for population in populations:
             logging.debug("Connections from population %s", population)
             tgids = numpy.fromiter(population.target_gids(), 'uint32')
@@ -758,7 +760,7 @@ class ConnectionManagerBase(object):
             if selected_gids:
                 tgids = numpy.intersect1d(tgids, selected_gids + tgid_offset)
             for conn in population.get_connections(tgids):
-                if src_target is None or conn.sgid in src_target:
+                if src_target is None or conn.sgid in src_gids:
                     yield conn
 
     # -

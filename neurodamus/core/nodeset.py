@@ -7,8 +7,6 @@ import numpy
 from ..utils import compat, WeakList
 from . import MPI
 
-import logging
-
 
 class PopulationNodes:
     """
@@ -277,8 +275,6 @@ class SelectionNodeSet(_NodeSetBase):
         return self._size
 
     def raw_gids(self):
-        if len(self) > 1e6:
-            logging.warning("Large dataset. Consider using raw_gids_iter")
         return numpy.add(self._selection.flatten(), 1, dtype="uint32")
 
     def raw_gids_iter(self):
