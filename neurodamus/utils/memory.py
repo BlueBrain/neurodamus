@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import json
+import psutil
 
 from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
 
@@ -184,6 +185,7 @@ class DryRunStats:
         self.metype_memory = {}
         self.metype_counts = Counter()
         self.synapse_counts = Counter()
+        self.grand_total = 0
         _, _, self.base_memory, _ = get_task_level_mem_usage()
 
     @run_only_rank0
@@ -267,7 +269,37 @@ class DryRunStats:
         logging.info("| {:<40s} | {:12.1f} |".format("Cells", self.cell_memory_total))
         logging.info("| {:<40s} | {:12.1f} |".format("Synapses", self.synapse_memory_total))
         logging.info("+{:-^57}+".format(""))
-        grand_total = full_overhead + self.cell_memory_total + self.synapse_memory_total
-        grand_total = pretty_printing_memory_mb(grand_total)
+        self.grand_total = full_overhead + self.cell_memory_total + self.synapse_memory_total
+        grand_total = pretty_printing_memory_mb(self.grand_total)
         logging.info("| {:<40s} | {:>12s} |".format("GRAND TOTAL", grand_total))
         logging.info("+{:-^57}+".format(""))
+
+    def total_memory_available():
+        """
+        Returns the total memory available in the system in MB
+        """
+        try:
+            virtual_memory = psutil.virtual_memory()
+            return virtual_memory.total / (1024 * 1024)  # Total available memory in MB
+        except Exception as e:
+            logging.error(f"Error: {e}")
+            return None
+
+    @run_only_rank0
+    def display_node_suggestions(self):
+        """
+        Display suggestions for how many nodes are approximately
+        necessary to run the simulation based on the memory available
+        on the current node.
+        """
+        node_total_memory = DryRunStats.total_memory_available()
+        if node_total_memory is None:
+            logging.warning("Unable to get the total memory available on the current node.")
+            return
+        suggested_nodes = math.ceil(self.grand_total / node_total_memory)
+        logging.info(f"Based on the memory available on the current node, "
+                     f"it is suggested to use at least {suggested_nodes} node(s).")
+        logging.info("This is just a suggestion and the actual number of nodes "
+                     "needed to run the simulation may be different.")
+        logging.info(f"The calculation was based on a total memory available of "
+                     f"{pretty_printing_memory_mb(node_total_memory)} on the current node.")
