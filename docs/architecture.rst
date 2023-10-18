@@ -367,6 +367,15 @@ part in the execution, is then multiplied by the number of ranks used in the exe
 
 The final result is then printed to the user in a human readable format.
 
+Correctly Estimating Synapses
+-----------------------------
+
+While we cap the number of Cells instantiated from any given METype (default is 50), we keep
+internally the full gidvec as if we were instantiating them all.
+
+While this might seem unprudent, we leverage from the fact that dry-run does not require
+instantiating synapses, only counting. Therefore, with the full gidvec one does not have an
+estimate but a true count of the number of synapses the circuit would instantiate in a real run.
 
 Development
 ------------

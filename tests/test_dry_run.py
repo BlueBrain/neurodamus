@@ -44,12 +44,13 @@ def test_retrieve_unique_metypes():
         result_list, metype_counts = _retrieve_unique_metypes(node_reader, all_gids)
 
     # Assertion checks
-    assert isinstance(result_list, list)
-    assert all(isinstance(lst, np.ndarray) for lst in result_list)
+    assert isinstance(result_list, dict)
+    assert all(isinstance(lst, np.ndarray) for lst in result_list.values())
 
     # Check the expected output based on the test inputs
-    expected_result_list = [[1, 3, 5], [2, 4]]
-    npt.assert_equal(result_list, expected_result_list)
+    expected_result_dict = {'mtype1-emodel1': [1, 3, 5], 'mtype2-emodel2': [2, 4]}
+    for metype, gids in result_list.items():
+        npt.assert_equal(gids, expected_result_dict[metype])
     expected_metype_counts = {'mtype1-emodel1': 3, 'mtype2-emodel2': 2}
     assert metype_counts == expected_metype_counts
 

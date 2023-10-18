@@ -10,7 +10,7 @@ import math
 import os
 import subprocess
 from os import path as ospath
-from collections import Counter, namedtuple, defaultdict
+from collections import namedtuple, defaultdict
 from contextlib import contextmanager
 from shutil import copyfileobj, move
 
@@ -32,9 +32,7 @@ from .neuromodulation_manager import NeuroModulationManager
 from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
-from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
-from .utils.memory import SynapseMemoryUsage, export_memory_usage_to_json, get_task_level_mem_usage
-from .utils.memory import pretty_printing_memory_mb
+from .utils.memory import DryRunStats, trim_memory, pool_shrink, free_event_queues, print_mem_usage
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
 # Internal Plugins
@@ -105,9 +103,8 @@ class CircuitManager:
     def new_node_manager(self, circuit, target_manager, run_conf, *, load_balancer=None, **kwargs):
         if circuit.get("PopulationType") == "virtual":
             return self._new_virtual_node_manager(circuit)
-
         cell_manager = self.new_node_manager_bare(circuit, target_manager, run_conf, **kwargs)
-        cell_manager.load_nodes(load_balancer)
+        cell_manager.load_nodes(load_balancer, **kwargs)
         self.register_node_manager(cell_manager)
         return cell_manager
 
@@ -293,6 +290,7 @@ class Node:
             self._cycle_i = 0
             self._n_cycles = 1
             self._shm_enabled = False
+            self._dry_run_stats = None
         else:
             self._run_conf  # Assert this is defined (if not multicyle runs are not properly set)
 
@@ -419,11 +417,6 @@ class Node:
         """Instantiate and distributes the cells of the network.
         Any targets will be updated to know which cells are local to the cpu.
         """
-        if SimConfig.dry_run:
-            logging.info("Memory usage after inizialization:")
-            print_mem_usage()
-            _, _, self.avg_tasks_usage_mb, _ = get_task_level_mem_usage()
-
         # We wont go further if ProspectiveHosts is defined to some other cpu count
         prosp_hosts = self._run_conf.get("ProspectiveHosts")
         if load_balance and prosp_hosts not in (None, MPI.size):
@@ -432,6 +425,17 @@ class Node:
                 "To continue execution launch on a partition of that size",
                 prosp_hosts)
             Nd.quit(1)
+
+        if SimConfig.dry_run:
+            logging.info("Memory usage after inizialization:")
+            print_mem_usage()
+            self._dry_run_stats = DryRunStats()
+            # We load the memory usage rather early since it will be needed at the moment we load
+            # the cell ids. This way we can avoid gidvec from having gids of known metype cells.
+            self._dry_run_stats.try_import_cell_memory_usage()
+            loader_opts = {"dry_run_stats": self._dry_run_stats}
+        else:
+            loader_opts = {}
 
         # Check dynamic attributes required before loading cells
         SimConfig.check_cell_requirements(self.target_manager)
@@ -444,7 +448,7 @@ class Node:
         # Always create a cell_distributor even if engine is disabled.
         # Fake CoreNeuron cells are created in it
         cell_distributor = CellDistributor(self._base_circuit, self._target_manager, self._run_conf)
-        cell_distributor.load_nodes(load_balance)  # no-op if circuit is disabled
+        cell_distributor.load_nodes(load_balance, loader_opts=loader_opts)  # no-op if disabled
         self._circuits.register_node_manager(cell_distributor)
 
         # SUPPORT for extra/custom Circuits
@@ -453,7 +457,8 @@ class Node:
             if config.restrict_node_populations and name not in config.restrict_node_populations:
                 logging.warning("Skipped node population (restrict_node_populations)")
                 continue
-            self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
+            self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf,
+                                            loader_opts=loader_opts)
 
         lfp_weights_file = self._run_conf.get("LFPWeightsPath")
         if lfp_weights_file:
@@ -474,48 +479,21 @@ class Node:
         # Let the cell managers have any final say in the cell objects
         log_stage("FINALIZING CIRCUIT CELLS")
 
-        if SimConfig.dry_run:
-            # For dry run we pass in these two structures which are modified IN-PLACE
-            cell_memory_dict = SimConfig.metype_mem_usage
-            cell_counts = Counter()
-
         for cell_manager in self._circuits.all_node_managers():
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
             if SimConfig.dry_run:
-                cell_manager.finalize(dry_run_dicts=(cell_memory_dict, cell_counts))
+                cell_manager.finalize(dry_run_stats_obj=self._dry_run_stats)
             else:
                 cell_manager.finalize()
 
         if SimConfig.dry_run:
-            # We combine memory dict via update(). That means if a previous circuit computed
-            # cells for the same METype (hopefully unlikely!) the last estimate prevails.
-            metype_memory = MPI.py_reduce(cell_memory_dict, {}, lambda x, y: x.update(y))
-            self.cell_counts = cell_counts
-            if MPI.rank == 0:
-                export_memory_usage_to_json(metype_memory, "memory_usage.json")
-            self.cells_total_memory = self._calc_full_mem_estimate(metype_memory, self.cell_counts)
+            self._dry_run_stats.collect_all_mpi()
+            self._dry_run_stats.export_cell_memory_usage()
+            self._dry_run_stats.estimate_cell_memory()
 
         # Final bits after we have all cell managers
         self._circuits.global_manager.finalize()
         SimConfig.update_connection_blocks(self._circuits.alias)
-
-    @classmethod
-    @run_only_rank0
-    def _calc_full_mem_estimate(_cls, full_mem_dict, metype_counts) -> float:
-        memory_total = 0
-        log_verbose("+{:=^81}+".format(" METype Memory Estimates (KiB) "))
-        log_verbose("| {:^40s} | {:^10s} | {:^10s} | {:^10s} |".format(
-            'METype', 'Mem/cell', 'N Cells', 'Mem Total'))
-        log_verbose("+{:-^81}+".format(""))
-        for metype, count in metype_counts.items():
-            metype_mem = full_mem_dict[metype]
-            metype_total = count * full_mem_dict[metype]
-            memory_total += metype_total
-            log_verbose("| {:<40s} | {:10.1f} | {:10.0f} | {:10.1f} |".format(
-                metype, metype_mem, count, metype_total))
-        log_verbose("+{:-^81}+".format(""))
-        logging.info("  Total memory usage for cells: %.3f MiB", memory_total / 1024)
-        return memory_total
 
     # -
     @mpi_no_errors
@@ -525,11 +503,7 @@ class Node:
         """
         log_stage("LOADING CIRCUIT CONNECTIVITY")
         target_manager = self._target_manager
-        manager_kwa = {"load_offsets": self._is_ngv_run}
-
-        if SimConfig.dry_run:
-            synapse_counter = Counter()
-            manager_kwa["synapse_counter"] = synapse_counter
+        manager_kwa = {"load_offsets": self._is_ngv_run, "dry_run_stats": self._dry_run_stats}
 
         if circuit := self._base_circuit:
             self._create_synapse_manager(SynapseRuleManager, circuit, target_manager, **manager_kwa)
@@ -541,16 +515,10 @@ class Node:
 
         log_stage("Handling projections...")
         for pname, projection in SimConfig.projections.items():
-            self._load_projections(pname, projection)
+            self._load_projections(pname, projection, dry_run_stats=self._dry_run_stats)
 
         if SimConfig.dry_run:
-            self.syn_total_memory = self._collect_display_syn_counts(synapse_counter)
-            total_memory_overhead = self.avg_tasks_usage_mb*MPI.size
-            if MPI.rank == 0:
-                total_memory = self.cells_total_memory + self.syn_total_memory/1024 \
-                    + total_memory_overhead
-                logging.info("Total estimated memory usage for overhead + synapses + cells: %s",
-                             pretty_printing_memory_mb(total_memory))
+            self.syn_total_memory = self._dry_run_stats.collect_display_syn_counts()
             return
 
         log_stage("Configuring connections...")
@@ -627,7 +595,7 @@ class Node:
 
     # -
     @mpi_no_errors
-    def _load_projections(self, pname, projection):
+    def _load_projections(self, pname, projection, **kw):
         """Check for Projection blocks
         """
         target_manager = self._target_manager
@@ -667,7 +635,7 @@ class Node:
                 logging.info(" * %s (Type: %s, Src: %s, Dst: %s)", pname, ptype, src_pop, dst_pop)
                 conn_manager = self._circuits.get_create_edge_manager(
                     ptype_cls, src_pop, dst_pop, source_t,
-                    (projection, target_manager)  # args to ptype_cls if creating
+                    (projection, target_manager), **kw  # args to ptype_cls if creating
                 )
                 logging.debug("Using connection manager: %s", conn_manager)
                 proj_source = ":".join([ppath] + pop_name)
@@ -687,36 +655,6 @@ class Node:
                         for path_key in path_conf_entries
                         if self._run_conf.get(path_key)]
         return find_input_file(filepath, search_paths, alt_filename)
-
-    @staticmethod
-    def _collect_display_syn_counts(local_syn_counter):
-        master_counter = MPI.py_sum(local_syn_counter, Counter())
-
-        # Done with MPI. Use rank0 to display
-        if MPI.rank != 0:
-            return 0
-
-        logging.info(" - Estimated synapse memory usage (MB):")
-        inh_count = exc_count = 0
-        log_verbose("+{:=^68}+".format(" Synapse Count "))
-        log_verbose("| {:^40s} | {:^10s} | {:^10s} |".format("Synapse Type", "Family", "Count"))
-        log_verbose("+{:-^68}+".format(""))
-        for synapse_type, count in master_counter.items():
-            is_inh = synapse_type < 100
-            log_verbose("| {:40.0f} | {:<10s} | {:10.0f} |".format(
-                synapse_type, "INH" if is_inh else "EXC", count))
-            if is_inh:
-                inh_count += count
-            else:
-                exc_count += count
-        log_verbose("+{:-^68}+".format(""))
-
-        in_mem = SynapseMemoryUsage.get_memory_usage(inh_count, "ProbGABAAB")
-        ex_mem = SynapseMemoryUsage.get_memory_usage(exc_count, "ProbAMPANMDA")
-        logging.info(f"   - Inhibitory (MB): {in_mem/1024:.2f}")
-        logging.info(f"   - Excitatory (MB): {ex_mem/1024:.2f}")
-        logging.info(f" - TOTAL : {(in_mem + ex_mem)/1024:.2f}")
-        return in_mem + ex_mem
 
     # -
     @mpi_no_errors
@@ -2022,6 +1960,7 @@ class Neurodamus(Node):
         """
         if SimConfig.dry_run:
             log_stage("============= DRY RUN (SKIP SIMULATION) =============")
+            self._dry_run_stats.display_total()
             return
         if not SimConfig.simulate_model:
             self.sim_init()
