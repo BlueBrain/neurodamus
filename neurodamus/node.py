@@ -375,8 +375,11 @@ class Node:
         if not target.is_void():
             cell_count = target.gid_count()
             if cell_count > 100 * MPI.size:
-                logging.warning("Your simulation has a very high count of cells per CPU. "
-                                "Please consider launching it in a larger MPI cluster")
+                logging.info(f"Your simulation might be using a large number of"
+                              " cells per CPU, max = {max_gids_per_cpu}. If this"
+                              " simulation is running slowly or out of memory,"
+                              " consider launching the simulation with more MPI"
+                              " ranks.")
 
         # Check / set load balance mode
         lb_mode = LoadBalance.select_lb_mode(SimConfig, self._run_conf, target)
