@@ -475,6 +475,7 @@ def _check_params(section_name, data, required_fields,
             logging.warning("BlueConfig param value is deprecated: [%s] %s = %s"
                             % (section_name, param, val))
 
+
 @SimConfig.validator
 def _run_params(config: _SimConfig, run_conf):
     required_fields = ("Duration",)
@@ -543,6 +544,9 @@ def _make_circuit_config(config_dict, req_morphology=True):
         config_dict["MorphologyPath"] = False
     elif config_dict.get("nrnPath") == "<NONE>":
         config_dict["nrnPath"] = False
+        if config_dict.get("CellLibraryFile", "start.ncs") == "start.ncs":
+            raise ConfigurationError(
+                "ncs circuits don't support disabling connectivity with nrnPath='<NONE>'")
     _validate_circuit_morphology(config_dict, req_morphology)
     _validate_file_extension(config_dict.get("CellLibraryFile"))
     _validate_file_extension(config_dict.get("nrnPath"))

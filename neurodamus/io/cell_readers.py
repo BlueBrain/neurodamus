@@ -15,6 +15,8 @@ from ..metype import METypeManager, METypeItem
 from ..utils import compat
 from ..utils.logging import log_verbose
 
+EMPTY_GIDVEC = np.empty(0, dtype="uint32")
+
 
 class CellReaderError(Exception):
     pass
@@ -95,12 +97,15 @@ def dry_run_distribution(gid_metype_bundle, stride=1, stride_offset=0, total_cel
     """
     logging.info("Dry run distribution")
 
+    if not gid_metype_bundle:
+        return EMPTY_GIDVEC
+
     # if mpi_size is 1, return all gids flattened
     if stride == 1:
-        return np.array([item for sublist in gid_metype_bundle for item in sublist])
+        return np.concatenate(gid_metype_bundle)
     else:
-        gidvec = gid_metype_bundle[stride_offset::stride]
-        return np.array([item for sublist in gidvec for item in sublist])
+        groups = gid_metype_bundle[stride_offset::stride]
+        return np.concatenate(groups) if groups else EMPTY_GIDVEC
 
 
 def load_ncs(circuit_conf, all_gids, stride=1, stride_offset=0):
@@ -248,6 +253,8 @@ def fetch_MEinfo(node_reader, gidvec, combo_file, meinfo):
     mtypes = node_reader.mtypes(indexes)
     emodels = node_reader.emodels(indexes) \
         if combo_file else None  # Rare but we may not need emodels (ngv)
+    etypes = node_reader.etypes(indexes) \
+        if combo_file else None
     exc_mini_freqs = node_reader.exc_mini_frequencies(indexes) \
         if node_reader.hasMiniFrequencies() else None
     inh_mini_freqs = node_reader.inh_mini_frequencies(indexes) \
@@ -259,12 +266,12 @@ def fetch_MEinfo(node_reader, gidvec, combo_file, meinfo):
     positions = node_reader.positions(indexes)
     rotations = node_reader.rotations(indexes) if node_reader.rotated else None
 
-    meinfo.load_infoNP(gidvec, morpho_names, emodels, mtypes, threshold_currents, holding_currents,
-                       exc_mini_freqs, inh_mini_freqs, positions, rotations)
+    meinfo.load_infoNP(gidvec, morpho_names, emodels, mtypes, etypes, threshold_currents,
+                       holding_currents, exc_mini_freqs, inh_mini_freqs, positions, rotations)
 
 
 def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
-                node_population, load_dynamic_props=(), has_extra_data=False):
+                node_population, load_dynamic_props=(), has_extra_data=False, dry_run_stats=None):
     """
     A reader supporting additional dynamic properties from Sonata files.
     """
@@ -276,21 +283,32 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
     dynamics_attr_names = node_pop.dynamics_attribute_names
 
     def load_nodes_base_info():
+        meinfos = METypeManager()
         total_cells = node_pop.size
         if SimConfig.dry_run:
             logging.info("Sonata dry run mode: looking for unique metype instances")
-            gid_metype_bundle = _retrieve_unique_metypes(node_pop, all_gids)
+            # skip_metypes = set(dry_run_stats.metype_memory.keys())
+            metype_gids, counts = _retrieve_unique_metypes(node_pop, all_gids)
+            dry_run_stats.metype_counts += counts
+            gid_metype_bundle = list(metype_gids.values())
             gidvec = dry_run_distribution(gid_metype_bundle, stride, stride_offset, total_cells)
         else:
             gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
+
         if not len(gidvec):
             # Not enough cells to give this rank a few
-            return gidvec, METypeManager(), total_cells
+            return gidvec, meinfos, total_cells
+
         node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
         morpho_names = node_pop.get_attribute("morphology", node_sel)
         mtypes = node_pop.get_attribute("mtype", node_sel)
-        emodels = [emodel.removeprefix("hoc:")
-                   for emodel in node_pop.get_attribute("model_template", node_sel)]
+        try:
+            etypes = node_pop.get_attribute("etype", node_sel)
+        except libsonata.SonataError:
+            logging.warning("etype not found in node population, setting to None")
+            etypes = None
+        _model_templates = node_pop.get_attribute("model_template", node_sel)
+        emodel_templates = [emodel.removeprefix("hoc:") for emodel in _model_templates]
         if set(["exc_mini_frequency", "inh_mini_frequency"]).issubset(attr_names):
             exc_mini_freqs = node_pop.get_attribute("exc_mini_frequency", node_sel)
             inh_mini_freqs = node_pop.get_attribute("inh_mini_frequency", node_sel)
@@ -309,13 +327,14 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         rotations = _get_rotations(node_pop, node_sel)
 
         # For Sonata and new emodel hoc template, we need additional attributes for building metype
+        # TODO: validate it's really the emodel_templates var we should pass here, or etype
         add_params_list = None if not has_extra_data \
-            else _getNeededAttributes(node_pop, circuit_conf.METypePath, emodels, gidvec-1)
+            else _getNeededAttributes(node_pop, circuit_conf.METypePath, emodel_templates, gidvec-1)
 
-        meinfos = METypeManager()
-        meinfos.load_infoNP(gidvec, morpho_names, emodels, mtypes, threshold_currents,
-                            holding_currents, exc_mini_freqs, inh_mini_freqs, positions,
-                            rotations, add_params_list)
+        meinfos.load_infoNP(gidvec, morpho_names, emodel_templates, mtypes, etypes,
+                            threshold_currents, holding_currents,
+                            exc_mini_freqs, inh_mini_freqs, positions, rotations,
+                            add_params_list)
         return gidvec, meinfos, total_cells
 
     # If dynamic properties are not specified simply return early
@@ -456,7 +475,7 @@ def _get_rotations(node_reader, selection):
 
 
 @run_only_rank0
-def _retrieve_unique_metypes(node_reader, all_gids) -> dict:
+def _retrieve_unique_metypes(node_reader, all_gids, skip_metypes=()) -> dict:
     """
     Find unique mtype+emodel combinations in target to estimate resources in dry run.
     This function returns a list of lists of unique mtype+emodel combinations.
@@ -474,28 +493,31 @@ def _retrieve_unique_metypes(node_reader, all_gids) -> dict:
         indexes = indexes.tolist()
 
     if isinstance(node_reader, libsonata.NodePopulation):
-        emodels = node_reader.get_attribute("etype", libsonata.Selection(indexes))
+        etypes = node_reader.get_attribute("etype", libsonata.Selection(indexes))
         mtypes = node_reader.get_attribute("mtype", libsonata.Selection(indexes))
     else:
         raise Exception(f"Reader type {type(node_reader)} incompatible with dry run.")
 
-    unique_metypes = defaultdict(list)
-    for gid, emodel, mtype in zip(gidvec, emodels, mtypes):
-        unique_metypes[(emodel, mtype)].append(gid)
+    gids_per_metype = defaultdict(list)
+    count_per_metype = defaultdict(int)
+    for gid, mtype, etype in zip(gidvec, mtypes, etypes):
+        metype = f"{mtype}-{etype}"
+        gids_per_metype[metype].append(gid)
+        count_per_metype[metype] += 1
 
     logging.info("Out of %d cells, found %d unique mtype+emodel combination",
-                 len(gidvec), len(unique_metypes))
-    for metype, gid_list in unique_metypes.items():
-        logging.debug("Mtype+Emodel: %-30s instances: %-8d gid: %s",
+                 len(gidvec), len(gids_per_metype))
+    for metype, gid_list in gids_per_metype.items():
+        logging.debug("METype: %-20s instances: %-8d gids: %s",
                       metype, len(gid_list), gid_list)
 
-    # For each key in unique_metypes dictionary, add the relative value to a list.
     # If the list is longer than 50, truncate it to 50 elements.
-    gid_metype_bundle = []
-    for key in unique_metypes:
-        if len(unique_metypes[key]) > 50:
-            gid_metype_bundle.append(unique_metypes[key][:50])
+    # If the metype is already computed, skip it
+    gid_metype_instantiate = {}
+    for metype, gid_list in gids_per_metype.items():
+        if metype not in skip_metypes:
+            gid_metype_instantiate[metype] = np.array(gid_list, dtype="uint32")
         else:
-            gid_metype_bundle.append(unique_metypes[key])
+            log_verbose("Skipping METype '%s' since it's already known", metype)
 
-    return gid_metype_bundle
+    return gid_metype_instantiate, count_per_metype

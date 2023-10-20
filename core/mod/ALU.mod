@@ -4,24 +4,24 @@ be added are variables of the cell in which this ALU has been instantiated.
 ENDCOMMENT
 
 NEURON {
-	THREADSAFE
-	POINT_PROCESS ALU
-	BBCOREPOINTER ptr
-	RANGE Dt
-	RANGE output
+    THREADSAFE
+    POINT_PROCESS ALU
+    BBCOREPOINTER ptr
+    RANGE Dt
+    RANGE output
 }
 
 PARAMETER {
-	Dt = .1 (ms)
-	output = 0
+    Dt = .1 (ms)
+    output = 0
 }
 
 ASSIGNED {
-	ptr
+    ptr
 }
 
 INITIAL {
-	net_send(0, 1)
+    net_send(0, 1)
 }
 
 VERBATIM
@@ -135,7 +135,11 @@ VERBATIM {
     INFOCAST;
     Info* info = (Info*)hoc_Emalloc(sizeof(Info)); hoc_malchk();
     info->psize_ = 10;
+#ifdef NRN_VERSION_GTEQ_9_0_0
+    info->ptrs_ = new handle_to_double[info->psize_]; hoc_malchk();
+#else
     info->ptrs_ = (handle_to_double*)hoc_Ecalloc(info->psize_, sizeof(handle_to_double)); hoc_malchk();
+#endif
     info->scalars_ = (double*)hoc_Ecalloc(info->psize_, sizeof(double)); hoc_malchk();
     info->np_ = 0;
     *ip = info;
@@ -154,10 +158,14 @@ ENDVERBATIM
 DESTRUCTOR {
 VERBATIM {
 #ifndef CORENEURON_BUILD
-	INFOCAST;
+    INFOCAST;
     Info* info = *ip;
-	free(info->ptrs_);
-	free(info);
+#ifdef NRN_VERSION_GTEQ_9_0_0
+    delete[] info->ptrs_;
+#else
+    free(info->ptrs_);
+#endif
+    free(info);
 #endif
 }
 ENDVERBATIM
@@ -197,11 +205,18 @@ VERBATIM {
 #ifndef CORENEURON_BUILD
     INFOCAST;
     Info* info = *ip;
-	if (info->np_ >= info->psize_) {
-		info->psize_ += 10;
-		info->ptrs_ = (handle_to_double*)hoc_Erealloc(info->ptrs_, info->psize_*sizeof(handle_to_double)); hoc_malchk();
+    if (info->np_ >= info->psize_) {
+        info->psize_ += 10;
+#ifdef NRN_VERSION_GTEQ_9_0_0
+        auto old_ptrs = info->ptrs_;
+        info->ptrs_ = new handle_to_double[info->psize_]; hoc_malchk();
+        std::copy(old_ptrs, old_ptrs+info->np_, info->ptrs_);
+        delete[] old_ptrs;
+#else
+        info->ptrs_ = (handle_to_double*)hoc_Erealloc(info->ptrs_, info->psize_*sizeof(handle_to_double)); hoc_malchk();
+#endif
         info->scalars_ = (double*) hoc_Erealloc(info->scalars_, info->psize_*sizeof(double)); hoc_malchk();
-	}
+    }
 #ifdef NRN_MECHANISM_DATA_IS_SOA
     handle_to_double var = hoc_hgetarg<double>(1);
 #else
@@ -214,7 +229,7 @@ VERBATIM {
         info->scalars_[info->np_] = 1;
     }
 
-	++info->np_;
+    ++info->np_;
     //printf("I have %d values.. (new = %g * %g)\n", info->np_, *(info->ptrs_[info->np_-1]), info->scalars_[info->np_-1] );
 #endif
 }
@@ -253,17 +268,17 @@ VERBATIM {
 #ifndef CORENEURON_BUILD
     INFOCAST;
     Info* info = *ip;
-	int i;
-	double n = 0;
-	for (i=0; i < info->np_; ++i) {
+    int i;
+    double n = 0;
+    for (i=0; i < info->np_; ++i) {
       //  printf("%f", (*info->ptrs_[i] * info->scalars_[i]) );
-		n += (*info->ptrs_[i] * info->scalars_[i]);
-	}
+        n += (*info->ptrs_[i] * info->scalars_[i]);
+    }
     //printf("\n");
-//	output = n/info->np_;
-	if (info->np_ > 0)
-	  output = n/info->np_;
-	else output = 0;
+//    output = n/info->np_;
+    if (info->np_ > 0)
+      output = n/info->np_;
+    else output = 0;
 #endif
 }
 ENDVERBATIM
@@ -278,12 +293,12 @@ PROCEDURE summation() {
 VERBATIM {
 #ifndef CORENEURON_BUILD
     INFOCAST; Info* info = *ip;
-	int i;
-	double n = 0;
-	for (i=0; i < info->np_; ++i) {
+    int i;
+    double n = 0;
+    for (i=0; i < info->np_; ++i) {
         //printf("%f = %f * %f\n", (*info->ptrs_[i] * info->scalars_[i]), *info->ptrs_[i], info->scalars_[i] );
-		n += (*info->ptrs_[i] * info->scalars_[i]);
-	}
+        n += (*info->ptrs_[i] * info->scalars_[i]);
+    }
 
     output = n;
 #endif

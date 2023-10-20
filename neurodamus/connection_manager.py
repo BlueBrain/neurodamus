@@ -5,7 +5,7 @@ from __future__ import absolute_import
 import hashlib
 import logging
 import numpy
-from collections import Counter, defaultdict
+from collections import defaultdict
 from itertools import chain
 from os import path as ospath
 from typing import List, Optional
@@ -18,7 +18,8 @@ from .connection import Connection, ReplayMode
 from .io.synapse_reader import SynapseReader
 from .target_manager import TargetManager, TargetSpec
 from .utils import compat, bin_search, dict_filter_map
-from .utils.logging import log_verbose, log_all
+from .utils.logging import VERBOSE_LOGLEVEL, log_verbose, log_all
+from .utils.memory import DryRunStats
 from .utils.timeit import timeit
 
 
@@ -274,7 +275,7 @@ class ConnectionManagerBase(object):
         self._src_target_filter = None  # filter by src target in all_connect (E.g: GapJ)
 
         # An internal var to enable collection of synapse statistics to a Counter
-        self._synapse_counter: Counter = kw.get("synapse_counter")
+        self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
 
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
@@ -322,7 +323,7 @@ class ConnectionManagerBase(object):
 
     # - override if needed
     def _open_synapse_file(self, synapse_file, pop_name, n_nrn_files=None):
-        logging.info("Opening Synapse file %s, population: %s", synapse_file, pop_name)
+        logging.debug("Opening Synapse file %s, population: %s", synapse_file, pop_name)
         return self.SynapseReader.create(
             synapse_file, self.CONNECTIONS_TYPE, pop_name,
             n_nrn_files, self._raw_gids,  # Used eventually by NRN reader
@@ -533,9 +534,10 @@ class ConnectionManagerBase(object):
             weight_factor: Factor to scale all netcon weights (default: 1)
             only_gids: Create connections only for these tgids (default: Off)
         """
-        if self._synapse_counter is not None:
+        if SimConfig.dry_run:
             counts = self._get_conn_stats(self._src_target_filter, None)
-            self._synapse_counter.update(counts)
+            log_all(VERBOSE_LOGLEVEL, "Synapse count: %d", sum(counts.values()))
+            self._dry_run_stats.synapse_counts += counts
             return
 
         conn_options = {'weight_factor': weight_factor}
@@ -573,9 +575,10 @@ class ConnectionManagerBase(object):
                           src_tname, dst_tname)
             return
 
-        if self._synapse_counter is not None:
+        if SimConfig.dry_run:
             counts = self._get_conn_stats(src_target, dst_target)
-            self._synapse_counter.update(counts)
+            log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", src_tname, dst_tname, sum(counts.values()))
+            self._dry_run_stats.synapse_counts += counts
             return
 
         for sgid, tgid, syns_params, extra_params, offset in \
@@ -748,6 +751,8 @@ class ConnectionManagerBase(object):
         populations: List[ConnectionSet] = (conn_population,) if conn_population is not None \
             else self._populations.values()
 
+        # temporary set for faster lookup
+        src_gids = src_target and set(src_target.get_gids())
         for population in populations:
             logging.debug("Connections from population %s", population)
             tgids = numpy.fromiter(population.target_gids(), 'uint32')
@@ -755,7 +760,7 @@ class ConnectionManagerBase(object):
             if selected_gids:
                 tgids = numpy.intersect1d(tgids, selected_gids + tgid_offset)
             for conn in population.get_connections(tgids):
-                if src_target is None or conn.sgid in src_target:
+                if src_target is None or conn.sgid in src_gids:
                     yield conn
 
     # -
