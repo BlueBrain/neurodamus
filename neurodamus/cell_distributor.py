@@ -239,18 +239,20 @@ class CellManagerBase(_CellManager):
         return gidvec, me_infos, total_cells, full_size
 
     def _load_nodes_balance(self, loader_f, load_balancer):
-        target_spec = self._target_spec
-        if not load_balancer.valid_load_distribution(target_spec):
-            raise RuntimeError("No valid Load Balance info could be found or derived."
-                               "Please perform a full load balance.")
+        assert RuntimeError("Load balancing is not available, use '--lb-mode=RoundRobin'.")
 
-        logging.info(" -> Distributing target '%s' using Load-Balance", target_spec.name)
-        self._binfo = load_balancer.load_balance_info(target_spec)
-        # self._binfo has gidlist, but gids can appear multiple times
-        all_gids = numpy.unique(self._binfo.gids.as_numpy().astype("uint32"))
-        total_cells = len(all_gids)
-        gidvec, me_infos, full_size = loader_f(self._circuit_conf, all_gids)
-        return gidvec, me_infos, total_cells, full_size
+        # target_spec = self._target_spec
+        # if not load_balancer.valid_load_distribution(target_spec):
+        #     raise RuntimeError("No valid Load Balance info could be found or derived."
+        #                        "Please perform a full load balance.")
+
+        # logging.info(" -> Distributing target '%s' using Load-Balance", target_spec.name)
+        # self._binfo = load_balancer.load_balance_info(target_spec)
+        # # self._binfo has gidlist, but gids can appear multiple times
+        # all_gids = numpy.unique(self._binfo.gids.as_numpy().astype("uint32"))
+        # total_cells = len(all_gids)
+        # gidvec, me_infos, full_size = loader_f(self._circuit_conf, all_gids)
+        # return gidvec, me_infos, total_cells, full_size
 
     # -
     def finalize(self, **opts):
