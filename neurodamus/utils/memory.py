@@ -1,16 +1,17 @@
 """
 Collection of utility functions related to clearing the used memory in neurodamus-py or NEURON
 """
+from collections import Counter
 import ctypes
 import ctypes.util
+import logging
 import math
 import os
+import json
 
-from ..core import MPI, NeurodamusCore as Nd
+from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
 
 import numpy as np
-
-import logging
 
 
 def trim_memory():
@@ -97,15 +98,23 @@ def print_node_level_mem_usage():
     )
 
 
-def print_task_level_mem_usage():
-    """Print statistics of the memory usage per MPI task."""
-    usage_mb = get_mem_usage()
+def get_task_level_mem_usage():
+    """Return statistics of the memory usage per MPI task."""
+    usage_mb = get_mem_usage_kb() / 1024
 
     min_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MIN)
     max_usage_mb = MPI.pc.allreduce(usage_mb, MPI.MAX)
     avg_usage_mb = MPI.pc.allreduce(usage_mb, MPI.SUM) / MPI.size
 
     dev_usage_mb = math.sqrt(MPI.pc.allreduce((usage_mb - avg_usage_mb) ** 2, MPI.SUM) / MPI.size)
+
+    return min_usage_mb, max_usage_mb, avg_usage_mb, dev_usage_mb
+
+
+def print_task_level_mem_usage():
+    """Print statistics of the memory usage per MPI task."""
+
+    min_usage_mb, max_usage_mb, avg_usage_mb, dev_usage_mb = get_task_level_mem_usage()
 
     logging.info(
         "Memusage (RSS) per task [MB]: Max=%.2lf, Min=%.2lf, Mean(Stdev)=%.2lf(%.2lf)",
@@ -125,15 +134,30 @@ def print_mem_usage():
     print_task_level_mem_usage()
 
 
-def get_mem_usage():
+def get_mem_usage_kb():
     """
-    Return memory usage information across all ranks.
+    Return memory usage information across all ranks, in KiloBytes
     """
     with open("/proc/self/statm") as fd:
         _, data_size, _ = fd.read().split(maxsplit=2)
-    usage_mb = float(data_size) * os.sysconf("SC_PAGE_SIZE") / 1024 ** 2
+    usage_kb = float(data_size) * os.sysconf("SC_PAGE_SIZE") / 1024
 
-    return usage_mb
+    return usage_kb
+
+
+def pretty_printing_memory_mb(memory_mb):
+    """
+    A simple function that given a memory usage in MB
+    returns a string with the most appropriate unit.
+    """
+    if memory_mb < 1024:
+        return "%.2lf MB" % memory_mb
+    elif memory_mb < 1024 ** 2:
+        return "%.2lf GB" % (memory_mb / 1024)
+    elif memory_mb < 1024 ** 3:
+        return "%.2lf TB" % (memory_mb / 1024 ** 2)
+    else:
+        return "%.2lf PB" % (memory_mb / 1024 ** 3)
 
 
 class SynapseMemoryUsage:
@@ -151,3 +175,99 @@ class SynapseMemoryUsage:
     @classmethod
     def get_memory_usage(cls, count, synapse_type):
         return count * cls._synapse_memory_usage[synapse_type]
+
+
+class DryRunStats:
+    _MEMORY_USAGE_FILENAME = "cell_memory_usage.json"
+
+    def __init__(self) -> None:
+        self.metype_memory = {}
+        self.metype_counts = Counter()
+        self.synapse_counts = Counter()
+        _, _, self.base_memory, _ = get_task_level_mem_usage()
+
+    @run_only_rank0
+    def estimate_cell_memory(self) -> float:
+        from .logging import log_verbose
+        memory_total = 0
+        log_verbose("+{:=^81}+".format(" METype Memory Estimates (MiB) "))
+        log_verbose("| {:^40s} | {:^10s} | {:^10s} | {:^10s} |".format(
+            'METype', 'Mem/cell', 'N Cells', 'Mem Total'))
+        log_verbose("+{:-^81}+".format(""))
+        for metype, count in self.metype_counts.items():
+            metype_mem = self.metype_memory[metype] / 1024
+            metype_total = count * metype_mem
+            memory_total += metype_total
+            log_verbose("| {:<40s} | {:10.2f} | {:10.0f} | {:10.1f} |".format(
+                metype, metype_mem, count, metype_total))
+        log_verbose("+{:-^81}+".format(""))
+        self.cell_memory_total = memory_total
+        logging.info("  Total memory usage for cells: %s", pretty_printing_memory_mb(memory_total))
+        return memory_total
+
+    def add(self, other):
+        self.metype_memory.update(other.metype_memory)
+        self.metype_counts += other.metype_counts
+
+    def collect_all_mpi(self):
+        # We combine memory dict via update(). That means if a previous circuit computed
+        # cells for the same METype (hopefully unlikely!) the last estimate prevails.
+        self.metype_memory = MPI.py_reduce(self.metype_memory, {}, lambda x, y: x.update(y))
+        self.metype_counts = self.metype_counts  # Cell counts is complete in every rank
+
+    @run_only_rank0
+    def export_cell_memory_usage(self):
+        with open(self._MEMORY_USAGE_FILENAME, 'w') as fp:
+            json.dump(self.metype_memory, fp, sort_keys=True, indent=4)
+
+    def try_import_cell_memory_usage(self):
+        if not os.path.exists(self._MEMORY_USAGE_FILENAME):
+            return
+        logging.info("Loading memory usage from %s...", self._MEMORY_USAGE_FILENAME)
+        with open(self._MEMORY_USAGE_FILENAME, 'r') as fp:
+            self.metype_memory = json.load(fp)
+
+    def collect_display_syn_counts(self):
+        master_counter = MPI.py_sum(self.synapse_counts, Counter())
+
+        # Done with MPI. Use rank0 to display
+        if MPI.rank != 0:
+            return
+
+        logging.info(" - Estimated synapse memory usage (MB):")
+        from .logging import log_verbose
+        inh_count = exc_count = 0
+        log_verbose("+{:=^68}+".format(" Synapse Count "))
+        log_verbose("| {:^40s} | {:^10s} | {:^10s} |".format("Synapse Type", "Family", "Count"))
+        log_verbose("+{:-^68}+".format(""))
+        for synapse_type, count in master_counter.items():
+            is_inh = synapse_type < 100
+            log_verbose("| {:40.0f} | {:<10s} | {:10.0f} |".format(
+                synapse_type, "INH" if is_inh else "EXC", count))
+            if is_inh:
+                inh_count += count
+            else:
+                exc_count += count
+        log_verbose("+{:-^68}+".format(""))
+
+        in_mem = SynapseMemoryUsage.get_memory_usage(inh_count, "ProbGABAAB") / 1024
+        ex_mem = SynapseMemoryUsage.get_memory_usage(exc_count, "ProbAMPANMDA") / 1024
+        self.synapse_memory_total = in_mem + ex_mem
+        logging.info("   - Inhibitory: %s", pretty_printing_memory_mb(in_mem))
+        logging.info("   - Excitatory: %s", pretty_printing_memory_mb(ex_mem))
+        logging.info(" - TOTAL : %s", pretty_printing_memory_mb(self.synapse_memory_total))
+
+    @run_only_rank0
+    def display_total(self):
+        logging.info("+{:=^57}+".format(" Total Memory Estimates "))
+        logging.info("| {:^40s} | {:^12s} |".format("Item", "Memory (MiB)"))
+        logging.info("+{:-^57}+".format(""))
+        full_overhead = self.base_memory * MPI.size
+        logging.info("| {:<40s} | {:12.1f} |".format(f"Overhead (ranks={MPI.size})", full_overhead))
+        logging.info("| {:<40s} | {:12.1f} |".format("Cells", self.cell_memory_total))
+        logging.info("| {:<40s} | {:12.1f} |".format("Synapses", self.synapse_memory_total))
+        logging.info("+{:-^57}+".format(""))
+        grand_total = full_overhead + self.cell_memory_total + self.synapse_memory_total
+        grand_total = pretty_printing_memory_mb(grand_total)
+        logging.info("| {:<40s} | {:>12s} |".format("GRAND TOTAL", grand_total))
+        logging.info("+{:-^57}+".format(""))

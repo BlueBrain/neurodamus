@@ -87,20 +87,27 @@ In order to obtain a more accurate estimation of the resources needed for a simu
 users can also run Neurodamus in dry run mode. This functionality is only available
 for libsonata circuits. MVD3 circuits are not supported.
 
-This mode will instantiate all the cells but won't run the actual simulation.
-The user can then check the memory usage of the simulation as it's printed on
-the terminal and decide how to proceed.
+This mode will partially instantiate cells and synapses to get a statistical overview
+of the memory used but won't run the actual simulation.
+The user can then check the estimated memory usage of the simulation as it's printed on
+the terminal at the end of the execution. In a future update we will also integrate
+indications and suggestions on the number of tasks and nodes to use for that circuit
+based on the amount of memory used during the dry run.
 
-The mode also provides detailed information on the memory usage of each cell type
-and the total memory usage of the simulation.
+The mode also provides detailed information on the memory usage of each cell metype,
+synapse type and the total estimated memory usage of the simulation, including the
+memory overhead dictated by loading of libraries and data structures.
+
+The information on the cell memory usage is also automatically saved in a file called
+``memory_usage.json`` in the working directory. This json file contains a
+dictionary with the memory usage of each cell metype in the circuit and is automatically
+loaded in any further execution of Neurodamus in dry run mode, in order to speed up the execution.
+In future we plan to also use this file to improve the load balance of actual simulations.
 
 To run Neurodamus in dry run mode, the user can use the ``--dry-run`` flag when launching
 Neurodamus. For example:
 
 ``neurodamus --configFile=BlueConfig --dry-run``
-
-At the moment dry run mode only supports memory estimation for cell instantiation. Evaluation
-of other resources (e.g. connections) will be added in the future. 
 
 
 Neurodamus for Developers

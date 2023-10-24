@@ -8,13 +8,14 @@ include:
       - /ci/jobs/publish-docs.yml
   - project: hpc/gitlab-upload-logs
     file: enable-upload.yml
+  - project: cs/gitlabci-templates
+    file: /build-image-using-buildah.yml
 
 workflow:
   rules:
     - if: '$CI_EXTERNAL_PULL_REQUEST_IID'
-    # re-define because the imported rules will be ignored
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-    - if: $CI_PIPELINE_SOURCE == "web"  # run for manually started pipelines from -/pipelines/new
+    - if: $CI_PIPELINE_SOURCE == "web"
 
 variables:
   BLUECONFIGS_BRANCH:
@@ -66,6 +67,129 @@ blueconfig_tests:
     - when: manual
       allow_failure: true
 
+configure-docker-image:
+  image: ubuntu:22.04
+  stage: build
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - set -x
+    - apt-get update -y
+    - apt-get install -y git skopeo python3
+    - |
+      echo "Getting package version and checking whether we need to build the container"
+      PACKAGE_VERSION=$(git describe --tags)
+      REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
+      set +e
+      skopeo inspect docker://bluebrain/neurodamus:${REGISTRY_IMAGE_TAG}
+      if [[ $? -eq 0 ]]; then
+        echo "Container with version ${REGISTRY_IMAGE_TAG} already exists - not rebuilding"
+        BUILD_DOCKER_CONTAINER="false"
+      else
+        echo "Container with version ${REGISTRY_IMAGE_TAG} does not exist yet - building"
+        BUILD_DOCKER_CONTAINER="true"
+      fi
+      set -e
+    - |
+      echo "Getting dependency versions from spack"
+      git clone https://github.com/bluebrain/spack
+      cd spack
+      source ./share/spack/setup-env.sh
+      LIBSONATAREPORT_TAG=$(spack info libsonata-report | awk 'matched{print $NF;matched=0} /Preferred/{matched=1}')
+      LIBSONATA_TAG=v$(spack info py-libsonata | awk 'matched{print $1;matched=0} /Preferred/{matched=1}')
+      NEURON_COMMIT_ID=$(spack info neuron | awk 'matched{print $NF;matched=0} /Preferred/{matched=1}')
+      cd ..
+    - |
+      cat <<EOF > build.env
+      REGISTRY_IMAGE_TAG=$REGISTRY_IMAGE_TAG
+      BUILD_DOCKER_CONTAINER=$BUILD_DOCKER_CONTAINER
+      LIBSONATAREPORT_TAG=${LIBSONATAREPORT_TAG}
+      LIBSONATA_TAG=${LIBSONATA_TAG}
+      NEURON_COMMIT_ID=${NEURON_COMMIT_ID}
+      EOF
+    - cat build.env
+  artifacts:
+    when: always
+    paths: [build.env]
+    reports:
+      dotenv: build.env
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+build-docker-image:
+  timeout: 2h
+  needs: [configure-docker-image]
+  stage: build
+  extends: .build-image-using-buildah
+  variables:
+    BUILD_PATH: $CI_PROJECT_DIR/docker
+    KUBERNETES_CPU_LIMIT: 8
+    KUBERNETES_CPU_REQUEST: 8
+    KUBERNETES_MEMORY_LIMIT: 8Gi
+    KUBERNETES_MEMORY_REQUEST: 8Gi
+    BUILDAH_EXTRA_ARGS:
+      --label org.opencontainers.image.title="neurodamus"
+      --label org.opencontainers.image.version="$REGISTRY_IMAGE_TAG"
+      --label org.opencontainers.image.revision="$CI_COMMIT_SHA"
+      --label org.opencontainers.image.authors="$GITLAB_USER_NAME <$GITLAB_USER_EMAIL>"
+      --label org.opencontainers.image.url="$CI_PROJECT_URL"
+      --label org.opencontainers.image.source="$CI_PROJECT_URL"
+      --label org.opencontainers.image.created="$CI_JOB_STARTED_AT"
+      --label ch.epfl.bbpgitlab.ci-pipeline-url="$CI_PIPELINE_URL"
+      --label ch.epfl.bbpgitlab.ci-commit-branch="$CI_COMMIT_BRANCH"
+      --build-arg GITLAB_CI="$GITLAB_CI"
+      --build-arg CI_JOB_TOKEN="$CI_JOB_TOKEN"
+      --build-arg LIBSONATAREPORT_TAG="$LIBSONATAREPORT_TAG"
+      --build-arg LIBSONATA_TAG="$LIBSONATA_TAG"
+      --build-arg NEURON_COMMIT_ID="$NEURON_COMMIT_ID"
+  before_script:
+    - set -x
+    - if [ "$BUILD_DOCKER_CONTAINER" == "false" ]; then
+    -   echo "No need to build the docker container"
+    -   exit 0
+    - else
+    -   echo "Building"
+    - fi
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+upload-to-docker-hub:
+  image: ubuntu:22.04
+  stage: publish
+  variables:
+    KUBERNETES_CPU_LIMIT: 4
+    KUBERNETES_CPU_REQUEST: 2
+    KUBERNETES_MEMORY_LIMIT: 8Gi
+    KUBERNETES_MEMORY_REQUEST: 2Gi
+  needs: [configure-docker-image, build-docker-image]
+  before_script:
+    - if [ "$BUILD_DOCKER_CONTAINER" == "false" ]; then
+    -   echo "No need to build the docker container"
+    -   exit 0
+    - else
+    -   echo "Building"
+    - fi
+  script:
+    - apt-get update && apt-get install -y jq curl podman
+    - export HUB_REPO_NAME="neurodamus"
+    - |
+      TOKEN=$(curl -s --header "Content-Type:application/json" --request POST --data "{\"username\":\"${DOCKER_HUB_USER}\", \"password\":\"${DOCKER_HUB_AUTH_TOKEN}\"}" https://hub.docker.com/v2/users/login/ | jq -r .token)
+    - echo "Pushing to docker hub repo docker://docker.io/bluebrain/${HUB_REPO_NAME}"
+    - podman login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY_IMAGE}
+    - podman login -u ${DOCKER_HUB_USER} -p ${DOCKER_HUB_AUTH_TOKEN} docker.io
+    - podman pull ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG}
+    - echo podman push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
+    - curl -s --header "Content-Type:application/json" --header "Authorization:JWT ${TOKEN}" -X DELETE "https://hub.docker.com/v2/repositories/bluebrain/neurodamus/tags/latest/"
+    - podman --log-level=debug push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:${REGISTRY_IMAGE_TAG}
+    - podman --log-level=debug push ${CI_REGISTRY_IMAGE}:${REGISTRY_IMAGE_TAG} docker://docker.io/bluebrain/${HUB_REPO_NAME}:latest
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+
+
 # The following stages are overrides. Don't rename
 # Always add the manual option to create sdist/wheel or upload
 build-package:
@@ -80,6 +204,7 @@ publish-package:
 docs:
   variables:
     TOXENV: docs
+    GIT_DEPTH: 0
   artifacts:
     paths:
       - docs/_build

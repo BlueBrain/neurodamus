@@ -2,6 +2,19 @@
 Change Log
 ==========
 
+Version 2.16.4
+==============
+**9 Oct 2023**
+
+*New Features*
+  * [BBPBGLIB-556] Full estimate of memory consumption (#32)
+*Bug Fixes*
+  * [BBPBGLIB-1042] GapJunctionManager: filter source target by population (#42)
+  * [BBPBGLIB-1061] SONATA conf: Dont map to internal connectivity
+*Improvements*
+  * Modernize ALU (#48)
+  * [HPCTM-1793] Add a Dockerfile for building Neurodamus
+
 Version 2.16.3
 ==============
 **21 Sep 2023**

@@ -144,7 +144,7 @@ class Cell_V6(METype):
         mepath = circuit_conf.METypePath
         morpho_path = circuit_conf.MorphologyPath
         detailed_axon = circuit_conf.DetailedAxon
-        super().__init__(gid, mepath, meinfo.emodel, morpho_path, meinfo, detailed_axon)
+        super().__init__(gid, mepath, meinfo.emodel_tpl, morpho_path, meinfo, detailed_axon)
 
     def _instantiate_cell(self, gid, etype_path, emodel, morpho_path, meinfos_v6, detailed_axon):
         """Instantiates a SSCx v6 cell
@@ -194,7 +194,7 @@ class Cell_V5(METype):
         mepath = circuit_conf.METypePath
         morpho_path = circuit_conf.MorphologyPath
         if isinstance(meinfo, METypeItem):
-            meinfo = meinfo.emodel  # Compat with loading V5 cells from Sonata Nodes
+            meinfo = meinfo.emodel_tpl  # Compat with loading V5 cells from Sonata Nodes
         melabel = self._load_template(meinfo, mepath)
         super().__init__(gid, mepath, melabel, morpho_path)
 
@@ -278,13 +278,13 @@ class EmptyCell(BaseCell):
 class METypeItem(object):
     """ Metadata about an METype, each possibly used by several cells.
     """
-    __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel", "combo_name",
+    __slots__ = ("morph_name", "layer", "fullmtype", "etype", "emodel_tpl", "combo_name",
                  "mtype", "threshold_current", "holding_current",
                  "exc_mini_frequency", "inh_mini_frequency", "add_params",
                  "local_to_global_matrix",
                  "extra_attrs")
 
-    def __init__(self, morph_name, layer=None, fullmtype=None, etype=None, emodel=None,
+    def __init__(self, morph_name, layer=None, fullmtype=None, etype=None, emodel_tpl=None,
                  combo_name=None, mtype=None, threshold_current=0, holding_current=0,
                  exc_mini_frequency=0, inh_mini_frequency=0, add_params=None,
                  position=None, rotation=None, scale=1.0):
@@ -292,7 +292,7 @@ class METypeItem(object):
         self.layer = layer
         self.fullmtype = fullmtype
         self.etype = etype
-        self.emodel = emodel
+        self.emodel_tpl = emodel_tpl
         self.combo_name = combo_name
         self.mtype = mtype
         self.threshold_current = float(threshold_current)
@@ -346,7 +346,7 @@ class METypeManager(dict):
         """
         self[int(gid)] = METypeItem(morph_name, *me_data, **kwargs)
 
-    def load_infoNP(self, gidvec, morph_list, emodels, mtypes,
+    def load_infoNP(self, gidvec, morph_list, model_templates, mtypes, etypes,
                     threshold_currents=None, holding_currents=None,
                     exc_mini_freqs=None, inh_mini_freqs=None,
                     positions=None, rotations=None,
@@ -364,7 +364,8 @@ class METypeManager(dict):
             add_params = add_params_list[idx] if add_params_list is not None else None
             self[int(gid)] = METypeItem(
                 morph_list[idx],
-                emodel=emodels and emodels[idx],
+                etype=etypes[idx] if etypes is not None else None,
+                emodel_tpl=model_templates and model_templates[idx],
                 mtype=mtype,  # TODO: check this
                 threshold_current=th_current,
                 holding_current=hd_current,

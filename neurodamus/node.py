@@ -10,7 +10,7 @@ import math
 import os
 import subprocess
 from os import path as ospath
-from collections import Counter, namedtuple, defaultdict
+from collections import namedtuple, defaultdict
 from contextlib import contextmanager
 from shutil import copyfileobj, move
 
@@ -32,8 +32,7 @@ from .neuromodulation_manager import NeuroModulationManager
 from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
-from .utils.memory import trim_memory, pool_shrink, free_event_queues, print_mem_usage
-from .utils.memory import SynapseMemoryUsage
+from .utils.memory import DryRunStats, trim_memory, pool_shrink, free_event_queues, print_mem_usage
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
 # Internal Plugins
@@ -104,9 +103,8 @@ class CircuitManager:
     def new_node_manager(self, circuit, target_manager, run_conf, *, load_balancer=None, **kwargs):
         if circuit.get("PopulationType") == "virtual":
             return self._new_virtual_node_manager(circuit)
-
         cell_manager = self.new_node_manager_bare(circuit, target_manager, run_conf, **kwargs)
-        cell_manager.load_nodes(load_balancer)
+        cell_manager.load_nodes(load_balancer, **kwargs)
         self.register_node_manager(cell_manager)
         return cell_manager
 
@@ -292,6 +290,7 @@ class Node:
             self._cycle_i = 0
             self._n_cycles = 1
             self._shm_enabled = False
+            self._dry_run_stats = None
         else:
             self._run_conf  # Assert this is defined (if not multicyle runs are not properly set)
 
@@ -378,9 +377,13 @@ class Node:
             return None
 
         # Build load balancer as per requested options
-        # Compat Note: data_src in BlueConfig mode was the nrnPath. Not anymore.
+        # Compat Note:
+        # data_src in BlueConfig mode was the nrnPath. Not anymore (except if not defined or <NONE>)
         prosp_hosts = self._run_conf.get("ProspectiveHosts")
-        data_src = circuit.CircuitPath if is_sonata_config else self._run_conf["nrnPath"]
+        data_src = (
+            circuit.CircuitPath if is_sonata_config
+            else self._run_conf["nrnPath"] or circuit.CircuitPath
+        )
         load_balancer = LoadBalance(lb_mode, data_src, self._target_manager, prosp_hosts)
 
         if load_balancer.valid_load_distribution(target_spec):
@@ -421,6 +424,17 @@ class Node:
                 prosp_hosts)
             Nd.quit(1)
 
+        if SimConfig.dry_run:
+            logging.info("Memory usage after inizialization:")
+            print_mem_usage()
+            self._dry_run_stats = DryRunStats()
+            # We load the memory usage rather early since it will be needed at the moment we load
+            # the cell ids. This way we can avoid gidvec from having gids of known metype cells.
+            self._dry_run_stats.try_import_cell_memory_usage()
+            loader_opts = {"dry_run_stats": self._dry_run_stats}
+        else:
+            loader_opts = {}
+
         # Check dynamic attributes required before loading cells
         SimConfig.check_cell_requirements(self.target_manager)
 
@@ -432,7 +446,7 @@ class Node:
         # Always create a cell_distributor even if engine is disabled.
         # Fake CoreNeuron cells are created in it
         cell_distributor = CellDistributor(self._base_circuit, self._target_manager, self._run_conf)
-        cell_distributor.load_nodes(load_balance)  # no-op if circuit is disabled
+        cell_distributor.load_nodes(load_balance, loader_opts=loader_opts)  # no-op if disabled
         self._circuits.register_node_manager(cell_distributor)
 
         # SUPPORT for extra/custom Circuits
@@ -441,7 +455,8 @@ class Node:
             if config.restrict_node_populations and name not in config.restrict_node_populations:
                 logging.warning("Skipped node population (restrict_node_populations)")
                 continue
-            self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
+            self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf,
+                                            loader_opts=loader_opts)
 
         lfp_weights_file = self._run_conf.get("LFPWeightsPath")
         if lfp_weights_file:
@@ -461,9 +476,18 @@ class Node:
 
         # Let the cell managers have any final say in the cell objects
         log_stage("FINALIZING CIRCUIT CELLS")
+
         for cell_manager in self._circuits.all_node_managers():
             log_stage("Circuit %s", cell_manager.circuit_name or "(default)")
-            cell_manager.finalize()
+            if SimConfig.dry_run:
+                cell_manager.finalize(dry_run_stats_obj=self._dry_run_stats)
+            else:
+                cell_manager.finalize()
+
+        if SimConfig.dry_run:
+            self._dry_run_stats.collect_all_mpi()
+            self._dry_run_stats.export_cell_memory_usage()
+            self._dry_run_stats.estimate_cell_memory()
 
         # Final bits after we have all cell managers
         self._circuits.global_manager.finalize()
@@ -477,11 +501,7 @@ class Node:
         """
         log_stage("LOADING CIRCUIT CONNECTIVITY")
         target_manager = self._target_manager
-        manager_kwa = {"load_offsets": self._is_ngv_run}
-
-        if SimConfig.dry_run:
-            synapse_counter = Counter()
-            manager_kwa["synapse_counter"] = synapse_counter
+        manager_kwa = {"load_offsets": self._is_ngv_run, "dry_run_stats": self._dry_run_stats}
 
         if circuit := self._base_circuit:
             self._create_synapse_manager(SynapseRuleManager, circuit, target_manager, **manager_kwa)
@@ -493,10 +513,10 @@ class Node:
 
         log_stage("Handling projections...")
         for pname, projection in SimConfig.projections.items():
-            self._load_projections(pname, projection)
+            self._load_projections(pname, projection, dry_run_stats=self._dry_run_stats)
 
         if SimConfig.dry_run:
-            self._collect_display_syn_counts(synapse_counter)
+            self.syn_total_memory = self._dry_run_stats.collect_display_syn_counts()
             return
 
         log_stage("Configuring connections...")
@@ -510,7 +530,7 @@ class Node:
         """
         log_stage("Circuit %s", conf._name or "(default)")
         if not conf.get("nrnPath"):
-            logging.info(" => Circuit internal connectivity has been DISABLED")
+            logging.info(" => No connectivity set as internal. See projections")
             return
 
         if SimConfig.cli_options.restrict_connectivity >= 2:
@@ -522,9 +542,12 @@ class Node:
             c_target.population = self._circuits.alias.get(conf._name)
 
         edge_file, *pop = conf.get("nrnPath").split(":")
+        edge_pop = pop[0] if pop else None
         if not os.path.isabs(edge_file):
             edge_file = find_input_file(edge_file)
-        src, dst = edge_node_pop_names(edge_file, pop[0] if pop else None)
+        src, dst = edge_node_pop_names(edge_file, edge_pop)
+
+        logging.info("Processing edge file %s, pop: %s", edge_file, edge_pop)
 
         if src and dst and src != dst:
             raise ConfigurationError("Inner connectivity with different populations")
@@ -570,7 +593,7 @@ class Node:
 
     # -
     @mpi_no_errors
-    def _load_projections(self, pname, projection):
+    def _load_projections(self, pname, projection, **kw):
         """Check for Projection blocks
         """
         target_manager = self._target_manager
@@ -610,7 +633,7 @@ class Node:
                 logging.info(" * %s (Type: %s, Src: %s, Dst: %s)", pname, ptype, src_pop, dst_pop)
                 conn_manager = self._circuits.get_create_edge_manager(
                     ptype_cls, src_pop, dst_pop, source_t,
-                    (projection, target_manager)  # args to ptype_cls if creating
+                    (projection, target_manager), **kw  # args to ptype_cls if creating
                 )
                 logging.debug("Using connection manager: %s", conn_manager)
                 proj_source = ":".join([ppath] + pop_name)
@@ -630,30 +653,6 @@ class Node:
                         for path_key in path_conf_entries
                         if self._run_conf.get(path_key)]
         return find_input_file(filepath, search_paths, alt_filename)
-
-    @staticmethod
-    def _collect_display_syn_counts(local_syn_counter):
-        xelist = [local_syn_counter] + [None] * (MPI.size - 1)  # send to rank0
-        counters = MPI.py_alltoall(xelist)
-        inh = exc = 0
-
-        if MPI.rank == 0:
-            log_stage("Synapse memory estimate (per type)")
-            master_counter = Counter()
-            for c in counters:
-                master_counter.update(c)
-
-            for synapse_type, count in master_counter.items():
-                logging.debug(f" - {synapse_type}: {count}")
-                if synapse_type < 100:
-                    inh += count
-                if synapse_type >= 100:
-                    exc += count
-            logging.info(" - Estimated synapse memory usage (KB):")
-            in_mem = SynapseMemoryUsage.get_memory_usage(inh, "ProbGABAAB")
-            ex_mem = SynapseMemoryUsage.get_memory_usage(exc, "ProbAMPANMDA")
-            logging.info(f"   - Inhibitory: {in_mem}")
-            logging.info(f"   - Excitatory: {ex_mem}")
 
     # -
     @mpi_no_errors
@@ -913,6 +912,7 @@ class Node:
         rep_type = rep_conf["Type"]
         start_time = rep_conf["StartTime"]
         end_time = rep_conf.get("EndTime", sim_end)
+        rep_dt = rep_conf["Dt"]
         rep_format = rep_conf["Format"]
 
         lfp_disabled = not self._circuits.global_manager._lfp_manager._lfp_file
@@ -920,7 +920,13 @@ class Node:
             logging.error("LFP reports are disabled. Electrodes file might be missing"
                           " or simulator is not set to CoreNEURON")
             return None
-        logging.info(" * %s (Type: %s, Target: %s)", rep_name, rep_type, rep_conf["Target"])
+        logging.info(
+            " * %s (Type: %s, Target: %s, Dt: %f)",
+            rep_name,
+            rep_type,
+            rep_conf["Target"],
+            rep_dt
+        )
 
         if rep_format != "SONATA":
             if MPI.rank == 0:
@@ -939,7 +945,7 @@ class Node:
                                 end_time, start_time)
             return None
 
-        if (rep_dt := rep_conf["Dt"]) < Nd.dt:
+        if rep_dt < Nd.dt:
             if MPI.rank == 0:
                 logging.error("Invalid report dt %f < %f simulation dt", rep_dt, Nd.dt)
             return None
@@ -1649,7 +1655,7 @@ class Node:
         if not SimConfig.use_coreneuron or SimConfig.simulate_model is False:
             self.clear_model(avoid_creating_objs=True)
 
-        if SimConfig.delete_corenrn_data:
+        if SimConfig.delete_corenrn_data and not SimConfig.dry_run:
             data_folder = SimConfig.coreneuron_datadir
             logging.info("Deleting intermediate data in %s", data_folder)
 
@@ -1952,6 +1958,7 @@ class Neurodamus(Node):
         """
         if SimConfig.dry_run:
             log_stage("============= DRY RUN (SKIP SIMULATION) =============")
+            self._dry_run_stats.display_total()
             return
         if not SimConfig.simulate_model:
             self.sim_init()
