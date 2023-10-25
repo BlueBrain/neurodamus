@@ -209,11 +209,8 @@ class MorphIOWrapper:
                 'A H5 file morphology is not supposed to have a soma of type: {}'.format(
                     self._morph.soma_type))
         logging.debug(
-            "({}, {}, {}) has soma type : {}",
-            self._collection_dir,
-            self._morph_name,
-            self._morph_ext,
-            self._morph.soma_type
+            "(%s, %s, %s) has soma type : %s",
+            self._collection_dir, self._morph_name, self._morph_ext, self._morph.soma_type
         )
 
         if self._morph.soma_type == SomaType.SOMA_SINGLE_POINT:
