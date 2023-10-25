@@ -304,13 +304,16 @@ class DryRunStats:
         # initialize variable for iteration
         est_nodes = 0
         prev_est_nodes = None
+        max_iter = 5
+        iter_count = 0
 
-        while prev_est_nodes is None or est_nodes != prev_est_nodes:
+        while (prev_est_nodes is None or est_nodes != prev_est_nodes) and iter_count < max_iter:
             prev_est_nodes = est_nodes
             mem_usage_per_node = full_overhead + self.cell_memory_total + self.synapse_memory_total
             mem_usage_with_margin = mem_usage_per_node * (1 + margin)
             est_nodes = math.ceil(mem_usage_with_margin / DryRunStats.total_memory_available())
             full_overhead = self.base_memory * ranks_per_node * est_nodes
+            iter_count += 1
 
         return est_nodes
 
