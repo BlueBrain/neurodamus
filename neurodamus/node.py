@@ -369,13 +369,6 @@ class Node:
         # Info about the cells to be distributed
         target_spec = TargetSpec(circuit.CircuitTarget)
         target = self.target_manager.get_target(target_spec)
-        cell_count = None
-
-        if not target.is_void():
-            cell_count = target.gid_count()
-            if cell_count > 100 * MPI.size:
-                logging.warning("Your simulation has a very high count of cells per CPU. "
-                                "Please consider launching it in a larger MPI cluster")
 
         # Check / set load balance mode
         lb_mode = LoadBalance.select_lb_mode(SimConfig, self._run_conf, target)
