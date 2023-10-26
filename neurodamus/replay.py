@@ -60,13 +60,13 @@ class SpikeManager:
 
     @classmethod
     def _read_spikes_sonata(cls, filename, population):
-        import h5py
-        spikes_file = h5py.File(filename, "r")
-        # File should have been validated earlier
-        spikes = spikes_file.get("spikes/" + population)
-        if spikes is None:
+        import libsonata
+        spikes_file = libsonata.SpikeReader(filename)
+        if population not in spikes_file.get_population_names():
             raise MissingSpikesPopulationError("Spikes population not found: " + population)
-        return spikes["timestamps"][...], spikes["node_ids"][...] + 1
+        spikes = spikes_file[population]
+        spike_dict = spikes.get_dict()
+        return spike_dict["timestamps"], spike_dict["node_ids"] + 1
 
     @classmethod
     def _read_spikes_ascii(cls, filename):
