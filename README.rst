@@ -88,7 +88,7 @@ See instructions in `docker/README.md <https://github.com/BlueBrain/neurodamus/b
 Building the docker container
 -----------------------------
 The docker container image is built automatically when a new tag is created in the repository, if a container with the specified version doesn't already exist.
-On manual pipeline runs, the container image is also built but not automatically pushed to docker-hub; you'll have to manually start the job in the pipeline you created if you want this to happen.
+On manual pipeline runs, the container image is also built but not automatically pushed to docker-hub; you'll have to manually start the job in the pipeline you created if you want this to happen. Keep in mind that this is *optional*, the container image is *always* pushed to the gitlab registry!
 
 If you run the pipeline manually, you can also set versions for the dependencies:
   * `LIBSONATAREPORT_TAG`: git tag for libsonata-report
