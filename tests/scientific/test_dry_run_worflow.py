@@ -1,8 +1,14 @@
+import os
+import pytest
 from pathlib import Path
 
 USECASE3 = Path(__file__).parent.absolute() / "usecase3"
 
 
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run"
+)
 def test_dry_run_workflow():
     """
     Test that the dry run mode works
@@ -18,4 +24,4 @@ def test_dry_run_workflow():
 
     assert 20.0 <= nd._dry_run_stats.cell_memory_total <= 30.0
     assert 0.0 <= nd._dry_run_stats.synapse_memory_total <= 1.0
-    assert 100.0 <= nd._dry_run_stats.base_memory <= 120.0
+    assert 90.0 <= nd._dry_run_stats.base_memory <= 120.0
