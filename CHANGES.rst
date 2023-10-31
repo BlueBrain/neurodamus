@@ -2,6 +2,24 @@
 Change Log
 ==========
 
+Version 2.16.5
+==============
+**1 Nov 2023**
+
+*New Features*
+  * [BBPBGLIB-1069] Dry-run node allocation suggestions (#64)
+  * [BBPBGLIB-1067] Implement 'node_sets_file' resolution order (#55)
+*Bug Fixes*
+  * [BBPBGLIB-1076] Fix NGV offsetting with Sonata circuits (#69)
+  * [BBPBGLIB-1055] Support "<NONE>" as nrnPath (#65)
+*Improvements*
+  * [BBPBGLIB-1044] Use libsonata to read the spikes (#70)
+  * [HPCTM-1824] Introducing a temporary set for faster lookup in the src_target gids (#63)
+  * [BBPBGLIB-556] Dry-run improvements, fixes with projections (#56, #60)
+  * [REP-68] Add report dt to the logging (#59)
+  * Remove ranks-cpus warning as can be inaccurate (#66)
+
+
 Version 2.16.4
 ==============
 **9 Oct 2023**
@@ -14,6 +32,7 @@ Version 2.16.4
 *Improvements*
   * Modernize ALU (#48)
   * [HPCTM-1793] Add a Dockerfile for building Neurodamus
+
 
 Version 2.16.3
 ==============
