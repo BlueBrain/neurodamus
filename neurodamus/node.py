@@ -1958,6 +1958,7 @@ class Neurodamus(Node):
         if SimConfig.dry_run:
             log_stage("============= DRY RUN (SKIP SIMULATION) =============")
             self._dry_run_stats.display_total()
+            self._dry_run_stats.display_node_suggestions()
             return
         if not SimConfig.simulate_model:
             self.sim_init()

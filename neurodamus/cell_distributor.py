@@ -313,7 +313,7 @@ class CellManagerBase(_CellManager):
             memory_allocated = end_memory - prev_memory
             log_all(logging.DEBUG, " * METype %s: %.1f KiB averaged over %d cells",
                     metype, memory_allocated/n_cells, n_cells)
-            memory_dict[metype] = memory_allocated / n_cells
+            memory_dict[metype] = max(0, memory_allocated / n_cells)
             prev_memory = end_memory
 
         for gid, cell_info in gid_info_items:

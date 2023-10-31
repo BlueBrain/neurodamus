@@ -329,6 +329,16 @@ will get a summary of the estimated memory used for cells and synapses, includin
 memory necessary to load libraries and neurodamus data structures.
 A grand total is provided to the user as well as a per-cell type and per-synapse type breakdown.
 
+At the end of the execution the user will also be provided with a suggestion on how many nodes
+to use in order to run the simulation with the given circuit on the given machine.
+Keep in mind that this is just a suggestion and the user is free to use a different number of nodes
+if he/she wishes to do so. The suggestion is based on the assumption that the user wants to run
+the simulation on the same kind of machine used to run the dry run. The suggestion is also based
+on the assumption that the user wants to use all the available memory on each node for the simulation.
+The node estimate takes into account the memory usage of the cells and synapses as well as the
+variable usage of memory "overhead" that is fixed for each rank but varies depending on the number
+of ranks used.
+
 In this paragraph we will go a bit more into details on how the estimation is done.
 
 Below you can see the workflow of the dry run mode:

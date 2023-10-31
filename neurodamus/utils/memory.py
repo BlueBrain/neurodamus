@@ -8,6 +8,8 @@ import logging
 import math
 import os
 import json
+import psutil
+import multiprocessing
 
 from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
 
@@ -271,3 +273,67 @@ class DryRunStats:
         grand_total = pretty_printing_memory_mb(grand_total)
         logging.info("| {:<40s} | {:>12s} |".format("GRAND TOTAL", grand_total))
         logging.info("+{:-^57}+".format(""))
+
+    def total_memory_available():
+        """
+        Returns the total memory available in the system in MB
+        """
+        try:
+            virtual_memory = psutil.virtual_memory()
+            return virtual_memory.total / (1024 * 1024)  # Total available memory in MB
+        except Exception as e:
+            logging.error(f"Error: {e}")
+            return None
+
+    @run_only_rank0
+    def suggest_nodes(self, margin):
+        """
+        A function to calculate the suggested number of nodes to run the simulation
+        The function takes into account the fact that the memory overhead is
+        variable with the amount of ranks the simulation it's ran with.
+        One can also specify a custom margin to add to the memory usage.
+        """
+
+        try:
+            ranks_per_node = os.cpu_count()
+        except AttributeError:
+            ranks_per_node = multiprocessing.cpu_count()
+
+        full_overhead = self.base_memory * ranks_per_node
+
+        # initialize variable for iteration
+        est_nodes = 0
+        prev_est_nodes = None
+        max_iter = 5
+        iter_count = 0
+
+        while (prev_est_nodes is None or est_nodes != prev_est_nodes) and iter_count < max_iter:
+            prev_est_nodes = est_nodes
+            mem_usage_per_node = full_overhead + self.cell_memory_total + self.synapse_memory_total
+            mem_usage_with_margin = mem_usage_per_node * (1 + margin)
+            est_nodes = math.ceil(mem_usage_with_margin / DryRunStats.total_memory_available())
+            full_overhead = self.base_memory * ranks_per_node * est_nodes
+            iter_count += 1
+
+        return est_nodes
+
+    @run_only_rank0
+    def display_node_suggestions(self):
+        """
+        Display suggestions for how many nodes are approximately
+        necessary to run the simulation based on the memory available
+        on the current node.
+        """
+        node_total_memory = DryRunStats.total_memory_available()
+        if node_total_memory is None:
+            logging.warning("Unable to get the total memory available on the current node.")
+            return
+        suggested_nodes = self.suggest_nodes(0.3)
+        logging.info(f"Based on the memory available on the current node, "
+                     f"it is suggested to use at least {suggested_nodes} node(s).")
+        logging.info("This is just a suggestion and the actual number of nodes "
+                     "needed to run the simulation may be different.")
+        logging.info(f"The calculation was based on a total memory available of "
+                     f"{pretty_printing_memory_mb(node_total_memory)} on the current node.")
+        logging.info("Please remember that it is suggested to use the same class of nodes "
+                     "for both the dryrun and the actual simulation.")
