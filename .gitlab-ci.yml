@@ -23,6 +23,14 @@ variables:
   BLUECONFIGS_BRANCH:
     value: $BLUECONFIGS_BRANCH
     description: 'Name of the blueconfigs branch to test against'
+  LIBSONATAREPORT_TAG:
+    description: git tag for libsonata-report
+  LIBSONATA_TAG:
+    description: git tag for libsonata
+  NEURON_COMMIT_ID:
+    description: commit ID for neuron
+  REGISTRY_IMAGE_TAG:
+    description: this will be the container version - mandatory if you specify one of LIBSONATAREPORT_TAG, LIBSONATA_TAG, NEURON_COMMIT_ID
 
 python3-base:
   extends: .tox-template
