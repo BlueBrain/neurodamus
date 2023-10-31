@@ -94,7 +94,7 @@ If you run the pipeline manually, you can also set versions for the dependencies
   * `LIBSONATAREPORT_TAG`: git tag for libsonata-report
   * `LIBSONATA_TAG`: git tag for libsonata
   * `NEURON_COMMIT_ID`: commit ID for neuron
-  * `REGISTRY_IMAGE_TAG`: this will be the container version
+  * `REGISTRY_IMAGE_TAG`: this will be the container version. Must be specified if you specify one of the others.
 
 
 Acknowledgment
