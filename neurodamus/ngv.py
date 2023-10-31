@@ -346,6 +346,10 @@ class NeuroGliaConnManager(ConnectionManagerBase):
     conn_factory = NeuroGlialConnection
     SynapseReader = NeuroGlialSynapseReader
 
+    def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
+        kw.pop("load_offsets")
+        super().__init__(circuit_conf, target_manager, cell_manager, src_cell_manager, **kw)
+
     def _add_synapses(self, cur_conn, syns_params, syn_type_restrict=None, base_id=0):
         for syn_params in syns_params:
             cur_conn.add_synapse(None, syn_params)
