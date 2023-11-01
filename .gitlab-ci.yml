@@ -16,6 +16,8 @@ workflow:
     - if: '$CI_EXTERNAL_PULL_REQUEST_IID'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     - if: $CI_PIPELINE_SOURCE == "web"
+      # Run workflows on tag creation to build the container
+    - if: $CI_COMMIT_TAG
 
 variables:
   BLUECONFIGS_BRANCH:
@@ -78,8 +80,14 @@ configure-docker-image:
     - apt-get install -y git skopeo python3
     - |
       echo "Getting package version and checking whether we need to build the container"
-      PACKAGE_VERSION=$(git describe --tags)
-      REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
+      if [ -n "${LIBSONATAREPORT_TAG}" || -n "${LIBSONATA_TAG}" || -n "${NEURON_COMMIT_ID}" && -z "${REGISTRY_IMAGE_TAG}" ]; then
+        echo "If you specify LIBSONATAREPORT_TAG, LIBSONATA_TAG or NEURON_COMMIT_ID, you must also specify REGISTRY_IMAGE_TAG."
+        exit 1
+      fi
+      if [ -z "${REGISTRY_IMAGE_TAG}" ]; then
+        PACKAGE_VERSION=$(git describe --tags)
+        REGISTRY_IMAGE_TAG=$(echo ${PACKAGE_VERSION%-*} | sed 's/-/.dev/')
+      fi
       set +e
       skopeo inspect docker://bluebrain/neurodamus:${REGISTRY_IMAGE_TAG}
       if [[ $? -eq 0 ]]; then
@@ -95,9 +103,15 @@ configure-docker-image:
       git clone https://github.com/bluebrain/spack
       cd spack
       source ./share/spack/setup-env.sh
-      LIBSONATAREPORT_TAG=$(spack info libsonata-report | awk 'matched{print $NF;matched=0} /Preferred/{matched=1}')
-      LIBSONATA_TAG=v$(spack info py-libsonata | awk 'matched{print $1;matched=0} /Preferred/{matched=1}')
-      NEURON_COMMIT_ID=$(spack info neuron | awk 'matched{print $NF;matched=0} /Preferred/{matched=1}')
+      if [ -z "${LIBSONATAREPORT_TAG}" ]; then
+        LIBSONATAREPORT_TAG=$(spack info libsonata-report | awk 'matched{print $NF;matched=0} /Preferred/{matched=1}')
+      fi
+      if [ -z "${LIBSONATA_TAG}" ]; then
+        LIBSONATA_TAG=v$(spack info py-libsonata | awk 'matched{print $1;matched=0} /Preferred/{matched=1}')
+      fi
+      if [ -z "${NEURON_COMMIT_ID}" ]; then
+        NEURON_COMMIT_ID=$(spack info neuron | awk 'matched{print $NF;matched=0} /Preferred/{matched=1}')
+      fi
       cd ..
     - |
       cat <<EOF > build.env
@@ -144,6 +158,10 @@ build-docker-image:
       --build-arg LIBSONATA_TAG="$LIBSONATA_TAG"
       --build-arg NEURON_COMMIT_ID="$NEURON_COMMIT_ID"
   before_script:
+    - echo "LIBSONATAREPORT_TAG is .$LIBSONATAREPORT_TAG."
+    - echo "LIBSONATA_TAG is .$LIBSONATA_TAG."
+    - echo "NEURON_COMMIT_ID is .$NEURON_COMMIT_ID."
+    - echo "REGISTRY_IMAGE_TAG is .$REGISTRY_IMAGE_TAG."
     - set -x
     - if [ "$BUILD_DOCKER_CONTAINER" == "false" ]; then
     -   echo "No need to build the docker container"
