@@ -198,7 +198,7 @@ obfunc parseBlock() { localobj pendingBlock, configIn, fieldName, fieldValue
  * @param $s1 string to get trimmed
  */
 proc trimFront() {
-    strUtil.ltrim($s1, $s1);
+    strUtil.ltrim($s1, $s1)
 }
 
 
