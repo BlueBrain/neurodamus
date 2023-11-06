@@ -426,9 +426,7 @@ proc getTrimmedLine() { localobj targetFile, strobj
     //check for leading whitespace
     wscheck = tstr
     strobj.left( wscheck, 1 )
-    if( strcmp( wscheck, " " ) == 0 || strcmp( wscheck, "\t" ) == 0 ) {
-        ret = strobj.tail( tstr, "[ \t]+", tstr ) //strip leading white space
-    }
+    strobj.rtrim()
 
     //strip comments
     if( strobj.substr(tstr, "#" ) != -1 ) {
@@ -436,7 +434,7 @@ proc getTrimmedLine() { localobj targetFile, strobj
     }
 
 	//trailing whitespace shouldn't be a problem, but 'trimmedLine' implies none at front or rear
-	// this doesn't hurt parsing, though, so I won't deal with it
+	strobj.ltrim()
 
     $s2 = tstr
 }

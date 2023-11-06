@@ -198,23 +198,12 @@ obfunc parseBlock() { localobj pendingBlock, configIn, fieldName, fieldValue
  * @param $s1 string to get trimmed
  */
 proc trimFront() {
-    strUtil.tail($s1, "[ \t]*", $s1)
+    strUtil.ltrim($s1, $s1);
 }
 
 
-proc trimBack() { local idx
-    strdef lastchar
-
-    while( strUtil.len($s1) ) {
-        lastchar=$s1
-        idx=strUtil.len($s1) - 1
-        strUtil.right(lastchar, idx)
-        if( strUtil.head(lastchar, "[ \t\n]", lastchar) > -1 ) {
-            strUtil.left($s1, idx)
-        } else {
-            break
-        }
-    }
+proc trimBack() {
+    strUtil.rtrim($s1, $s1)
 }
 
 
