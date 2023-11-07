@@ -97,13 +97,13 @@ proc open() { local commentCheck, verbose  localobj configIn, sectionName, secti
             sectionType.s = rawline
             configIn.gets(rawline)
             // { may be commented
-            strUtil.tail(rawline, "[ \t#]*", strtemp)
+            strUtil.ltrim(rawline, strtemp, " \t#")
             strUtil.left(strtemp, 1)
 
             if( strcmp(strtemp, "{") == 0 ) {
                 if( verbose ) { print "   [SKIP] Section: ", sectionType.s }
                 while( ! isTerminated(rawline) && configIn.gets(rawline) >= 0 ) {
-                    strUtil.tail(rawline, "[ \t#]*", rawline)
+                    strUtil.ltrim(rawline, rawline, " \t#")
                 }
                 continue
             } else if ( isCommented(rawline) ) {
