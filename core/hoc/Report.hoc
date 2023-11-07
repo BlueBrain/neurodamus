@@ -819,7 +819,7 @@ proc evaluateSummationReportOn() { localobj intrinsicList, ptProcessList, condLi
     //print "src string ", sourceString
     while( strcmp( sourceString, "" ) != 0 )  {
         //find block of white space characters
-        j = strobj.rtrim(sourceString, fullToken )
+        j = strobj.head(sourceString, "[ \t]+", fullToken)
         if( j!=-1 ) {
             strobj.right( sourceString, j )
             //need to get first non-whitespace char
