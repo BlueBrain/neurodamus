@@ -129,6 +129,8 @@ configure-docker-image:
       dotenv: build.env
   rules:
     - if: $CI_COMMIT_TAG
+      when: manual
+      allow_failure: true
     - if: $CI_PIPELINE_SOURCE == "web"
 
 build-docker-image:
@@ -152,6 +154,9 @@ build-docker-image:
       --label org.opencontainers.image.created="$CI_JOB_STARTED_AT"
       --label ch.epfl.bbpgitlab.ci-pipeline-url="$CI_PIPELINE_URL"
       --label ch.epfl.bbpgitlab.ci-commit-branch="$CI_COMMIT_BRANCH"
+      --label ch.epfl.bbpgitlab.libsonata-report-tag="$LIBSONATAREPORT_TAG"
+      --label ch.epfl.bbpgitlab.libsonata-tag="$LIBSONATA_TAG"
+      --label ch.epfl.bbpgitlab.neuron-commit-id="$NEURON_COMMIT_ID"
       --build-arg GITLAB_CI="$GITLAB_CI"
       --build-arg CI_JOB_TOKEN="$CI_JOB_TOKEN"
       --build-arg LIBSONATAREPORT_TAG="$LIBSONATAREPORT_TAG"
