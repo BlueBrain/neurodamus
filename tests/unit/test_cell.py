@@ -1,17 +1,22 @@
 """
 Basic tests to HL neuron for creating cells and setup a simple simulation
 """
-from os import path
+import os
 import pytest
-
+from pathlib import Path
 # !! NOTE: Please don't import neron/neurodamus at module level
 # pytest weird discovery system will trigger Neuron init and open can of worms
-# And make all tests run forked
+
+# Make all tests run forked
 pytestmark = pytest.mark.forked
 
+@pytest.fixture(scope="session")
+def morphologies_root(rootdir):
+    return Path(rootdir) / "tests/sample_data/morphology"
 
 @pytest.fixture
-def Cell():
+def Cell(rootdir):
+    os.environ["HOC_LIBRARY_PATH"] = str(rootdir) + "/core/hoc"
     from neurodamus.core import Cell
     return Cell
 
@@ -20,20 +25,15 @@ def Cell():
     "morphology_path",
     ["C060114A7.asc", "C060114A7.h5", "merged_container.h5/C060114A7.h5"]
 )
-def test_load_cell(morphology_path, request):
-    Cell = request.getfixturevalue("Cell")
-
-    d = path.dirname(__file__)
-    c = Cell(1, path.join(d, "morphology", morphology_path))
+def test_load_cell(morphologies_root, morphology_path, Cell):
+    c = Cell(1, str(morphologies_root / morphology_path))
     assert len(c.all) == 325
     assert c.axons[4].name().endswith(".axon[4]")
     assert c.soma.L == pytest.approx(26.11, abs=0.01)
 
 
-def test_morphio_read(Cell):
-    d = path.dirname(__file__)
-    c = Cell(1, path.join(d, "morphology/simple.h5"))
-
+def test_morphio_read(morphologies_root, Cell):
+    c = Cell(1, str(morphologies_root / "simple.h5"))
     Cell.show_topology()
     assert len(c.all) == 7
     assert len(list(c.h.basal)) == 3
