@@ -1,6 +1,8 @@
 import numpy
+import pytest
 
 
+@pytest.mark.forked
 def test_get_local_gids():
     from neurodamus.core.nodeset import NodeSet
     from neurodamus.target_manager import NodesetTarget
