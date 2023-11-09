@@ -82,11 +82,13 @@ def test_multipop_simple(sonata_config_file):
     assert set(cell_man.local_nodes.final_gids()) == set(cell_man.gid2cell) == {1001, 1002}
 
     for conn in edges_A.all_connections():
-        assert conn.tgid <= 3 and conn.sgid <= 3
+        assert conn.tgid <= 3
+        assert conn.sgid <= 3
         assert conn.synapses[0].verboseLevel == 0
 
     for conn in edges_B.all_connections():
-        assert 1000 < conn.tgid <= 1003 and 1000 < conn.sgid <= 1003
+        assert 1000 < conn.tgid <= 1003
+        assert 1000 < conn.sgid <= 1003
         assert conn.synapses[0].verboseLevel == 1
 
 
@@ -159,19 +161,23 @@ def test_multipop_full_conn(sonata_config_file):
     assert edges_BA.src_cell_manager == cell_man_B
 
     for conn in edges_A.all_connections():
-        assert conn.tgid <= 3 and conn.sgid <= 3
+        assert conn.tgid <= 3
+        assert conn.sgid <= 3
         assert conn.synapses[0].verboseLevel == 0
 
     for conn in edges_B.all_connections():
-        assert 1000 < conn.tgid <= 1003 and 1000 < conn.sgid <= 1003
+        assert 1000 < conn.tgid <= 1003
+        assert 1000 < conn.sgid <= 1003
         assert conn.synapses[0].verboseLevel == 1
 
     for conn in edges_BA.all_connections():
-        assert 0 < conn.tgid <= 3 and 1000 < conn.sgid <= 1003
+        assert 0 < conn.tgid <= 3
+        assert 1000 < conn.sgid <= 1003
         assert conn.synapses[0].verboseLevel == 2
 
     for conn in edges_AB.all_connections():
-        assert 1000 < conn.tgid <= 1003 and 0 < conn.sgid <= 3
+        assert 1000 < conn.tgid <= 1003
+        assert 0 < conn.sgid <= 3
         assert conn.synapses[0].verboseLevel == 3
 
     # Replay will create spikes for all instantiated cells targeting popA

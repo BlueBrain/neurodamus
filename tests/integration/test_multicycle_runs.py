@@ -7,7 +7,7 @@ SIM_DIR = Path(__file__).parent.absolute() / "simulations"
 
 
 @pytest.fixture(autouse=True)
-def change_test_dir(monkeypatch, tmp_path):
+def _change_test_dir(monkeypatch, tmp_path):
     monkeypatch.chdir(str(SIM_DIR / "usecase3"))
 
 

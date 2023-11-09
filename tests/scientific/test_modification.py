@@ -153,7 +153,8 @@ def test_TTX_modification(blueconfig):
     nspike_TTX = sum(len(spikes) for spikes, _ in n._spike_vecs)
 
     log_verbose("spikes without TTX = %s, with TTX = %s", nspike_noTTX, nspike_TTX)
-    assert (nspike_noTTX > 0 and nspike_TTX == 0)
+    assert nspike_noTTX > 0
+    assert nspike_TTX == 0
 
 
 def test_ConfigureAllSections_modification(blueconfig):

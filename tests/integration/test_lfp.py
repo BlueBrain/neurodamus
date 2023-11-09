@@ -61,7 +61,7 @@ def test_file(tmpdir):
             incrementy -= 0.0032
         electrodes_group.create_dataset("scaling_factors", dtype='f8', data=matrix)
 
-    yield test_file
+    return test_file
 
 
 def test_load_lfp_config(tmpdir, test_file):

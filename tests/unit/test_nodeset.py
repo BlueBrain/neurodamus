@@ -44,7 +44,7 @@ def test_NodeSet_add():
     assert set_right.offset == 4000
 
 
-@pytest.mark.parametrize("ranges1, ranges2, expected", [
+@pytest.mark.parametrize(("ranges1", "ranges2", "expected"), [
     ([(0, 10), (20, 30)], [(8, 23), (28, 35)], numpy.array([8, 9, 20, 21, 22, 28, 29])),
     ([(0, 10), (20, 30)], [(10, 20)], []),
     ([(5, 10), (20, 30)], [(0, 10)], numpy.arange(5, 10)),
@@ -58,7 +58,7 @@ def test_ranges_overlap(ranges1, ranges2, expected):
     numpy.testing.assert_array_equal(out, expected)
 
 
-@pytest.mark.parametrize("ranges1, vec, expected", [
+@pytest.mark.parametrize(("ranges1", "vec", "expected"), [
     ([(0, 10), (20, 30)], [1, 2, 11, 12, 19, 20, 21, 29, 30], [1, 2, 20, 21, 29]),
     ([(0, 10), (20, 30)], [11, 12], []),
     ([], [], []),
