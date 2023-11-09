@@ -2,7 +2,7 @@ import pytest
 import numpy.testing as npt
 from pathlib import Path
 
-SAMPLE_DATA_DIR = Path(__file__).parent.absolute() / "sample_data"
+SAMPLE_DATA_DIR = Path(__file__).parent.parent.absolute() / "sample_data"
 
 
 @pytest.mark.forked
