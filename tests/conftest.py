@@ -3,9 +3,11 @@ from pathlib import Path
 
 USECASE3 = Path(__file__).parent.absolute() / "simulations" / "usecase3"
 
+
 @pytest.fixture(scope="session")
 def rootdir(request):
     return request.config.rootdir
+
 
 @pytest.fixture
 def sonata_config():

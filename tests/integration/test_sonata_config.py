@@ -2,7 +2,6 @@ import os
 import pytest
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from unittest import mock
 
 USECASE3 = Path(__file__).parent.parent.absolute() / "simulations" / "usecase3"
 SONATA_CONF_FILE = str(USECASE3 / "simulation_sonata.json")

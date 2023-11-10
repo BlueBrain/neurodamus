@@ -1,4 +1,6 @@
 import pytest
+import sys
+import unittest
 
 
 class MockParallelExec:
@@ -10,9 +12,19 @@ class MockParallelExec:
 
 @pytest.fixture(autouse=True, scope="module")
 def _mock_neuron():
-    # We want to inhibit Neuron altogether. Unfortunately stims use h.Vector which
-    # would be weird to mock
-    # import sys
-    # sys.modules['neuron'] = unnittest.mock.MagicMock()
     from neurodamus.core import _mpi
-    _mpi.MPI._pc = MockParallelExec()
+    from neurodamus.utils import compat
+    _mpi._MPI._pc = MockParallelExec()
+
+    # Dont convert
+    compat.hoc_vector = lambda x: x
+
+    class VectorMock(compat.Vector):
+
+        def __new__(cls, len=0):
+            init = [0] * len
+            return compat.Vector.__new__(cls, "d", init)
+
+    neuron_mock = unittest.mock.Mock()
+    neuron_mock.h.Vector = VectorMock
+    sys.modules['neuron'] = neuron_mock
