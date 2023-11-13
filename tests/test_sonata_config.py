@@ -207,6 +207,6 @@ def test_parse_inputs(sonataconfig):
     assert input_RSN["Duration"] == 1000.
     assert input_RSN["MeanPercent"] == 70.
     assert input_RSN["AmpCV"] == 0.63
-    assert input_RSN["SdPercent"] == 40.
-    assert input_RSN["Dt"] == SimConfig.run_conf['Dt']
+    assert input_RSN["SDPercent"] == 40.
+    assert input_RSN["Dt"] == 0.25
     assert input_RSN.get("Seed") is None
