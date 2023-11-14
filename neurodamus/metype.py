@@ -134,7 +134,8 @@ class METype(BaseCell):
         pass
 
     def __del__(self):
-        self._cellref.clear()  # cut cyclic reference
+        if self._cellref:
+            self._cellref.clear()  # cut cyclic reference
 
 
 class Cell_V6(METype):
@@ -163,8 +164,8 @@ class Cell_V6(METype):
             self._cellref = EModel(gid, morpho_path, morpho_file, *add_params)
             Nd.pc.mpiabort_on_error(old_flag)
         except Exception as e:
-            raise Exception("Error when loading Gid %d: emodel: %s, Morphology: %s"
-                            % (gid, emodel, morpho_file)) from e
+            raise RuntimeError("Error from NEURON when loading Gid %d: emodel: %s, Morphology: %s"
+                               ": %s" % (gid, emodel, morpho_file, str(e))) from e
         self._ccell = self._cellref
         self._synapses = Nd.List()
         self._syn_helper_list = Nd.List()
