@@ -213,6 +213,7 @@ class _SimConfig(object):
     # In principle not all vars need to be required as they'r set by the parameter functions
     blueconfig_dir = None
     current_dir = None
+    default_neuron_dt = 0.025
     buffer_time = 25
     save = None
     save_time = None
@@ -626,7 +627,8 @@ def _global_parameters(config: _SimConfig, run_conf):
     h.celsius = config.celsius
     h.set_v_init(config.v_init)
     h.tstop = config.tstop
-    h.dt = run_conf.get("Dt", 0.025)
+    config.default_neuron_dt = h.dt
+    h.dt = run_conf.get("Dt", h.dt)
     h.steps_per_ms = 1.0 / h.dt
     props = ("celsius", "v_init", "extracellular_calcium", "tstop", "buffer_time")
     log_verbose("Global params: %s",
