@@ -158,8 +158,6 @@ def test_loadbal_integration():
     GlobalConfig.verbosity = 2
     config_file = str(SIM_DIR / "usecase3" / "simulation_sonata.json")
     nd = Node(config_file, {"lb_mode": "WholeCell"})
-    from neuron import h
-    h.dt = 0.025  # LoadBalance requires this ATM
     nd.load_targets()
     lb = nd.compute_load_balance()
     nd.create_cells(lb)
