@@ -271,9 +271,9 @@ class ConnectionManagerBase(object):
         self._raw_gids = cell_manager.local_nodes.raw_gids()
         self._total_connections = 0
         self.circuit_conf = circuit_conf
-        self._load_offsets = False
         self._src_target_filter = None  # filter by src target in all_connect (E.g: GapJ)
-
+        # Load offsets might be required globally. Conn managers shall honor this if possible
+        self._load_offsets = kw.get("load_offsets", False)
         # An internal var to enable collection of synapse statistics to a Counter
         self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
 
@@ -288,7 +288,7 @@ class ConnectionManagerBase(object):
         src_pop_id = _get_projection_population_id(circuit_conf)
         return self.open_synapse_file(edge_file, pop_name, n_files, src_pop_id=src_pop_id, **kw)
 
-    def open_synapse_file(self, synapse_file, edge_population, n_files=1, load_offsets=False, *,
+    def open_synapse_file(self, synapse_file, edge_population, n_files=1, *,
                           src_pop_id=None, src_name=None, **_kw):
         """Initializes a reader for Synapses config objects and associated population
 
@@ -296,7 +296,6 @@ class ConnectionManagerBase(object):
             synapse_file: The nrn/edge file. For old nrn files it may be a dir.
             edge_population: The population of the edges
             n_files: (nrn only) the number of nrn files in the directory (without nrn.h5)
-            load_offsets: Whether the synapse offset should be loaded. So far only for NGV
             src_pop_id: (compat) Allow overriding the src population ID
             src_name: The source pop name, normally matching that of the source cell manager
         """
@@ -311,8 +310,7 @@ class ConnectionManagerBase(object):
                 n_files = 1
 
         self._synapse_reader = self._open_synapse_file(synapse_file, edge_population, n_files)
-        self._load_offsets = load_offsets
-        if load_offsets:
+        if self._load_offsets:
             if not self._synapse_reader.has_property("synapse_index"):
                 raise Exception("Synapse offsets required but not available. "
                                 "Please use a more recent version of neurodamus-core/synapse-tool")

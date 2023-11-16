@@ -512,7 +512,7 @@ class Node:
 
         log_stage("Handling projections...")
         for pname, projection in SimConfig.projections.items():
-            self._load_projections(pname, projection, dry_run_stats=self._dry_run_stats)
+            self._load_projections(pname, projection, **manager_kwa)
 
         if SimConfig.dry_run:
             self.syn_total_memory = self._dry_run_stats.collect_display_syn_counts()
@@ -1958,6 +1958,7 @@ class Neurodamus(Node):
         if SimConfig.dry_run:
             log_stage("============= DRY RUN (SKIP SIMULATION) =============")
             self._dry_run_stats.display_total()
+            self._dry_run_stats.display_node_suggestions()
             return
         if not SimConfig.simulate_model:
             self.sim_init()

@@ -85,6 +85,20 @@ Alternatively, you can start directly a neurodamus docker container where all th
 With the container, you can build your mod files and run simulations.
 See instructions in `docker/README.md <https://github.com/BlueBrain/neurodamus/blob/main/docker/README.md>`_.
 
+Building the docker container
+-----------------------------
+The docker container image is built automatically when a new tag is created in the repository, if a container with the specified version doesn't already exist.
+On manual pipeline runs, the container image is also built but not automatically pushed to docker-hub; you'll have to manually start the job in the pipeline you created if you want this to happen. Keep in mind that this is *optional*, the container image is *always* pushed to the gitlab registry!
+
+The docker images will be built in the `regular gitlab pipeline <https://bbpgitlab.epfl.ch/hpc/sim/neurodamus/-/pipelines>`_ - if triggered under the right conditions (either manually or through git tag creation) the container jobs will be added to this pipeline.
+
+If you run the pipeline manually, you can also set versions for the dependencies:
+  * `LIBSONATAREPORT_TAG`: git tag for libsonata-report
+  * `LIBSONATA_TAG`: git tag for libsonata
+  * `NEURON_COMMIT_ID`: commit ID for neuron
+  * `REGISTRY_IMAGE_TAG`: this will be the container version. Must be specified if you specify one of the others.
+
+
 Acknowledgment
 ==============
 The development of this software was supported by funding to the Blue Brain Project,
