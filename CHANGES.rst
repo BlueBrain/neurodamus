@@ -2,6 +2,19 @@
 Change Log
 ==========
 
+Version 2.16.6
+==============
+**17 Nov 2023**
+
+*Bug Fixes*
+  * Use default dt value of NEURON in WholeCell load balancing (#81)
+  * Fix conversion from sonata parameter to neurodamus internal key : amp_cv -> AmpCV (#79)
+*Improvements*
+  * CI and container improvements
+  * Protect numpy.concatenate empty tuple in get_local_gids (#53)
+  * [BBPP134-1022] Handling exceptions from NEURON during emodel loading (#80)
+
+
 Version 2.16.5
 ==============
 **1 Nov 2023**
