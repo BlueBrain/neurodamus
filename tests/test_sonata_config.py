@@ -110,7 +110,28 @@ contents = """
             "neuromodulation_dtc": 100,
             "neuromodulation_strength": 0.75
         }
-    ]
+    ],
+    "inputs": {
+        "RelativeShotNoise_L5E_inject": {
+            "node_set": "200_L5_PCs",
+            "input_type": "current_clamp",
+            "module": "relative_shot_noise",
+            "delay": 0.0,
+            "duration": 1000.0,
+            "decay_time": 4.0,
+            "rise_time": 0.4,
+            "amp_cv": 0.63,
+            "mean_percent": 70.0,
+            "sd_percent": 40.0
+        },
+        "hypamp_mosaic": {
+            "node_set": "200_L5_PCs",
+            "input_type": "current_clamp",
+            "module": "hyperpolarizing",
+            "delay": 0.0,
+            "duration": 10000.0
+        }
+    }
 }
 """
 
@@ -165,3 +186,27 @@ def test_parse_connections(sonataconfig):
     assert conn["SynapseConfigure"] == "%s.e_GABAA = -82.0 tau_d_GABAB_ProbGABAAB_EMS = 77"
     assert conn["NeuromodDtc"] == 100
     assert conn["NeuromodStrength"] == 0.75
+
+
+def test_parse_inputs(sonataconfig):
+    from neurodamus.core.configuration import SimConfig
+
+    SimConfig.init(sonataconfig, {})
+    input_hp = SimConfig.stimuli["hypamp_mosaic"]
+    assert input_hp["Pattern"] == "Hyperpolarizing"
+    assert input_hp["Mode"] == "Current"
+    assert input_hp["Target"] == "200_L5_PCs"
+    assert input_hp["Delay"] == 0.
+    assert input_hp["Duration"] == 10000.0
+    input_RSN = SimConfig.stimuli["RelativeShotNoise_L5E_inject"]
+    assert input_RSN["Pattern"] == "RelativeShotNoise"
+    assert input_RSN["Mode"] == "Current"
+    assert input_RSN["DecayTime"] == 4.
+    assert input_RSN["RiseTime"] == 0.4
+    assert input_RSN["Delay"] == 0.
+    assert input_RSN["Duration"] == 1000.
+    assert input_RSN["MeanPercent"] == 70.
+    assert input_RSN["AmpCV"] == 0.63
+    assert input_RSN["SDPercent"] == 40.
+    assert input_RSN["Dt"] == 0.25
+    assert input_RSN.get("Seed") is None

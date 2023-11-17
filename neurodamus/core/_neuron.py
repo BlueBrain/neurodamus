@@ -8,6 +8,7 @@ import os.path
 from contextlib import contextmanager
 from .configuration import NeuronStdrunDefaults
 from .configuration import GlobalConfig
+from .configuration import SimConfig
 from ..utils import classproperty
 
 
@@ -241,10 +242,16 @@ class MComplexLoadBalancer(object):
 
     @staticmethod
     def _create_mcomplex():
+        # Save the dt of the simulation and set the dt for calculating the ExperimentalMechComplex
+        # to the default value of 0.025
+        prev_dt = Neuron.h.dt
+        Neuron.h.dt = SimConfig.default_neuron_dt
         # ExperimentalMechComplex is a complex routine changing many state vars, and cant be reused
         # Therefore here we create a temporary LoadBalance obj
         lb = Neuron.h.LoadBalance()
         lb.ExperimentalMechComplex("StdpWA", "extracel", "HDF5", "Report", "Memory", "ASCII")
+        # Revert dt to the old value
+        Neuron.h.dt = prev_dt
         # mcomplex changes neuron state and results get different. We re-init
         Neuron.h.init()
 
