@@ -12,7 +12,7 @@ fi
 
 # Get the common synapses
 COMMON_DIR=_common
-git clone git@bbpgitlab.epfl.ch:hpc/sim/models/common.git $COMMON_DIR  --depth=1
+[ -d _common ] || git clone git@bbpgitlab.epfl.ch:hpc/sim/models/common.git $COMMON_DIR  --depth=1
 
 MOD_BUILD_DIR="mods.tmp"
 mkdir -p $MOD_BUILD_DIR

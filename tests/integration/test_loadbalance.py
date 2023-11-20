@@ -5,7 +5,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-SIM_DIR = Path(__file__).parent.absolute() / "simulations"
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 pytestmark = pytest.mark.forked
 

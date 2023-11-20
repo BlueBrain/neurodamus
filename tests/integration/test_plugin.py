@@ -20,7 +20,7 @@ from neurodamus.metype import BaseCell
 #
 # Launching of the engine as a test
 #
-SIM_DIR = Path(__file__).parent.absolute() / "simulations"
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 
 class ACellType(BaseCell):
