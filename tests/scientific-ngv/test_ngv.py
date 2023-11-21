@@ -7,22 +7,12 @@ from pathlib import Path
 
 import libsonata
 import numpy as np
-import pytest
 
 from neurodamus import Neurodamus
 from neurodamus.ngv import GlioVascularManager
 
 SIM_DIR = Path(__file__).parent.absolute() / "simulations" / "ngv"
 SONATACONFIG_FILE = SIM_DIR / "simulation_config.json"
-
-pytestmark = [
-    pytest.mark.forked,
-    pytest.mark.slow,
-    pytest.mark.skipif(
-        not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-        reason="Test requires loading a neocortex model to run",
-    ),
-]
 
 
 def load_neurodamus_neocortex_multiscale():

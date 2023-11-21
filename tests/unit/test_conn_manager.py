@@ -1,11 +1,7 @@
 import pytest
-from pathlib import Path
 from unittest import mock
 
 from neurodamus.connection_manager import ConnectionSet
-
-SIM_DIR = Path(__file__).parent.absolute() / "simulations"
-CIRCUIT_PATH = "/gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-2k"
 
 
 class _FakeConn:

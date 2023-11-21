@@ -83,19 +83,6 @@ Target Cell single
 }
 """
 
-pytestmark = [
-    pytest.mark.slow,
-    pytest.mark.forked,
-    pytest.mark.skipif(
-        not os.path.isfile("/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3"),
-        reason="Circuit file not available"
-    ),
-    pytest.mark.skipif(
-        not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-        reason="Test requires loading a neocortex model to run"
-    )
-]
-
 
 @pytest.fixture(scope="module")
 def blueconfig():

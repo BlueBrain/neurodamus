@@ -1,18 +1,9 @@
 import numpy as np
 import numpy.testing as npt
-import os
-import pytest
 from neurodamus.gap_junction import GapJunctionSynapseReader
 from pathlib import Path
 
-
-pytestmark = [
-    pytest.mark.forked,
-    pytest.mark.skipif(
-        not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-        reason="Test requires loading a neocortex model to run"
-    )
-]
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 
 def test_gapjunction_synreaderNRN():
@@ -35,7 +26,6 @@ def test_gapjunction_synreaderNRN():
 
 
 def test_gapjunction_sonata_reader():
-    SIM_DIR = Path(__file__).parent.absolute() / "simulations"
     sonata_file = str(SIM_DIR / "mini_thalamus_sonata/gapjunction/edges.h5")
     sonata_reader = GapJunctionSynapseReader.create(sonata_file, 1)
     syn_params_sonata = sonata_reader._load_synapse_parameters(1)

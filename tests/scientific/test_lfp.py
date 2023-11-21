@@ -4,16 +4,7 @@ import os
 import numpy as np
 from pathlib import Path
 
-SIM_DIR = Path(__file__).parent.absolute() / "simulations"
-
-pytestmark = [
-    pytest.mark.forked,
-    pytest.mark.slow,
-    pytest.mark.skipif(
-        not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-        reason="Test requires loading a neocortex model to run"
-    )
-]
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 
 @pytest.fixture
@@ -167,10 +158,6 @@ def _read_sonata_lfp_file(lfp_file):
     return node_ids, data
 
 
-@pytest.mark.forked
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_v5_sonata_lfp(tmpdir, test_file):
     import numpy.testing as npt
     from neurodamus import Neurodamus

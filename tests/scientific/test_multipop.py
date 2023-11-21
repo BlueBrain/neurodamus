@@ -35,10 +35,6 @@ def sonata_config_file(sonata_config, extra_config):
     os.unlink(config_file.name)
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run"
-)
 @pytest.mark.parametrize("extra_config", [{
     "connection_overrides": [
         {
@@ -92,10 +88,6 @@ def test_multipop_simple(sonata_config_file):
         assert conn.synapses[0].verboseLevel == 1
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run"
-)
 @pytest.mark.parametrize("extra_config", [{
     "connection_overrides": [
         {

@@ -1,5 +1,4 @@
 import json
-import os
 from pathlib import Path
 import pytest
 import shutil
@@ -7,14 +6,11 @@ import subprocess
 import tempfile
 
 
-SIM_DIR = Path(__file__).parent.absolute() / "simulations" / "v5_sonata"
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "v5_sonata"
 CONFIG_FILE_MINI = "simulation_config_mini.json"
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_save_restore_cli():
     with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
         sim_config_data = json.load(f)
@@ -47,9 +43,6 @@ def test_save_restore_cli():
                 subprocess.run(command, check=True)
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_cli_prcellgid():
     test_folder = tempfile.TemporaryDirectory("cli-test-prcellgid")  # auto removed
     test_folder_path = Path(test_folder.name)

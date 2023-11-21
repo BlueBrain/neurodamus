@@ -1,15 +1,9 @@
-import os
-import pytest
 from pathlib import Path
 from collections import Counter
 
 USECASE3 = Path(__file__).parent.absolute() / "usecase3"
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run"
-)
 def test_dry_run_workflow():
     """
     Test that the dry run mode works
