@@ -1,18 +1,8 @@
-import os
 import pytest
 from pathlib import Path
 
-
-USECASE3 = Path(__file__).parent.absolute() / "simulations" / "usecase3"
+USECASE3 = Path(__file__).parent.parent.absolute() / "simulations" / "usecase3"
 SONATA_CONF_FILE = str(USECASE3 / "simulation_sonata.json")
-
-pytestmark = [
-    pytest.mark.forked,
-    pytest.mark.skipif(
-        not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-        reason="Test requires loading a neocortex model to run"
-    )
-]
 
 
 def test_handling_neuron_exceptions():
