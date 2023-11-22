@@ -1,3 +1,5 @@
+:orphan:
+
 =======================================
 Online LFP Calculation Documentation
 =======================================
@@ -8,7 +10,7 @@ Electrodes Input File
 Required Format
 ~~~~~~~~~~~~~~~~
 
-To perform online LFP calculation, a weights file is required. The weights file should follow a specific format to ensure proper functioning. 
+To perform online LFP calculation, a weights file is required. The weights file should follow a specific format to ensure proper functioning.
 More information about this file can be found in the `SONATA Simulation Specification <https://github.com/BlueBrain/sonata-extension/blob/master/source/sonata_tech.rst#format-of-the-electrodes_file>`_
 
 Generating the Electrodes File
