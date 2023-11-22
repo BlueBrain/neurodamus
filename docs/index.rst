@@ -18,6 +18,7 @@ Contents
    Module Reference <api/modules>
    Developer Documentation <architecture>
    Developing a Custom Neurodamus <development>
+   Online LFP Calculation <online-lfp>
 
 
 Indices and tables
