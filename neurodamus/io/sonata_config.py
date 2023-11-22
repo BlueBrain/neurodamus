@@ -136,7 +136,8 @@ class SonataConfig:
             "series_resistance": "RS",
             "node_set": "Target",  # for StimulusInject
             "source": "Source",  # for StimulusInject
-            "sd_percent": "SDPercent"
+            "sd_percent": "SDPercent",
+            "amp_cv": "AmpCV"
 
         },
         "reports": {

@@ -134,7 +134,8 @@ class METype(BaseCell):
         pass
 
     def __del__(self):
-        self._cellref.clear()  # cut cyclic reference
+        if self._cellref:
+            self._cellref.clear()  # cut cyclic reference
 
 
 class Cell_V6(METype):
@@ -156,7 +157,15 @@ class Cell_V6(METype):
         add_params = meinfos_v6.add_params or (keep_axon,)  # Keep axon incompatible with add_params
 
         logging.debug("Loading Gid %d: emodel: %s, Morphology: %s", gid, emodel, morpho_file)
-        self._cellref = EModel(gid, morpho_path, morpho_file, *add_params)
+        try:
+            # For this step, do not call mpi_abort in neuron and let neurodamus handle and abort,
+            # NB: Do not re-raise as ConfigurationError, neurodamus doesn't call mpi_abort so hangs
+            old_flag = Nd.pc.mpiabort_on_error(0)
+            self._cellref = EModel(gid, morpho_path, morpho_file, *add_params)
+            Nd.pc.mpiabort_on_error(old_flag)
+        except Exception as e:
+            raise RuntimeError("Error from NEURON when loading Gid %d: emodel: %s, Morphology: %s"
+                               ": %s" % (gid, emodel, morpho_file, str(e))) from e
         self._ccell = self._cellref
         self._synapses = Nd.List()
         self._syn_helper_list = Nd.List()
@@ -203,7 +212,15 @@ class Cell_V5(METype):
         """
         EModel = getattr(Nd, emodel)
         logging.debug("Loading Gid %d: emodel: %s", gid, emodel)
-        self._ccell = ccell = EModel(gid, morpho_path)
+        try:
+            # For this step, do not call mpi_abort in neuron and let neurodamus handle and abort,
+            # NB: Do not re-raise as ConfigurationError, neurodamus doesn't call mpi_abort so hangs
+            old_flag = Nd.pc.mpiabort_on_error(0)
+            self._ccell = ccell = EModel(gid, morpho_path)
+            Nd.pc.mpiabort_on_error(old_flag)
+        except Exception as e:
+            raise Exception("Error when loading Gid %d: emodel: %s, morpho_path: %s"
+                            % (gid, emodel, morpho_path)) from e
         self._cellref = ccell.CellRef
         self._synapses = ccell.CellRef.synlist
         self._syn_helper_list = ccell.CellRef.synHelperList
