@@ -34,10 +34,11 @@ test-integration:
   variables:
     TOXENV: integration
 
-test-e2e:
+test-integration-e2e:
   extends: .tox-template
   variables:
-    TOXENV:
+    TOXENV: e2e
+    TOX_OPTIONS: "-- tests/integration-e2e"
     # modules need to be loaded in this certain order to avoid mixing of libraries
     EXTRA_MODULES:
       unstable:neurodamus-neocortex
@@ -46,7 +47,8 @@ test-e2e:
 test-scientific:
   extends: .tox-template
   variables:
-    TOXENV: "bb5 -- tests/scientific"
+    TOXENV: e2e
+    TOX_OPTIONS: "-- tests/scientific"
     # modules need to be loaded in this certain order to avoid mixing of libraries
     EXTRA_MODULES:
       unstable:py-psutil
@@ -58,7 +60,8 @@ test-scientific:
 test-scientific-ngv:
   extends: .tox-template
   variables:
-    TOXENV: "bb5 -- tests/scientific-ngv"
+    TOXENV: e2e
+    TOX_OPTIONS: "-- tests/scientific-ngv"
     EXTRA_MODULES:
       unstable:neurodamus-neocortex-ngv
       unstable:py-neurodamus  # needed for dependencies
