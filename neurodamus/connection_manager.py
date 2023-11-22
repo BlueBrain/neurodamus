@@ -276,6 +276,7 @@ class ConnectionManagerBase(object):
         self._load_offsets = kw.get("load_offsets", False)
         # An internal var to enable collection of synapse statistics to a Counter
         self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
+        self._dry_run_counted_cells = set()
 
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
@@ -721,8 +722,18 @@ class ConnectionManagerBase(object):
             logging.info(" * %s. Created %d connections", pathway_repr, all_created)
 
     def _get_conn_stats(self, _src_target, dst_target):
+        """Counts the number of synapses per type for the given destination target
+        Note:
+          - _src target is not considered so we count all inbound synapses
+          -  We will only consider gids which have not been accounted for yet.
+        """
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
-        return self._synapse_reader.get_counts(raw_gids, group_by="syn_type_id")
+        new_gids = numpy.array(list(set(raw_gids) - self._dry_run_counted_cells), dtype="uint32")
+        if len(new_gids):
+            counts = self._synapse_reader.get_counts(new_gids, group_by="syn_type_id")
+            self._dry_run_counted_cells.update(new_gids)
+            return counts
+        return {}
 
     # -
     def get_target_connections(self, src_target_name,
