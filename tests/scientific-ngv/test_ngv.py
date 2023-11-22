@@ -1,55 +1,13 @@
 """
 Test suite for Neurodamus NGV support
 """
-import os
-import subprocess
 from pathlib import Path
 
 import libsonata
 import numpy as np
 
-from neurodamus import Neurodamus
-from neurodamus.ngv import GlioVascularManager
-
-SIM_DIR = Path(__file__).parent.absolute() / "simulations" / "ngv"
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "ngv"
 SONATACONFIG_FILE = SIM_DIR / "simulation_config.json"
-
-
-def load_neurodamus_neocortex_multiscale():
-    module_output = subprocess.run(
-        ["module load unstable; module show neurodamus-neocortex-multiscale"],
-        capture_output=True,
-        text=True,
-        shell=True,
-    )
-    nrn_mech_path = None
-    ld_library_path = None
-    for line in module_output.stderr.split("\n"):
-        if "NRNMECH_LIB_PATH" in line:
-            nrn_mech_path = line.split(" ")[2]
-            ld_library_path = os.path.dirname(nrn_mech_path)
-    if nrn_mech_path is not None:
-        os.environ["NRNMECH_LIB_PATH"] = nrn_mech_path
-        os.environ["LD_LIBRARY_PATH"] = (
-            ld_library_path + ":" + os.environ.get("LD_LIBRARY_PATH", "")
-        )
-    else:
-        module_output = subprocess.run(
-            ["module load unstable; module show neurodamus-neocortex"],
-            capture_output=True,
-            text=True,
-            shell=True,
-        )
-        raise Exception(
-            "Right module not found. Output of 'module av neurodamus-neocortex': {}\n"
-            "MODULEPATH: {}".format(module_output.stderr, os.environ.get("MODULEPATH"))
-        )
-
-
-def get_manager(ndamus):
-    return ndamus.circuits.get_edge_manager(
-        "vasculature", "astrocytes", GlioVascularManager
-    )
 
 
 def get_R0pas(astro_id, manager):
@@ -89,7 +47,8 @@ def get_R0pas_ref(astro_id, manager):
 
 
 def test_vasccouplingB_radii():
-    load_neurodamus_neocortex_multiscale()
+    from neurodamus import Neurodamus
+    from neurodamus.ngv import GlioVascularManager
     ndamus = Neurodamus(
         str(SONATACONFIG_FILE),
         enable_reports=False,
@@ -97,7 +56,7 @@ def test_vasccouplingB_radii():
         enable_coord_mapping=True,
     )
 
-    manager = get_manager(ndamus)
+    manager = ndamus.circuits.get_edge_manager("vasculature", "astrocytes", GlioVascularManager)
     astro_ids = manager._astro_ids
 
     R0pas = [r for astro_id in astro_ids for r in get_R0pas(astro_id, manager)]

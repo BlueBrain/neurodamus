@@ -63,7 +63,7 @@ test-scientific-ngv:
     TOXENV: e2e
     TOX_OPTIONS: "-- tests/scientific-ngv"
     EXTRA_MODULES:
-      unstable:neurodamus-neocortex-ngv
+      unstable:neurodamus-neocortex-multiscale
       unstable:py-neurodamus  # needed for dependencies
 
 set_alt_branches:
