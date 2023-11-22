@@ -295,23 +295,23 @@ class SonataReader(SynapseReader):
             _populate("tgid", self._population.target_nodes(needed_edge_ids) + 1)
 
         # Make synapse index in the file explicit
-        for name in self.SYNAPSE_INDEX_NAMES:
+        for name in sorted(self.SYNAPSE_INDEX_NAMES):
             _populate(name, needed_edge_ids.flatten())
 
         # Generic synapse parameters
         fields_load_sonata = self.Parameters.fields(exclude=self.custom_parameters | compute_fields,
                                                     with_translation=self.parameter_mapping)
-        for (field, sonata_attr, is_optional) in fields_load_sonata:
+        for (field, sonata_attr, is_optional) in sorted(fields_load_sonata):
             _populate(field, _read(sonata_attr, is_optional))
 
-        if self.custom_parameters:
+        if sorted(self.custom_parameters):
             self._load_params_custom(_populate, _read)
 
         # Extend Gids data with the additional requested fields
         # This has to work for when we call preload() a second/third time
         # so we are unsure about which gids were loaded what properties
         # We nevertheless can skip any base fields
-        for field in set(self._extra_fields) - (self.Parameters.all_fields | compute_fields):
+        for field in sorted(set(self._extra_fields) - (self.Parameters.all_fields | compute_fields)):
             now_needed_ids = sorted(set(gid for gid in ids if field not in self._data[gid]))
             if needed_ids != now_needed_ids:
                 needed_ids = now_needed_ids
