@@ -56,3 +56,216 @@ def test_cli_prcellgid():
     )
     assert (test_folder_path / "62798_py_Neuron_t0.0.nrndat").is_file()
     assert (test_folder_path / "62798_py_Neuron_t100.0.nrndat").is_file()
+
+
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
+def test_cli_disable_reports():
+    test_folder = tempfile.TemporaryDirectory("cli-test-disable-reports")  # auto removed
+    test_folder_path = Path(test_folder.name)
+    for f in ("node_sets.json", "circuit_config.json", "input.dat", "simulation_config_mini.json"):
+        shutil.copy(SIM_DIR / f, test_folder_path)
+
+    with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
+        sim_config_data = json.load(f)
+
+    subprocess.run(
+        ["neurodamus", CONFIG_FILE_MINI, "--disable-reports"],
+        check=True,
+        cwd=test_folder_path
+    )
+    # Spikes are present even if we disable reports
+    assert (test_folder_path / sim_config_data["output"]["output_dir"] / "out.h5").is_file()
+    for report in sim_config_data["reports"].keys():
+        report_path = test_folder_path / sim_config_data["output"]["output_dir"] / (report + ".h5")
+        assert not report_path.is_file(), f"File '{report_path}' should NOT exist."
+
+    subprocess.run(
+        ["neurodamus", CONFIG_FILE_MINI],
+        check=True,
+        cwd=test_folder_path
+    )
+    assert (test_folder_path / sim_config_data["output"]["output_dir"] / "out.h5").is_file()
+    for report in sim_config_data["reports"].keys():
+        report_path = test_folder_path / sim_config_data["output"]["output_dir"] / (report + ".h5")
+        assert report_path.is_file(), f"File '{report_path}' not found."
+
+
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
+def test_cli_keep_build():
+    with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
+        sim_config_data = json.load(f)
+        sim_config_data["target_simulator"] = "CORENEURON"
+        sim_config_data["output"]["output_dir"] = "output_keep_build"
+
+    test_folder = tempfile.TemporaryDirectory("cli-test-keep-build")  # auto removed
+    test_folder_path = Path(test_folder.name)
+    for f in ("node_sets.json", "circuit_config.json", "input.dat"):
+        shutil.copy(SIM_DIR / f, test_folder_path)
+    with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
+        json.dump(sim_config_data, f, indent=2)
+
+    subprocess.run(
+        ["neurodamus", CONFIG_FILE_MINI, "--keep-build", "--disable-reports"],
+        check=True,
+        cwd=test_folder_path
+    )
+    coreneuron_input_dir = test_folder_path / "output_keep_build" / "coreneuron_input"
+    assert coreneuron_input_dir.is_dir(), "Directory 'coreneuron_input' not found."
+
+
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
+def test_cli_build_model():
+    with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
+        sim_config_data = json.load(f)
+        sim_config_data["target_simulator"] = "CORENEURON"
+
+    test_folder = tempfile.TemporaryDirectory("cli-test-build-model")  # auto removed
+    test_folder_path = Path(test_folder.name)
+    for f in ("node_sets.json", "circuit_config.json", "input.dat"):
+        shutil.copy(SIM_DIR / f, test_folder_path)
+    with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
+        json.dump(sim_config_data, f, indent=2)
+
+    result_model = subprocess.run(
+        ["neurodamus", CONFIG_FILE_MINI, "--simulate-model=OFF", "--disable-reports"],
+        check=True,
+        cwd=test_folder_path,
+        capture_output=True,
+        text=True
+    )
+    assert "[SKIPPED] SIMULATION (MODEL BUILD ONLY)" in result_model.stdout
+
+    result_auto = subprocess.run(
+        ["neurodamus", CONFIG_FILE_MINI, "--disable-reports"],
+        check=True,
+        cwd=test_folder_path,
+        capture_output=True,
+        text=True
+    )
+    assert "SIMULATION (SKIP MODEL BUILD)" in result_auto.stdout
+
+    subprocess.run(
+        ["neurodamus", CONFIG_FILE_MINI, "--simulate-model=OFF", "--disable-reports"],
+        check=True,
+        cwd=test_folder_path
+    )
+    result_off = subprocess.run(
+        ["neurodamus", CONFIG_FILE_MINI, "--build-model=OFF", "--disable-reports"],
+        check=True,
+        cwd=test_folder_path,
+        capture_output=True,
+        text=True
+    )
+    assert "SIMULATION (SKIP MODEL BUILD)" in result_off.stdout
+
+
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
+def test_cli_shm_transfer():
+    with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
+        sim_config_data = json.load(f)
+        sim_config_data["target_simulator"] = "CORENEURON"
+
+    test_folder = tempfile.TemporaryDirectory("cli-test-shm-transfer")  # auto removed
+    test_folder_path = Path(test_folder.name)
+    for f in ("node_sets.json", "circuit_config.json", "input.dat"):
+        shutil.copy(SIM_DIR / f, test_folder_path)
+    with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
+        json.dump(sim_config_data, f, indent=2)
+
+    shm_transfer_message = "Unknown SHM directory for model file transfer in CoreNEURON."
+    result_shm = subprocess.run(
+        ["neurodamus", CONFIG_FILE_MINI, "--enable-shm=ON"],
+        check=True,
+        cwd=test_folder_path,
+        capture_output=True,
+        text=True
+    )
+    assert shm_transfer_message in result_shm.stdout
+    result_shm_off = subprocess.run(
+        ["neurodamus", CONFIG_FILE_MINI, "--enable-shm=OFF"],
+        check=True,
+        cwd=test_folder_path,
+        capture_output=True,
+        text=True
+    )
+    assert shm_transfer_message not in result_shm_off.stdout
+
+
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
+def test_cli_building_steps():
+    with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
+        sim_config_data = json.load(f)
+        sim_config_data["target_simulator"] = "CORENEURON"
+
+    test_folder = tempfile.TemporaryDirectory("cli-test-building-steps")  # auto removed
+    test_folder_path = Path(test_folder.name)
+    for f in ("node_sets.json", "circuit_config.json", "input.dat"):
+        shutil.copy(SIM_DIR / f, test_folder_path)
+    with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
+        json.dump(sim_config_data, f, indent=2)
+
+    result = subprocess.run(
+        ["neurodamus", CONFIG_FILE_MINI, "--modelbuilding-steps=2", "--disable-reports"],
+        check=True,
+        cwd=test_folder_path,
+        capture_output=True,
+        text=True
+    )
+    assert "MULTI-CYCLE RUN: 2 Cycles" in result.stdout
+
+
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
+def test_cli_lb_mode():
+    test_folder = tempfile.TemporaryDirectory("cli-test-lb-mode")  # auto removed
+    test_folder_path = Path(test_folder.name)
+    for f in ("node_sets.json", "circuit_config.json", "input.dat", "simulation_config_mini.json"):
+        shutil.copy(SIM_DIR / f, test_folder_path)
+
+    for lb_mode in ("WholeCell", "MultiSplit"):
+        result = subprocess.run(
+            ["neurodamus", CONFIG_FILE_MINI, f"--lb-mode={lb_mode}", "--disable-reports"],
+            check=True,
+            cwd=test_folder_path,
+            capture_output=True,
+            text=True
+        )
+        assert f"Load Balancing ENABLED. Mode: {lb_mode}" in result.stdout
+        assert (test_folder_path / "mcomplex.dat").is_file(), "File 'mcomplex.dat' not found."
+        assert (test_folder_path / "sim_conf").is_dir(), "Directory 'sim_conf' not found."
+
+
+@pytest.mark.skipif(
+    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
+    reason="Test requires loading a neocortex model to run")
+def test_cli_output_path():
+    test_folder = tempfile.TemporaryDirectory("cli-test-output-path")  # auto removed
+    test_folder_path = Path(test_folder.name)
+    for f in ("node_sets.json", "circuit_config.json", "input.dat", "simulation_config_mini.json"):
+        shutil.copy(SIM_DIR / f, test_folder_path)
+
+    with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
+        sim_config_data = json.load(f)
+
+    simconfig_output_path = sim_config_data["output"]["output_dir"]
+    output_path = "new_output"
+    subprocess.run(
+        ["neurodamus", CONFIG_FILE_MINI, f"--output-path={output_path}"],
+        check=True,
+        cwd=test_folder_path
+    )
+    # Output directory from simulation configuration is overridden
+    assert not (test_folder_path / simconfig_output_path).is_dir(), \
+           f"Directory '{simconfig_output_path}' should NOT exist."
+    assert (test_folder_path / output_path).is_dir(), f"Directory '{output_path}' not found."
