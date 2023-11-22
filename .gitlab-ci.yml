@@ -37,7 +37,7 @@ test-integration:
 test-integration-e2e:
   extends: .tox-template
   variables:
-    TOXENV: e2e
+    TOXENV: bbp-model
     TOX_OPTIONS: "-- tests/integration-e2e"
     # modules need to be loaded in this certain order to avoid mixing of libraries
     EXTRA_MODULES:
@@ -47,7 +47,7 @@ test-integration-e2e:
 test-scientific:
   extends: .tox-template
   variables:
-    TOXENV: e2e
+    TOXENV: bbp-model
     TOX_OPTIONS: "-- tests/scientific"
     # modules need to be loaded in this certain order to avoid mixing of libraries
     EXTRA_MODULES:
@@ -60,7 +60,7 @@ test-scientific:
 test-scientific-ngv:
   extends: .tox-template
   variables:
-    TOXENV: e2e
+    TOXENV: bbp-model
     TOX_OPTIONS: "-- tests/scientific-ngv"
     EXTRA_MODULES:
       unstable:neurodamus-neocortex-multiscale
