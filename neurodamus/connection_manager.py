@@ -276,7 +276,7 @@ class ConnectionManagerBase(object):
         self._load_offsets = kw.get("load_offsets", False)
         # An internal var to enable collection of synapse statistics to a Counter
         self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
-        self._dry_run_counted_cells = set()
+        self._dry_run_counted_cells = []
 
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
@@ -728,10 +728,10 @@ class ConnectionManagerBase(object):
           -  We will only consider gids which have not been accounted for yet.
         """
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
-        new_gids = numpy.array(list(set(raw_gids) - self._dry_run_counted_cells), dtype="uint32")
+        new_gids = numpy.setdiff1d(raw_gids, self._dry_run_counted_cells, assume_unique=True)
         if len(new_gids):
             counts = self._synapse_reader.get_counts(new_gids, group_by="syn_type_id")
-            self._dry_run_counted_cells.update(new_gids)
+            self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
             return counts
         return {}
 
