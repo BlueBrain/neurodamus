@@ -42,7 +42,6 @@ test-integration-e2e:
     # modules need to be loaded in this certain order to avoid mixing of libraries
     EXTRA_MODULES:
       unstable:neurodamus-neocortex
-      unstable:py-neurodamus  # needed for dependencies
 
 test-scientific:
   extends: .tox-template
@@ -51,11 +50,9 @@ test-scientific:
     TOX_OPTIONS: "-- tests/scientific"
     # modules need to be loaded in this certain order to avoid mixing of libraries
     EXTRA_MODULES:
-      unstable:py-psutil
       unstable:intel-oneapi-compilers
       unstable:py-bluepy
       unstable:neurodamus-neocortex
-      unstable:py-neurodamus  # needed for dependencies
 
 test-scientific-ngv:
   extends: .tox-template
@@ -64,7 +61,6 @@ test-scientific-ngv:
     TOX_OPTIONS: "-- tests/scientific-ngv"
     EXTRA_MODULES:
       unstable:neurodamus-neocortex-multiscale
-      unstable:py-neurodamus  # needed for dependencies
 
 set_alt_branches:
   script:
