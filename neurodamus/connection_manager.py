@@ -18,7 +18,7 @@ from .connection import Connection, ReplayMode
 from .io.synapse_reader import SynapseReader
 from .target_manager import TargetManager, TargetSpec
 from .utils import compat, bin_search, dict_filter_map
-from .utils.logging import VERBOSE_LOGLEVEL, log_verbose, log_all
+from .utils.logging import log_verbose, log_all
 from .utils.memory import DryRunStats
 from .utils.timeit import timeit
 
@@ -535,7 +535,6 @@ class ConnectionManagerBase(object):
         """
         if SimConfig.dry_run:
             counts = self._get_conn_stats(self._src_target_filter, None)
-            log_all(VERBOSE_LOGLEVEL, "Synapse count: %d", sum(counts.values()))
             self._dry_run_stats.synapse_counts += counts
             return
 
@@ -564,19 +563,18 @@ class ConnectionManagerBase(object):
         conn_kwargs = {}
         pop = self._cur_population
         logging.debug("Connecting group %s -> %s", conn_source, conn_destination)
-        src_tname = TargetSpec(conn_source).name
-        dst_tname = TargetSpec(conn_destination).name
-        src_target = src_tname and self._target_manager.get_target(conn_source)
-        dst_target = dst_tname and self._target_manager.get_target(conn_destination)
+        src_tspec = TargetSpec(conn_source)
+        dst_tspec = TargetSpec(conn_destination)
+        src_target = src_tspec.name and self._target_manager.get_target(src_tspec)
+        dst_target = dst_tspec.name and self._target_manager.get_target(dst_tspec)
 
         if src_target and src_target.is_void() or dst_target and dst_target.is_void():
             logging.debug("Skip void connectivity for current connectivity: %s - %s",
-                          src_tname, dst_tname)
+                          conn_source, conn_destination)
             return
 
         if SimConfig.dry_run:
             counts = self._get_conn_stats(src_target, dst_target)
-            log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", src_tname, dst_tname, sum(counts.values()))
             self._dry_run_stats.synapse_counts += counts
             return
 
@@ -732,6 +730,9 @@ class ConnectionManagerBase(object):
         if len(new_gids):
             counts = self._synapse_reader.get_counts(new_gids, group_by="syn_type_id")
             self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
+            src_pop = self._src_cell_manager.population_name
+            target = (dst_target.name if dst_target else f"*{self._cell_manager.population_name}")
+            logging.debug("(rank0) %s -> %s %s: %s", src_pop, target, new_gids, counts)
             return counts
         return {}
 
