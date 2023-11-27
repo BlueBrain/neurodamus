@@ -18,7 +18,7 @@ from .connection import Connection, ReplayMode
 from .io.synapse_reader import SynapseReader
 from .target_manager import TargetManager, TargetSpec
 from .utils import compat, bin_search, dict_filter_map
-from .utils.logging import log_verbose, log_all
+from .utils.logging import VERBOSE_LOGLEVEL, log_verbose, log_all
 from .utils.memory import DryRunStats
 from .utils.timeit import timeit
 
@@ -535,6 +535,7 @@ class ConnectionManagerBase(object):
         """
         if SimConfig.dry_run:
             counts = self._get_conn_stats(self._src_target_filter, None)
+            log_all(VERBOSE_LOGLEVEL, "Synapse count: %d", sum(counts.values()))
             self._dry_run_stats.synapse_counts += counts
             return
 
@@ -575,6 +576,8 @@ class ConnectionManagerBase(object):
 
         if SimConfig.dry_run:
             counts = self._get_conn_stats(src_target, dst_target)
+            count_sum = sum(counts.values())
+            log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", pop.src_name, conn_destination, count_sum)
             self._dry_run_stats.synapse_counts += counts
             return
 
