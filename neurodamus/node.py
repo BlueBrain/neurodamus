@@ -510,6 +510,7 @@ class Node:
             SynManagerCls = Engine.InnerConnectivityCls
             self._create_synapse_manager(SynManagerCls, circuit, target_manager, **manager_kwa)
 
+        MPI.check_no_errors()
         log_stage("Handling projections...")
         for pname, projection in SimConfig.projections.items():
             self._load_projections(pname, projection, **manager_kwa)
