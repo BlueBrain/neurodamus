@@ -9,6 +9,7 @@ from collections import defaultdict, Counter
 from itertools import chain
 from os import path as ospath
 from typing import List, Optional
+from math import ceil
 
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
@@ -729,19 +730,23 @@ class ConnectionManagerBase(object):
           - _src target is not considered so we count all inbound synapses
           -  We will only consider gids which have not been accounted for yet.
         """
-        BLOCK_LENGTH = 1000
+        BLOCK_LENGTH = 5000
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
         new_gids = numpy.setdiff1d(raw_gids, self._dry_run_counted_cells, assume_unique=True)
         if not len(new_gids):
             return {}
 
         temp_counter = Counter()
-        for low, high in gen_ranges(len(new_gids), BLOCK_LENGTH):
-            temp_counter += self._synapse_reader.get_counts(new_gids[low:high],
-                                                            group_by="syn_type_id")
-        self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
+        chunking_gen = gen_ranges(len(new_gids), BLOCK_LENGTH)
+        n_blocks = ceil(len(new_gids)/BLOCK_LENGTH)
         src_pop = self._src_cell_manager.population_name
         target = (dst_target.name if dst_target else f"*{self._cell_manager.population_name}")
+        for cycle, (low, high) in enumerate(chunking_gen):
+            temp_counter += self._synapse_reader.get_counts(new_gids[low:high],
+                                                            group_by="syn_type_id")
+            if cycle > 5:
+                log_all(VERBOSE_LOGLEVEL, "Rank: %d, %.2f%%", MPI.rank, (cycle+1)/n_blocks*100)
+        self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
         logging.debug("(rank0) %s -> %s %s: %s", src_pop, target, new_gids, temp_counter)
 
         return temp_counter
