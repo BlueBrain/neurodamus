@@ -242,10 +242,10 @@ class DryRunStats:
         log_verbose("+{:=^68}+".format(" Synapse Count "))
         log_verbose("| {:^40s} | {:^10s} | {:^10s} |".format("Synapse Type", "Family", "Count"))
         log_verbose("+{:-^68}+".format(""))
-        for synapse_type, count in master_counter.items():
-            is_inh = synapse_type < 100
-            log_verbose("| {:40.0f} | {:<10s} | {:10.0f} |".format(
-                synapse_type, "INH" if is_inh else "EXC", count))
+        for syn_type, count in sorted(master_counter.items()):
+            is_inh = syn_type < 100
+            syn_type_str = "INH" if is_inh else "EXC"
+            log_verbose("| {:40.0f} | {:<10s} | {:10.0f} |".format(syn_type, syn_type_str, count))
             if is_inh:
                 inh_count += count
             else:

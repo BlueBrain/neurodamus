@@ -276,6 +276,7 @@ class ConnectionManagerBase(object):
         self._load_offsets = kw.get("load_offsets", False)
         # An internal var to enable collection of synapse statistics to a Counter
         self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
+        self._dry_run_counted_cells = []
 
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
@@ -563,19 +564,20 @@ class ConnectionManagerBase(object):
         conn_kwargs = {}
         pop = self._cur_population
         logging.debug("Connecting group %s -> %s", conn_source, conn_destination)
-        src_tname = TargetSpec(conn_source).name
-        dst_tname = TargetSpec(conn_destination).name
-        src_target = src_tname and self._target_manager.get_target(conn_source)
-        dst_target = dst_tname and self._target_manager.get_target(conn_destination)
+        src_tspec = TargetSpec(conn_source)
+        dst_tspec = TargetSpec(conn_destination)
+        src_target = src_tspec.name and self._target_manager.get_target(src_tspec)
+        dst_target = dst_tspec.name and self._target_manager.get_target(dst_tspec)
 
         if src_target and src_target.is_void() or dst_target and dst_target.is_void():
             logging.debug("Skip void connectivity for current connectivity: %s - %s",
-                          src_tname, dst_tname)
+                          conn_source, conn_destination)
             return
 
         if SimConfig.dry_run:
             counts = self._get_conn_stats(src_target, dst_target)
-            log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", src_tname, dst_tname, sum(counts.values()))
+            count_sum = sum(counts.values())
+            log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", pop.src_name, conn_destination, count_sum)
             self._dry_run_stats.synapse_counts += counts
             return
 
@@ -721,8 +723,21 @@ class ConnectionManagerBase(object):
             logging.info(" * %s. Created %d connections", pathway_repr, all_created)
 
     def _get_conn_stats(self, _src_target, dst_target):
+        """Counts the number of synapses per type for the given destination target
+        Note:
+          - _src target is not considered so we count all inbound synapses
+          -  We will only consider gids which have not been accounted for yet.
+        """
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
-        return self._synapse_reader.get_counts(raw_gids, group_by="syn_type_id")
+        new_gids = numpy.setdiff1d(raw_gids, self._dry_run_counted_cells, assume_unique=True)
+        if len(new_gids):
+            counts = self._synapse_reader.get_counts(new_gids, group_by="syn_type_id")
+            self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
+            src_pop = self._src_cell_manager.population_name
+            target = (dst_target.name if dst_target else f"*{self._cell_manager.population_name}")
+            logging.debug("(rank0) %s -> %s %s: %s", src_pop, target, new_gids, counts)
+            return counts
+        return {}
 
     # -
     def get_target_connections(self, src_target_name,
