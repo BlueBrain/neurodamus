@@ -195,3 +195,12 @@ def append_recarray(target_array, record):
         target_array.resize(nrows+1, refcheck=False)
         target_array[nrows] = record
     return target_array
+
+
+def gen_ranges(limit, blocklen, low=0):
+    """Generates ranges in block intervals for a given length"""
+    for high in range(low + blocklen, limit, blocklen):
+        yield low, high
+        low = high
+    if low < limit:
+        yield low, limit
