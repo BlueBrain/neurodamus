@@ -86,7 +86,7 @@ def _read_sonata_spike_file(spike_file):
     return timestamps, spike_gids
 
 
-def test_v5_sonata_multisteps():
+def test_v5_sonata_multisteps(capsys):
     import numpy.testing as npt
     from neurodamus import Neurodamus
 
@@ -112,6 +112,9 @@ def test_v5_sonata_multisteps():
                                                                                     "out.h5"))
     npt.assert_allclose(spike_gids, obtained_spike_gids)
     npt.assert_allclose(timestamps, obtained_timestamps)
+
+    captured = capsys.readouterr()
+    assert "MULTI-CYCLE RUN: 3 Cycles" in captured.out
 
 
 def test_usecase3_sonata_multisteps():
