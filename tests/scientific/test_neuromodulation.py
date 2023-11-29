@@ -1,23 +1,15 @@
 import numpy as np
 import numpy.testing as npt
 import os
-import pytest
 from pathlib import Path
 
-pytestmark = [
-    pytest.mark.forked,
-    pytest.mark.skipif(
-        not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-        reason="Test requires loading a neocortex model to run"
-    )
-]
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "neuromodulation"
 
 
 def test_neuromodulation_sims_neuron():
     import numpy.testing as npt
     from neurodamus import Neurodamus
 
-    SIM_DIR = Path(__file__).parent.absolute() / "simulations" / "neuromodulation"
     config_file = str(SIM_DIR / "BlueConfig")
     os.chdir(SIM_DIR)
     nd = Neurodamus(config_file, disable_reports=True)
@@ -32,12 +24,10 @@ def test_neuromodulation_sims_neuron():
     npt.assert_allclose(timestamps, obtained_timestamps)
 
 
-@pytest.mark.forked
 def test_neuromodulation_sims_coreneuron():
     from neurodamus import Neurodamus
     from neurodamus.replay import SpikeManager
 
-    SIM_DIR = Path(__file__).parent.absolute() / "simulations" / "neuromodulation"
     config_file = str(SIM_DIR / "BlueConfig")
     os.chdir(SIM_DIR)
     nd = Neurodamus(config_file, disable_reports=True, simulator="CORENEURON",

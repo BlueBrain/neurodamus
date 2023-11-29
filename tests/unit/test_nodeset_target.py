@@ -1,9 +1,13 @@
 import numpy
+import pytest
 
 
+@pytest.mark.forked
 def test_get_local_gids():
-    from neurodamus.core.nodeset import NodeSet
+
+    from neurodamus.core.nodeset import NodeSet, PopulationNodes
     from neurodamus.target_manager import NodesetTarget
+    PopulationNodes.reset()
     nodes_popA = NodeSet([1, 2]).register_global("pop_A")
     nodes_popB = NodeSet([1, 2]).register_global("pop_B")
     local_gids = [NodeSet([1]).register_global("pop_A"), NodeSet([2]).register_global("pop_B")]

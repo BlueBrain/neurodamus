@@ -5,16 +5,7 @@ import pytest
 import subprocess
 from pathlib import Path
 
-SIM_DIR = Path(__file__).parent.absolute() / "simulations"
-
-pytestmark = [
-    pytest.mark.forked,
-    pytest.mark.slow,
-    pytest.mark.skipif(
-        not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-        reason="Test requires loading a neocortex model to run"
-    )
-]
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 
 @pytest.mark.skipif(

@@ -3,7 +3,7 @@ import pytest
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-USECASE3 = Path(__file__).parent.absolute() / "simulations" / "usecase3"
+USECASE3 = Path(__file__).parent.parent.absolute() / "simulations" / "usecase3"
 SONATA_CONF_FILE = str(USECASE3 / "simulation_sonata.json")
 
 pytestmark = pytest.mark.forked

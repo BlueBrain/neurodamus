@@ -1,3 +1,5 @@
+"""Tests load balance."""
+# Since a good deal of load balance tests are e2e we put all of them together in this group
 import logging
 import os
 import pytest
@@ -5,9 +7,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-SIM_DIR = Path(__file__).parent.absolute() / "simulations"
-
-pytestmark = pytest.mark.forked
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 
 @pytest.fixture
@@ -69,10 +69,6 @@ def circuit_conf():
     )
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run"
-)
 def test_load_balance_integrated(target_manager_hoc, circuit_conf):
     """Comprehensive test using real cells and deriving cx for a sub-target
     """
@@ -102,10 +98,6 @@ def test_load_balance_integrated(target_manager_hoc, circuit_conf):
     assert not lbal._reuse_cell_complexity(TargetSpec(None))
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run"
-)
 def test_multisplit(target_manager_hoc, circuit_conf, capsys):
     """Comprehensive test using real cells, multi-split and complexity derivation
     """
@@ -146,10 +138,6 @@ def test_multisplit(target_manager_hoc, circuit_conf, capsys):
     assert "Target VerySmall is a subset of the target Small" in captured.out
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run"
-)
 def test_loadbal_integration():
     """Ensure given the right files are in the lbal dir, the correct situation is detected
     """

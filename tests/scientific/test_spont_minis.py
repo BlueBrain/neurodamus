@@ -31,10 +31,6 @@ def sonata_config_file(sonata_config):
     os.unlink(config_file.name)
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run"
-)
 def test_spont_minis(sonata_config_file):
     from neurodamus.connection_manager import Nd, SynapseRuleManager
     from neurodamus import Neurodamus

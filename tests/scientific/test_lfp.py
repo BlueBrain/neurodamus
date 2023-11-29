@@ -4,16 +4,7 @@ import os
 import numpy as np
 from pathlib import Path
 
-SIM_DIR = Path(__file__).parent.absolute() / "simulations"
-
-pytestmark = [
-    pytest.mark.forked,
-    pytest.mark.slow,
-    pytest.mark.skipif(
-        not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-        reason="Test requires loading a neocortex model to run"
-    )
-]
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 
 @pytest.fixture
@@ -61,7 +52,7 @@ def test_file(tmpdir):
             incrementy -= 0.0032
         electrodes_group.create_dataset("scaling_factors", dtype='f8', data=matrix)
 
-    yield test_file
+    return test_file
 
 
 def test_load_lfp_config(tmpdir, test_file):
@@ -167,10 +158,6 @@ def _read_sonata_lfp_file(lfp_file):
     return node_ids, data
 
 
-@pytest.mark.forked
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_v5_sonata_lfp(tmpdir, test_file):
     import numpy.testing as npt
     from neurodamus import Neurodamus

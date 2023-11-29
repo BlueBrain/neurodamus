@@ -1,11 +1,7 @@
 import pytest
-from pathlib import Path
 from unittest import mock
 
 from neurodamus.connection_manager import ConnectionSet
-
-SIM_DIR = Path(__file__).parent.absolute() / "simulations"
-CIRCUIT_PATH = "/gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-2k"
 
 
 class _FakeConn:
@@ -76,7 +72,7 @@ def test_population_all_conns():
         assert expected[i] == (conn.sgid, conn.tgid)
 
 
-@pytest.mark.parametrize("test_input, expected", [
+@pytest.mark.parametrize(("test_input", "expected"), [
     ((1,), [(0, 1), (1, 1)]),
     (([1],), [(0, 1), (1, 1)]),
     (([1, 2],), [(0, 1), (1, 1), (1, 2)]),
@@ -105,7 +101,7 @@ def test_population_delete():
         assert expected[i] == (conn.sgid, conn.tgid)
 
 
-@pytest.mark.parametrize("test_input, expected", [
+@pytest.mark.parametrize(("test_input", "expected"), [
     ((1,), [(0, 0), (1, 0), (1, 2)]),
     (([1],), [(0, 0), (1, 0), (1, 2)]),
     (([1, 2],), [(0, 0), (1, 0)]),

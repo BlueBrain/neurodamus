@@ -22,7 +22,7 @@ to our [GitHub Repository][github]. Even better, you can [submit a Pull Request]
 #  Missing a Feature?
 
 You can *request* a new feature by [submitting an issue](#issues) to our GitHub Repository.
-If you would like to *implement* a new feature, please submit an issue with a proposal for your 
+If you would like to *implement* a new feature, please submit an issue with a proposal for your
 work first, to be sure that we can use it.
 
 Please consider what kind of change it is:
@@ -118,23 +118,65 @@ This section applies to both Python versions 2 and 3.
 
 It is recommended to use `virtualenv` to develop in a sandbox environment:
 
-```
+```sh
 virtualenv venv
 . venv/bin/activate
-pip install -r tests/requirement_tests.txt
+
+# Install neurodamus in development mode
+pip install -e .
+
+# Install test requirements
+pip install -r tests/requirements.txt
 ```
 
-## Build
+## Testing
 
-Run the following command to build incrementally the project: `pip install -e .`
+There are several test groups in Neurodamus, from plain unit tests to integration and system tests.
 
-## Test
+While developing you may want to run unit tests very frequently and thus we suggest running the base
+tests using pytest directly from the dev environment.
+```sh
+pytest tests/unit
+```
 
-Run the following command to run the Python unit-tests: `pytest tests`
+For the next stage testing we suggest using the provided tox environments
+
+```sh
+# Integration tests
+tox -e integration
+```
+
+System and scientific tests require Blue Brain models. They therefore depend on neurodamus-neocortex
+`special` builds and should be launched as follows:
+
+```sh
+module load unstable neurodamus-neocortex py-neurodamus
+# Integration-e2e tests
+tox -e bbp-model -- tests/integration-e2e
+
+# Scientific tests
+tox -e bbp-model -- tests/scientific
+```
+
+### Adding more tests
+
+We kindly ask contributors to add tests alongside their new features or enhancements. With the
+previous setup in mind, consider adding test to one or more groups:
+
+ - `tests/unit`: For unit tests of functions with little dependencies. Tests get a few shared mocks,
+namely for NEURON and MPI.
+ - `tests/integration`: For integration tests. Please place here tests around a component which
+   might depend on a number of functions. Tests here can rely on NEURON and the other base
+   dependencies. Additionally tests are provided a `special` with synapse mechanisms so that
+   Neurodamus can be fully initialized.
+ - `tests/integration-e2e`: Place tests here that require launching a top-level Neurodamus instance.
+   Examples of it might be testing modes of operation, parameter handling, or simply larger
+   integration tests which are validated according to the results.
+ - `tests/scientific[-ngv]`: Should contain tests which validate essential scientific features
+   implemented in Neurodamus, namely creation of synapses, replay, NGV, neurodamulation, etc.
 
 ## Coding conventions
 
 The code coverage of the Python unit-tests may not decrease over time.
 It means that every change must go with their corresponding Python unit-tests to
-validate the library behavior as well as to demonstrate the API usage. 
-
+validate the library behavior as well as to demonstrate the API usage.

@@ -45,10 +45,6 @@ def sonata_config_file(sonata_config):
     os.unlink(config_file.name)
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run"
-)
 def test_projections(sonata_config_file):
     """
     Test that projections are correctly set up

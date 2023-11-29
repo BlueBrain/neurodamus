@@ -98,20 +98,6 @@ TGT_str_ns = """
 }
 """
 
-# Prerequisites
-pytestmark = [
-    pytest.mark.slow,
-    pytest.mark.forked,
-    pytest.mark.skipif(
-        not os.path.isfile(NODE),
-        reason="Circuit file not available"
-    ),
-    pytest.mark.skipif(
-        not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-        reason="Test requires loading a neocortex model to run"
-    )
-]
-
 
 @pytest.fixture(scope="module")
 def blueconfig():

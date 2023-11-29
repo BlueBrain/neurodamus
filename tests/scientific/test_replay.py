@@ -2,7 +2,6 @@ import json
 import numpy
 import numpy.testing as npt
 import os
-import pytest
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -29,10 +28,6 @@ def replay_sim_config(sonata_config, replay_file):
     return config_file
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run"
-)
 def test_replay_sim(sonata_config):
     from neurodamus import Neurodamus
     from neurodamus.core.configuration import Feature
@@ -74,10 +69,6 @@ def test_replay_sim(sonata_config):
 
 # A more comprehensive example, using Sonata replay with two populations
 # ======================================================================
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run"
-)
 def test_replay_sonata_spikes(sonata_config):
     from neurodamus import Neurodamus
     from neurodamus.core.configuration import Feature

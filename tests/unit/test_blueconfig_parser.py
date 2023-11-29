@@ -3,7 +3,7 @@ from neurodamus.io.config_parser import BlueConfig, BlueConfigParserError
 from pathlib import Path
 from contextlib import contextmanager
 
-BLUECONFIG_FILE = Path(__file__).parent.absolute() / "simulations" / "complex.blueconfig"
+BLUECONFIG_FILE = Path(__file__).parent.parent.absolute() / "simulations" / "complex.blueconfig"
 
 
 def test_blueconfig_parser():

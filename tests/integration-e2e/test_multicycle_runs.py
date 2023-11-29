@@ -3,18 +3,14 @@ import os
 import pytest
 from pathlib import Path
 
-SIM_DIR = Path(__file__).parent.absolute() / "simulations"
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 
 @pytest.fixture(autouse=True)
-def change_test_dir(monkeypatch, tmp_path):
+def _change_test_dir(monkeypatch, tmp_path):
     monkeypatch.chdir(str(SIM_DIR / "usecase3"))
 
 
-@pytest.mark.forked
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test initialize internal structure and clashes with other tests")
 def test_nodeset_target_generate_subtargets():
     from neurodamus.core.nodeset import NodeSet
     from neurodamus.target_manager import NodesetTarget
@@ -45,10 +41,6 @@ def test_nodeset_target_generate_subtargets():
     assert np.array_equal(subtargets[2][1].get_gids(), np.array([1002]))
 
 
-@pytest.mark.forked
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test initialize internal structure and clashes with other tests")
 def test_hoc_target_generate_subtargets():
     from neurodamus.target_manager import _HocTarget
 
@@ -94,10 +86,6 @@ def _read_sonata_spike_file(spike_file):
     return timestamps, spike_gids
 
 
-@pytest.mark.forked
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_v5_sonata_multisteps():
     import numpy.testing as npt
     from neurodamus import Neurodamus
@@ -126,10 +114,6 @@ def test_v5_sonata_multisteps():
     npt.assert_allclose(timestamps, obtained_timestamps)
 
 
-@pytest.mark.forked
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_usecase3_sonata_multisteps():
     import numpy.testing as npt
     from neurodamus import Neurodamus

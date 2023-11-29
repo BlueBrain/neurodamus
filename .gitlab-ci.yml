@@ -24,22 +24,43 @@ variables:
     value: $BLUECONFIGS_BRANCH
     description: 'Name of the blueconfigs branch to test against'
 
-python3-base:
+test-unit:
   extends: .tox-template
   variables:
-    TOXENV: flake8, py3
+    TOXENV: flake8, unit
 
-py38-full-spack:
+test-integration:
   extends: .tox-template
   variables:
-    TOXENV: bb5
+    TOXENV: integration
+
+test-integration-e2e:
+  extends: .tox-template
+  variables:
+    TOXENV: bbp-model
+    TOX_OPTIONS: "-- tests/integration-e2e"
     # modules need to be loaded in this certain order to avoid mixing of libraries
     EXTRA_MODULES:
-      unstable:py-psutil
+      unstable:neurodamus-neocortex
+
+test-scientific:
+  extends: .tox-template
+  variables:
+    TOXENV: bbp-model
+    TOX_OPTIONS: "-- tests/scientific"
+    # modules need to be loaded in this certain order to avoid mixing of libraries
+    EXTRA_MODULES:
       unstable:intel-oneapi-compilers
       unstable:py-bluepy
       unstable:neurodamus-neocortex
-      unstable:py-neurodamus  # needed for dependencies
+
+test-scientific-ngv:
+  extends: .tox-template
+  variables:
+    TOXENV: bbp-model
+    TOX_OPTIONS: "-- tests/scientific-ngv"
+    EXTRA_MODULES:
+      unstable:neurodamus-neocortex-multiscale
 
 set_alt_branches:
   script:

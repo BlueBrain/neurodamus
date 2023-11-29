@@ -5,6 +5,7 @@ import pytest
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+USECASE3 = Path(__file__).parent.parent.absolute() / "simulations" / "usecase3"
 
 # BlueConfig string
 BC_str = """
@@ -106,13 +107,6 @@ def blueconfig1():
 
 
 @pytest.mark.slow
-@pytest.mark.forked
-@pytest.mark.skipif(
-    not os.path.isfile("/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3"),
-    reason="Circuit file not available")
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 @pytest.mark.skipif(
     "bluepy" not in os.environ.get("PYTHONPATH"),
     reason="Test requires bluepy run")
@@ -311,13 +305,9 @@ def test__constrained_hill():
     npt.assert_allclose(scale_factors(a, b), _constrained_hill(a, b))
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_no_edge_creation(capsys):
     from neurodamus.node import Node
 
-    USECASE3 = Path(__file__).parent.absolute() / "simulations" / "usecase3"
     contents = """
     {
         "manifest": {

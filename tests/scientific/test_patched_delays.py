@@ -72,13 +72,6 @@ Target Cell post_L5_PC
 
 
 @pytest.mark.slow
-@pytest.mark.forked
-@pytest.mark.skipif(
-    not os.path.isfile("/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3"),
-    reason="Circuit file not available")
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_eager_caching():
     """
     A test of the impact of eager caching of synaptic parameters. BBPBGLIB-813
