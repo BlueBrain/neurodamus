@@ -158,6 +158,23 @@ tox -e bbp-model -- tests/integration-e2e
 tox -e bbp-model -- tests/scientific
 ```
 
+### Adding more tests
+
+We kindly ask contributors to add tests alongside their new features or enhancements. With the
+previous setup in mind, consider adding test to one or more groups:
+
+ - `tests/unit`: For unit tests of functions with little dependencies. Tests get a few shared mocks,
+namely for NEURON and MPI.
+ - `tests/integration`: For integration tests. Please place here tests around a component which
+   might depend on a number of functions. Tests here can rely on NEURON and the other base
+   dependencies. Additionally tests are provided a `special` with synapse mechanisms so that
+   Neurodamus can be fully initialized.
+ - `tests/integration-e2e`: Place tests here that require launching a top-level Neurodamus instance.
+   Examples of it might be testing modes of operation, parameter handling, or simply larger
+   integration tests which are validated according to the results.
+ - `tests/scientific[-ngv]`: Should contain tests which validate essential scientific features
+   implemented in Neurodamus, namely creation of synapses, replay, NGV, neurodamulation, etc.
+
 ## Coding conventions
 
 The code coverage of the Python unit-tests may not decrease over time.
