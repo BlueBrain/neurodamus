@@ -725,7 +725,7 @@ class ConnectionManagerBase(object):
             logging.info(" * %s. Created %d connections", pathway_repr, all_created)
 
     def _get_conn_stats(self, _src_target, dst_target):
-        """Counts the number of synapses per type for the given destination target
+        """Estimates the number of synapses per type for the given destination target
         Note:
           - _src target is not considered so we count all inbound synapses
           -  We will only consider gids which have not been accounted for yet.
@@ -740,22 +740,29 @@ class ConnectionManagerBase(object):
         temp_counter = Counter()
         chunking_gen = gen_ranges(len(new_gids), BLOCK_LENGTH)
         n_blocks = ceil(len(new_gids)/BLOCK_LENGTH)
+        total_measured_cells = 0
+
         src_pop = self._src_cell_manager.population_name
         target = (dst_target.name if dst_target else f"*{self._cell_manager.population_name}")
+
         for cycle, (low, high) in enumerate(chunking_gen):
             sample_gids = new_gids[low:low + SAMPLE_SIZE]
             sample_counts = self._synapse_reader.get_counts(sample_gids, group_by="syn_type_id")
+            temp_counter.update(sample_counts)
+            total_measured_cells += len(sample_gids)
 
-            extrapolated_counts = {
-                syn_type: count * (min(high, len(new_gids)) - low) / SAMPLE_SIZE
-                for syn_type, count in sample_counts.items()}
-            temp_counter.update(extrapolated_counts)
             if cycle > 10:
                 log_all(VERBOSE_LOGLEVEL, "Rank: %d, %.2f%%", MPI.rank, (cycle+1)/n_blocks*100)
-        self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
-        logging.debug("(rank0) %s -> %s %s: %s", src_pop, target, new_gids, temp_counter)
 
-        return temp_counter
+        self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
+
+        # Extrapolation
+        extrapolation_ratio = len(new_gids) / total_measured_cells
+        extrapolated_counts = {syn_t: int(counts * extrapolation_ratio)
+                               for syn_t, counts in temp_counter.items()}
+
+        logging.debug("(rank0) %s -> %s %s: %s", src_pop, target, new_gids, temp_counter)
+        return extrapolated_counts
 
     # -
     def get_target_connections(self, src_target_name,
