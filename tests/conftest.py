@@ -9,6 +9,11 @@ def rootdir(request):
     return request.config.rootdir
 
 
+@pytest.fixture(scope="session", name="USECASE3")
+def usecase3_path():
+    return USECASE3
+
+
 @pytest.fixture
 def sonata_config():
     return dict(

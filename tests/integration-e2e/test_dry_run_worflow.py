@@ -1,9 +1,5 @@
-from pathlib import Path
 
-USECASE3 = Path(__file__).parent.absolute() / "usecase3"
-
-
-def test_dry_run_workflow():
+def test_dry_run_workflow(USECASE3):
     """
     Test that the dry run mode works
     """

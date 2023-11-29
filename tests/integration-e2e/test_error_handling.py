@@ -1,11 +1,8 @@
 import pytest
-from pathlib import Path
-
-USECASE3 = Path(__file__).parent.parent.absolute() / "simulations" / "usecase3"
-SONATA_CONF_FILE = str(USECASE3 / "simulation_sonata.json")
 
 
-def test_handling_neuron_exceptions():
+def test_handling_neuron_exceptions(USECASE3):
+    SONATA_CONF_FILE = str(USECASE3 / "simulation_sonata.json")
     from neurodamus import Node
     n = Node(SONATA_CONF_FILE)
     n.load_targets()
