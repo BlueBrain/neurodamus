@@ -9,7 +9,6 @@ from collections import defaultdict, Counter
 from itertools import chain
 from os import path as ospath
 from typing import List, Optional
-from math import ceil
 
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
