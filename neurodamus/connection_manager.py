@@ -731,7 +731,7 @@ class ConnectionManagerBase(object):
           -  We will only consider gids which have not been accounted for yet.
         """
         BLOCK_LENGTH = 5000
-        SAMPLE_SIZE = 100
+        SAMPLE_SIZE = 2000
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
         new_gids = numpy.setdiff1d(raw_gids, self._dry_run_counted_cells, assume_unique=True)
         if not len(new_gids):
@@ -745,14 +745,26 @@ class ConnectionManagerBase(object):
         src_pop = self._src_cell_manager.population_name
         target = (dst_target.name if dst_target else f"*{self._cell_manager.population_name}")
 
-        for cycle, (low, high) in enumerate(chunking_gen):
-            sample_gids = new_gids[low:low + SAMPLE_SIZE]
-            sample_counts = self._synapse_reader.get_counts(sample_gids, group_by="syn_type_id")
-            temp_counter.update(sample_counts)
-            total_measured_cells += len(sample_gids)
+        for key, value in self._dry_run_stats.metype_gids.items():
+            intersected_gids = numpy.intersect1d(new_gids, value)
+            if not len(intersected_gids):
+                continue
+            sample_step = ceil(len(intersected_gids) / SAMPLE_SIZE)
+            log_all(VERBOSE_LOGLEVEL, "Sample step: %s", sample_step)
+            sub_sample = intersected_gids[::sample_step]
+            sample_counts = self._synapse_reader.get_counts(sub_sample, group_by="syn_type_id")
+            temp_counter += sample_counts
+            total_measured_cells += len(sub_sample)
+            log_all(VERBOSE_LOGLEVEL, "Metype: %s, sub sample: %s, counts: %s", key, sub_sample, sample_counts)
 
-            if cycle > 10:
-                log_all(VERBOSE_LOGLEVEL, "Rank: %d, %.2f%%", MPI.rank, (cycle+1)/n_blocks*100)
+        # for cycle, (low, high) in enumerate(chunking_gen):
+        #     sample_gids = new_gids[low:low + SAMPLE_SIZE]
+        #     sample_counts = self._synapse_reader.get_counts(sample_gids, group_by="syn_type_id")
+        #     temp_counter += sample_counts
+        #     total_measured_cells += len(sample_gids)
+
+        #     if cycle > 10:
+        #         log_all(VERBOSE_LOGLEVEL, "Rank: %d, %.2f%%", MPI.rank, (cycle+1)/n_blocks*100)
 
         self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
 
@@ -761,7 +773,7 @@ class ConnectionManagerBase(object):
         extrapolated_counts = {syn_t: int(counts * extrapolation_ratio)
                                for syn_t, counts in temp_counter.items()}
 
-        logging.debug("(rank0) %s -> %s %s: %s", src_pop, target, new_gids, temp_counter)
+        logging.debug("(rank0) %s -> %s %s: %s", src_pop, target, new_gids, extrapolated_counts)
         return extrapolated_counts
 
     # -
