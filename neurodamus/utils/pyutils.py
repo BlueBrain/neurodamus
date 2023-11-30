@@ -204,3 +204,13 @@ def gen_ranges(limit, blocklen, low=0):
         low = high
     if low < limit:
         yield low, limit
+
+
+def adaptive_sample_rate(total_gids, min_rate=0.01, max_rate=1.0, threshold=10000):
+    """Calculate an adaptive sampling rate based on the total number of gids."""
+    if total_gids <= threshold:
+        return max_rate  # 100% sampling for small circuits
+    else:
+        # Smoothly reduce the sampling rate for larger circuits
+        rate = max(min_rate, max_rate * (threshold / total_gids))
+        return rate

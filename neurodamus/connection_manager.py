@@ -22,7 +22,7 @@ from .utils import compat, bin_search, dict_filter_map
 from .utils.logging import VERBOSE_LOGLEVEL, log_verbose, log_all
 from .utils.memory import DryRunStats
 from .utils.timeit import timeit
-from .utils.pyutils import gen_ranges
+from .utils.pyutils import adaptive_sample_rate
 
 
 class ConnectionSet(object):
@@ -730,7 +730,6 @@ class ConnectionManagerBase(object):
           - _src target is not considered so we count all inbound synapses
           -  We will only consider gids which have not been accounted for yet.
         """
-        BLOCK_LENGTH = 5000
         SAMPLE_SIZE = 2000
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
         new_gids = numpy.setdiff1d(raw_gids, self._dry_run_counted_cells, assume_unique=True)
@@ -738,8 +737,6 @@ class ConnectionManagerBase(object):
             return {}
 
         temp_counter = Counter()
-        chunking_gen = gen_ranges(len(new_gids), BLOCK_LENGTH)
-        n_blocks = ceil(len(new_gids)/BLOCK_LENGTH)
         total_measured_cells = 0
 
         src_pop = self._src_cell_manager.population_name
@@ -749,13 +746,18 @@ class ConnectionManagerBase(object):
             intersected_gids = numpy.intersect1d(new_gids, value)
             if not len(intersected_gids):
                 continue
-            sample_step = ceil(len(intersected_gids) / SAMPLE_SIZE)
-            log_all(VERBOSE_LOGLEVEL, "Sample step: %s", sample_step)
-            sub_sample = intersected_gids[::sample_step]
+            sampling_rate = adaptive_sample_rate(len(intersected_gids))
+            effective_sample_size = max(1, int(sampling_rate * len(intersected_gids)))
+            sample_indices = numpy.random.choice(len(intersected_gids), effective_sample_size, replace=False)
+            sub_sample = intersected_gids[sample_indices]
+            log_all(VERBOSE_LOGLEVEL, "Len Intersected Gid: %s, effective sample size: %s", len(intersected_gids), effective_sample_size)
+            # sample_step = ceil(len(intersected_gids) / SAMPLE_SIZE)
+            # log_all(VERBOSE_LOGLEVEL, "Sample step: %s", sample_step)
+            # sub_sample = intersected_gids[::sample_step]
             sample_counts = self._synapse_reader.get_counts(sub_sample, group_by="syn_type_id")
             temp_counter += sample_counts
             total_measured_cells += len(sub_sample)
-            log_all(VERBOSE_LOGLEVEL, "Metype: %s, sub sample: %s, counts: %s", key, sub_sample, sample_counts)
+            # log_all(VERBOSE_LOGLEVEL, "Metype: %s, sub sample: %s, counts: %s", key, sub_sample, sample_counts)
 
         # for cycle, (low, high) in enumerate(chunking_gen):
         #     sample_gids = new_gids[low:low + SAMPLE_SIZE]
