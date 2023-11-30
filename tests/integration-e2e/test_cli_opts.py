@@ -58,9 +58,6 @@ def test_cli_prcellgid():
     assert (test_folder_path / "62798_py_Neuron_t100.0.nrndat").is_file()
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_cli_disable_reports():
     test_folder = tempfile.TemporaryDirectory("cli-test-disable-reports")  # auto removed
     test_folder_path = Path(test_folder.name)
@@ -92,9 +89,6 @@ def test_cli_disable_reports():
         assert report_path.is_file(), f"File '{report_path}' not found."
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_cli_keep_build():
     from neurodamus import Neurodamus
     with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
@@ -116,9 +110,6 @@ def test_cli_keep_build():
     assert coreneuron_input_dir.is_dir(), "Directory 'coreneuron_input' not found."
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_cli_build_model():
     with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
         sim_config_data = json.load(f)
@@ -164,9 +155,6 @@ def test_cli_build_model():
     assert "SIMULATION (SKIP MODEL BUILD)" in result_off.stdout
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_cli_shm_transfer():
     with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
         sim_config_data = json.load(f)
@@ -201,9 +189,6 @@ def test_cli_shm_transfer():
         shm_transfer_message_bb5 not in result_shm_off.stdout
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_cli_lb_mode():
     test_folder = tempfile.TemporaryDirectory("cli-test-lb-mode")  # auto removed
     test_folder_path = Path(test_folder.name)
@@ -223,9 +208,6 @@ def test_cli_lb_mode():
         assert (test_folder_path / "sim_conf").is_dir(), "Directory 'sim_conf' not found."
 
 
-@pytest.mark.skipif(
-    not os.environ.get("NEURODAMUS_NEOCORTEX_ROOT"),
-    reason="Test requires loading a neocortex model to run")
 def test_cli_output_path():
     from neurodamus import Neurodamus
     test_folder = tempfile.TemporaryDirectory("cli-test-output-path")  # auto removed
