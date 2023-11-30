@@ -5,7 +5,7 @@ from __future__ import absolute_import
 import hashlib
 import logging
 import numpy
-from collections import defaultdict
+from collections import defaultdict, Counter
 from itertools import chain
 from os import path as ospath
 from typing import List, Optional
@@ -21,6 +21,7 @@ from .utils import compat, bin_search, dict_filter_map
 from .utils.logging import VERBOSE_LOGLEVEL, log_verbose, log_all
 from .utils.memory import DryRunStats
 from .utils.timeit import timeit
+from .utils.pyutils import gen_ranges
 
 
 class ConnectionSet(object):
@@ -723,21 +724,44 @@ class ConnectionManagerBase(object):
             logging.info(" * %s. Created %d connections", pathway_repr, all_created)
 
     def _get_conn_stats(self, _src_target, dst_target):
-        """Counts the number of synapses per type for the given destination target
+        """Estimates the number of synapses per type for the given destination target
         Note:
           - _src target is not considered so we count all inbound synapses
           -  We will only consider gids which have not been accounted for yet.
         """
+        INITIAL_BLOCK_LENGTH = 5000
+        SAMPLE_SIZE = 100
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
         new_gids = numpy.setdiff1d(raw_gids, self._dry_run_counted_cells, assume_unique=True)
-        if len(new_gids):
-            counts = self._synapse_reader.get_counts(new_gids, group_by="syn_type_id")
-            self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
-            src_pop = self._src_cell_manager.population_name
-            target = (dst_target.name if dst_target else f"*{self._cell_manager.population_name}")
-            logging.debug("(rank0) %s -> %s %s: %s", src_pop, target, new_gids, counts)
-            return counts
-        return {}
+        if not len(new_gids):
+            return {}
+
+        temp_counter = Counter()
+        chunking_gen = gen_ranges(len(new_gids), INITIAL_BLOCK_LENGTH)
+        total_blocks = sum(1 for _ in gen_ranges(len(new_gids), INITIAL_BLOCK_LENGTH))
+        total_measured_cells = 0
+
+        src_pop = self._src_cell_manager.population_name
+        target = (dst_target.name if dst_target else f"*{self._cell_manager.population_name}")
+
+        for cycle, (low, high) in enumerate(chunking_gen):
+            sample_gids = new_gids[low:low + SAMPLE_SIZE]
+            sample_counts = self._synapse_reader.get_counts(sample_gids, group_by="syn_type_id")
+            temp_counter.update(sample_counts)
+            total_measured_cells += len(sample_gids)
+
+            if cycle > 5:
+                log_all(VERBOSE_LOGLEVEL, "Rank: %d, %.2f%%", MPI.rank, (cycle+1)/total_blocks*100)
+
+        self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
+
+        # Extrapolation
+        extrapolation_ratio = len(new_gids) / total_measured_cells
+        extrapolated_counts = {syn_t: int(counts * extrapolation_ratio)
+                               for syn_t, counts in temp_counter.items()}
+
+        logging.debug("(rank0) %s -> %s %s: %s", src_pop, target, new_gids, temp_counter)
+        return extrapolated_counts
 
     # -
     def get_target_connections(self, src_target_name,
