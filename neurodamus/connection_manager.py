@@ -730,7 +730,7 @@ class ConnectionManagerBase(object):
           - _src target is not considered so we count all inbound synapses
           -  We will only consider gids which have not been accounted for yet.
         """
-        BLOCK_LENGTH = 5000
+        INITIAL_BLOCK_LENGTH = 5000
         SAMPLE_SIZE = 100
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
         new_gids = numpy.setdiff1d(raw_gids, self._dry_run_counted_cells, assume_unique=True)
@@ -738,8 +738,8 @@ class ConnectionManagerBase(object):
             return {}
 
         temp_counter = Counter()
-        chunking_gen = gen_ranges(len(new_gids), BLOCK_LENGTH)
-        n_blocks = ceil(len(new_gids)/BLOCK_LENGTH)
+        chunking_gen = gen_ranges(len(new_gids), INITIAL_BLOCK_LENGTH)
+        total_blocks = sum(1 for _ in gen_ranges(len(new_gids), INITIAL_BLOCK_LENGTH))
         total_measured_cells = 0
 
         src_pop = self._src_cell_manager.population_name
@@ -751,8 +751,8 @@ class ConnectionManagerBase(object):
             temp_counter.update(sample_counts)
             total_measured_cells += len(sample_gids)
 
-            if cycle > 10:
-                log_all(VERBOSE_LOGLEVEL, "Rank: %d, %.2f%%", MPI.rank, (cycle+1)/n_blocks*100)
+            if cycle > 5:
+                log_all(VERBOSE_LOGLEVEL, "Rank: %d, %.2f%%", MPI.rank, (cycle+1)/total_blocks*100)
 
         self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
 
