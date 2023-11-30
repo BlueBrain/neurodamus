@@ -21,7 +21,7 @@ from .utils import compat, bin_search, dict_filter_map
 from .utils.logging import VERBOSE_LOGLEVEL, log_verbose, log_all
 from .utils.memory import DryRunStats
 from .utils.timeit import timeit
-from .utils.pyutils import adaptive_sample_rate
+from .utils.pyutils import gen_ranges
 
 
 class ConnectionSet(object):
@@ -730,51 +730,53 @@ class ConnectionManagerBase(object):
           -  We will only consider gids which have not been accounted for yet.
         """
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
+
+        # First, even if we have synapse configure, dont ever re-count for the same cells
         new_gids = numpy.setdiff1d(raw_gids, self._dry_run_counted_cells, assume_unique=True)
         if not len(new_gids):
+            # Either target is empty or all the cells were considered before
             return {}
 
-        temp_counter = Counter()
-        total_measured_cells = 0
+        local_counter = Counter()
+        # src_pop = self._src_cell_manager.population_name
+        # target = (dst_target.name if dst_target else f"*{self._cell_manager.population_name}")
 
-        src_pop = self._src_cell_manager.population_name
-        target = (dst_target.name if dst_target else f"*{self._cell_manager.population_name}")
+        # NOTE:
+        #  - Estimation (/extrapolation) is performed per metype since properties can vary
+        #  - Consider only the cells for the current target
 
-        for key, value in self._dry_run_stats.metype_gids.items():
-            intersected_gids = numpy.intersect1d(new_gids, value)
-            if not len(intersected_gids):
+        for metype, me_gids in self._dry_run_stats.metype_gids.items():
+            me_gids = numpy.intersect1d(new_gids, me_gids)  # only gids of our jurisdiction
+            self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, me_gids)
+            if not len(me_gids):
                 continue
-            sampling_rate = adaptive_sample_rate(len(intersected_gids))
-            sample_size = max(1, int(sampling_rate * len(intersected_gids)))
-            sample_indices = numpy.random.choice(len(intersected_gids), sample_size, replace=False)
-            sub_sample = intersected_gids[sample_indices]
-            log_all(VERBOSE_LOGLEVEL, "Len Intersected Gid: %s, effective sample size: %s",
-                    len(intersected_gids), sample_size)
-            # sample_step = ceil(len(intersected_gids) / SAMPLE_SIZE)
-            # log_all(VERBOSE_LOGLEVEL, "Sample step: %s", sample_step)
-            # sub_sample = intersected_gids[::sample_step]
-            sample_counts = self._synapse_reader.get_counts(sub_sample, group_by="syn_type_id")
-            temp_counter += sample_counts
-            total_measured_cells += len(sub_sample)
 
-        # for cycle, (low, high) in enumerate(chunking_gen):
-        #     sample_gids = new_gids[low:low + SAMPLE_SIZE]
-        #     sample_counts = self._synapse_reader.get_counts(sample_gids, group_by="syn_type_id")
-        #     temp_counter.update(sample_counts)
-        #     total_measured_cells += len(sample_gids)
+            log_all(VERBOSE_LOGLEVEL, "Estimating synapses for metype %s", metype)
+            # NOTE:
+            # Process the first 50 cells from increasingly large blocks
+            #  - Take advantage of data locality
+            #  - Blocks increase as a geometric progression for handling very large sets
 
-        #     if cycle > 5:
-        #        log_all(VERBOSE_LOGLEVEL, "Rank: %d, %.2f%%", MPI.rank, (cycle+1)/total_blocks*100)
+            temp_counter = Counter()
+            total_measured_cells = 0
+            for start, stop, in gen_ranges(len(me_gids), 5000, block_increase_rate=1.2):
+                logging.debug("Processing range %d:%d", start, stop)
+                sample = me_gids[start:(start + 50)]
+                if not len(sample):
+                    continue
+                sample_counts = self._synapse_reader.get_counts(sample, group_by="syn_type_id")
+                logging.debug("Gids: %s... Types: %s", sample[:10], sample_counts)
+                total_measured_cells += len(sample)
+                temp_counter += sample_counts
 
-        self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
+            # Extrapolation
+            log_verbose("Cells total / measured: %d / %s", len(me_gids), total_measured_cells)
+            ratio = len(me_gids) / total_measured_cells
+            metype_counter = {syn_t: int(counts * ratio) for syn_t, counts in temp_counter.items()}
+            log_all(VERBOSE_LOGLEVEL, "%s. Syn count: %d ", metype, sum(metype_counter.values()))
+            local_counter += metype_counter
 
-        # Extrapolation
-        extrapolation_ratio = len(new_gids) / total_measured_cells
-        extrapolated_counts = {syn_t: int(counts * extrapolation_ratio)
-                               for syn_t, counts in temp_counter.items()}
-
-        logging.debug("(rank0) %s -> %s %s: %s", src_pop, target, new_gids, extrapolated_counts)
-        return extrapolated_counts
+        return local_counter
 
     # -
     def get_target_connections(self, src_target_name,

@@ -95,7 +95,7 @@ def dry_run_distribution(gid_metype_bundle, stride=1, stride_offset=0, total_cel
     Returns:
         A numpy array of gids that are sequentially in the same metype
     """
-    logging.info("Dry run distribution")
+    log_verbose("Dry run distribution")
 
     if not gid_metype_bundle:
         return EMPTY_GIDVEC
@@ -300,6 +300,7 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
             # Not enough cells to give this rank a few
             return gidvec, meinfos, total_cells
 
+        log_verbose("Loading nodes info")
         node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
         morpho_names = node_pop.get_attribute("morphology", node_sel)
         mtypes = node_pop.get_attribute("mtype", node_sel)
@@ -499,7 +500,7 @@ def _retrieve_unique_metypes(node_reader, all_gids, skip_metypes=()) -> dict:
     else:
         raise Exception(f"Reader type {type(node_reader)} incompatible with dry run.")
 
-    gids_per_metype = defaultdict(list)
+    gids_per_metype = defaultdict(compat.Vector)
     count_per_metype = defaultdict(int)
     for gid, mtype, etype in zip(gidvec, mtypes, etypes):
         metype = f"{mtype}-{etype}"
@@ -510,7 +511,7 @@ def _retrieve_unique_metypes(node_reader, all_gids, skip_metypes=()) -> dict:
                  len(gidvec), len(gids_per_metype))
     for metype, gid_list in gids_per_metype.items():
         logging.debug("METype: %-20s instances: %-8d gids: %s",
-                      metype, len(gid_list), gid_list)
+                      metype, len(gid_list), gid_list[:10])
 
     # If the list is longer than 50, truncate it to 50 elements.
     # If the metype is already computed, skip it
