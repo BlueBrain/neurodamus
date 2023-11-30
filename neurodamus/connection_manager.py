@@ -9,7 +9,6 @@ from collections import defaultdict, Counter
 from itertools import chain
 from os import path as ospath
 from typing import List, Optional
-from math import ceil
 
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
@@ -730,7 +729,6 @@ class ConnectionManagerBase(object):
           - _src target is not considered so we count all inbound synapses
           -  We will only consider gids which have not been accounted for yet.
         """
-        SAMPLE_SIZE = 2000
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
         new_gids = numpy.setdiff1d(raw_gids, self._dry_run_counted_cells, assume_unique=True)
         if not len(new_gids):
@@ -747,26 +745,26 @@ class ConnectionManagerBase(object):
             if not len(intersected_gids):
                 continue
             sampling_rate = adaptive_sample_rate(len(intersected_gids))
-            effective_sample_size = max(1, int(sampling_rate * len(intersected_gids)))
-            sample_indices = numpy.random.choice(len(intersected_gids), effective_sample_size, replace=False)
+            sample_size = max(1, int(sampling_rate * len(intersected_gids)))
+            sample_indices = numpy.random.choice(len(intersected_gids), sample_size, replace=False)
             sub_sample = intersected_gids[sample_indices]
-            log_all(VERBOSE_LOGLEVEL, "Len Intersected Gid: %s, effective sample size: %s", len(intersected_gids), effective_sample_size)
+            log_all(VERBOSE_LOGLEVEL, "Len Intersected Gid: %s, effective sample size: %s",
+                    len(intersected_gids), sample_size)
             # sample_step = ceil(len(intersected_gids) / SAMPLE_SIZE)
             # log_all(VERBOSE_LOGLEVEL, "Sample step: %s", sample_step)
             # sub_sample = intersected_gids[::sample_step]
             sample_counts = self._synapse_reader.get_counts(sub_sample, group_by="syn_type_id")
             temp_counter += sample_counts
             total_measured_cells += len(sub_sample)
-            # log_all(VERBOSE_LOGLEVEL, "Metype: %s, sub sample: %s, counts: %s", key, sub_sample, sample_counts)
 
         # for cycle, (low, high) in enumerate(chunking_gen):
         #     sample_gids = new_gids[low:low + SAMPLE_SIZE]
         #     sample_counts = self._synapse_reader.get_counts(sample_gids, group_by="syn_type_id")
-        #     temp_counter += sample_counts
+        #     temp_counter.update(sample_counts)
         #     total_measured_cells += len(sample_gids)
 
-        #     if cycle > 10:
-        #         log_all(VERBOSE_LOGLEVEL, "Rank: %d, %.2f%%", MPI.rank, (cycle+1)/n_blocks*100)
+        #     if cycle > 5:
+        #        log_all(VERBOSE_LOGLEVEL, "Rank: %d, %.2f%%", MPI.rank, (cycle+1)/total_blocks*100)
 
         self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
 

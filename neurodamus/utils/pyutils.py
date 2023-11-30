@@ -197,13 +197,15 @@ def append_recarray(target_array, record):
     return target_array
 
 
-def gen_ranges(limit, blocklen, low=0):
-    """Generates ranges in block intervals for a given length"""
-    for high in range(low + blocklen, limit, blocklen):
+def gen_ranges(limit, blocklen, low=0, block_increase_rate=1):
+    """Generates ranges in block intervals for a given length
+    block_increase_rate may be >1 in case we want the block to get increasingly large
+    """
+    while low < limit:
+        high = min(low + blocklen, limit)
         yield low, high
         low = high
-    if low < limit:
-        yield low, limit
+        blocklen = int(blocklen * block_increase_rate)
 
 
 def adaptive_sample_rate(total_gids, min_rate=0.01, max_rate=1.0, threshold=10000):
