@@ -95,8 +95,6 @@ def dry_run_distribution(gid_metype_bundle, stride=1, stride_offset=0, total_cel
     Returns:
         A numpy array of gids that are sequentially in the same metype
     """
-    log_verbose("Dry run distribution")
-
     if not gid_metype_bundle:
         return EMPTY_GIDVEC
 
@@ -281,20 +279,39 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
     node_pop = node_store.open_population(node_population)
     attr_names = node_pop.attribute_names
     dynamics_attr_names = node_pop.dynamics_attribute_names
+    total_cells = node_pop.size
+
+    def load_base_info_dry_run():
+        CELL_NODE_INFO_LIMIT = 100
+        log_verbose("Sonata dry run mode: looking for unique metype instances")
+        meinfos = METypeManager()
+        # skip_metypes = set(dry_run_stats.metype_memory.keys())
+        metype_gids, counts = _retrieve_unique_metypes(node_pop, all_gids)
+        dry_run_stats.metype_counts += counts
+        dry_run_stats.metype_gids = metype_gids
+        gid_metype_bundle = list(metype_gids.values())
+        gidvec = dry_run_distribution(gid_metype_bundle, stride, stride_offset, total_cells)
+
+        log_verbose("Loading node attributes... (subset of cells from each metype)")
+        for gids in metype_gids.values():
+            if not len(gids):
+                continue
+            gids = gids[:CELL_NODE_INFO_LIMIT]
+            node_sel = libsonata.Selection(gids - 1)  # Load 0-based node ids
+            morpho_names = node_pop.get_attribute("morphology", node_sel)
+            mtypes = node_pop.get_attribute("mtype", node_sel)
+            etypes = node_pop.get_attribute("etype", node_sel)
+            _model_templates = node_pop.get_attribute("model_template", node_sel)
+            emodel_templates = [emodel.removeprefix("hoc:") for emodel in _model_templates]
+            meinfos.load_infoNP(gids, morpho_names, emodel_templates, mtypes, etypes)
+        return gidvec, meinfos, total_cells
 
     def load_nodes_base_info():
-        meinfos = METypeManager()
-        total_cells = node_pop.size
         if SimConfig.dry_run:
-            logging.info("Sonata dry run mode: looking for unique metype instances")
-            # skip_metypes = set(dry_run_stats.metype_memory.keys())
-            metype_gids, counts = _retrieve_unique_metypes(node_pop, all_gids)
-            dry_run_stats.metype_counts += counts
-            dry_run_stats.metype_gids = metype_gids
-            gid_metype_bundle = list(metype_gids.values())
-            gidvec = dry_run_distribution(gid_metype_bundle, stride, stride_offset, total_cells)
-        else:
-            gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
+            return load_base_info_dry_run()
+
+        meinfos = METypeManager()
+        gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
 
         if not len(gidvec):
             # Not enough cells to give this rank a few
@@ -500,7 +517,7 @@ def _retrieve_unique_metypes(node_reader, all_gids, skip_metypes=()) -> dict:
     else:
         raise Exception(f"Reader type {type(node_reader)} incompatible with dry run.")
 
-    gids_per_metype = defaultdict(compat.Vector)
+    gids_per_metype = defaultdict(list)
     count_per_metype = defaultdict(int)
     for gid, mtype, etype in zip(gidvec, mtypes, etypes):
         metype = f"{mtype}-{etype}"

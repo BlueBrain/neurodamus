@@ -277,7 +277,7 @@ class ConnectionManagerBase(object):
         self._load_offsets = kw.get("load_offsets", False)
         # An internal var to enable collection of synapse statistics to a Counter
         self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
-        self._dry_run_counted_cells = []
+        self._dry_run_counted_cells = set()
 
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
@@ -536,7 +536,7 @@ class ConnectionManagerBase(object):
         """
         if SimConfig.dry_run:
             counts = self._get_conn_stats(self._src_target_filter, None)
-            log_all(VERBOSE_LOGLEVEL, "Synapse count: %d", sum(counts.values()))
+            log_all(VERBOSE_LOGLEVEL, "[Rank %d] Synapse count: %d", MPI.rank, sum(counts.values()))
             self._dry_run_stats.synapse_counts += counts
             return
 
@@ -729,11 +729,14 @@ class ConnectionManagerBase(object):
           - _src target is not considered so we count all inbound synapses
           -  We will only consider gids which have not been accounted for yet.
         """
+        BLOCK_BASE_SIZE = 5000
+        SAMPLES_PER_BLOCK = 50
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
 
         # First, even if we have synapse configure, dont ever re-count for the same cells
-        new_gids = numpy.setdiff1d(raw_gids, self._dry_run_counted_cells, assume_unique=True)
-        if not len(new_gids):
+        # Use sets since they are much faster than numpy
+        new_gids = set(raw_gids) - self._dry_run_counted_cells
+        if not new_gids:
             # Either target is empty or all the cells were considered before
             return {}
 
@@ -746,32 +749,36 @@ class ConnectionManagerBase(object):
         #  - Consider only the cells for the current target
 
         for metype, me_gids in self._dry_run_stats.metype_gids.items():
-            me_gids = numpy.intersect1d(new_gids, me_gids)  # only gids of our jurisdiction
-            self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, me_gids)
-            if not len(me_gids):
+            me_gids = set(me_gids).intersection(new_gids)
+            me_gids_count = len(me_gids)
+            if not me_gids_count:
                 continue
 
-            log_all(VERBOSE_LOGLEVEL, "Estimating synapses for metype %s", metype)
+            logging.debug("Estimating synapses for metype %s", metype)
+            self._dry_run_counted_cells.update(me_gids)  # track as seen
+            me_gids = numpy.fromiter(me_gids, dtype="uint32")
+
             # NOTE:
             # Process the first 50 cells from increasingly large blocks
-            #  - Take advantage of data locality
+            #  - Takes advantage of data locality
             #  - Blocks increase as a geometric progression for handling very large sets
 
             temp_counter = Counter()
-            total_measured_cells = 0
-            for start, stop, in gen_ranges(len(me_gids), 5000, block_increase_rate=1.2):
+            sampled_gids_count = 0
+
+            for start, stop, in gen_ranges(me_gids_count, BLOCK_BASE_SIZE, block_increase_rate=1.2):
                 logging.debug("Processing range %d:%d", start, stop)
-                sample = me_gids[start:(start + 50)]
+                sample = me_gids[start:(start + SAMPLES_PER_BLOCK)]
                 if not len(sample):
                     continue
                 sample_counts = self._synapse_reader.get_counts(sample, group_by="syn_type_id")
                 logging.debug("Gids: %s... Types: %s", sample[:10], sample_counts)
-                total_measured_cells += len(sample)
+                sampled_gids_count += len(sample)
                 temp_counter += sample_counts
 
             # Extrapolation
-            log_verbose("Cells total / measured: %d / %s", len(me_gids), total_measured_cells)
-            ratio = len(me_gids) / total_measured_cells
+            logging.debug("Cells samples / total: %d / %s", sampled_gids_count, me_gids_count)
+            ratio = len(me_gids) / sampled_gids_count
             metype_counter = {syn_t: int(counts * ratio) for syn_t, counts in temp_counter.items()}
             log_all(VERBOSE_LOGLEVEL, "%s. Syn count: %d ", metype, sum(metype_counter.values()))
             local_counter += metype_counter
