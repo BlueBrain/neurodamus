@@ -729,7 +729,7 @@ class ConnectionManagerBase(object):
           - _src target is not considered so we count all inbound synapses
           -  We will only consider gids which have not been accounted for yet.
         """
-        BLOCK_BASE_SIZE = 10000
+        BLOCK_BASE_SIZE = 5000
         SAMPLES_PER_BLOCK = 50
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
 
@@ -763,11 +763,12 @@ class ConnectionManagerBase(object):
             #  - Takes advantage of data locality
             #  - Blocks increase as a geometric progression for handling very large sets
 
-            temp_counter = Counter()
+            metype_estimate = Counter()
             sampled_gids_count = 0
 
-            for start, stop, in gen_ranges(me_gids_count, BLOCK_BASE_SIZE, block_increase_rate=1):
+            for start, stop, in gen_ranges(me_gids_count, BLOCK_BASE_SIZE, block_increase_rate=1.2):
                 logging.debug("Processing range %d:%d", start, stop)
+                block_len = stop - start
                 sample = me_gids[start:(start + SAMPLES_PER_BLOCK)]
                 sample_len = len(sample)
                 if not sample_len:
@@ -776,15 +777,14 @@ class ConnectionManagerBase(object):
                 logging.debug("Gids: %s... Types: %s", sample[:10], sample_counts)
                 logging.debug("Average syn/cell: %.2f", sum(sample_counts.values()) / sample_len)
                 sampled_gids_count += sample_len
-                temp_counter += sample_counts
+                ratio = block_len / sample_len
+                metype_estimate += {syn_t: int(n * ratio) for syn_t, n in sample_counts.items()}
 
             # Extrapolation
             logging.debug("Cells samples / total: %d / %s", sampled_gids_count, me_gids_count)
-            ratio = len(me_gids) / sampled_gids_count
-            metype_syns_total = sum(temp_counter.values())
-            metype_estimate = {syn_t: int(counts * ratio) for syn_t, counts in temp_counter.items()}
+            me_estimated_sum = sum(metype_estimate.values())
             log_all(VERBOSE_LOGLEVEL, "%s: Average syns/cell: %.1f, Estimated total: %d ",
-                    metype, metype_syns_total / sampled_gids_count, sum(metype_estimate.values()))
+                    metype, me_estimated_sum / me_gids_count, me_estimated_sum)
             local_counter += metype_estimate
 
         return local_counter
