@@ -40,6 +40,8 @@ class SonataConfig:
         self._sim_conf = libsonata.SimulationConfig.from_file(config_path)
         self._entries = {}
         self._sections = {}
+        # Track node populations and their source to avoid multiple sources
+        self._node_populations_src = {}
 
         with open(config_path) as config_fh:
             self._config_json: dict = json.load(config_fh)
@@ -209,6 +211,8 @@ class SonataConfig:
 
     def _blueconfig_circuits(self):
         """yield blue-config-style circuits"""
+        from neurodamus.core.configuration import ConfigurationError
+
         node_info_to_circuit = {
             "nodes_file": "CellLibraryFile",
             "type": "PopulationType"
@@ -221,6 +225,14 @@ class SonataConfig:
         def make_circuit(nodes_file, node_pop_name, population_info):
             if not os.path.isabs(nodes_file):
                 nodes_file = os.path.join(os.path.dirname(self.network), nodes_file)
+
+            existing_source = self._node_populations_src.get(node_pop_name)
+            if existing_source is None:
+                self._node_populations_src[node_pop_name] = nodes_file
+            elif existing_source != nodes_file:
+                raise ConfigurationError("Nodes pop '%s' from multiple sources: %s",
+                                         node_pop_name, (existing_source, nodes_file))
+
             circuit_conf = dict(
                 CircuitPath=os.path.dirname(nodes_file) or "",
                 CellLibraryFile=nodes_file,
