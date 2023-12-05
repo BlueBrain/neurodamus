@@ -427,8 +427,6 @@ class Node:
             logging.info("Memory usage after inizialization:")
             print_mem_usage()
             self._dry_run_stats = DryRunStats()
-            # We load the memory usage rather early since it will be needed at the moment we load
-            # the cell ids. This way we can avoid gidvec from having gids of known metype cells.
             self._dry_run_stats.try_import_cell_memory_usage()
             loader_opts = {"dry_run_stats": self._dry_run_stats}
         else:
@@ -455,6 +453,7 @@ class Node:
                 logging.warning("Skipped node population (restrict_node_populations)")
                 continue
             self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf,
+                                            load_balancer=load_balance,
                                             loader_opts=loader_opts)
 
         lfp_weights_file = self._run_conf.get("LFPWeightsPath")
