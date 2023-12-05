@@ -27,6 +27,7 @@ VERBATIM
 #define NRN_VERSION_GTEQ_9_0_0
 #endif
 #endif
+
 #ifndef NRN_VERSION_GTEQ_8_2_0
 extern int ifarg(int iarg);
 #ifndef CORENEURON_BUILD
@@ -41,6 +42,7 @@ void* nrn_random_arg(int argpos);
 #else
 #define RANDCAST (Rand*)
 #endif
+
 
 #ifdef STIM_DEBUG
 # define debug_printf(...) printf(__VA_ARGS__)
@@ -170,7 +172,6 @@ PROCEDURE setRNGs() {
 VERBATIM
 {
 #ifndef CORENEURON_BUILD
-    usingR123 = 0;
     if( ifarg(1) && hoc_is_double_arg(1) ) {
         nrnran123_State** pv = (nrnran123_State**)(&_p_exp_rng);
 
@@ -194,6 +195,7 @@ VERBATIM
 
         pv = (void**)(&_p_uniform_rng);
         *pv = nrn_random_arg(2);
+        usingR123 = 0;
     } else {
         if( usingR123 ) {
             nrnran123_State** pv = (nrnran123_State**)(&_p_exp_rng);
@@ -509,15 +511,16 @@ static void bbcore_write(double* dArray, int* iArray, int* doffset, int* ioffset
 }
 
 static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset, _threadargsproto_) {
-        assert(!_p_exp_rng);
-        assert(!_p_uniform_rng);
-        assert(!_p_vecRate);
-        assert(!_p_vecTbins);
         uint32_t* ia = ((uint32_t*)iArray) + *ioffset;
         nrnran123_State** pv;
         if (ia[0] != 0 || ia[1] != 0)
         {
           pv = (nrnran123_State**)(&_p_exp_rng);
+#if !NRNBBCORE
+          if(*pv) {
+              nrnran123_deletestream(*pv);
+          }
+#endif
           *pv = nrnran123_newstream3(ia[0], ia[1], ia[2] );
           nrnran123_setseq(*pv, ia[3], (char)ia[4]);
         }
@@ -526,6 +529,11 @@ static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset,
         if (ia[0] != 0 || ia[1] != 0)
         {
           pv = (nrnran123_State**)(&_p_uniform_rng);
+#if !NRNBBCORE
+          if(*pv) {
+            nrnran123_deletestream(*pv);
+          }
+#endif
           *pv = nrnran123_newstream3(ia[0], ia[1], ia[2] );
           nrnran123_setseq(*pv, ia[2], (char)ia[3]);
         }
@@ -535,7 +543,10 @@ static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset,
         *ioffset += 11;
 
         double *da = dArray + *doffset;
-        _p_vecRate = (double*)vector_new1(dsize);  /* works for dsize=0 */
+        if(!_p_vecRate) {
+          _p_vecRate = (double*)vector_new1(dsize);  /* works for dsize=0 */
+        }
+        assert(dsize == vector_capacity((IvocVect*)_p_vecRate));
         double *dv = vector_vec((IvocVect*)_p_vecRate);
         int iInt;
         for (iInt = 0; iInt < dsize; ++iInt)
@@ -545,7 +556,10 @@ static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset,
         *doffset += dsize;
 
         da = dArray + *doffset;
-        _p_vecTbins = (double*)vector_new1(dsize);
+        if(!_p_vecTbins) {
+          _p_vecTbins = (double*)vector_new1(dsize);
+        }
+        assert(dsize == vector_capacity((IvocVect*)_p_vecTbins));
         dv = vector_vec((IvocVect*)_p_vecTbins);
         for (iInt = 0; iInt < dsize; ++iInt)
         {
