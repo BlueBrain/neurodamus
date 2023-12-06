@@ -24,21 +24,16 @@ variables:
     value: $BLUECONFIGS_BRANCH
     description: 'Name of the blueconfigs branch to test against'
   GIT_DEPTH: 100
-  TOX_OPTIONS: "--verbose"
 
 test-unit:
   extends: .tox-template
   variables:
     TOXENV: flake8, unit
-    EXTRA_MODULES:
-      unstable:python
 
 test-integration:
   extends: .tox-template
   variables:
     TOXENV: integration
-    EXTRA_MODULES:
-      unstable:python
 
 test-integration-e2e:
   extends: .tox-template
@@ -99,8 +94,6 @@ blueconfig_tests:
 configure-docker-image:
   image: ubuntu:22.04
   stage: build
-  variables:
-    GIT_DEPTH: 0
   script:
     - set -x
     - apt-get update -y
@@ -254,7 +247,6 @@ publish-package:
 docs:
   variables:
     TOXENV: docs
-    GIT_DEPTH: 0
   artifacts:
     paths:
       - docs/_build
