@@ -23,6 +23,7 @@ variables:
   BLUECONFIGS_BRANCH:
     value: $BLUECONFIGS_BRANCH
     description: 'Name of the blueconfigs branch to test against'
+  GIT_DEPTH: 100
 
 test-unit:
   extends: .tox-template
