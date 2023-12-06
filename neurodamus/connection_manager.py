@@ -776,7 +776,10 @@ class ConnectionManagerBase(object):
                 logging.debug("Average syn/cell: %.2f", sum(sample_counts.values()) / sample_len)
                 sampled_gids_count += sample_len
                 ratio = block_len / sample_len
-                metype_estimate.update({syn_t: int(n * ratio) for syn_t, n in sample_counts.items()})
+                metype_estimate.update({
+                    syn_t: int(n * ratio)
+                    for syn_t, n in sample_counts.items()}
+                )
 
             # Extrapolation
             logging.debug("Cells samples / total: %d / %s", sampled_gids_count, me_gids_count)
