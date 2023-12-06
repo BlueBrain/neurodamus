@@ -730,7 +730,7 @@ class ConnectionManagerBase(object):
           -  We will only consider gids which have not been accounted for yet.
         """
         BLOCK_BASE_SIZE = 5000
-        SAMPLES_PER_BLOCK = 50
+        SAMPLES_PER_BLOCK = 100
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
 
         # First, even if we have synapse configure, dont ever re-count for the same cells
@@ -741,8 +741,6 @@ class ConnectionManagerBase(object):
             return {}
 
         local_counter = Counter()
-        # src_pop = self._src_cell_manager.population_name
-        # target = (dst_target.name if dst_target else f"*{self._cell_manager.population_name}")
 
         # NOTE:
         #  - Estimation (/extrapolation) is performed per metype since properties can vary
@@ -766,7 +764,7 @@ class ConnectionManagerBase(object):
             metype_estimate = Counter()
             sampled_gids_count = 0
 
-            for start, stop, in gen_ranges(me_gids_count, BLOCK_BASE_SIZE, block_increase_rate=1.2):
+            for start, stop, in gen_ranges(me_gids_count, BLOCK_BASE_SIZE, block_increase_rate=1.1):
                 logging.debug("Processing range %d:%d", start, stop)
                 block_len = stop - start
                 sample = me_gids[start:(start + SAMPLES_PER_BLOCK)]
@@ -778,14 +776,14 @@ class ConnectionManagerBase(object):
                 logging.debug("Average syn/cell: %.2f", sum(sample_counts.values()) / sample_len)
                 sampled_gids_count += sample_len
                 ratio = block_len / sample_len
-                metype_estimate += {syn_t: int(n * ratio) for syn_t, n in sample_counts.items()}
+                metype_estimate.update({syn_t: int(n * ratio) for syn_t, n in sample_counts.items()})
 
             # Extrapolation
             logging.debug("Cells samples / total: %d / %s", sampled_gids_count, me_gids_count)
             me_estimated_sum = sum(metype_estimate.values())
             log_all(VERBOSE_LOGLEVEL, "%s: Average syns/cell: %.1f, Estimated total: %d ",
                     metype, me_estimated_sum / me_gids_count, me_estimated_sum)
-            local_counter += metype_estimate
+            local_counter.update(metype_estimate)
 
         return local_counter
 
