@@ -30,11 +30,15 @@ test-unit:
   extends: .tox-template
   variables:
     TOXENV: flake8, unit
+    EXTRA_MODULES:
+      unstable:python
 
 test-integration:
   extends: .tox-template
   variables:
     TOXENV: integration
+    EXTRA_MODULES:
+      unstable:python
 
 test-integration-e2e:
   extends: .tox-template
