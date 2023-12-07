@@ -277,7 +277,7 @@ class ConnectionManagerBase(object):
         self._load_offsets = kw.get("load_offsets", False)
         # An internal var to enable collection of synapse statistics to a Counter
         self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
-        self._dry_run_counted_cells = []
+        self._dry_run_counted_cells = set()
 
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
@@ -536,7 +536,7 @@ class ConnectionManagerBase(object):
         """
         if SimConfig.dry_run:
             counts = self._get_conn_stats(self._src_target_filter, None)
-            log_all(VERBOSE_LOGLEVEL, "Synapse count: %d", sum(counts.values()))
+            log_all(VERBOSE_LOGLEVEL, "[Rank %d] Synapse count: %d", MPI.rank, sum(counts.values()))
             self._dry_run_stats.synapse_counts += counts
             return
 
@@ -729,39 +729,66 @@ class ConnectionManagerBase(object):
           - _src target is not considered so we count all inbound synapses
           -  We will only consider gids which have not been accounted for yet.
         """
-        INITIAL_BLOCK_LENGTH = 5000
-        SAMPLE_SIZE = 100
+        BLOCK_BASE_SIZE = 5000
+        SAMPLES_PER_BLOCK = 100
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
-        new_gids = numpy.setdiff1d(raw_gids, self._dry_run_counted_cells, assume_unique=True)
-        if not len(new_gids):
+
+        # First, even if we have synapse configure, dont ever re-count for the same cells
+        # Use sets since they are much faster than numpy
+        new_gids = set(raw_gids) - self._dry_run_counted_cells
+        if not new_gids:
+            # Either target is empty or all the cells were considered before
             return {}
 
-        temp_counter = Counter()
-        chunking_gen = gen_ranges(len(new_gids), INITIAL_BLOCK_LENGTH)
-        total_blocks = sum(1 for _ in gen_ranges(len(new_gids), INITIAL_BLOCK_LENGTH))
-        total_measured_cells = 0
+        local_counter = Counter()
 
-        src_pop = self._src_cell_manager.population_name
-        target = (dst_target.name if dst_target else f"*{self._cell_manager.population_name}")
+        # NOTE:
+        #  - Estimation (/extrapolation) is performed per metype since properties can vary
+        #  - Consider only the cells for the current target
 
-        for cycle, (low, high) in enumerate(chunking_gen):
-            sample_gids = new_gids[low:low + SAMPLE_SIZE]
-            sample_counts = self._synapse_reader.get_counts(sample_gids, group_by="syn_type_id")
-            temp_counter.update(sample_counts)
-            total_measured_cells += len(sample_gids)
+        for metype, me_gids in self._dry_run_stats.metype_gids.items():
+            me_gids = set(me_gids).intersection(new_gids)
+            me_gids_count = len(me_gids)
+            if not me_gids_count:
+                continue
 
-            if cycle > 5:
-                log_all(VERBOSE_LOGLEVEL, "Rank: %d, %.2f%%", MPI.rank, (cycle+1)/total_blocks*100)
+            logging.debug("Estimating synapses for metype %s", metype)
+            self._dry_run_counted_cells.update(me_gids)  # track as seen
+            me_gids = numpy.fromiter(me_gids, dtype="uint32")
 
-        self._dry_run_counted_cells = numpy.union1d(self._dry_run_counted_cells, new_gids)
+            # NOTE:
+            # Process the first 50 cells from increasingly large blocks
+            #  - Takes advantage of data locality
+            #  - Blocks increase as a geometric progression for handling very large sets
 
-        # Extrapolation
-        extrapolation_ratio = len(new_gids) / total_measured_cells
-        extrapolated_counts = {syn_t: int(counts * extrapolation_ratio)
-                               for syn_t, counts in temp_counter.items()}
+            metype_estimate = Counter()
+            sampled_gids_count = 0
 
-        logging.debug("(rank0) %s -> %s %s: %s", src_pop, target, new_gids, temp_counter)
-        return extrapolated_counts
+            for start, stop, in gen_ranges(me_gids_count, BLOCK_BASE_SIZE, block_increase_rate=1.1):
+                logging.debug("Processing range %d:%d", start, stop)
+                block_len = stop - start
+                sample = me_gids[start:(start + SAMPLES_PER_BLOCK)]
+                sample_len = len(sample)
+                if not sample_len:
+                    continue
+                sample_counts = self._synapse_reader.get_counts(sample, group_by="syn_type_id")
+                logging.debug("Gids: %s... Types: %s", sample[:10], sample_counts)
+                logging.debug("Average syn/cell: %.2f", sum(sample_counts.values()) / sample_len)
+                sampled_gids_count += sample_len
+                ratio = block_len / sample_len
+                metype_estimate.update({
+                    syn_t: int(n * ratio)
+                    for syn_t, n in sample_counts.items()}
+                )
+
+            # Extrapolation
+            logging.debug("Cells samples / total: %d / %s", sampled_gids_count, me_gids_count)
+            me_estimated_sum = sum(metype_estimate.values())
+            log_all(VERBOSE_LOGLEVEL, "%s: Average syns/cell: %.1f, Estimated total: %d ",
+                    metype, me_estimated_sum / me_gids_count, me_estimated_sum)
+            local_counter.update(metype_estimate)
+
+        return local_counter
 
     # -
     def get_target_connections(self, src_target_name,

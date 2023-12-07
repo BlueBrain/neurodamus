@@ -100,7 +100,7 @@ class GapJunctionManager(ConnectionManagerBase):
         log_verbose("Computing gap-junction offsets from gjinfo.txt")
         gjfname = ospath.join(gj_dir, "gjinfo.txt")
         assert ospath.isfile(gjfname), "Nrn-format GapJunctions require gjinfo.txt: %s" % gj_dir
-        gj_offsets = compat.Vector("I")
+        gj_offsets = compat.Vector()
         gj_sum = 0
 
         for line in open(gjfname):

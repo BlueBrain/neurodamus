@@ -317,6 +317,8 @@ class CellManagerBase(_CellManager):
             prev_memory = end_memory
 
         for gid, cell_info in gid_info_items:
+            if cell_info is None:
+                continue
             metype = "{0.mtype}-{0.etype}".format(cell_info)
             if metype in skip_metypes:
                 continue

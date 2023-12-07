@@ -210,7 +210,7 @@ class NodeSet(_NodeSetBase):
 
         """
         super().__init__()
-        self._gidvec = compat.Vector("I")  # raw gids
+        self._gidvec = compat.Vector()  # raw gids
         self._gid_info = {}
         self._metadata = metadata
         if gids is not None:

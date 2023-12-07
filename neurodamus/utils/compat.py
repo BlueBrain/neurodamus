@@ -14,6 +14,9 @@ class Vector(array):
     """
     __slots__ = ()
 
+    def __new__(cls, type_="I", array=[]):
+        return super().__new__(Vector, type_, array)
+
     def size(self):
         return len(self)
 
