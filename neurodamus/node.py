@@ -383,16 +383,15 @@ class Node:
             circuit.CircuitPath if is_sonata_config
             else self._run_conf["nrnPath"] or circuit.CircuitPath
         )
-        load_balancer = LoadBalance(lb_mode, data_src, self._target_manager, prosp_hosts)
+        pop = target_spec.population
+        load_balancer = LoadBalance(lb_mode, data_src, pop, self._target_manager, prosp_hosts)
 
         if load_balancer.valid_load_distribution(target_spec):
             logging.info("Load Balancing done.")
             return load_balancer
 
         logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
-        cell_dist = self._circuits.new_node_manager(
-            circuit, self._target_manager, self._run_conf
-        )
+        cell_dist = self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
         with load_balancer.generate_load_balance(target_spec, cell_dist):
             # Instantiate a basic circuit to evaluate complexities
             cell_dist.finalize()
