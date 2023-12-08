@@ -1383,9 +1383,6 @@ class Node:
     @mpi_no_errors
     @timeit(name="psolve")
     def solve(self, tstop=None):
-        from neuron import coreneuron
-        Nd.cvode.cache_efficient(1)
-        coreneuron.enable=True
         """Call solver with a given stop time (default: whole interval).
         Be sure to have sim_init()'d the simulation beforehand
         """
