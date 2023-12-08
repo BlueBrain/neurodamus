@@ -283,7 +283,8 @@ class Node:
             self._run_conf = SimConfig.run_conf
             self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
-            self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True)
+            if SimConfig.use_neuron or SimConfig.skip_write_model:
+                self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True)
             self._base_circuit: CircuitConfig = SimConfig.base_circuit
             self._extra_circuits = SimConfig.extra_circuits
             self._pr_cell_gid = get_debug_cell_gid(options)
@@ -1093,8 +1094,8 @@ class Node:
         if corenrn_gen:
             self._sim_corenrn_write_config()
 
-        # if SimConfig.use_neuron:
-        self._sim_init_neuron()
+        if SimConfig.use_neuron or SimConfig.skip_write_model:
+            self._sim_init_neuron()
 
         if ospath.isfile("debug_gids.txt"):
             self.dump_circuit_config()
@@ -1277,10 +1278,11 @@ class Node:
 
         if not corenrn_restore:
             CompartmentMapping(self._circuits.global_manager).register_mapping()
-            with self._coreneuron_ensure_all_ranks_have_gids(CoreConfig.datadir):
-                self._pc.nrnbbcore_write(CoreConfig.datadir)
-                MPI.barrier()  # wait for all ranks to finish corenrn data generation
-
+            if not SimConfig.skip_write_model:
+                with self._coreneuron_ensure_all_ranks_have_gids(CoreConfig.datadir):
+                    self._pc.nrnbbcore_write(CoreConfig.datadir)
+                    MPI.barrier()  # wait for all ranks to finish corenrn data generation
+            
         CoreConfig.write_sim_config(
             Nd.tstop,
             Nd.dt,
@@ -1331,7 +1333,8 @@ class Node:
         logging.info("Launching simulation with CoreNEURON")
         CoreConfig.psolve_core(
             getattr(SimConfig, "save", None),
-            getattr(SimConfig, "restore", None)
+            getattr(SimConfig, "restore", None),
+            SimConfig.skip_write_model
         )
 
     #
@@ -1375,9 +1378,6 @@ class Node:
     @mpi_no_errors
     @timeit(name="psolve")
     def solve(self, tstop=None):
-        from neuron import coreneuron
-        Nd.cvode.cache_efficient(1)
-        coreneuron.enable=True
         """Call solver with a given stop time (default: whole interval).
         Be sure to have sim_init()'d the simulation beforehand
         """
