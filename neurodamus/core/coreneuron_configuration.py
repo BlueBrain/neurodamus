@@ -4,6 +4,7 @@ from pathlib import Path
 from ._utils import run_only_rank0
 from . import NeurodamusCore as Nd
 from ..report import get_section_index
+from ..utils.logging import log_verbose
 
 
 class CompartmentMapping:
@@ -171,13 +172,13 @@ class _CoreNEURONConfig(object):
             fp.write(filename)
             fp.write("\n")
 
-    def psolve_core(self, save_path=None, restore_path=None, direct=True):
+    def psolve_core(self, save_path=None, restore_path=None, skip_write_model=False):
         from neuron import coreneuron
         from . import NeurodamusCore as Nd
 
         Nd.cvode.cache_efficient(1)
         coreneuron.enable = True
-        if not direct:
+        if not skip_write_model:
             coreneuron.file_mode = True
             coreneuron.sim_config = f"{self.output_root}/{self.sim_config_file}"
             if save_path:
@@ -188,7 +189,7 @@ class _CoreNEURONConfig(object):
             coreneuron.skip_write_model_to_disk = True
             coreneuron.model_path = f"{self.datadir}"
         else:
-            logging.info(f"++WJI coreneuron.file_mode {coreneuron.file_mode}")
+            log_verbose("Run CORENEURON direct mode")
             coreneuron.sim_config = f"{self.output_root}/{self.sim_config_file}"
         Nd.pc.psolve(Nd.tstop)
 
