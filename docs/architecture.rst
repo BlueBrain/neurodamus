@@ -367,25 +367,32 @@ usage before and after the instantiation. The memory usage is then averaged over
 synapses instantiated. The script used to perform this operation `synstat.py` is available for the user
 and is archived in this repo in the `_benchmarks` folder.
 
-Having these pre-computed values allows us to simply count the amount of synapses of each type
-and multiply it by the corresponding memory usage value.
+Having these pre-computed values, we just need to estimate the amount of synapses of each type
+and multiply it by the corresponding memory usage value. Even in this case we have adopted a
+sample-based approach. First of all, we filter out any gids that have already been
+counted in a previous run. This is done to avoid double-counting synapses.
+Then we load all the cells of the circuit in progressively bigger blocks in order to avoid any OOM issues
+while keeping good performances.
+
+For each metype and block, we estimate the number of synapses by sampling a subset (100) of the gids
+and counting the number of synapses for each gid in the sample. The counts are then extrapolated
+linearly to the entire population of gids for that metype.
+
+We used a sophisticated sampling strategy to optimize performance. It processes the gids in blocks,
+starting with small blocks (5000) and gradually increasing the block size using a geometric progression.
+Within each block, it samples a fixed number of gids (always 100).
+This strategy takes advantage of data locality and allows us to handle very large sets of gids.
+
+Having estimated the number of synapses for each metype, we can finally compute the memory usage
+of synapses by multiplying the number of synapses by the corresponding memory usage value.
 
 Apart from both cells and synapses, we also need to take into account the memory usage of neurodamus
 itself, e.g. data structures, loaded libraries and so on. This is done by measuring the RSS of the neurodamus
 process before any of the actual instantiation is done. This value, since it's averaged over all ranks that take
 part in the execution, is then multiplied by the number of ranks used in the execution.
 
-The final result is then printed to the user in a human readable format.
-
-Correctly Estimating Synapses
------------------------------
-
-While we cap the number of Cells instantiated from any given METype (default is 50), we keep
-internally the full gidvec as if we were instantiating them all.
-
-While this might seem unprudent, we leverage from the fact that dry-run does not require
-instantiating synapses, only counting. Therefore, with the full gidvec one does not have an
-estimate but a true count of the number of synapses the circuit would instantiate in a real run.
+The final result is then printed to the user in a human readable format together with an estimate
+of the number of nodes needed to run the simulation on the same machine used to run the dry run.
 
 Development
 ------------

@@ -725,15 +725,25 @@ class ConnectionManagerBase(object):
 
     def _get_conn_stats(self, _src_target, dst_target):
         """Estimates the number of synapses per type for the given destination target
+
+        Args:
+            _src_target: not used
+            dst_target: The target to estimate synapses for
+
+        Returns:
+            A Counter object with the estimated synapses per type
+
         Note:
           - _src target is not considered so we count all inbound synapses
           -  We will only consider gids which have not been accounted for yet.
         """
         BLOCK_BASE_SIZE = 5000
         SAMPLES_PER_BLOCK = 100
+
+        # Get the raw gids for the destination target
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
 
-        # First, even if we have synapse configure, dont ever re-count for the same cells
+        # Filter out the gids which have been already considered
         # Use sets since they are much faster than numpy
         new_gids = set(raw_gids) - self._dry_run_counted_cells
         if not new_gids:
@@ -743,7 +753,7 @@ class ConnectionManagerBase(object):
         local_counter = Counter()
 
         # NOTE:
-        #  - Estimation (/extrapolation) is performed per metype since properties can vary
+        #  - Estimation (and extrapolation) is performed per metype since properties can vary
         #  - Consider only the cells for the current target
 
         for metype, me_gids in self._dry_run_stats.metype_gids.items():
@@ -757,7 +767,7 @@ class ConnectionManagerBase(object):
             me_gids = numpy.fromiter(me_gids, dtype="uint32")
 
             # NOTE:
-            # Process the first 50 cells from increasingly large blocks
+            # Process the first 100 cells from increasingly large blocks
             #  - Takes advantage of data locality
             #  - Blocks increase as a geometric progression for handling very large sets
 
