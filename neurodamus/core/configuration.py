@@ -75,7 +75,11 @@ class CliOptions(ConfigT):
     model_stats = False
     simulator = None
     dry_run = False
+<<<<<<< HEAD
     num_target_ranks = None
+=======
+    skip_write_model = False
+>>>>>>> a8a10a6... Cli option
 
     # Restricted Functionality support, mostly for testing
 
@@ -236,7 +240,11 @@ class _SimConfig(object):
     spike_location = "soma"
     spike_threshold = -30
     dry_run = False
+<<<<<<< HEAD
     num_target_ranks = None
+=======
+    skip_write_model = False
+>>>>>>> a8a10a6... Cli option
 
     _validators = []
     _requisitors = []
@@ -272,7 +280,11 @@ class _SimConfig(object):
         cls.modifications = compat.Map(cls._config_parser.parsedModifications or {})
         cls.cli_options = CliOptions(**(cli_options or {}))
         cls.dry_run = cls.cli_options.dry_run
+<<<<<<< HEAD
         cls.num_target_ranks = cls.cli_options.num_target_ranks
+=======
+        cls.skip_write_model = cls.cli_options.skip_write_model
+>>>>>>> a8a10a6... Cli option
         # change simulator by request before validator and init hoc config
         if cls.cli_options.simulator:
             cls._parsed_run["Simulator"] = cls.cli_options.simulator
@@ -1005,6 +1017,18 @@ def _spikes_sort_order(config: _SimConfig, run_conf):
     if order not in ["none", "by_time"]:
         raise ConfigurationError("Unsupported spikes sort order %s, " % order +
                                  "BBP supports 'none' and 'by_time'")
+
+
+@SimConfig.validator
+def _skip_write_coreneuron_model(config: _SimConfig, run_conf):
+    if config.skip_write_model:
+        if config.use_coreneuron:
+            logging.info("Run CORENEURON without writing model data to disk")
+            # config.use_neuron = True
+            # config.use_coreneuron = False
+        else:
+            logging.warning("--skip-write-model not valid for NEURON, continue as usual")
+            config.skip_write_model = False
 
 
 def get_debug_cell_gid(cli_options):
