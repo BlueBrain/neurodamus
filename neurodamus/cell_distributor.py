@@ -622,8 +622,8 @@ class LoadBalance:
         self.target_cpu_count = target_cpu_count or MPI.size
         self._target_manager = target_manager
         self._valid_loadbalance = set()
-        self.population = pop
-        self._lb_dir, self._cx_targets = self._get_circuit_loadbal_dir(nodes_path, pop)
+        self.population = pop or ""
+        self._lb_dir, self._cx_targets = self._get_circuit_loadbal_dir(nodes_path, self.population)
         log_verbose("Found existing targets with loadbal: %s", self._cx_targets)
 
     @classmethod
@@ -652,8 +652,9 @@ class LoadBalance:
         """Checks whether we have valid load-balance files, attempting to
         derive from larger target distributions if possible.
         """
-        if target_spec.population != self.population:
-            logging.info(" => Cell distribution from Load Balance is for a different population")
+        if (target_spec.population or "") != self.population:
+            logging.info(" => Load balance Population mismatch. Requested: %s, Existing: %s",
+                         target_spec.population, self.population)
             return False
 
         target_name = target_spec.simple_name
