@@ -7,6 +7,7 @@ import hashlib
 import logging  # active only in rank 0 (init)
 import os
 import weakref
+import heapq
 from contextlib import contextmanager
 from io import StringIO
 from os import path as ospath
@@ -526,6 +527,28 @@ class CellDistributor(CellManagerBase):
         log_verbose("Nodes Format: SONATA , Loader: %s", loader.__name__)
         return super().load_nodes(load_balancer, _loader=loader, loader_opts=loader_opts)
 
+    def distribute_cells(self, metype_gids, memory_per_type, num_ranks):
+
+        # Prepare a list of tuples (cell_id, memory_load)
+        cells = [(gid, memory_per_type[cell_type]) for cell_type, gids in metype_gids.items() for gid in gids]
+        # Sort by memory load
+        cells.sort(key=lambda x: x[1], reverse=True)
+
+        ranks = [(0, i) for i in range(num_ranks)]  # (total_memory, rank_id)
+        heapq.heapify(ranks)
+        rank_allocation = {i: [] for i in range(num_ranks)}
+        rank_memory = {i: 0 for i in range(num_ranks)}
+
+        for cell_id, memory in cells:
+            total_memory, rank_id = heapq.heappop(ranks)
+            rank_allocation[rank_id].append(cell_id)
+            total_memory += memory
+            rank_memory[rank_id] = total_memory
+            # Update total memory and re-add to the heap
+            heapq.heappush(ranks, (total_memory, rank_id))
+
+        return rank_allocation, rank_memory
+
     def _instantiate_cells(self, dry_run_stats_obj: DryRunStats = None, **opts):
         """
         Instantiates cells, honouring dry_run if provided
@@ -550,6 +573,10 @@ class CellDistributor(CellManagerBase):
             memory_dict = self._instantiate_cells_dry(CellType, cur_metypes_mem, **opts)
             log_verbose("Updating global dry-run memory counters with %d items", len(memory_dict))
             cur_metypes_mem.update(memory_dict)
+            allocation, total_memory_per_rank = self.distribute_cells(dry_run_stats_obj.metype_gids, dry_run_stats_obj.metype_memory, 40)
+            print("Allocation: ", allocation)
+            print("Total memory per rank: ", total_memory_per_rank)
+            import pdb; pdb.set_trace()
 
 
 class LoadBalance:
