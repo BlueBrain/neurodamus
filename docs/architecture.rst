@@ -376,9 +376,10 @@ exhausting memory and scales well, enabling sampling over very large circuits in
 typically a few minutes for millions of cells.
 
 The paramenters of the sampling are as follows:
-* Block start length: 5000, increasing at a rate of 10% at each iteration
-* Count synapses for each block: 100 cells of the block (taking advantage of data locality)
-* Finally, extrapolate for the whole block and add to global metype estimate.
+
+- Block start length: 5000, increasing at a rate of 10% at each iteration
+- Count synapses for each block: 100 cells of the block (taking advantage of data locality)
+- Finally, extrapolate for the whole block and add to global metype estimate.
 
 Having estimated the number of synapses for each metype, we can finally compute the memory usage
 of synapses by multiplying the number of synapses by the corresponding memory usage value.
