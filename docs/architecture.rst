@@ -370,18 +370,15 @@ and is archived in this repo in the `_benchmarks` folder.
 Having these pre-computed values, we just need to estimate the amount of synapses of each type
 and multiply it by the corresponding memory usage value. Even in this case we have adopted a
 sample-based approach. First of all, we filter out any gids that have already been
-counted in a previous run. This is done to avoid double-counting synapses.
-Then we load all the cells of the circuit in progressively bigger blocks in order to avoid any OOM issues
-while keeping good performances.
+counted (which can happen when the same gid is part of the target in several `synapse_override` blocks).
+Then we sample synapse counts of the circuit in progressively bigger blocks. This technique avoids
+exhausting memory and scales well, enabling sampling over very large circuits in a short time,
+typically a few minutes for millions of cells.
 
-For each metype and block, we estimate the number of synapses by sampling a subset (100) of the gids
-and counting the number of synapses for each gid in the sample. The counts are then extrapolated
-linearly to the entire population of gids for that metype.
-
-We used a sophisticated sampling strategy to optimize performance. It processes the gids in blocks,
-starting with small blocks (5000) and gradually increasing the block size using a geometric progression.
-Within each block, it samples a fixed number of gids (always 100).
-This strategy takes advantage of data locality and allows us to handle very large sets of gids.
+The paramenters of the sampling are as follows:
+* Block start length: 5000, increasing at a rate of 10% at each iteration
+* Count synapses for each block: 100 cells of the block (taking advantage of data locality)
+* Finally, extrapolate for the whole block and add to global metype estimate.
 
 Having estimated the number of synapses for each metype, we can finally compute the memory usage
 of synapses by multiplying the number of synapses by the corresponding memory usage value.

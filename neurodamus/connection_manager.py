@@ -535,7 +535,7 @@ class ConnectionManagerBase(object):
             only_gids: Create connections only for these tgids (default: Off)
         """
         if SimConfig.dry_run:
-            counts = self._get_conn_stats(self._src_target_filter, None)
+            counts = self._get_conn_stats(None)
             log_all(VERBOSE_LOGLEVEL, "[Rank %d] Synapse count: %d", MPI.rank, sum(counts.values()))
             self._dry_run_stats.synapse_counts += counts
             return
@@ -576,7 +576,7 @@ class ConnectionManagerBase(object):
             return
 
         if SimConfig.dry_run:
-            counts = self._get_conn_stats(src_target, dst_target)
+            counts = self._get_conn_stats(dst_target)
             count_sum = sum(counts.values())
             log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", pop.src_name, conn_destination, count_sum)
             self._dry_run_stats.synapse_counts += counts
@@ -723,11 +723,13 @@ class ConnectionManagerBase(object):
                 pathway_repr = "Pathway {} -> {}".format(src_target.name, dst_target.name)
             logging.info(" * %s. Created %d connections", pathway_repr, all_created)
 
-    def _get_conn_stats(self, _src_target, dst_target):
+    def _get_conn_stats(self, dst_target):
         """Estimates the number of synapses per type for the given destination target
+        Note: measurement is done without any restriction on the source target.
+        As so it can avoid counting the same synapse twice by keeping track of
+        target cells alone.
 
         Args:
-            _src_target: not used
             dst_target: The target to estimate synapses for
 
         Returns:
