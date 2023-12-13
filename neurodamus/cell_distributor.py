@@ -213,8 +213,10 @@ class CellManagerBase(_CellManager):
         loader_f = (lambda *args: _loader(*args, **loader_opts)) if loader_opts else _loader
 
         logging.info("Reading Nodes (METype) info from '%s'", conf.CellLibraryFile)
+        if load_balancer and load_balancer.population != self._target_spec.population:
+            log_verbose("Load balance object doesn't apply to '%s'", self._target_spec.population)
+            load_balancer = None
         if not load_balancer or SimConfig.dry_run:
-            # Use common loading routine, providing the loader
             gidvec, me_infos, *cell_counts = self._load_nodes(loader_f)
         else:
             gidvec, me_infos, *cell_counts = self._load_nodes_balance(loader_f, load_balancer)
@@ -596,7 +598,8 @@ class LoadBalance:
     generating and loading the various files.
 
     LoadBalance instances target the current system (cpu count) and circuit
-    (nrn_path) BUT check/create load distribution for any given target.
+    BUT check/create load distribution for any given target.
+    The circuit is identified by the nodes file AND population.
 
     NOTE: Given the heavy costs of computing load balance, some state files are created
     which allow the balance info to be reused. These are
@@ -607,11 +610,11 @@ class LoadBalance:
     For more information refer to the developer documentation.
     """
     _base_output_dir = "sim_conf"
-    _circuit_lb_dir_tpl = "_loadbal_%s"
+    _circuit_lb_dir_tpl = "_loadbal_%s.%s"      # Placeholders are (file_src_hash, population)
     _cx_filename_tpl = "cx_%s#.dat"             # use # to well delimiter the target name
     _cpu_assign_filename_tpl = "cx_%s#.%s.dat"  # prefix must be same (imposed by Neuron)
 
-    def __init__(self, balance_mode, nodes_path, target_manager, target_cpu_count=None):
+    def __init__(self, balance_mode, nodes_path, pop, target_manager, target_cpu_count=None):
         """
         Creates a new Load Balance object, associated with a given node file
         """
@@ -619,14 +622,15 @@ class LoadBalance:
         self.target_cpu_count = target_cpu_count or MPI.size
         self._target_manager = target_manager
         self._valid_loadbalance = set()
-        self._lb_dir, self._cx_targets = self._get_circuit_loadbal_dir(nodes_path)
+        self.population = pop or ""
+        self._lb_dir, self._cx_targets = self._get_circuit_loadbal_dir(nodes_path, self.population)
         log_verbose("Found existing targets with loadbal: %s", self._cx_targets)
 
     @classmethod
     @run_only_rank0
-    def _get_circuit_loadbal_dir(cls, node_file) -> tuple:
+    def _get_circuit_loadbal_dir(cls, node_file, pop) -> tuple:
         """Ensure lbal dir exists. dir may be crated on rank 0"""
-        lb_dir = cls._loadbal_dir(node_file)
+        lb_dir = cls._loadbal_dir(node_file, pop)
         if lb_dir.is_dir():
             return lb_dir, cls._get_lbdir_targets(lb_dir)
 
@@ -644,10 +648,15 @@ class LoadBalance:
         )
 
     @run_only_rank0
-    def valid_load_distribution(self, target_spec) -> bool:
+    def valid_load_distribution(self, target_spec: TargetSpec) -> bool:
         """Checks whether we have valid load-balance files, attempting to
         derive from larger target distributions if possible.
         """
+        if (target_spec.population or "") != self.population:
+            logging.info(" => Load balance Population mismatch. Requested: %s, Existing: %s",
+                         target_spec.population, self.population)
+            return False
+
         target_name = target_spec.simple_name
 
         # Check cache
@@ -676,7 +685,7 @@ class LoadBalance:
         return False
 
     # -
-    def _reuse_cell_complexity(self, target_spec) -> bool:
+    def _reuse_cell_complexity(self, target_spec: TargetSpec) -> bool:
         """Check if the complexities of all target gids were already calculated
         for another target.
         """
@@ -917,10 +926,10 @@ class LoadBalance:
         return Nd.BalanceInfo(bal_filename, MPI.rank, MPI.size)
 
     @classmethod
-    def _loadbal_dir(cls, nodefile) -> Path:
+    def _loadbal_dir(cls, nodefile, population) -> Path:
         """Returns the dir where load balance files are stored for a given nodes file"""
         nodefile_hash = hashlib.md5(nodefile.encode()).digest().hex()[:10]
-        return Path(cls._base_output_dir) / (cls._circuit_lb_dir_tpl % nodefile_hash)
+        return Path(cls._base_output_dir) / (cls._circuit_lb_dir_tpl % (nodefile_hash, population))
 
     def _cx_filename(self, target_str, basename_str=False) -> Path:
         """Gets the filename of a cell complexity file for a given target"""

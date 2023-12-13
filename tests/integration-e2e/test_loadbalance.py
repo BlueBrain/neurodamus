@@ -20,7 +20,7 @@ def target_manager_hoc():
 
 def test_loadbal_no_cx(target_manager_hoc, caplog):
     from neurodamus.cell_distributor import LoadBalance, TargetSpec
-    lbal = LoadBalance(1, "/gpfs/fake_path_to_nodes_1", target_manager_hoc, 4)
+    lbal = LoadBalance(1, "/gpfs/fake_path_to_nodes_1", "pop", target_manager_hoc, 4)
     assert not lbal._cx_targets
     assert not lbal._valid_loadbalance
     with caplog.at_level(logging.INFO):
@@ -35,10 +35,10 @@ def test_loadbal_subtarget(target_manager_hoc, caplog):
     tmp_path = tempfile.TemporaryDirectory("test_loadbal_subtarget")
     os.chdir(tmp_path.name)
     nodes_file = "/gpfs/fake_node_path"
-    lbdir, _ = LoadBalance._get_circuit_loadbal_dir(nodes_file)
+    lbdir, _ = LoadBalance._get_circuit_loadbal_dir(nodes_file, "pop")
     shutil.copyfile(SIM_DIR / "1k_v5_balance" / "cx_Small.dat", lbdir / "cx_Small#.dat")
 
-    lbal = LoadBalance(1, nodes_file, target_manager_hoc, 4)
+    lbal = LoadBalance(1, nodes_file, "pop", target_manager_hoc, 4)
     assert "Small" in lbal._cx_targets
     assert not lbal._valid_loadbalance
     with caplog.at_level(logging.INFO):
@@ -78,7 +78,7 @@ def test_load_balance_integrated(target_manager_hoc, circuit_conf):
     cell_manager = CellDistributor(circuit_conf, target_manager_hoc)
     cell_manager.load_nodes()
 
-    lbal = LoadBalance(1, circuit_conf.CircuitPath, target_manager_hoc, 4)
+    lbal = LoadBalance(1, circuit_conf.CircuitPath, "", target_manager_hoc, 4)
     t1 = TargetSpec("Small")
     assert not lbal._cx_valid(t1)
 
@@ -108,7 +108,7 @@ def test_multisplit(target_manager_hoc, circuit_conf, capsys):
 
     cell_manager = CellDistributor(circuit_conf, target_manager_hoc)
     cell_manager.load_nodes()
-    lbal = LoadBalance(MULTI_SPLIT, circuit_conf.CircuitPath, target_manager_hoc, 4)
+    lbal = LoadBalance(MULTI_SPLIT, circuit_conf.CircuitPath, "", target_manager_hoc, 4)
     t1 = TargetSpec("Small")
     assert not lbal._cx_valid(t1)
 
