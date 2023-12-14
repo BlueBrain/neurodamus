@@ -10,8 +10,7 @@
     "run": {
         "tstop":100,
         "dt": 0.025,
-        "random_seed": 767740,
-        "run_mode" : "WholeCell"
+        "random_seed": 767740
     },
     "conditions": {
     },
