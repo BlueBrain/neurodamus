@@ -251,6 +251,8 @@ class Node:
             config_file: A BlueConfig file
             options: A dictionary of run options typically coming from cmd line
         """
+        if config_file == "BlueConfig":
+            raise ConfigurationError("BlueConfig is not supported, please migrate to SONATA config")
         if config_file and config_file.endswith(".json"):
             import libsonata
             conf = libsonata.SimulationConfig.from_file(config_file)
