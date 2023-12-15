@@ -803,7 +803,14 @@ class ReplayStim(ArtificialStim):
             log_all(logging.DEBUG, "Creating Replay on %d-%d, times: %s",
                     conn.sgid, conn.tgid, self.time_vec.as_numpy() if self.has_data() else "N/A")
 
-        nc = Nd.NetCon(vecstim, syn_obj, 10, syn_params.delay, syn_params.weight, sec=sec)
+        nc = Nd.NetCon(
+            vecstim,
+            syn_obj,
+            10,
+            conn.syndelay_override or syn_params.delay,
+            syn_params.weight,
+            sec=sec
+        )
         nc.weight[0] = syn_params.weight * conn.weight_factor
         conn.netcon_set_type(nc, syn_obj, NetConType.NC_REPLAY)
         self._store(vecstim, nc)
