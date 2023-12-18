@@ -1,0 +1,4 @@
+simple.h5 is converted from MorphIO repo: MorphIO/tests/data/simple.asc
+.. code-block:: sh
+  morph-tool convert file simple.asc simple.h5
+
