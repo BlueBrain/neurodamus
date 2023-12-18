@@ -1,4 +1,1 @@
-simple.h5 is converted from MorphIO repo: MorphIO/tests/data/simple.asc
-.. code-block:: sh
-  morph-tool convert file simple.asc simple.h5
-
+simple.h5 is copied from MorphIO repo: MorphIO/tests/data/h5/v1/simple.h5
