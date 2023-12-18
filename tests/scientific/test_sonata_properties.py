@@ -1,162 +1,38 @@
-import os
-import pytest
-from tempfile import NamedTemporaryFile
-
 from neurodamus.node import Node
 from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
-from neurodamus.utils import compat
+from pathlib import Path
 
-NODE = "/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/sonata/networks/nodes/All/nodes.h5"
-
-# BlueConfig string
-BC_str = """
-Run Default
-{{
-    CellLibraryFile \
-/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/sonata/networks/nodes/All/nodes.h5
-    nrnPath <NONE>
-    CircuitPath .
-
-    BioName /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/bioname
-    Atlas /gpfs/bbp.cscs.ch/project/proj83/data/atlas/S1/MEAN/P14-MEAN
-
-    METypePath /gpfs/bbp.cscs.ch/project/proj83/singlecell/release_2020-07-31/hoc
-    MEComboInfoFile \
-/gpfs/bbp.cscs.ch/project/proj83/singlecell/fixed_L6_allBPC_thresholds/mecombo_emodel.tsv
-    MorphologyPath /gpfs/bbp.cscs.ch/project/proj83/morphologies/fixed_ais_L23PC_20201210/ascii
-    MorphologyType asc
-
-    CurrentDir .
-    OutputRoot .
-
-    TargetFile {target_file}
-    CircuitTarget small
-    Duration 300
-    Dt 0.025
-
-    RNGMode Random123
-    BaseSeed 549821
-    StimulusSeed 549821
-
-    Simulator NEURON
-    RunMode WholeCell
-    ForwardSkip 0
-
-    MinisSingleVesicle 1
-    SpikeLocation AIS
-    V_Init -80
-}}
-"""
-
-# Target file string
-TGT_str = """
-Target Cell single
-{
-  a3899540
-}
-
-Target Compartment single_all
-{
-  single
-}
-
-Target Section single_soma
-{
-  single soma
-}
-
-Target Cell small
-{
- a3425774
- a3868780
- a2886525
- a3099746
-}
-
-Target Compartment small_all
-{
-  small
-}
-
-Target Section small_soma
-{
-  small soma
-}
-"""
-
-TGT_str_ns = """
-{
-    "small": {
-        "population": "All",
-        "node_id": [
-            3425773,
-            3868779,
-            2886524,
-            3099745
-        ]
-    }
-}
-"""
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "sscx-v7-plasticity"
+CONFIG_FILE = SIM_DIR / "simulation_config_base.json"
+EDGES_FILE = "/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/sonata/networks/edges/functional/All/edges.h5" # NOQA
 
 
-@pytest.fixture(scope="module")
-def blueconfig():
-    # dump config to files
-    with NamedTemporaryFile("w", prefix='test_input_resistance_tgt', delete=False) as tgt_file:
-        tgt_file.write(TGT_str)
-    with NamedTemporaryFile("w", prefix="test_input_resistance_bc", delete=False) as bc_file:
-        bc_file.write(BC_str.format(target_file=tgt_file.name))
-
-    yield bc_file.name
-
-    os.unlink(bc_file.name)
-    os.unlink(tgt_file.name)
-
-
-@pytest.fixture(scope="module")
-def blueconfig_nodesets():
-    # dump config to files
-    with NamedTemporaryFile("w", prefix='test_input_resistance_tgt', suffix=".json", delete=False)\
-            as tgt_file:
-        tgt_file.write(TGT_str_ns)
-    with NamedTemporaryFile("w", prefix="test_input_resistance_bc", delete=False) as bc_file:
-        bc_file.write(BC_str.format(target_file=tgt_file.name))
-
-    yield bc_file.name
-
-    os.unlink(bc_file.name)
-    os.unlink(tgt_file.name)
-
-
-def test_input_resistance(blueconfig):
+def test_input_resistance():
     """
     A test of getting input resistance values from SONATA nodes file. BBPBGLIB-806
     """
-    from neurodamus.core import NeurodamusCore as Nd
-
     # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(blueconfig)
+    n = Node(str(CONFIG_FILE))
+    # use edges file w/o plasticity
+    SimConfig.extra_circuits["All"]["nrnPath"] = EDGES_FILE + ":default"
 
     # append Stimulus and StimulusInject blocks programmatically
     # relativeOU
-    STIM_relativeOU = compat.Map(Nd.Map())
-    STIM_relativeOU["Mode"] = "Conductance"
-    STIM_relativeOU["Pattern"] = "RelativeOrnsteinUhlenbeck"
-    STIM_relativeOU["Delay"] = 50
-    STIM_relativeOU["Duration"] = 200
-    STIM_relativeOU["Reversal"] = 0
-    STIM_relativeOU["Tau"] = 2.8
-    STIM_relativeOU["MeanPercent"] = 20
-    STIM_relativeOU["SDPercent"] = 20
-    SimConfig.stimuli.hoc_map.put("relativeOU", STIM_relativeOU.hoc_map)
-    SimConfig.stimuli._size = int(SimConfig.stimuli.hoc_map.count())
+    STIM_relativeOU = {
+        "Mode": "Conductance",
+        "Pattern": "RelativeOrnsteinUhlenbeck",
+        "Delay": 50,
+        "Duration": 200,
+        "Reversal": 0,
+        "Tau": 2.8,
+        "MeanPercent": 20,
+        "SDPercent": 20,
+    }
+    SimConfig.stimuli["relativeOU"] = STIM_relativeOU
     # inject_relativeOU
-    INJECT_relativeOU = compat.Map(Nd.Map())
-    INJECT_relativeOU["Stimulus"] = "relativeOU"
-    INJECT_relativeOU["Target"] = "small"
-    SimConfig.injects.hoc_map.put("inject_relativeOU", INJECT_relativeOU.hoc_map)
-    SimConfig.injects._size = int(SimConfig.injects.hoc_map.count())
+    INJECT_relativeOU = {"Stimulus": "relativeOU", "Target": "L5_5cells"}
+    SimConfig.injects["inject_relativeOU"] = INJECT_relativeOU
 
     # setup sim
     n.load_targets()
@@ -165,14 +41,14 @@ def test_input_resistance(blueconfig):
     n.enable_stimulus()
 
     # Ensure we have our targets and loaded cells ok
-    target_small = n.target_manager.get_target("small")
-    cell_manager = n.circuits.base_cell_manager
+    target_small = n.target_manager.get_target("L5_5cells")
+    cell_manager = n.circuits.get_node_manager("All")
     gids = cell_manager.local_nodes.final_gids()
-    assert target_small.offset == 0
-    assert target_small.gid_count() == 4
-    assert cell_manager.total_cells == 4
-    assert len(cell_manager.local_nodes) == 4
-    for gid in (3425774, 3868780, 2886525, 3099746):
+    assert target_small.nodesets[0].offset == 0
+    assert target_small.gid_count() == 5
+    assert cell_manager.total_cells == 5
+    assert len(cell_manager.local_nodes) == 5
+    for gid in (3424037, 3473955, 3587718, 3644853, 4148946):
         assert gid in target_small
         assert gid in gids
 
@@ -184,40 +60,36 @@ def test_input_resistance(blueconfig):
 
     # check spikes
     nspike = sum(len(spikes) for spikes, _ in n._spike_vecs)
-    assert nspike == 6
+    assert nspike == 9
 
 
-def test_input_resistance_2(blueconfig_nodesets):
+def test_input_resistance_2():
     """
     A test of getting input resistance values from SONATA nodes file. BBPBGLIB-806
     """
-    from neurodamus.core import NeurodamusCore as Nd
-
     # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(blueconfig_nodesets)
+    n = Node(str(CONFIG_FILE))
+    # use edges file w/o plasticity
+    SimConfig.extra_circuits["All"]["nrnPath"] = EDGES_FILE + ":default"
 
     # append Stimulus and StimulusInject blocks programmatically
     # relativeSN
-    STIM_relativeSN = compat.Map(Nd.Map())
-    STIM_relativeSN["Mode"] = "Conductance"
-    STIM_relativeSN["Pattern"] = "RelativeShotNoise"
-    STIM_relativeSN["Delay"] = 50
-    STIM_relativeSN["Duration"] = 200
-    STIM_relativeSN["Reversal"] = 0
-    STIM_relativeSN["RiseTime"] = 2.8
-    STIM_relativeSN["DecayTime"] = 28
-    STIM_relativeSN["AmpCV"] = 0.5
-    STIM_relativeSN["MeanPercent"] = 20
-    STIM_relativeSN["SDPercent"] = 20
-    SimConfig.stimuli.hoc_map.put("relativeSN", STIM_relativeSN.hoc_map)
-    SimConfig.stimuli._size = int(SimConfig.stimuli.hoc_map.count())
-    # inject_relativeSN
-    INJECT_relativeSN = compat.Map(Nd.Map())
-    INJECT_relativeSN["Stimulus"] = "relativeSN"
-    INJECT_relativeSN["Target"] = "small"
-    SimConfig.injects.hoc_map.put("inject_relativeSN", INJECT_relativeSN.hoc_map)
-    SimConfig.injects._size = int(SimConfig.injects.hoc_map.count())
+    STIM_relativeSN = {
+        "Mode": "Conductance",
+        "Pattern": "RelativeShotNoise",
+        "Delay": 50,
+        "Duration": 200,
+        "Reversal": 0,
+        "RiseTime": 2.8,
+        "DecayTime": 28,
+        "AmpCV": 0.5,
+        "MeanPercent": 20,
+        "SDPercent": 20
+    }
+    SimConfig.stimuli["relativeSN"] = STIM_relativeSN
+    INJECT_relativeSN = {"Stimulus": "relativeSN", "Target": "L5_5cells"}
+    SimConfig.injects["inject_relativeSN"] = INJECT_relativeSN
 
     # setup sim
     n.load_targets()
@@ -232,4 +104,4 @@ def test_input_resistance_2(blueconfig_nodesets):
 
     # check spikes
     nspike = sum(len(spikes) for spikes, _ in n._spike_vecs)
-    assert nspike == 5
+    assert nspike == 6

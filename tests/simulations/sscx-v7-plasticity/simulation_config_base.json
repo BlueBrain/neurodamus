@@ -5,7 +5,8 @@
     "run": {
         "dt": 0.025,
         "tstop": 200.0,
-        "random_seed": 12345
+        "random_seed": 549821,
+        "stimulus_seed": 549821
     },
     "conditions": {
         "extracellular_calcium": 1.2,

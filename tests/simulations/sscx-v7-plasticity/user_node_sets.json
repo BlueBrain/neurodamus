@@ -11,5 +11,9 @@
   "post_L5_PC": {
     "population": "All",
     "node_id": [3424036]
+  },
+  "small": {
+    "population": "All",
+      "node_id": [3425773, 3868779, 2886524, 3099745]
   }
 }
