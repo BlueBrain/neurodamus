@@ -251,12 +251,14 @@ class Node:
             config_file: A BlueConfig file
             options: A dictionary of run options typically coming from cmd line
         """
-        if config_file == "BlueConfig":
-            raise ConfigurationError("BlueConfig is not supported, please migrate to SONATA config")
-        if config_file and config_file.endswith(".json"):
-            import libsonata
-            conf = libsonata.SimulationConfig.from_file(config_file)
-            Nd.init(log_filename=conf.output.log_file)
+        if config_file:
+            if config_file.endswith(".json"):
+                import libsonata
+                conf = libsonata.SimulationConfig.from_file(config_file)
+                Nd.init(log_filename=conf.output.log_file)
+            else:
+                raise ConfigurationError(
+                    "Legacy format BlueConfig is not supported, please migrate to SONATA config")
         else:
             Nd.init()  # ensure/load neurodamus mods
         self._run_conf: dict  # Multi-cycle runs preserve this
