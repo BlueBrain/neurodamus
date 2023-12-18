@@ -6,111 +6,14 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 USECASE3 = Path(__file__).parent.parent.absolute() / "simulations" / "usecase3"
-
-# BlueConfig string
-BC_str = """
-Run Default
-{{
-    CellLibraryFile /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3
-    nrnPath /gpfs/bbp.cscs.ch/project/proj83/circuits/sscx-v7-plasticity/edges.h5
-
-    # Use a fake circuit path to avoid loading the HUGE start.target of the real circuit
-    CircuitPath /gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-1k
-
-    BioName /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/bioname
-    Atlas /gpfs/bbp.cscs.ch/project/proj83/data/atlas/S1/MEAN/P14-MEAN
-
-    METypePath /gpfs/bbp.cscs.ch/project/proj83/singlecell/release_2020-07-31/hoc
-    MEComboInfoFile \
-/gpfs/bbp.cscs.ch/project/proj83/singlecell/fixed_L6_allBPC_thresholds/mecombo_emodel.tsv
-    MorphologyPath /gpfs/bbp.cscs.ch/project/proj83/morphologies/fixed_ais_L23PC_20201210/ascii
-    MorphologyType asc
-
-    CurrentDir .
-    OutputRoot .
-
-    TargetFile {target_file}
-    CircuitTarget L5_cells
-    Duration 200
-    Dt 0.025
-
-    RNGMode Random123
-    BaseSeed 549821
-
-    Simulator NEURON
-    RunMode WholeCell
-    ForwardSkip 0
-
-    ExtracellularCalcium 1.2
-    MinisSingleVesicle 1
-    SpikeLocation AIS
-    V_Init -80
-}}
-
-Projection Thalamocortical_input_VPM
-{{
-    Path /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/projections/\
-2023_01_16/vpm/edges.h5
-    Source pre_VPM
-    PopulationID 1
-}}
-"""
-
-# Target file string
-TGT_str = """
-Target Cell L5_cells
-{{
-    pre_L5_BC pre_L5_PC post_L5_PC
-}}
-
-Target Cell pre_L5_BC
-{{
-    a{pre_L5_BC}
-}}
-
-Target Cell pre_L5_PC
-{{
-    a{pre_L5_PC}
-}}
-
-Target Cell pre_VPM
-{{
-    a{pre_VPM}
-}}
-
-Target Cell post_L5_PC
-{{
-    a{post_L5_PC}
-}}
-"""
-
-
-@pytest.fixture(scope="module")
-def blueconfig1():
-    target_values = {
-        "pre_L5_BC": 3587718,
-        "pre_L5_PC": 4148946,
-        "pre_VPM": 5067862,
-        "post_L5_PC": 3424037
-    }
-
-    # dump config to files
-    with NamedTemporaryFile("w", prefix='test_synapses_tgt', delete=False) as tgt_file:
-        tgt_file.write(TGT_str.format(**target_values))
-    with NamedTemporaryFile("w", prefix="test_synapses_bc", delete=False) as bc_file:
-        bc_file.write(BC_str.format(target_file=tgt_file.name))
-
-    yield target_values, bc_file.name
-
-    os.unlink(bc_file.name)
-    os.unlink(tgt_file.name)
+SSCX_V7 = Path(__file__).parent.parent.absolute() / "simulations" / "sscx-v7-plasticity"
 
 
 @pytest.mark.slow
 @pytest.mark.skipif(
-    "bluepy" not in os.environ.get("PYTHONPATH"),
-    reason="Test requires bluepy run")
-def test_synapses_params(blueconfig1):
+    "bluepysnap" not in os.environ.get("PYTHONPATH"),
+    reason="Test requires bluepysnap run")
+def test_synapses_params():
     """
     A test of the impact of eager caching of synaptic parameters. BBPBGLIB-813
     """
@@ -118,37 +21,30 @@ def test_synapses_params(blueconfig1):
     from neurodamus.node import Node
     from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
     from neurodamus.io.synapse_reader import SynapseReader
-    from neurodamus.utils import compat
     from neurodamus.utils.logging import log_verbose
 
     # create Node from config
-    gids, blueconfig = blueconfig1
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(blueconfig)
+    config_file = str(SSCX_V7 / "simulation_config_base.json")
+    n = Node(config_file)
     conn_weight = 0.8  # for testing
 
     # append Connection blocks programmatically
     # plasticity
-    CONN_plast = compat.Map(Nd.Map())
-    CONN_plast["Source"] = "pre_L5_PC"
-    CONN_plast["Destination"] = "post_L5_PC"
-    CONN_plast["ModOverride"] = "GluSynapse"
-    CONN_plast["Weight"] = conn_weight
-    SimConfig.connections.hoc_map.put("plasticity", CONN_plast.hoc_map)
+    CONN_plast = {
+        "Source": "pre_L5_PC",
+        "Destination": "post_L5_PC",
+        "ModOverride": "GluSynapse",
+        "Weight": conn_weight
+    }
+    SimConfig.connections["plasticity"] = CONN_plast
     # init_I_E
-    CONN_i2e = compat.Map(Nd.Map())
-    CONN_i2e["Source"] = "pre_L5_BC"
-    CONN_i2e["Destination"] = "post_L5_PC"
-    CONN_i2e["Weight"] = conn_weight
-    SimConfig.connections.hoc_map.put("init_I_E", CONN_i2e.hoc_map)
-    # init_VPM
-    CONN_vpm = compat.Map(Nd.Map())
-    CONN_vpm["Source"] = "projections:pre_VPM"
-    CONN_vpm["Destination"] = "post_L5_PC"
-    CONN_vpm["Weight"] = conn_weight
-    SimConfig.connections.hoc_map.put("init_VPM", CONN_vpm.hoc_map)
-    # manually update item count in compat.Map
-    SimConfig.connections._size = int(SimConfig.connections.hoc_map.count())
+    CONN_i2e = {
+        "Source": "pre_L5_BC",
+        "Destination": "post_L5_PC",
+        "Weight": conn_weight
+    }
+    SimConfig.connections["init_I_E"] = CONN_i2e
 
     # setup sim
     n.load_targets()
@@ -161,29 +57,28 @@ def test_synapses_params(blueconfig1):
     n.sim_init()
 
     # 1) get values from bluepy
-    from bluepy import Circuit
-    from bluepy.enums import Synapse
+    from bluepysnap import Simulation
+    import pandas as pd
 
-    c = Circuit(blueconfig)
-
+    sim = Simulation(config_file)
+    c = sim.circuit
+    target_manager = n.target_manager
+    pre_L5_BC = get_target_raw_gids(target_manager, "pre_L5_BC")[0]
+    post_L5_PC = get_target_raw_gids(target_manager, "post_L5_PC")[0]
+    pre_L5_PC = get_target_raw_gids(target_manager, "pre_L5_PC")[0]
     dfs = {}
-    properties = [Synapse.G_SYNX, Synapse.U_SYN, Synapse.DTC, Synapse.D_SYN, Synapse.F_SYN,
-                  Synapse.NRRP, Synapse.CONDUCTANCE_RATIO, Synapse.U_HILL_COEFFICIENT]
+    properties = ["conductance", "u_syn", "decay_time", "depression_time", "facilitation_time",
+                  "n_rrp_vesicles", "conductance_scale_factor", "u_hill_coefficient"]
     plast_params = ["volume_CR", "rho0_GB", "Use_d_TM", "Use_p_TM",
                     "gmax_d_AMPA", "gmax_p_AMPA", "theta_d", "theta_p"]
 
-    df = c.connectome.pair_synapses([gids["pre_L5_BC"]], [gids["post_L5_PC"]], properties)
-    df["weight"] = df[Synapse.G_SYNX] * conn_weight  # add weight column
+    df = pd.concat(edge for _, edge in c.edges.pair_edges(pre_L5_BC, post_L5_PC, properties))
+    df["weight"] = df["conductance"] * conn_weight  # add weight column
     dfs['ProbGABAAB_EMS'] = df
 
-    df = c.projection("Thalamocortical_input_VPM").pair_synapses(
-        [gids["pre_VPM"]], [gids["post_L5_PC"]], properties)
-    df["weight"] = df[Synapse.G_SYNX] * conn_weight  # add weight column
-    dfs['ProbAMPANMDA_EMS'] = df
-
-    df = c.connectome.pair_synapses(
-        [gids["pre_L5_PC"]], [gids["post_L5_PC"]], properties + plast_params)
-    df["gmax_NMDA"] = df[Synapse.G_SYNX] * df[Synapse.CONDUCTANCE_RATIO]  # add gmax_NMDA column
+    df = pd.concat(edge for _, edge in
+                   c.edges.pair_edges(pre_L5_PC, post_L5_PC, properties + plast_params))
+    df["gmax_NMDA"] = df["conductance"] * df["conductance_scale_factor"]  # add gmax_NMDA column
     df["weight"] = 1.0  # add weight column (not set in Connection block for GluSynapse)
     dfs['GluSynapse'] = df
 
@@ -199,12 +94,12 @@ def test_synapses_params(blueconfig1):
             return self.U.size
 
     for _, df in dfs.items():
-        tmp = wrapU(df[Synapse.U_SYN], df[Synapse.U_HILL_COEFFICIENT])
+        tmp = wrapU(df["u_syn"], df["u_hill_coefficient"])
         SynapseReader._scale_U_param(tmp, SimConfig.extracellular_calcium, [])
-        df[Synapse.U_SYN] = tmp.U
+        df["u_syn"] = tmp.U
 
     # 2) get values from NEURON
-    post_cell = n.circuits.global_manager.get_cellref(gids["post_L5_PC"])
+    post_cell = n.circuits.global_manager.get_cellref(post_L5_PC + 1)  # 1-based in neurodamus
     # here we collect all synapses for the post cell
     import re
     _match_index = re.compile(r"\[[0-9]+\]$")
@@ -233,40 +128,40 @@ def test_synapses_params(blueconfig1):
     properties = {
         'ProbAMPANMDA_EMS':
         {
-            'conductance': Synapse.G_SYNX,
-            'Dep': Synapse.D_SYN,
-            'Fac': Synapse.F_SYN,
-            'NMDA_ratio': Synapse.CONDUCTANCE_RATIO,
-            'Nrrp': Synapse.NRRP,
-            'tau_d_AMPA': Synapse.DTC,
-            'Use': Synapse.U_SYN,
+            'conductance': 'conductance',
+            'Dep': 'depression_time',
+            'Fac': 'facilitation_time',
+            'NMDA_ratio': 'conductance_scale_factor',
+            'Nrrp': 'n_rrp_vesicles',
+            'tau_d_AMPA': 'decay_time',
+            'Use': 'u_syn',
             'weight': "weight"
         },
         'ProbGABAAB_EMS':
         {
-            'conductance': Synapse.G_SYNX,
-            'Dep': Synapse.D_SYN,
-            'Fac': Synapse.F_SYN,
-            'GABAB_ratio': Synapse.CONDUCTANCE_RATIO,
-            'Nrrp': Synapse.NRRP,
-            'tau_d_GABAA': Synapse.DTC,
-            'Use': Synapse.U_SYN,
+            'conductance': 'conductance',
+            'Dep': 'depression_time',
+            'Fac': 'facilitation_time',
+            'GABAB_ratio': 'conductance_scale_factor',
+            'Nrrp': 'n_rrp_vesicles',
+            'tau_d_GABAA': 'decay_time',
+            'Use': 'u_syn',
             'weight': "weight"
         },
         'GluSynapse':
         {
-            'Dep': Synapse.D_SYN,
-            'Fac': Synapse.F_SYN,
-            'gmax0_AMPA': Synapse.G_SYNX,
+            'Dep': 'depression_time',
+            'Fac': 'facilitation_time',
+            'gmax0_AMPA': 'conductance',
             'gmax_d_AMPA': "gmax_d_AMPA",
             'gmax_NMDA': "gmax_NMDA",
             'gmax_p_AMPA': "gmax_p_AMPA",
-            'Nrrp': Synapse.NRRP,
+            'Nrrp': 'n_rrp_vesicles',
             'rho0_GB': "rho0_GB",
-            'tau_d_AMPA': Synapse.DTC,
+            'tau_d_AMPA': 'decay_time',
             'theta_d_GB': "theta_d",
             'theta_p_GB': "theta_p",
-            'Use': Synapse.U_SYN,
+            'Use': 'u_syn',
             'volume_CR': "volume_CR",
             'weight': "weight"
         }
@@ -275,7 +170,7 @@ def test_synapses_params(blueconfig1):
     for stype, syns in synlist.items():
         for i, info in enumerate(syns):
             log_verbose("%s[%d] (ID %d) (INDEX %d)" % (stype, i, info['synapseID'],
-                                                       dfs[stype].index[i]))
+                                                       dfs[stype].index[i][1]))
             for prop, dfcol in properties[stype].items():
                 log_verbose("    %12s %12.6f ~= %-12.6f %s" %
                             (prop, info[prop], dfs[stype][dfcol].iloc[i], dfcol))
@@ -303,6 +198,11 @@ def test__constrained_hill():
     npt.assert_allclose(scale_factors(a, 2), _constrained_hill(a, 2))
     npt.assert_allclose(scale_factors(a, 2.2), _constrained_hill(a, 2.2))
     npt.assert_allclose(scale_factors(a, b), _constrained_hill(a, b))
+
+
+def get_target_raw_gids(target_manager, target_name):
+    tgt = target_manager.get_target(target_name)
+    return tgt.get_raw_gids() - 1  # 0-based
 
 
 def test_no_edge_creation(capsys):
