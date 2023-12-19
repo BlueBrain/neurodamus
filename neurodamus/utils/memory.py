@@ -10,7 +10,6 @@ import os
 import json
 import psutil
 import multiprocessing
-from resource import getrusage, RUSAGE_SELF
 
 from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
 
