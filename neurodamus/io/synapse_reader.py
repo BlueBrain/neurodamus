@@ -232,7 +232,12 @@ class SonataReader(SynapseReader):
     }
 
     def _open_file(self, src, population, _):
-        hdf5_reader = libsonata.make_collective_reader(False, True)
+        try:
+            from mpi4py import MPI
+            hdf5_reader = libsonata.make_collective_reader(MPI.COMM_WORLD, False, True)
+        except ModuleNotFoundError:
+            hdf5_reader = libsonata.Hdf5Reader()
+
         storage = libsonata.EdgeStorage(src, hdf5_reader=hdf5_reader)
         if not population:
             assert len(storage.population_names) == 1
