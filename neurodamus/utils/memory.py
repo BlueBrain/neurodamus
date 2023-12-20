@@ -40,7 +40,7 @@ def trim_memory():
             memory_trimmed = libc.malloc_trim(0)
             if memory_trimmed:
                 logging.info("malloc_trim: memory released back to the system.")
-        except OSError:
+        except (OSError, AttributeError):
             logging.error("Unable to call malloc_trim.")
             logging.info("malloc_trim: not possible to release any memory.")
 
