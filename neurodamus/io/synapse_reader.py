@@ -310,7 +310,7 @@ class SonataReader(SynapseReader):
         for (field, sonata_attr, is_optional) in sorted(fields_load_sonata):
             _populate(field, _read(sonata_attr, is_optional))
 
-        if sorted(self.custom_parameters):
+        if self.custom_parameters:
             self._load_params_custom(_populate, _read)
 
         # Extend Gids data with the additional requested fields
