@@ -317,7 +317,8 @@ class SonataReader(SynapseReader):
         # This has to work for when we call preload() a second/third time
         # so we are unsure about which gids were loaded what properties
         # We nevertheless can skip any base fields
-        for field in sorted(set(self._extra_fields) - (self.Parameters.all_fields | compute_fields)):
+        extra_fields = set(self._extra_fields) - (self.Parameters.all_fields | compute_fields)
+        for field in sorted(extra_fields):
             now_needed_ids = sorted(set(gid for gid in ids if field not in self._data[gid]))
             if needed_ids != now_needed_ids:
                 needed_ids = now_needed_ids
