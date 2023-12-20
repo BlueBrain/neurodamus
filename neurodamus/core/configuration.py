@@ -158,7 +158,7 @@ class LoadBalanceMode(Enum):
 
     class AutoBalanceModeParams:
         """Parameters for auto-selecting a load-balance mode"""
-        multisplit_cpu_cell_ratio = 4  # Complexity not worth unless large ratio
+        multisplit_cpu_cell_ratio = 4  # For warning
         cell_count = 1000
         duration = 1000
         mpi_ranks = 200
@@ -173,8 +173,8 @@ class LoadBalanceMode(Enum):
             lb_mode = LoadBalanceMode.RoundRobin
             reason = "Single rank - not worth using Load Balance"
         elif use_neuron and MPI.size >= auto_params.multisplit_cpu_cell_ratio * cell_count:
-            lb_mode = LoadBalanceMode.MultiSplit
-            reason = "CPU-Cell ratio"
+            logging.warn("There's potentially a high number of empty ranks. "
+                         "To activate multi-split set --lb-mode=MultiSplit")
         elif (cell_count > auto_params.cell_count
               and duration > auto_params.duration
               and MPI.size > auto_params.mpi_ranks):

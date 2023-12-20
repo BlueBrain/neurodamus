@@ -383,16 +383,15 @@ class Node:
             circuit.CircuitPath if is_sonata_config
             else self._run_conf["nrnPath"] or circuit.CircuitPath
         )
-        load_balancer = LoadBalance(lb_mode, data_src, self._target_manager, prosp_hosts)
+        pop = target_spec.population
+        load_balancer = LoadBalance(lb_mode, data_src, pop, self._target_manager, prosp_hosts)
 
         if load_balancer.valid_load_distribution(target_spec):
             logging.info("Load Balancing done.")
             return load_balancer
 
         logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
-        cell_dist = self._circuits.new_node_manager(
-            circuit, self._target_manager, self._run_conf
-        )
+        cell_dist = self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
         with load_balancer.generate_load_balance(target_spec, cell_dist):
             # Instantiate a basic circuit to evaluate complexities
             cell_dist.finalize()
@@ -427,8 +426,6 @@ class Node:
             logging.info("Memory usage after inizialization:")
             print_mem_usage()
             self._dry_run_stats = DryRunStats()
-            # We load the memory usage rather early since it will be needed at the moment we load
-            # the cell ids. This way we can avoid gidvec from having gids of known metype cells.
             self._dry_run_stats.try_import_cell_memory_usage()
             loader_opts = {"dry_run_stats": self._dry_run_stats}
         else:
@@ -455,6 +452,7 @@ class Node:
                 logging.warning("Skipped node population (restrict_node_populations)")
                 continue
             self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf,
+                                            load_balancer=load_balance,
                                             loader_opts=loader_opts)
 
         lfp_weights_file = self._run_conf.get("LFPWeightsPath")

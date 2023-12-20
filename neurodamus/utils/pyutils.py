@@ -197,11 +197,12 @@ def append_recarray(target_array, record):
     return target_array
 
 
-def gen_ranges(limit, initial_blocklen, increment=1000, low=0):
-    """Generates ranges in block intervals for a given length with increasing block size."""
-    blocklen = initial_blocklen
+def gen_ranges(limit, blocklen, low=0, block_increase_rate=1):
+    """Generates ranges in block intervals for a given length
+    block_increase_rate may be >1 in case we want the block to get increasingly large
+    """
     while low < limit:
         high = min(low + blocklen, limit)
         yield low, high
         low = high
-        blocklen += increment  # Increase the block length for the next iteration
+        blocklen = int(blocklen * block_increase_rate)
