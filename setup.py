@@ -1,27 +1,19 @@
-import subprocess
-import sys
 from setuptools import setup, find_packages
 
-try:
-    v = subprocess.run(['git', 'describe', '--tags'],
-                       stdout=subprocess.PIPE).stdout.strip().decode()
-    __version__ = v[: v.rfind("-")].replace("-", ".dev") if "-" in v else v
-except Exception as e:
-    raise RuntimeError("Could not get version from Git repo") from e
 
-
-package_info = dict(
+setup(
     name='neurodamus',
     author='Blue Brain Project, EPFL',
-    version=__version__,
     packages=find_packages(exclude=["tests"]),
     install_requires=[
         'h5py',
         'docopt',
         'libsonata',
         'psutil',
+        'setuptools',
     ],
-    setup_requires=(["pytest-runner"] if "test" in sys.argv else []),
+    setup_requires=["setuptools_scm"],
+    use_scm_version={"local_scheme": "no-local-version"},
     tests_require=["pytest"],
     extras_require=dict(
         plotting=['matplotlib'],   # only for Neurodamus HL API
@@ -34,7 +26,3 @@ package_info = dict(
         ]
     ),
 )
-
-
-if __name__ == "__main__":
-    setup(**package_info)
