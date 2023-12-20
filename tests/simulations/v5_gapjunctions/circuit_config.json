@@ -51,9 +51,9 @@
         }
       },
       {
-        "edges_file": "/gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-scx-v5-gapjunctions/sonata_circuit/edges/thalamus-proj32-blob_projections__default__chemical/edges.h5",
+        "edges_file": "/gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1-sonata/sonata/networks/edges/thalamus-proj32-blob_projections__default__chemical/edges.h5",
         "populations": {
-           "thalamus-proj32-blob_projections__default__electrical": {
+           "thalamus-proj32-blob_projections__default__chemical": {
               "type": "chemical"
            }
         }

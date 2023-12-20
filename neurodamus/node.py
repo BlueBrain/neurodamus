@@ -255,9 +255,9 @@ class Node:
             if config_file.endswith("BlueConfig"):
                 raise ConfigurationError(
                     "Legacy format BlueConfig is not supported, please migrate to SONATA config")
-                import libsonata
-                conf = libsonata.SimulationConfig.from_file(config_file)
-                Nd.init(log_filename=conf.output.log_file)
+            import libsonata
+            conf = libsonata.SimulationConfig.from_file(config_file)
+            Nd.init(log_filename=conf.output.log_file)
         else:
             Nd.init()  # ensure/load neurodamus mods
         self._run_conf: dict  # Multi-cycle runs preserve this
