@@ -80,15 +80,15 @@ class _CoreNEURONConfig(object):
             fp.write("mpi=true\n")
 
     @run_only_rank0
-    def write_report_count(self, count):
+    def write_report_count(self, count, mode="w"):
         report_config = Path(self.output_root) / self.report_config_file
         report_config.parent.mkdir(parents=True, exist_ok=True)
-        with report_config.open("a") as fp:
+        with report_config.open(mode) as fp:
             fp.write(f"{count}\n")
 
     @run_only_rank0
     def write_population_count(self, count):
-        self.write_report_count(count)
+        self.write_report_count(count, mode="a")
 
     @run_only_rank0
     def write_spike_population(self, population_name, population_offset=None):
