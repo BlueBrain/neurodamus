@@ -535,7 +535,7 @@ class ConnectionManagerBase(object):
             only_gids: Create connections only for these tgids (default: Off)
         """
         if SimConfig.dry_run:
-            counts = self._get_conn_stats(self._src_target_filter, None)
+            counts = self._get_conn_stats(None)
             log_all(VERBOSE_LOGLEVEL, "[Rank %d] Synapse count: %d", MPI.rank, sum(counts.values()))
             self._dry_run_stats.synapse_counts += counts
             return
@@ -576,7 +576,7 @@ class ConnectionManagerBase(object):
             return
 
         if SimConfig.dry_run:
-            counts = self._get_conn_stats(src_target, dst_target)
+            counts = self._get_conn_stats(dst_target)
             count_sum = sum(counts.values())
             log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", pop.src_name, conn_destination, count_sum)
             self._dry_run_stats.synapse_counts += counts
@@ -723,17 +723,29 @@ class ConnectionManagerBase(object):
                 pathway_repr = "Pathway {} -> {}".format(src_target.name, dst_target.name)
             logging.info(" * %s. Created %d connections", pathway_repr, all_created)
 
-    def _get_conn_stats(self, _src_target, dst_target):
+    def _get_conn_stats(self, dst_target):
         """Estimates the number of synapses per type for the given destination target
+        Note: measurement is done without any restriction on the source target.
+        As so it can avoid counting the same synapse twice by keeping track of
+        target cells alone.
+
+        Args:
+            dst_target: The target to estimate synapses for
+
+        Returns:
+            A Counter object with the estimated synapses per type
+
         Note:
           - _src target is not considered so we count all inbound synapses
           -  We will only consider gids which have not been accounted for yet.
         """
         BLOCK_BASE_SIZE = 5000
         SAMPLES_PER_BLOCK = 100
+
+        # Get the raw gids for the destination target
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
 
-        # First, even if we have synapse configure, dont ever re-count for the same cells
+        # Filter out the gids which have been already considered
         # Use sets since they are much faster than numpy
         new_gids = set(raw_gids) - self._dry_run_counted_cells
         if not new_gids:
@@ -743,7 +755,7 @@ class ConnectionManagerBase(object):
         local_counter = Counter()
 
         # NOTE:
-        #  - Estimation (/extrapolation) is performed per metype since properties can vary
+        #  - Estimation (and extrapolation) is performed per metype since properties can vary
         #  - Consider only the cells for the current target
 
         for metype, me_gids in self._dry_run_stats.metype_gids.items():
@@ -757,7 +769,7 @@ class ConnectionManagerBase(object):
             me_gids = numpy.fromiter(me_gids, dtype="uint32")
 
             # NOTE:
-            # Process the first 50 cells from increasingly large blocks
+            # Process the first 100 cells from increasingly large blocks
             #  - Takes advantage of data locality
             #  - Blocks increase as a geometric progression for handling very large sets
 
