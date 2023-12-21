@@ -206,7 +206,7 @@ def distribute_cells(dry_run_stats, num_ranks):
         # Update total memory and re-add to the heap
         heapq.heappush(ranks, (total_memory, rank_id))
 
-    if rank_memory or rank_allocation is None:
+    if rank_memory is None or rank_allocation is None:
         return {}, {}
 
     return rank_allocation, rank_memory
