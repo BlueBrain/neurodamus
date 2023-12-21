@@ -1865,8 +1865,13 @@ class Neurodamus(Node):
         """
         if SimConfig.dry_run:
             log_stage("============= DRY RUN (SKIP SIMULATION) =============")
+            from .utils.memory import distribute_cells
             self._dry_run_stats.display_total()
             self._dry_run_stats.display_node_suggestions()
+            ranks = 40
+            allocation, total_memory_per_rank = distribute_cells(self._dry_run_stats, ranks)
+            print("Allocation: ", allocation)
+            print("Total memory per rank: ", total_memory_per_rank)
             return
         if not SimConfig.simulate_model:
             self.sim_init()

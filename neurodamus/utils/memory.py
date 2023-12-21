@@ -10,6 +10,7 @@ import os
 import json
 import psutil
 import multiprocessing
+import heapq
 
 from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
 
@@ -158,6 +159,57 @@ def pretty_printing_memory_mb(memory_mb):
         return "%.2lf TB" % (memory_mb / 1024 ** 2)
     else:
         return "%.2lf PB" % (memory_mb / 1024 ** 3)
+
+@run_only_rank0
+def distribute_cells(dry_run_stats, num_ranks):
+    """
+    Distributes cells across ranks based on their memory load.
+
+    This function uses a greedy algorithm to distribute cells across ranks such that
+    the total memory load is balanced. Cells with higher memory load are distributed first.
+
+    Args:
+        dry_run_stats (DryRunStats): A DryRunStats object.
+        num_ranks (int): The number of ranks.
+
+    Returns:
+        rank_allocation (dict): A dictionary where keys are rank IDs and
+                                values are lists of cell IDs assigned to each rank.
+        rank_memory (dict): A dictionary where keys are rank IDs
+                            and values are the total memory load on each rank.
+    """
+    # Check inputs
+    assert set(dry_run_stats.metype_gids.keys()) == set(dry_run_stats.metype_memory.keys())
+    assert num_ranks > 0, "num_ranks must be a positive integer"
+
+    # Prepare a list of tuples (cell_id, memory_load)
+    cells = [(gid, dry_run_stats.metype_memory[cell_type])
+             for cell_type, gids in dry_run_stats.metype_gids.items() for gid in gids]
+    # Distribute cells with higher memory load first
+    cells.sort(key=lambda x: x[1], reverse=True)
+
+    # Initialize structures
+    ranks = [(0, i) for i in range(num_ranks)]  # (total_memory, rank_id)
+    heapq.heapify(ranks)
+    rank_allocation = {i: [] for i in range(num_ranks)}
+    rank_memory = {i: 0 for i in range(num_ranks)}
+
+    # Start distributing cells across ranks starting with the ones with higher memory load
+    for cell_id, memory in cells:
+        # Get the rank with the lowest memory load
+        total_memory, rank_id = heapq.heappop(ranks)
+        # Add the cell to the rank
+        rank_allocation[rank_id].append(cell_id)
+        # Update the total memory load of the rank
+        total_memory += memory
+        rank_memory[rank_id] = total_memory
+        # Update total memory and re-add to the heap
+        heapq.heappush(ranks, (total_memory, rank_id))
+
+    if rank_memory or rank_allocation is None:
+        return {}, {}
+
+    return rank_allocation, rank_memory
 
 
 class SynapseMemoryUsage:
