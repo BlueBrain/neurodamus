@@ -2,6 +2,33 @@
 Change Log
 ==========
 
+Version 2.16.7
+==============
+**22 Dec 2023**
+
+*New Features*
+  * Fast & lightweight dry run (#91)
+  * Implement chunking mechanism for loading synapses in dryrun mode (#88)
+*Bug Fixes*
+  * CoreConfig: write_report_count() should always create a new report.conf (#107)
+  * Fix netstim_inhpoisson.mod for CoreNEURON direct mode (#94)
+  * Fix memory usage reporting on MacOS (#105)
+  * Fix call to `trim_memory` on non-GNU C libraries (#106)
+  * Fix unit test: new morphology test file to fulfil MorphIO change (#104)
+  * [BBPBGLIB-1027] Fix: Load Balance with multi-populations (#92)
+  * CI fix for `python setup.py egg_info` error (#95)
+  * Build recipe: remove shallow clone to meet the version requirement of latest setuptools (#90)
+  * Fix bug with duplicate count of synapses (#87)
+  * Fix docs (#84)
+*Improvements*
+  * [BBPBGLIB-1093] Move scientific tests from blueconfigs (#103)
+  * Update documentation for new synapse estimate algorithm (#99)
+  * Modernize the setup infractructure slightly. (#98)
+  * [BBPBGLIB-1092] Add unit tests for CLI options (#86)
+  * [BBPBGLIB-1097] Reorganization of unit/integration tests (#83)
+  * Update build_neurodamus.sh with `--only-neuron` (#89)
+
+
 Version 2.16.6
 ==============
 **17 Nov 2023**
