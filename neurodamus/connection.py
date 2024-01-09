@@ -562,7 +562,9 @@ class Connection(ConnectionBase):
         a given cell synapses
         """
         for config in self._configurations:
-            self.ConnUtils.executeConfigure(cell.CellRef.synlist, config)
+            n_errors = self.ConnUtils.executeConfigure(cell.CellRef.synlist, config)
+            if n_errors > 0:
+                raise RuntimeError("%d cell configuration errors detected. Terminating" % n_errors)
 
     def _configure_synapses(self):
         """ Internal helper to apply all the configuration statements to
@@ -575,7 +577,9 @@ class Connection(ConnectionBase):
         """ Helper function to execute a configuration statement (hoc)
         on all connection synapses.
         """
-        self.ConnUtils.executeConfigure(self._synapses, configuration)
+        n_errors = self.ConnUtils.executeConfigure(self._synapses, configuration)
+        if n_errors > 0:
+            raise RuntimeError("%d synapse configuration errors detected. Terminating" % n_errors)
 
     def restart_events(self):
         """Restart the artificial events, coming from Replay or Spont-Minis"""
