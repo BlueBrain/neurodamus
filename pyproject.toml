@@ -30,6 +30,11 @@ full=['scipy', 'morphio', 'NEURON', 'mvdtool']
 neurodamus = "neurodamus.commands:neurodamus"
 hocify = "neurodamus.commands:hocify"
 
+[project.urls]
+Homepage = "https://github.com/BlueBrain/neurodamus"
+Repository = "https://github.com/BlueBrain/neurodamus.git"
+Tracker = "https://github.com/BlueBrain/neurodamus/issues"
+
 [tool.setuptools.packages.find]
 exclude=["tests"]
 
