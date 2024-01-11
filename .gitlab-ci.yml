@@ -28,7 +28,7 @@ variables:
 test-unit:
   extends: .tox-template
   variables:
-    TOXENV: flake8-pyproject, unit
+    TOXENV: flake8, unit
 
 test-integration:
   extends: .tox-template
