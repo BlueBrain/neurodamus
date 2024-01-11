@@ -1,0 +1,53 @@
+[build-system]
+requires = [
+    "setuptools",
+    "setuptools_scm",
+    "wheel"
+    ]
+build-backend = "setuptools.build_meta"
+
+[project]
+name="neurodamus"
+authors = [
+    {name = "Blue Brain Project, EPFL"},
+]
+description = "A BBP Simulation Control application for NEURON"
+license = {file = "LICENSE.txt"}
+readme = "README.rst"
+dynamic = ["version"]
+dependencies = [
+    "h5py",
+    "docopt",
+    "libsonata",
+    "psutil"
+]
+
+[project.optional-dependencies]
+plotting=['matplotlib'] # only for Neurodamus HL API
+full=['scipy', 'morphio', 'NEURON', 'mvdtool']
+
+[project.scripts]
+neurodamus = "neurodamus.commands:neurodamus"
+hocify = "neurodamus.commands:hocify"
+
+[project.urls]
+Homepage = "https://github.com/BlueBrain/neurodamus"
+Repository = "https://github.com/BlueBrain/neurodamus.git"
+Tracker = "https://github.com/BlueBrain/neurodamus/issues"
+
+[tool.setuptools.packages.find]
+exclude=["tests"]
+
+[tool.setuptools_scm]
+
+[tool.pytest.ini_options]
+addopts = "--verbose"
+markers = ["slow: marks tests as slow"]
+
+[tool.distutils.bdist_wheel]
+universal = 1
+
+[tool.flake8]
+exclude = [".*", "__pycache__", ".eggs", "*.egg", "build", "dist", "docs", "venv", "*.egg-info", "_benchmarks", "core"]
+extend-ignore = ["E127", "E221", "E226", "E701", "W503", "W504", "E731", "PT001", "PT023"]
+max-line-length = 100
