@@ -1868,10 +1868,19 @@ class Neurodamus(Node):
             from .utils.memory import distribute_cells
             self._dry_run_stats.display_total()
             self._dry_run_stats.display_node_suggestions()
-            ranks = 40
+            ranks = int(SimConfig.prosp_hosts)
+            self._dry_run_stats.collect_all_mpi()
             allocation, total_memory_per_rank = distribute_cells(self._dry_run_stats, ranks)
-            print("Allocation: ", allocation)
-            print("Total memory per rank: ", total_memory_per_rank)
+            # TODO: split this print into a separate function and make it available
+            #       only when logging is on DEBUG level
+            if MPI.rank == 0:
+                print("Allocation: ", allocation)
+                print("Total memory per rank: ", total_memory_per_rank)
+                import statistics
+                values = list(total_memory_per_rank.values())
+                print("Mean: ", statistics.mean(values))
+                print("Median: ", statistics.median(values))
+                print("Stdev: ", statistics.stdev(values))
             return
         if not SimConfig.simulate_model:
             self.sim_init()

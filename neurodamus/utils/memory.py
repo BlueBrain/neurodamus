@@ -160,8 +160,9 @@ def pretty_printing_memory_mb(memory_mb):
     else:
         return "%.2lf PB" % (memory_mb / 1024 ** 3)
 
+
 @run_only_rank0
-def distribute_cells(dry_run_stats, num_ranks):
+def distribute_cells(dry_run_stats, num_ranks) -> (dict, dict):
     """
     Distributes cells across ranks based on their memory load.
 
@@ -180,10 +181,21 @@ def distribute_cells(dry_run_stats, num_ranks):
     """
     # Check inputs
     assert set(dry_run_stats.metype_gids.keys()) == set(dry_run_stats.metype_memory.keys())
+    average_syns_keys = set(dry_run_stats.average_syns_per_cell.keys())
+    metype_memory_keys = set(dry_run_stats.metype_memory.keys())
+    assert average_syns_keys == metype_memory_keys
     assert num_ranks > 0, "num_ranks must be a positive integer"
 
+    # Multiply the average number of synapses per cell by 2.0
+    # This is done since the biggest memory load for a synapse is 2.0 kB and at this point in the
+    # code we have lost the information on whether they are excitatory or inhibitory
+    # so we just take the biggest value to be safe. (the difference between the two is minimal)
+    average_syns_mem_per_cell = {k: v * 2.0 for k, v in dry_run_stats.average_syns_per_cell.items()}
+
     # Prepare a list of tuples (cell_id, memory_load)
-    cells = [(gid, dry_run_stats.metype_memory[cell_type])
+    # We sum the memory load of the cell type and the average number of synapses per cell
+    cells = [(gid, dry_run_stats.metype_memory[cell_type] +
+              average_syns_mem_per_cell[cell_type])
              for cell_type, gids in dry_run_stats.metype_gids.items() for gid in gids]
     # Distribute cells with higher memory load first
     cells.sort(key=lambda x: x[1], reverse=True)
@@ -234,6 +246,7 @@ class DryRunStats:
 
     def __init__(self) -> None:
         self.metype_memory = {}
+        self.average_syns_per_cell = {}
         self.metype_counts = Counter()
         self.synapse_counts = Counter()
         _, _, self.base_memory, _ = get_task_level_mem_usage()
@@ -265,6 +278,8 @@ class DryRunStats:
         # We combine memory dict via update(). That means if a previous circuit computed
         # cells for the same METype (hopefully unlikely!) the last estimate prevails.
         self.metype_memory = MPI.py_reduce(self.metype_memory, {}, lambda x, y: x.update(y))
+        self.average_syns_per_cell = MPI.py_reduce(self.average_syns_per_cell, {},
+                                                   lambda x, y: x.update(y))
         self.metype_counts = self.metype_counts  # Cell counts is complete in every rank
 
     @run_only_rank0

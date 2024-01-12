@@ -76,6 +76,7 @@ class CliOptions(ConfigT):
     model_stats = False
     simulator = None
     dry_run = False
+    prosp_hosts = 40
 
     # Restricted Functionality support, mostly for testing
 
@@ -235,6 +236,7 @@ class _SimConfig(object):
     spike_location = "soma"
     spike_threshold = -30
     dry_run = False
+    prosp_hosts = 40
 
     _validators = []
     _requisitors = []
@@ -274,6 +276,7 @@ class _SimConfig(object):
         cls.modifications = compat.Map(cls._config_parser.parsedModifications or {})
         cls.cli_options = CliOptions(**(cli_options or {}))
         cls.dry_run = cls.cli_options.dry_run
+        cls.prosp_hosts = cls.cli_options.prosp_hosts
         # change simulator by request before validator and init hoc config
         if cls.cli_options.simulator:
             cls._parsed_run["Simulator"] = cls.cli_options.simulator

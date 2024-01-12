@@ -787,8 +787,10 @@ class ConnectionManagerBase(object):
             # Extrapolation
             logging.debug("Cells samples / total: %d / %s", sampled_gids_count, me_gids_count)
             me_estimated_sum = sum(metype_estimate.values())
+            average_syns_per_cell = me_estimated_sum / me_gids_count
+            self._dry_run_stats.average_syns_per_cell[metype] = average_syns_per_cell
             log_all(VERBOSE_LOGLEVEL, "%s: Average syns/cell: %.1f, Estimated total: %d ",
-                    metype, me_estimated_sum / me_gids_count, me_estimated_sum)
+                    metype, average_syns_per_cell, me_estimated_sum)
             local_counter.update(metype_estimate)
 
         return local_counter
