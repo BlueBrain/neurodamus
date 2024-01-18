@@ -446,7 +446,7 @@ class ConductanceSource(SignalSource):
                 # rs is in MOhm, so conductance is in uS (micro Siemens)
                 self.stim_vec = Neuron.h.Vector(
                     [1 / x if x > 1E-9 and x < 1E9 else 1E9 for x in self.stim_vec])
-                self.stim_vec.play(self.clamp._ref_rs, self.time_vec, 1)
+                self.stim_vec.play(self.clamp._ref_rs, self.time_vec, 0)
             else:
                 for param, val in clamp_params.items():
                     setattr(self.clamp, param, val)
