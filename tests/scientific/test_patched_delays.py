@@ -1,74 +1,12 @@
-import os
 import pytest
-from tempfile import NamedTemporaryFile
 
 from neurodamus.node import Node
 from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
-from neurodamus.utils import compat
+from pathlib import Path
 
 
-# BlueConfig string
-BC_str = """
-Run Default
-{{
-    CellLibraryFile /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/circuit.mvd3
-    nrnPath <NONE>
-    CircuitPath .
-    TargetFile {target_file}
-
-    BioName /gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/bioname
-    Atlas /gpfs/bbp.cscs.ch/project/proj83/data/atlas/S1/MEAN/P14-MEAN
-
-    METypePath /gpfs/bbp.cscs.ch/project/proj83/singlecell/release_2020-07-31/hoc
-    MEComboInfoFile /gpfs/bbp.cscs.ch/project/proj83/singlecell/fixed_L6_allBPC_thresholds/\
-mecombo_emodel.tsv
-    MorphologyPath /gpfs/bbp.cscs.ch/project/proj83/morphologies/fixed_ais_L23PC_20201210/ascii
-    MorphologyType asc
-
-    CurrentDir .
-    OutputRoot .
-
-    CircuitTarget L5_5cells
-    Duration 200
-    Dt 0.025
-
-    RNGMode Random123
-    BaseSeed 549821
-
-    Simulator NEURON
-    RunMode WholeCell
-    ForwardSkip 0
-
-    MinisSingleVesicle 1
-    SpikeLocation AIS
-    V_Init -80
-}}
-"""
-
-# Target file string
-TGT_str = """
-Target Cell L5_5cells
-{
-    pre_L5_BCs pre_L5_PCs post_L5_PC
-}
-
-Target Cell pre_L5_BCs
-{
-    a3473955
-    a3587718
-}
-
-Target Cell pre_L5_PCs
-{
-    a3644853
-    a4148946
-}
-
-Target Cell post_L5_PC
-{
-    a3424037
-}
-"""
+SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "sscx-v7-plasticity"
+CONFIG_FILE = SIM_DIR / "simulation_config_base.json"
 
 
 @pytest.mark.slow
@@ -78,36 +16,24 @@ def test_eager_caching():
     """
     from neurodamus.core import NeurodamusCore as Nd
 
-    # dump config to files
-    with NamedTemporaryFile("w", prefix='test_eager_caching_tgt', delete=False) as tgt_file:
-        tgt_file.write(TGT_str)
-    with NamedTemporaryFile("w", prefix="test_eager_caching_bc", delete=False) as bc_file:
-        bc_file.write(BC_str.format(target_file=tgt_file.name))
-
     # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
-    n = Node(bc_file.name)
-
-    # set nrnPath (w/plasticity)
-    SimConfig.base_circuit['nrnPath'] = \
-        "/gpfs/bbp.cscs.ch/project/proj83/circuits/sscx-v7-plasticity/edges.h5"
+    n = Node(str(CONFIG_FILE))
 
     # append Connection blocks programmatically
     # plasticity
-    CONN_plast = compat.Map(Nd.Map())
-    CONN_plast["Source"] = "pre_L5_PCs"
-    CONN_plast["Destination"] = "post_L5_PC"
-    CONN_plast["ModOverride"] = "GluSynapse"
-    CONN_plast["Weight"] = 1.0
-    SimConfig.connections.hoc_map.put("plasticity", CONN_plast.hoc_map)
+    CONN_plast = {"Source": "pre_L5_PCs",
+                  "Destination": "post_L5_PC",
+                  "ModOverride": "GluSynapse",
+                  "Weight": 1.0}
+    SimConfig.connections["plasticity"] = CONN_plast
     # init_I_E
-    CONN_i2e = compat.Map(Nd.Map())
-    CONN_i2e["Source"] = "pre_L5_BCs"
-    CONN_i2e["Destination"] = "post_L5_PC"
-    CONN_i2e["Weight"] = 1.0
-    SimConfig.connections.hoc_map.put("init_I_E", CONN_i2e.hoc_map)
-    # manually update item count in compat.Map
-    SimConfig.connections._size = int(SimConfig.connections.hoc_map.count())
+    CONN_i2e = {"Source": "pre_L5_BCs",
+                "Destination": "post_L5_PC",
+                "Weight": 1.0
+                }
+    SimConfig.connections["init_I_E"] = CONN_i2e
+    assert len(SimConfig.connections) == 2
 
     # setup sim
     n.load_targets()
@@ -128,6 +54,3 @@ def test_eager_caching():
               if nc.precell() is not None]
     patch_delays = [int(x / Nd.dt + 1E-5) * Nd.dt for x in delays]
     assert (delays == patch_delays)
-
-    os.unlink(bc_file.name)
-    os.unlink(tgt_file.name)

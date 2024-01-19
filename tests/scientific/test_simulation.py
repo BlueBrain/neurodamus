@@ -2,7 +2,6 @@ import numpy as np
 import numpy.testing as npt
 import os
 import pytest
-import subprocess
 from pathlib import Path
 
 SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
@@ -11,17 +10,6 @@ SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 @pytest.mark.skipif(
     os.environ.get("SLURM_JOB_ID") is None or os.environ.get("RUN_MPI") is None,
     reason="Simulation tests require MPI")
-def test_quick_v6():
-    """ A full-execution quick v6 test
-        We require launching with mpiexec, so we do it in a bash script
-    """
-    simdir = SIM_DIR / "mini_v6"
-    subprocess.run(
-        ["bash", "tests/test_simulation.bash", simdir, "BlueConfig", "mpiexec"],
-        check=True
-    )
-
-
 def test_simulation_sonata_config():
     from neurodamus import Neurodamus
     config_file = str(SIM_DIR / "usecase3" / "simulation_sonata.json")
@@ -73,29 +61,30 @@ def test_v5_gap_junction():
     from neurodamus import Neurodamus
     from neurodamus.gap_junction import GapJunctionManager
 
-    config_file = str(SIM_DIR / "v5_gapjunctions" / "BlueConfig")
+    config_file = str(SIM_DIR / "v5_gapjunctions" / "simulation_config.json")
     nd = Neurodamus(config_file, disable_reports=True)
 
-    cell_manager = nd.circuits.base_cell_manager
+    cell_manager = nd.circuits.get_node_manager("default")
     gids = cell_manager.get_final_gids()
     assert 75779 in gids
     assert 80640 in gids
 
-    syn_mananer = cell_manager.connection_managers[""]  # unnamed population
-    syn_manager_2 = nd.circuits.get_edge_manager("", "")
-    assert syn_mananer is syn_manager_2
+    syn_manager = cell_manager.connection_managers["default"]  # unnamed population
+    syn_manager_2 = nd.circuits.get_edge_manager("default", "default")
+    assert syn_manager is syn_manager_2
     del syn_manager_2
 
-    assert syn_mananer.connection_count == 529
-    assert len(syn_mananer._populations) == 1  # connectivity and projections get merged
+    assert syn_manager.connection_count == 509
+    assert len(syn_manager._populations) == 1  # connectivity and projections get merged
 
-    cell1_src_gids = np.array([c.sgid for c in syn_mananer.get_connections(75779)], dtype="int")
-    PROJ_GID0 = 220422  # first gid in proj_Thalamocortical_VPM_Source
-    projections_src_gids = cell1_src_gids[cell1_src_gids >= PROJ_GID0]
-    assert len(projections_src_gids) == 19
-    assert len(cell1_src_gids[cell1_src_gids < PROJ_GID0]) == 316
+    cell1_src_gids = np.array([c.sgid for c in syn_manager.get_connections(75779)], dtype="int")
+    proj_syn_manager = nd.circuits.get_edge_manager("thalamus-proj32-blob_projections", "default")
+    projections_src_gids = np.array([c.sgid for c in proj_syn_manager.get_connections(75779)],
+                                    dtype="int")
+    assert len(projections_src_gids) == 17
+    assert len(cell1_src_gids) == 316
 
-    gj_manager = nd.circuits.get_edge_manager("", "", GapJunctionManager)
+    gj_manager = nd.circuits.get_edge_manager("default", "default", GapJunctionManager)
     # Ensure we got our GJ instantiated and bi-directional
     gjs_1 = list(gj_manager.get_connections(75779))
     assert len(gjs_1) == 1
@@ -131,4 +120,4 @@ def test_v5_gap_junction():
     spikes = nd._spike_vecs[0]
     assert spikes[1].size() == 1
     assert spikes[1][0] == 75779
-    assert spikes[0][0] == pytest.approx(27.5)
+    assert spikes[0][0] == pytest.approx(23.075)

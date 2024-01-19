@@ -1,0 +1,31 @@
+{
+  "L5_5cells": ["pre_L5_BCs", "pre_L5_PCs",  "post_L5_PC"],
+  "pre_L5_BCs": {
+    "population": "All",
+    "node_id": [3473954, 3587717]
+  },
+  "pre_L5_PCs": {
+    "population": "All",
+    "node_id": [3644852, 4148945]
+  },
+  "post_L5_PC": {
+    "population": "All",
+    "node_id": [3424036]
+  },
+  "small": {
+    "population": "All",
+    "node_id": [3425773, 3868779, 2886524, 3099745]
+  },
+  "pre_VPM": {
+    "population": "projections",
+    "node_id": [5067861]
+  },
+  "pre_L5_BC": {
+    "population": "All",
+    "node_id": [3587717]
+  },
+  "pre_L5_PC": {
+    "population": "All",
+    "node_id": [4148945]
+  }
+}

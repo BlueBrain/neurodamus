@@ -1,0 +1,16 @@
+{
+  "Mosaic": {
+    "population": "All"
+  },
+  "post": {
+    "population": "All",
+    "node_id": [1,2]
+  },
+  "pre": {
+    "population": "All",
+    "node_id": [0]
+  },
+  "virtual_neurons": {
+    "population": "virtual_neurons"
+  }
+}

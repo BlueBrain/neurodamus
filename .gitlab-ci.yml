@@ -52,7 +52,7 @@ test-scientific:
     # modules need to be loaded in this certain order to avoid mixing of libraries
     EXTRA_MODULES:
       unstable:intel-oneapi-compilers
-      unstable:py-bluepy
+      unstable:py-bluepysnap
       unstable:neurodamus-neocortex
 
 test-scientific-ngv:

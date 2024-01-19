@@ -292,7 +292,8 @@ class SonataConfig:
             chemical="Synaptic",
             electrical="GapJunction",
             synapse_astrocyte="NeuroGlial",
-            endfoot="GlioVascular"
+            endfoot="GlioVascular",
+            neuromodulatory="NeuroModulation"
         )
         internal_edge_pops = set(c_conf["nrnPath"] for c_conf in self._bc_circuits.values())
         projections = {}

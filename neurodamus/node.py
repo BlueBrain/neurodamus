@@ -248,10 +248,13 @@ class Node:
     def __init__(self, config_file, options=None):
         """ Creates a neurodamus executor
         Args:
-            config_file: A BlueConfig file
+            config_file: A Sonata config file
             options: A dictionary of run options typically coming from cmd line
         """
-        if config_file and config_file.endswith(".json"):
+        if config_file:
+            if config_file.endswith("BlueConfig"):
+                raise ConfigurationError(
+                    "Legacy format BlueConfig is not supported, please migrate to SONATA config")
             import libsonata
             conf = libsonata.SimulationConfig.from_file(config_file)
             Nd.init(log_filename=conf.output.log_file)

@@ -1,0 +1,63 @@
+{
+  "manifest": {
+    "$BASE_DIR": "/gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1-sonata/sonata",
+    "$NETWORK_NODES_DIR": "$BASE_DIR/networks/nodes",
+    "$NETWORK_EDGES_DIR": "$BASE_DIR/networks/edges/",
+    "$MORPHOLOGIES": "$BASE_DIR/components/morphologies"
+  },
+  "components": {
+    "morphologies_dir": "$MORPHOLOGIES",
+    "biophysical_neuron_models_dir": "$BASE_DIR/components/biophysical_model_templates"
+  },
+  "node_sets_file": "./node_sets.json",
+  "networks": {
+    "nodes": [
+      {
+        "nodes_file": "$NETWORK_NODES_DIR/default/nodes.h5",
+        "populations": {
+           "default": {
+              "alternate_morphologies": {
+                 "neurolucida-asc": "$MORPHOLOGIES/ascii",
+                 "h5v1": "$MORPHOLOGIES/h5"
+              },
+              "type": "biophysical"
+           }
+        }
+      },
+      {
+        "nodes_file": "$NETWORK_NODES_DIR/thalamus-proj32-blob_projections/nodes.h5",
+        "populations": {
+           "thalamus-proj32-blob_projections": {
+              "type": "virtual"
+           }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edges_file": "$NETWORK_EDGES_DIR/default/edges.h5",
+        "populations": {
+           "default": {
+              "type": "chemical"
+           }
+        }
+      },
+      {
+        "edges_file": "/gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-scx-v5-gapjunctions/sonata_circuit/edges/default__default__electrical/gj_edges.h5",
+        "populations": {
+          "default__default__electrical": {
+            "type": "electrical"
+          }
+        }
+      },
+      {
+        "edges_file": "/gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1-sonata/sonata/networks/edges/thalamus-proj32-blob_projections__default__chemical/edges.h5",
+        "populations": {
+           "thalamus-proj32-blob_projections__default__chemical": {
+              "type": "chemical"
+           }
+        }
+      }
+    ]
+  }
+}
