@@ -27,7 +27,6 @@ There are also optional dependencies required for some functionalities, so keep 
 - scipy
 - morphio
 - NEURON
-- mvdtool
 
 Nowadays all these dependencies can be found in PyPI, so it's not a big problem to meet them. Indeed, after a plain "pip install," you can already call the "neurodamus" entry point and inspect the usage.
 However, as mentioned, without a compiled model for Neuron, there's nothing much it can do. More on that later.

@@ -24,7 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 plotting=['matplotlib'] # only for Neurodamus HL API
-full=['scipy', 'morphio', 'NEURON', 'mvdtool']
+full=['scipy', 'morphio', 'NEURON']
 
 [project.scripts]
 neurodamus = "neurodamus.commands:neurodamus"
