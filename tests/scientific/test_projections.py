@@ -153,7 +153,7 @@ def test_synapse_delay_override(sonata_config_file):
     # If the target simulator is CoreNEURON, read the soma voltage report
     if target_simulator == "CORENEURON":
         # Load soma voltage data from the report file
-        soma_report_path = Path(config_file.name).parent / "soma.h5"
+        soma_report_path = os.path.join(nd._run_conf["OutputRoot"], "soma.h5")
         voltage_vec = _read_sonata_soma_report(soma_report_path)
 
     # Find impact on voltage. See test_spont_minis for an explanation
