@@ -1,0 +1,9 @@
+{
+  "mini": {
+    "population": "default",
+    "node_id": [75778, 80639]
+  },
+  "proj_Thalamocortical_VPM_Source": {
+    "population": "thalamus-proj32-blob_projections"
+  }
+}

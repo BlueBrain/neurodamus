@@ -1,0 +1,46 @@
+{
+    "version": 2,
+    "node_sets_file": "minimal_circuit/node_sets.json",
+    "networks": {
+        "nodes": [
+            {
+                "nodes_file": "minimal_circuit/nodes.h5",
+                "populations": {
+                    "All": {
+                        "type": "biophysical",
+                        "biophysical_neuron_models_dir": "minimal_circuit/hoc-release-2020-07-31",
+                        "alternate_morphologies": {
+                            "neurolucida-asc": "minimal_circuit/morph-release-2020-08-10"
+                        }
+                    }
+                }
+            },
+            {
+                "nodes_file": "minimal_circuit/virtual_neurons.h5",
+                "populations": {
+                    "virtual_neurons": {
+                        "type": "virtual"
+                    }
+                }
+            }
+        ],
+        "edges": [
+            {
+                "edges_file": "minimal_circuit/edges.h5",
+                "populations": {
+                    "default": {
+                        "type": "chemical"
+                    }
+                }
+            },
+            {
+                "edges_file": "minimal_circuit/projections.h5",
+                "populations": {
+                    "projections": {
+                        "type": "neuromodulatory"
+                    }
+                }
+            }
+        ]
+    }
+}

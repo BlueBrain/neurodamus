@@ -6,6 +6,7 @@ We define ACell cells and corresponding managers
 import logging
 import numpy as np
 import os
+import pytest
 import subprocess
 from pathlib import Path
 
@@ -132,6 +133,8 @@ class ACellEngine(EngineBase):
     InnerConnectivityCls = ACellSynapseManager
 
 
+@pytest.mark.skip(
+    reason="Cannot test with SONATA configs, no SONATA parameter for Engine")
 def test_run_acell_circuit():
     simdir = SIM_DIR / "acell_engine"
     env = os.environ.copy()

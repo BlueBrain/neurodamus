@@ -1,0 +1,41 @@
+{
+  "manifest": {
+    "$BASE_DIR": "/gpfs/bbp.cscs.ch/project/proj83/circuits/Bio_M/20200805/sonata",
+    "$NETWORK_NODES_DIR": "$BASE_DIR/networks/nodes",
+    "$NETWORK_EDGES_DIR": "/gpfs/bbp.cscs.ch/project/proj83/circuits/sscx-v7-plasticity"
+  },
+  "components": {
+    "morphologies_dir": "$BASE_DIR/components/morphologies",
+    "biophysical_neuron_models_dir": "$BASE_DIR/components/biophysical_neuron_models"
+  },
+  "node_sets_file": "$BASE_DIR/node_sets.json",
+  "networks": {
+    "nodes": [
+      {
+        "nodes_file": "$NETWORK_NODES_DIR/All/nodes.h5",
+        "node_types_file": null,
+        "populations": {
+          "All": {
+            "type": "biophysical",
+              "biophysical_neuron_models_dir": "/gpfs/bbp.cscs.ch/project/proj83/singlecell/release_2020-07-31/hoc",
+              "alternate_morphologies":{
+                 "neurolucida-asc": "/gpfs/bbp.cscs.ch/project/proj83/morphologies/fixed_ais_L23PC_20201210/ascii",
+                 "h5v1": "/gpfs/bbp.cscs.ch/project/proj83/morphologies/fixed_ais_L23PC_20201210/h5"
+              }
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edges_file": "$NETWORK_EDGES_DIR/edges.h5",
+        "edge_types_file": null,
+        "populations": {
+          "default": {
+            "type": "chemical"
+          }
+        }
+      }
+    ]
+  }
+}

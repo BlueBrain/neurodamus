@@ -1,0 +1,38 @@
+{
+    "manifest": {
+        "$CURRENT_DIR": "."
+    },
+    "run": {
+        "dt": 0.025,
+        "tstop": 200.0,
+        "random_seed": 549821,
+        "stimulus_seed": 549821
+    },
+    "conditions": {
+        "extracellular_calcium": 1.2,
+        "spike_location": "AIS",
+        "v_init": -80.0,
+        "mechanisms": {
+            "ProbAMPANMDA_EMS": {
+                "init_depleted": true,
+                "minis_single_vesicle": true
+            },
+            "ProbGABAAB_EMS": {
+                "init_depleted": true,
+                "minis_single_vesicle": true
+            },
+            "GluSynapse": {
+                "init_depleted": true,
+                "minis_single_vesicle": true,
+                "cao_CR": 1.2
+            }
+        }
+    },
+    "network": "circuit_config.json",
+    "node_sets_file": "user_node_sets.json",
+    "node_set": "L5_5cells",
+    "target_simulator": "NEURON",
+    "output": {
+        "output_dir": "$CURRENT_DIR/output"
+    }
+}

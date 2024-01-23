@@ -249,7 +249,9 @@ class CellManagerBase(_CellManager):
         logging.info(" -> Distributing target '%s' using Load-Balance", target_spec.name)
         self._binfo = load_balancer.load_balance_info(target_spec)
         # self._binfo has gidlist, but gids can appear multiple times
-        all_gids = numpy.unique(self._binfo.gids.as_numpy().astype("uint32"))
+        all_gids = numpy.unique(
+            self._binfo.gids.as_numpy().astype("uint32") - self._local_nodes.offset
+        )
         total_cells = len(all_gids)
         gidvec, me_infos, full_size = loader_f(self._circuit_conf, all_gids)
         return gidvec, me_infos, total_cells, full_size

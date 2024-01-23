@@ -140,9 +140,7 @@ def get_mem_usage_kb():
     """
     Return memory usage information across all ranks, in KiloBytes
     """
-    with open("/proc/self/statm") as fd:
-        _, data_size, _ = fd.read().split(maxsplit=2)
-    usage_kb = float(data_size) * os.sysconf("SC_PAGE_SIZE") / 1024
+    usage_kb = psutil.Process(os.getpid()).memory_info().rss / 1024
 
     return usage_kb
 

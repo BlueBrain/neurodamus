@@ -233,5 +233,39 @@
       69839,
       69877
     ]
-  }
+  },
+   "PV_FS": [
+    "BC", "ChC"
+    ],
+   "ChC": [
+     "L23_ChC", "L4_ChC", "L5_ChC", "L6_ChC"
+    ],
+   "BC": [
+    "L6_SBC", "L6_NBC", "L6_LBC", "L5_SBC", "L5_NBC", "L5_LBC",
+    "L4_SBC", "L4_NBC", "L4_LBC", "L23_SBC", "L23_NBC", "L23_LBC"
+    ],
+   "DISTAR_INH":[
+    "DBC", "BTC", "MC", "BP"
+    ],
+    "DBC": [
+        "L23_DBC", "L4_DBC", "L5_DBC", "L6_DBC"
+    ],
+    "BTC": [
+        "L23_BTC", "L4_BTC", "L5_BTC", "L6_BTC"
+    ],
+    "MC": [
+        "L23_MC", "L4_MC", "L5_MC", "L6_MC"
+    ],
+    "BP": [
+        "L23_BP", "L4_BP", "L5_BP", "L6_BP"
+    ],
+    "Other_Inh": [
+        "NGC_not_L1"
+    ],
+    "NGC_not_L1" : [
+        "L23_NGC", "L4_NGC", "L5_NGC", "L6_NGC"
+    ],
+    "Layer4Excitatory": [
+        "L4_SS", "L4_SP", "L4_PC"
+    ]
 }

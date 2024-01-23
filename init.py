@@ -13,10 +13,10 @@ def main():
     """Get the options for neurodamus and launch it.
 
     We can't use positional arguments with special so we look for
-    --configFile=FILE, which defaults to BlueConfig
+    --configFile=FILE, which defaults to simulation_config.json
     """
     first_argument_pos = 1
-    config_file = "BlueConfig"
+    config_file = "simulation_config.json"
 
     for i, arg in enumerate(sys.argv):
         if arg.endswith("init.py"):

@@ -12,7 +12,6 @@
         "tstop": 1,
         "dt": 0.025,
         "random_seed": 767740,
-        "run_mode" : "WholeCell",
         "electrodes_file": "electrodes_file.h5"
     },
     "conditions": {
