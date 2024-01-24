@@ -1067,8 +1067,11 @@ class Node:
         compartments = rep_conf.get("Compartments")
         is_cell_target = target.isCellTarget(sections=sections,
                                              compartments=compartments)
+        # In case of summation in the soma, we need all points anyway
+        if is_cell_target and rep_type == "Summation":
+            sections = "all"
+            compartments = "all"
         points = self._target_manager.get_target_points(target, global_manager,
-                                                        rep_type == "Summation",
                                                         sections=sections,
                                                         compartments=compartments)
         for point in points:
