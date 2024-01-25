@@ -731,6 +731,7 @@ def _second_order(config: _SimConfig, run_conf):
         from neuron import h
         log_verbose("SecondOrder = %g", second_order)
         config.second_order = second_order
+        h.CVode().active(True)
         h.secondorder = second_order
     else:
         raise _condition_checks["secondorder"][1]
