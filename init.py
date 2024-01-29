@@ -15,18 +15,18 @@ def main():
     We can't use positional arguments with special so we look for
     --configFile=FILE, which defaults to simulation_config.json
     """
-    first_argument_pos = 1
     config_file = "simulation_config.json"
 
-    for i, arg in enumerate(sys.argv):
-        if arg.endswith("init.py"):
-            first_argument_pos = i + 1
+    for i, arg in enumerate(sys.argv[1:]):
+        if not arg.startswith("-"):
+            print("Positional arguments are not supported by init.py. Please specify --configFile=<config file> to\n"
+                  "run this script (or leave empty to use the default, ./simulation_config.json).", file=sys.stderr)
+            sys.exit(1)
         elif arg.startswith("--configFile="):
             config_file = arg.split('=')[1]
-            first_argument_pos = i + 1
             break
 
-    args = [config_file] + sys.argv[first_argument_pos:]
+    args = [config_file] + [x for x in sys.argv[1:] if not x.startswith("--configFile=")]
 
     return commands.neurodamus(args)
 
