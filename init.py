@@ -6,7 +6,6 @@ All rights reserved
 """
 import sys
 from neurodamus import commands
-from neuron import h
 
 
 def extract_arguments(args):
