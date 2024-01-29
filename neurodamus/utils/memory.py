@@ -180,6 +180,8 @@ def distribute_cells(dry_run_stats, num_ranks) -> (dict, dict):
                             and values are the total memory load on each rank.
     """
     # Check inputs
+    logging.debug("Distributing cells across %d ranks", num_ranks)
+    logging.debug("Checking inputs...")
     assert set(dry_run_stats.metype_gids.keys()) == set(dry_run_stats.metype_memory.keys())
     average_syns_keys = set(dry_run_stats.average_syns_per_cell.keys())
     metype_memory_keys = set(dry_run_stats.metype_memory.keys())
@@ -190,26 +192,36 @@ def distribute_cells(dry_run_stats, num_ranks) -> (dict, dict):
     # This is done since the biggest memory load for a synapse is 2.0 kB and at this point in the
     # code we have lost the information on whether they are excitatory or inhibitory
     # so we just take the biggest value to be safe. (the difference between the two is minimal)
+    logging.debug("Multiplying the average number of synapses per cell by 2.0")
     average_syns_mem_per_cell = {k: v * 2.0 for k, v in dry_run_stats.average_syns_per_cell.items()}
 
     # Prepare a list of tuples (cell_id, memory_load)
     # We sum the memory load of the cell type and the average number of synapses per cell
-    cells = [(gid, dry_run_stats.metype_memory[cell_type] +
-              average_syns_mem_per_cell[cell_type])
-             for cell_type, gids in dry_run_stats.metype_gids.items() for gid in gids]
-    # Distribute cells with higher memory load first
-    cells.sort(key=lambda x: x[1], reverse=True)
+    # cells = [(gid, dry_run_stats.metype_memory[cell_type] +
+    #           average_syns_mem_per_cell[cell_type])
+    #          for cell_type, gids in dry_run_stats.metype_gids.items() for gid in gids]
+    # # Distribute cells with higher memory load first
+    # cells.sort(key=lambda x: x[1], reverse=True)
+    logging.debug("Generating cells...")
+
+    def generate_cells():
+        for cell_type, gids in dry_run_stats.metype_gids.items():
+            for gid in gids:
+                yield gid, dry_run_stats.metype_memory[cell_type] + average_syns_mem_per_cell[cell_type]
 
     # Initialize structures
+    logging.debug("Initializing structures...")
     ranks = [(0, i) for i in range(num_ranks)]  # (total_memory, rank_id)
     heapq.heapify(ranks)
     rank_allocation = {i: [] for i in range(num_ranks)}
     rank_memory = {i: 0 for i in range(num_ranks)}
 
     # Start distributing cells across ranks starting with the ones with higher memory load
-    for cell_id, memory in cells:
+    logging.debug("Distributing cells across ranks...")
+    for cell_id, memory in sorted(generate_cells(), key=lambda x: x[1], reverse=True):
         # Get the rank with the lowest memory load
         total_memory, rank_id = heapq.heappop(ranks)
+        logging.debug("Assigning cell %d to rank %d", cell_id, rank_id)
         # Add the cell to the rank
         rank_allocation[rank_id].append(cell_id)
         # Update the total memory load of the rank
@@ -218,10 +230,26 @@ def distribute_cells(dry_run_stats, num_ranks) -> (dict, dict):
         # Update total memory and re-add to the heap
         heapq.heappush(ranks, (total_memory, rank_id))
 
-    if rank_memory is None or rank_allocation is None:
-        return {}, {}
-
     return rank_allocation, rank_memory
+
+
+@run_only_rank0
+def print_allocation_stats(rank_allocation, rank_memory):
+    """
+    Print statistics of the memory allocation across ranks.
+
+    Args:
+        rank_allocation (dict): A dictionary where keys are rank IDs and
+                                values are lists of cell IDs assigned to each rank.
+        rank_memory (dict): A dictionary where keys are rank IDs
+                            and values are the total memory load on each rank.
+    """
+    print("Total memory per rank: ", rank_memory)
+    import statistics
+    values = list(rank_memory.values())
+    print("Mean: ", statistics.mean(values))
+    print("Median: ", statistics.median(values))
+    print("Stdev: ", statistics.stdev(values))
 
 
 class SynapseMemoryUsage:
