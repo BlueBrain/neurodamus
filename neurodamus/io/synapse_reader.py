@@ -232,7 +232,13 @@ class SonataReader(SynapseReader):
     }
 
     def _open_file(self, src, population, _):
-        storage = libsonata.EdgeStorage(src)
+        try:
+            from mpi4py import MPI
+            hdf5_reader = libsonata.make_collective_reader(MPI.COMM_WORLD, False, True)
+        except ModuleNotFoundError:
+            hdf5_reader = libsonata.Hdf5Reader()
+
+        storage = libsonata.EdgeStorage(src, hdf5_reader=hdf5_reader)
         if not population:
             assert len(storage.population_names) == 1
             population = next(iter(storage.population_names))
@@ -295,13 +301,13 @@ class SonataReader(SynapseReader):
             _populate("tgid", self._population.target_nodes(needed_edge_ids) + 1)
 
         # Make synapse index in the file explicit
-        for name in self.SYNAPSE_INDEX_NAMES:
+        for name in sorted(self.SYNAPSE_INDEX_NAMES):
             _populate(name, needed_edge_ids.flatten())
 
         # Generic synapse parameters
         fields_load_sonata = self.Parameters.fields(exclude=self.custom_parameters | compute_fields,
                                                     with_translation=self.parameter_mapping)
-        for (field, sonata_attr, is_optional) in fields_load_sonata:
+        for (field, sonata_attr, is_optional) in sorted(fields_load_sonata):
             _populate(field, _read(sonata_attr, is_optional))
 
         if self.custom_parameters:
@@ -311,7 +317,8 @@ class SonataReader(SynapseReader):
         # This has to work for when we call preload() a second/third time
         # so we are unsure about which gids were loaded what properties
         # We nevertheless can skip any base fields
-        for field in set(self._extra_fields) - (self.Parameters.all_fields | compute_fields):
+        extra_fields = set(self._extra_fields) - (self.Parameters.all_fields | compute_fields)
+        for field in sorted(extra_fields):
             now_needed_ids = sorted(set(gid for gid in ids if field not in self._data[gid]))
             if needed_ids != now_needed_ids:
                 needed_ids = now_needed_ids
