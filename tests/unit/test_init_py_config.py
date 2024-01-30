@@ -17,13 +17,15 @@ def test_init_non_positional(_mock_neuron):
 
 
 def test_init_config_only(_mock_neuron):
-    args = extract_arguments(['another/dir/init.py', '--configFile=conf/my_config.json'])
+    args = extract_arguments(['another/dir/init.py',
+                              '--configFile=conf/my_config.json'])
     assert len(args) == 1
     assert args[0] == 'conf/my_config.json'
 
 
 def test_init_pass_options(_mock_neuron):
-    args = extract_arguments(['another/dir/init.py', '--foo=bar', '--configFile=conf/my_config.json',
+    args = extract_arguments(['another/dir/init.py', '--foo=bar',
+                              '--configFile=conf/my_config.json',
                               '-v', '--baz=qux'])
     assert len(args) == 4
     assert args[0] == 'conf/my_config.json'
