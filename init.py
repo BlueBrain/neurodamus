@@ -16,8 +16,9 @@ def main():
     try:
         args = extract_arguments(sys.argv)
     except ValueError:
-        logging.error("Positional arguments are not supported by init.py; please specify --configFile=<config> "
-                      "to run this script (or leave empty to use the default, ./simulation_config.json).")
+        logging.error("Positional arguments are not supported by init.py; please "
+                      "specify --configFile=<config> to run this script (or leave "
+                      "empty to use the default, ./simulation_config.json).")
         return 1
 
     return commands.neurodamus(args)
