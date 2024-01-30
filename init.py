@@ -6,6 +6,8 @@ All rights reserved
 """
 import sys
 from neurodamus import commands
+from neuron import h
+import logging
 
 
 def extract_arguments(args):
@@ -26,12 +28,13 @@ def extract_arguments(args):
 
 
 def main():
+    args = []
     try:
         args = extract_arguments(sys.argv)
     except ValueError:
-        print("Positional arguments are not supported by init.py. Please specify --configFile=<config file> to\n"
-              "run this script (or leave empty to use the default, ./simulation_config.json).", file=sys.stderr)
-        sys.exit(1)
+        logging.error("Positional arguments are not supported by init.py; please specify --configFile=<config> "
+                      "to run this script (or leave empty to use the default, ./simulation_config.json).")
+        h.quit(1)
 
     return commands.neurodamus(args)
 
