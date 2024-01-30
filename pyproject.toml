@@ -43,9 +43,6 @@ exclude=["tests"]
 [tool.pytest.ini_options]
 addopts = "--verbose"
 markers = ["slow: marks tests as slow"]
-pythonpath = [
-  "."
-]
 
 [tool.distutils.bdist_wheel]
 universal = 1
