@@ -46,9 +46,6 @@ def test_init_first_args():
 
 
 def test_init_early_config_file():
-    args = extract_arguments(['dplace', 'special', '--configFile=my_config.json', '--some=pre',
+    with pytest.raises(ValueError):
+        extract_arguments(['dplace', 'special', '--configFile=my_config.json', '--some=pre',
                               'etc', 'dir/init.py', '--foo=bar', '-v'])
-    assert len(args) == 3
-    assert args[0] == 'my_config.json'
-    assert args[1] == '--foo=bar'
-    assert args[2] == '-v'
