@@ -1,6 +1,6 @@
 import pytest
 import sys
-import unittest
+import unittest.mock
 
 
 class MockParallelExec:
