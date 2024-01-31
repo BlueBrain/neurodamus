@@ -744,12 +744,13 @@ class ConnectionManagerBase(object):
             return {}
 
         local_counter = Counter()
+        dst_pop_name = self._cell_manager.population_name
 
         # NOTE:
         #  - Estimation (and extrapolation) is performed per metype since properties can vary
         #  - Consider only the cells for the current target
 
-        for metype, me_gids in self._dry_run_stats.metype_gids.items():
+        for metype, me_gids in self._dry_run_stats.metype_gids[dst_pop_name].items():
             me_gids = set(me_gids).intersection(new_gids)
             me_gids_count = len(me_gids)
             if not me_gids_count:
