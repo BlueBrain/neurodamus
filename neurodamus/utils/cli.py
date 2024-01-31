@@ -17,7 +17,7 @@ def extract_arguments(args):
                 init_py_reached = True
             continue
         elif not arg.startswith("-"):
-            raise ValueError("Positional arguments are not supported")
+            raise ValueError(f"Positional arguments are not supported. Found positional argument: '{arg}'")
 
     result_args = ([config_file] +
                    [x for x in args[first_argument_pos:] if not x.startswith("--configFile=")])
