@@ -233,8 +233,6 @@ class TargetManager:
         Args:
             target: The target name or object (faster)
             manager: The cell manager to access gids and metype infos
-            cell_use_compartment_cast: if enabled (default) will use target_manager.compartmentCast
-                to get the point list.
 
         Returns: The target list of points
         """
