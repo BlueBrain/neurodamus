@@ -2,6 +2,24 @@
 Change Log
 ==========
 
+Version 3.0.0
+=============
+**31 Jan 2024**
+
+*New Features*
+  * Deprecate BlueConfig part-1: Raise errors for BlueConfig configuration files (#101)
+  * Read synapse parameters in a collective safe manner. (#85)
+
+*Bug Fixes*
+  * [BBPBGLIB-1115] Fix issue with summation reports and cell target in NEURON (#114)
+  * [BBPBGLIB-1114] Apply offset to the gids before reading node file (#113)
+
+*Improvements*
+  * [BBPBGLIB-1111] Raise a proper error when missing "--configFile=" (#115)
+  * Remove dependency on mvdtool (#112)
+  * Transform setup.py to pyproject.toml (#110)
+
+
 Version 2.17.0
 ==============
 **22 Dec 2023**
