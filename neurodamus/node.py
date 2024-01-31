@@ -1067,8 +1067,11 @@ class Node:
         compartments = rep_conf.get("Compartments")
         is_cell_target = target.isCellTarget(sections=sections,
                                              compartments=compartments)
+        # In case of summation in the soma, we need all points anyway
+        if is_cell_target and rep_type == "Summation":
+            sections = "all"
+            compartments = "all"
         points = self._target_manager.get_target_points(target, global_manager,
-                                                        rep_type == "Summation",
                                                         sections=sections,
                                                         compartments=compartments)
         for point in points:
@@ -1137,8 +1140,7 @@ class Node:
                         config.get("Configure").s, target_name)
 
             points = self._target_manager.get_target_points(target_name,
-                                                            self._circuits.base_cell_manager,
-                                                            cell_use_compartment_cast=True)
+                                                            self._circuits.base_cell_manager)
             # iterate the pointlist and execute the command on the section
             for tpoint_list in points:
                 for sec_i, sc in enumerate(tpoint_list.sclst):

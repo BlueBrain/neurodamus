@@ -225,7 +225,7 @@ class TargetManager:
         # give a TargetManager the TargetParser's completed targetList
         self.hoc = Nd.TargetManager(self.parser.targetList, cell_manager)
 
-    def get_target_points(self, target, cell_manager, cell_use_compartment_cast, **kw):
+    def get_target_points(self, target, cell_manager, **kw):
         """Helper to retrieve the points of a target.
         If target is a cell then uses compartmentCast to obtain its points.
         Otherwise returns the result of calling getPointList directly on the target.
@@ -233,16 +233,11 @@ class TargetManager:
         Args:
             target: The target name or object (faster)
             manager: The cell manager to access gids and metype infos
-            cell_use_compartment_cast: if enabled (default) will use target_manager.compartmentCast
-                to get the point list.
 
         Returns: The target list of points
         """
         if isinstance(target, TargetSpec):
             target = self.get_target(target)
-        if target.isCellTarget(**kw) and cell_use_compartment_cast:
-            hoc_obj = self.hoc.compartmentCast(target.get_hoc_target(), "")
-            return hoc_obj.getPointList(cell_manager)
         return target.getPointList(cell_manager, **kw)
 
     @lru_cache()
