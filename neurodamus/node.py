@@ -32,7 +32,7 @@ from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import DryRunStats, trim_memory, pool_shrink, free_event_queues, print_mem_usage
-from .utils.memory import print_allocation_stats
+from .utils.memory import print_allocation_stats, export_allocation_stats, distribute_cells
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
 from .io.sonata_config import ConnectionTypes
@@ -1866,13 +1866,13 @@ class Neurodamus(Node):
         """
         if SimConfig.dry_run:
             log_stage("============= DRY RUN (SKIP SIMULATION) =============")
-            from .utils.memory import distribute_cells
             self._dry_run_stats.display_total()
             self._dry_run_stats.display_node_suggestions()
             ranks = int(SimConfig.prosp_hosts)
             self._dry_run_stats.collect_all_mpi()
             allocation, total_memory_per_rank = distribute_cells(self._dry_run_stats, ranks)
             print_allocation_stats(allocation, total_memory_per_rank)
+            export_allocation_stats(allocation, "allocation.bin")
             return
         if not SimConfig.simulate_model:
             self.sim_init()
