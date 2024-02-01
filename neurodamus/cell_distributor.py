@@ -32,9 +32,7 @@ from .utils.memory import DryRunStats, get_mem_usage_kb
 
 
 class NodeFormat(Enum):
-    NCS = 1
-    MVD3 = 2
-    SONATA = 3
+    SONATA = 1
 
 
 class VirtualCellPopulation:
@@ -116,7 +114,7 @@ class CellManagerBase(_CellManager):
         load(circuit_conf, gidvec, stride=1, stride_offset=0)
     """
 
-    _node_format = NodeFormat.SONATA  # NCS, Mvd, Sonata...
+    _node_format = NodeFormat.SONATA
     """Default Node file format"""
 
     def __init__(self, circuit_conf, target_manager, _run_conf=None, **_kw):
@@ -179,12 +177,11 @@ class CellManagerBase(_CellManager):
         return numpy.array(self.local_nodes.final_gids())
 
     def _init_config(self, circuit_conf, pop):
-        if self._node_format == NodeFormat.SONATA:
-            if not ospath.isabs(circuit_conf.CellLibraryFile):
-                circuit_conf.CellLibraryFile = find_input_file(circuit_conf.CellLibraryFile)
-            if not pop:   # Last attempt to get pop name
-                pop = self._get_sonata_population_name(circuit_conf.CellLibraryFile)
-                logging.info(" -> Discovered node population name: %s", pop)
+        if not ospath.isabs(circuit_conf.CellLibraryFile):
+            circuit_conf.CellLibraryFile = find_input_file(circuit_conf.CellLibraryFile)
+        if not pop:   # Last attempt to get pop name
+            pop = self._get_sonata_population_name(circuit_conf.CellLibraryFile)
+            logging.info(" -> Discovered node population name: %s", pop)
         if not pop and circuit_conf._name:
             pop = circuit_conf._name
             logging.warning("(Compat) Assuming population name from Circuit: %s", pop)
@@ -520,28 +517,13 @@ class CellDistributor(CellManagerBase):
         Instantiated cells are stored locally (.cells property)
     """
 
-    _cell_loaders = {
-        "start.ncs": cell_readers.load_ncs,
-        "circuit.mvd3": cell_readers.load_mvd3,
-    }
-
     _sonata_with_extra_attrs = True  # Enable search extra node attributes
 
     def _init_config(self, circuit_conf, _pop):
         if not circuit_conf.CellLibraryFile:
-            logging.warning("CellLibraryFile not set. Assuming legacy 'start.ncs'")
-            circuit_conf.CellLibraryFile = "start.ncs"
-        if circuit_conf.CellLibraryFile.endswith(".ncs"):
-            self._node_format = NodeFormat.NCS
-        elif circuit_conf.CellLibraryFile.endswith(".mvd3"):
-            self._node_format = NodeFormat.MVD3
+            raise ConfigurationError("CellLibraryFile not set")
 
-        self._is_v5_circuit = circuit_conf.CellLibraryFile == "start.ncs" or (
-            circuit_conf.nrnPath and ospath.isfile(ospath.join(circuit_conf.nrnPath, "start.ncs"))
-            and not ospath.isfile(ospath.join(circuit_conf.CircuitPath, "circuit.mvd3"))
-        )
-        if self._is_v5_circuit and self._circuit_conf.DetailedAxon:
-            raise ConfigurationError("V5 circuits don't support keeping detailed axons")
+        # self._is_v5_circuit alwaysFalse for sonata
 
         super()._init_config(circuit_conf, _pop)
 
@@ -553,17 +535,10 @@ class CellDistributor(CellManagerBase):
         cell_requirements = all_cell_requirements.get(self._population_name) or (
             self.is_default and all_cell_requirements.get(None)
         )
-        if self._node_format == NodeFormat.SONATA:
-            loader = cell_readers.load_sonata
-            loader_opts["node_population"] = self._population_name  # mandatory in Sonata
-            loader_opts["load_dynamic_props"] = cell_requirements
-            loader_opts["has_extra_data"] = self._sonata_with_extra_attrs
-        else:
-            if cell_requirements:
-                raise Exception('Additional cell properties only available with SONATA')
-            nodes_filename = self._circuit_conf.CellLibraryFile
-            loader = self._cell_loaders.get(nodes_filename, cell_readers.load_mvd3)
-            loader_opts = {}
+        loader = cell_readers.load_sonata
+        loader_opts["node_population"] = self._population_name  # mandatory in Sonata
+        loader_opts["load_dynamic_props"] = cell_requirements
+        loader_opts["has_extra_data"] = self._sonata_with_extra_attrs
 
         log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader.__name__)
         return super().load_nodes(load_balancer, _loader=loader, loader_opts=loader_opts)
