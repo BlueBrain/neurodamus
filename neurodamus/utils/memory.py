@@ -299,6 +299,21 @@ def export_allocation_stats(rank_allocation, filename):
         logging.warning("Unable to export allocation stats: {}".format(e))
 
 
+@run_only_rank0
+def import_allocation_stats(filename):
+    """
+    Import allocation dictionary from serialized pickle file.
+    """
+    import pickle
+    try:
+        with open(filename, 'rb') as f:
+            rank_allocation = pickle.load(f)
+        return rank_allocation
+    except Exception as e:
+        logging.warning("Unable to import allocation stats: {}".format(e))
+        return None
+
+
 class SynapseMemoryUsage:
     ''' A small class that works as a lookup table
     for the memory used by each type of synapse.

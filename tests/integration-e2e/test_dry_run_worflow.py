@@ -23,3 +23,13 @@ def test_dry_run_workflow(USECASE3):
     }
     assert nd._dry_run_stats.metype_counts == expected_items
     assert nd._dry_run_stats.suggest_nodes(0.3) > 0
+
+    # Test that the dry run mode works with a pickle file
+    import pickle
+    try:
+        with open((str(USECASE3 / "allocation.bin")), 'rb') as f:
+            rank_allocation = pickle.load(f)
+    except Exception as e:
+        print("Unable to import allocation stats: {}".format(e))
+    expected_items = {'NodeA': {0: [3]}, 'NodeB': {1: [2]}}
+    assert rank_allocation == expected_items
