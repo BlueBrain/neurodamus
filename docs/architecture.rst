@@ -103,7 +103,7 @@ BBP v6 circuits would define its own cell hoc templates (/classes, one for each 
 based on Cell.hoc.
 
 Morphologically detailed neurons are the heart of a Neuron simulation. Neurodamus will read the
-cells metadata from a node file (start.ncs, circuit.mvd3 or nodes.h5 sonata) and instantiate each
+cells metadata from a node file in SONATA format and instantiate each
 individual cell by:
 
 - loading the morphology and instantiate the respective sections
@@ -138,7 +138,7 @@ Due to extensively different logic, both these cell types inherit directly from 
 must be handled by their own cell manager classes. To these modules implementing a new `Cell`,
 `CellManagers` and eventually `ConnectionManager` types we call **Engine** - more on this later.
 
-For the record, `Cell_V5/V6` and the corresponding `CellDistributor` and `SynapseRuleManager`
+For the record, `Cell_V6` and the corresponding `CellDistributor` and `SynapseRuleManager`
 were also made components of a special engine: the `METypeEngine`, obviously built-in (find it
 in node.py).
 

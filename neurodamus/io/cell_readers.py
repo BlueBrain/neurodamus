@@ -9,9 +9,9 @@ from collections import defaultdict
 from os import path as ospath
 
 from ..core import NeurodamusCore as Nd
-from ..core.configuration import ConfigurationError, SimConfig
+from ..core.configuration import SimConfig
 from ..core import run_only_rank0
-from ..metype import METypeManager, METypeItem
+from ..metype import METypeManager
 from ..utils.logging import log_verbose
 
 EMPTY_GIDVEC = np.empty(0, dtype="uint32")
@@ -196,58 +196,6 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
             meinfos[gid].extra_attrs[prop_name] = val
 
     return gidvec, meinfos, fullsize
-
-
-def load_combo_metypes(combo_file, gidvec, combo_list, morph_list):
-    """ Read file with mecombo info, retaining only those that are local to this node
-    Args:
-        combo_file: Path to the combo file to read metype info from
-        gidvec: local gids to load info about
-        combo_list: comboList Combos corresponding to local gids
-        morph_list: morphList Morpholgies corresponding to local gids
-    """
-    if not combo_file:
-        logging.error("Missing BlueConfig field 'MEComboInfoFile' which has gid:mtype:emodel.")
-        raise ConfigurationError("MEComboInfoFile not specified")
-
-    # Optimization: index combos
-    combo_ids = defaultdict(list)
-    for i, c in enumerate(combo_list):
-        combo_ids[c].append(i)
-
-    log_verbose("Loading emodel+additional info from Combo f %s", combo_file)
-    f = open(combo_file)
-    next(f)  # Skip Header
-
-    me_manager = METypeManager()
-    for tstr in f:
-        vals = tstr.strip().split()
-        if len(vals) not in (6, 8):
-            wmsg = ("Could not parse line %s from MEComboInfoFile %s."
-                    "Expecting 6 (hippocampus) or 8 (somatosensory) fields")
-            logging.warning(wmsg, tstr, combo_file)
-
-        # metypes may be reused by several cells
-        # We create a single item and later assign to each matching gid
-        meitem = METypeItem(*vals)
-        for i in combo_ids[meitem.combo_name]:
-            if morph_list[i] == meitem.morph_name:
-                me_manager[int(gidvec[i])] = meitem
-
-    # confirm that all gids have been matched.
-    # Otherwise, print combo + morph info to help finding issues
-    nerr = 0
-    for gid in gidvec:
-        gid = int(gid)
-        if gid not in me_manager:
-            logging.error("MEComboInfoFile: No MEInfo for gid %d", gid)
-            nerr += 1
-    if nerr > 0:
-        logging.error("gidvec: " + str(gidvec))
-        logging.error("Memap: " + str(me_manager.gids))
-        raise CellReaderError("Errors found during processing of mecombo file. See log")
-
-    return me_manager
 
 
 def _getNeededAttributes(node_reader, etype_path, emodels, gidvec):

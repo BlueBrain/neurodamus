@@ -24,7 +24,7 @@ from .core.configuration import GlobalConfig, LoadBalanceMode, LogLevel, find_in
 from .core.nodeset import NodeSet
 from .io import cell_readers
 from .lfp_manager import LFPManager
-from .metype import Cell_V5, Cell_V6, EmptyCell
+from .metype import Cell_V6, EmptyCell
 from .target_manager import TargetSpec
 from .utils import compat
 from .utils.logging import log_verbose, log_all
@@ -523,8 +523,6 @@ class CellDistributor(CellManagerBase):
         if not circuit_conf.CellLibraryFile:
             raise ConfigurationError("CellLibraryFile not set")
 
-        # self._is_v5_circuit alwaysFalse for sonata
-
         super()._init_config(circuit_conf, _pop)
 
     def load_nodes(self, load_balancer=None, **kw):
@@ -553,7 +551,7 @@ class CellDistributor(CellManagerBase):
         if self.CellType is not NotImplemented:
             return super()._instantiate_cells(self.CellType)
         conf = self._circuit_conf
-        CellType = Cell_V5 if self._is_v5_circuit else Cell_V6
+        CellType = Cell_V6
         if conf.MorphologyType:
             CellType.morpho_extension = conf.MorphologyType
 
