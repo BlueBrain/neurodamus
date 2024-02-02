@@ -11,16 +11,19 @@ SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 
 @pytest.fixture
-def target_manager_hoc():
-    from neurodamus.target_manager import _HocTarget
-    t1 = _HocTarget("Small", None, _raw_gids=[1, 11, 21, 31, 41, 51, 61, 71, 81, 91, 101, 111])
-    t2 = _HocTarget("VerySmall", None, _raw_gids=[1, 11, 21, 31, 41, 51])
+def target_manager():
+    from neurodamus.target_manager import NodesetTarget
+    from neurodamus.core.nodeset import NodeSet
+    nodes_t1 = NodeSet([1, 11, 21, 31, 41, 51, 61, 71, 81, 91, 101, 111]).register_global("All")
+    nodes_t2 = NodeSet([1, 11, 21, 31, 41, 51]).register_global("All")
+    t1 = NodesetTarget("Small", [nodes_t1])
+    t2 = NodesetTarget("VerySmall", [nodes_t2])
     return MockedTargetManager(t1, t2)
 
 
-def test_loadbal_no_cx(target_manager_hoc, caplog):
+def test_loadbal_no_cx(target_manager, caplog):
     from neurodamus.cell_distributor import LoadBalance, TargetSpec
-    lbal = LoadBalance(1, "/gpfs/fake_path_to_nodes_1", "pop", target_manager_hoc, 4)
+    lbal = LoadBalance(1, "/gpfs/fake_path_to_nodes_1", "pop", target_manager, 4)
     assert not lbal._cx_targets
     assert not lbal._valid_loadbalance
     with caplog.at_level(logging.INFO):
@@ -28,7 +31,7 @@ def test_loadbal_no_cx(target_manager_hoc, caplog):
         assert " => No complexity files for current circuit yet" in caplog.records[-1].message
 
 
-def test_loadbal_subtarget(target_manager_hoc, caplog):
+def test_loadbal_subtarget(target_manager, caplog):
     """Ensure given the right files are in the lbal dir, the correct situation is detected
     """
     from neurodamus.cell_distributor import LoadBalance, TargetSpec
@@ -38,7 +41,7 @@ def test_loadbal_subtarget(target_manager_hoc, caplog):
     lbdir, _ = LoadBalance._get_circuit_loadbal_dir(nodes_file, "pop")
     shutil.copyfile(SIM_DIR / "1k_v5_balance" / "cx_Small.dat", lbdir / "cx_Small#.dat")
 
-    lbal = LoadBalance(1, nodes_file, "pop", target_manager_hoc, 4)
+    lbal = LoadBalance(1, nodes_file, "pop", target_manager, 4)
     assert "Small" in lbal._cx_targets
     assert not lbal._valid_loadbalance
     with caplog.at_level(logging.INFO):
@@ -60,26 +63,26 @@ def circuit_conf():
     PROJ = "/gpfs/bbp.cscs.ch/project"
     return CircuitConfig(
         CircuitPath=PROJ + "/proj12/jenkins/cellular/circuit-2k",
-        CellLibraryFile="circuit.mvd3",
+        CellLibraryFile=PROJ + "/proj12/jenkins/cellular/circuit-2k/nodes.h5",
         MEComboInfoFile=PROJ + "/proj64/entities/emodels/2017.11.03/mecombo_emodel.tsv",
         METypePath=PROJ + "/proj64/entities/emodels/2017.11.03/hoc",
         MorphologyPath=PROJ + "/proj12/jenkins/cellular/circuit-2k/morphologies/ascii",
         nrnPath="<NONE>",  # no connectivity
-        CircuitTarget="Small"
+        CircuitTarget="All:Small"
     )
 
 
-def test_load_balance_integrated(target_manager_hoc, circuit_conf):
+def test_load_balance_integrated(target_manager, circuit_conf):
     """Comprehensive test using real cells and deriving cx for a sub-target
     """
     from neurodamus.cell_distributor import CellDistributor, LoadBalance, TargetSpec
     tmp_path = tempfile.TemporaryDirectory("test_load_balance_integrated")
     os.chdir(tmp_path.name)
-    cell_manager = CellDistributor(circuit_conf, target_manager_hoc)
+    cell_manager = CellDistributor(circuit_conf, target_manager)
     cell_manager.load_nodes()
 
-    lbal = LoadBalance(1, circuit_conf.CircuitPath, "", target_manager_hoc, 4)
-    t1 = TargetSpec("Small")
+    lbal = LoadBalance(1, circuit_conf.CircuitPath, "", target_manager, 4)
+    t1 = TargetSpec("All:Small")
     assert not lbal._cx_valid(t1)
 
     with lbal.generate_load_balance(t1, cell_manager):
@@ -92,13 +95,13 @@ def test_load_balance_integrated(target_manager_hoc, circuit_conf):
     # Check subtarget
     assert "VerySmall" not in lbal._cx_targets
     assert "VerySmall" not in lbal._valid_loadbalance
-    assert lbal._reuse_cell_complexity(TargetSpec("VerySmall"))
+    assert lbal._reuse_cell_complexity(TargetSpec("All:VerySmall"))
 
     # Check not super-targets
     assert not lbal._reuse_cell_complexity(TargetSpec(None))
 
 
-def test_multisplit(target_manager_hoc, circuit_conf, capsys):
+def test_multisplit(target_manager, circuit_conf, capsys):
     """Comprehensive test using real cells, multi-split and complexity derivation
     """
     from neurodamus.cell_distributor import CellDistributor, LoadBalance, TargetSpec
@@ -106,10 +109,10 @@ def test_multisplit(target_manager_hoc, circuit_conf, capsys):
     tmp_path = tempfile.TemporaryDirectory("test_multisplit")
     os.chdir(tmp_path.name)
 
-    cell_manager = CellDistributor(circuit_conf, target_manager_hoc)
+    cell_manager = CellDistributor(circuit_conf, target_manager)
     cell_manager.load_nodes()
-    lbal = LoadBalance(MULTI_SPLIT, circuit_conf.CircuitPath, "", target_manager_hoc, 4)
-    t1 = TargetSpec("Small")
+    lbal = LoadBalance(MULTI_SPLIT, circuit_conf.CircuitPath, "", target_manager, 4)
+    t1 = TargetSpec("All:Small")
     assert not lbal._cx_valid(t1)
 
     with lbal.generate_load_balance(t1, cell_manager):
