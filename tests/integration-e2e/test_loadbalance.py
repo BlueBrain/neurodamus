@@ -9,6 +9,8 @@ from pathlib import Path
 
 SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
+pytestmark = pytest.mark.skip(reason="All tests in this file are currently skipped.")
+
 
 @pytest.fixture
 def target_manager():

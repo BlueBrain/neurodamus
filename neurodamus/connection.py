@@ -265,9 +265,8 @@ class Connection(ConnectionBase):
         n_synapses = len(synapses_params)
         synapse_ids = numpy.arange(base_id, base_id+n_synapses, dtype="uint64")
         mask = numpy.full(n_synapses, True)  # We may need to skip invalid synapses (e.g. on Axon)
-
         for i, syn_params in enumerate(synapses_params):
-            syn_point = target_manager.hoc.locationToPoint(
+            syn_point = target_manager.location_to_point(
                 self.tgid, syn_params['isec'], syn_params['ipt'], syn_params['offset'])
             syn_params['location'] = syn_point.x[0]
             section = syn_point.sclst[0]

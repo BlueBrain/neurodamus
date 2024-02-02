@@ -41,23 +41,6 @@ def test_nodeset_target_generate_subtargets():
     assert np.array_equal(subtargets[2][1].get_gids(), np.array([1002]))
 
 
-def test_hoc_target_generate_subtargets():
-    from neurodamus.target_manager import _HocTarget
-
-    N_PARTS = 3
-    gids = list(range(10))
-    target = _HocTarget("Column", None, pop_name=None)
-    target._raw_gids = np.array(gids, dtype="uint32")
-
-    subtargets = target.generate_subtargets(N_PARTS)
-    assert len(subtargets) == N_PARTS
-    assert subtargets[0].name == "Column_0"
-    assert subtargets[0].population_names == {None}
-    assert np.array_equal(subtargets[0].get_gids(), np.array([0, 3, 6, 9]))
-    assert np.array_equal(subtargets[1].get_gids(), np.array([1, 4, 7]))
-    assert np.array_equal(subtargets[2].get_gids(), np.array([2, 5, 8]))
-
-
 def _create_tmpconfig_coreneuron(config_file):
     import fileinput
     import shutil

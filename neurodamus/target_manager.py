@@ -1,6 +1,5 @@
 import itertools
 import logging
-import os.path
 from abc import ABCMeta, abstractmethod
 from functools import lru_cache
 from typing import List
@@ -9,7 +8,7 @@ import libsonata
 import numpy
 
 from .core import MPI, NeurodamusCore as Nd
-from .core.configuration import ConfigurationError, SimConfig, GlobalConfig, find_input_file
+from .core.configuration import ConfigurationError, find_input_file
 from .core.nodeset import _NodeSetBase, NodeSet, SelectionNodeSet
 from .utils import compat
 from .utils.logging import log_verbose
@@ -87,15 +86,15 @@ class TargetSpec:
 
 class TargetManager:
 
-    def __init__(self, run_conf):
+    def __init__(self, run_conf, cell_manager):
         """
         Initializes a new TargetManager
         """
         self._run_conf = run_conf
+        self._cell_manager = cell_manager
         self.parser = Nd.TargetParser()
-        self._has_hoc_targets = False
-        self.hoc = None  # The hoc level target manager
         self._targets = {}
+        self._section_access = {}
         self._nodeset_reader = self._init_nodesets(run_conf)
         if MPI.rank == 0:
             self.parser.isVerbose = 1
@@ -123,39 +122,13 @@ class TargetManager:
             if file_name.endswith(".h5"):
                 return True
             return False
-        if circuit.CircuitPath:
-            self._try_open_start_target(circuit)
 
         nodes_file = circuit.get("CellLibraryFile")
         if nodes_file and _is_sonata_file(nodes_file) and self._nodeset_reader:
             self._nodeset_reader.register_node_file(find_input_file(nodes_file))
 
-    def _try_open_start_target(self, circuit):
-        start_target_file = os.path.join(circuit.CircuitPath, "start.target")
-        if not os.path.isfile(start_target_file):
-            log_verbose("Circuit %s start.target not available! Skipping", circuit._name)
-        else:
-            self.parser.open(start_target_file, False)
-            self._has_hoc_targets = True
-
-    def load_user_target(self):
-        # Old target files. Notice new targets with same should not happen
-        target_file = self._run_conf.get("TargetFile")
-        if not target_file or target_file.endswith(".json"):  # allow any ext, except nodesets
-            return
-        user_target = find_input_file(target_file)
-        self.parser.open(user_target, True)
-        self._has_hoc_targets = True
-        if MPI.rank == 0:
-            logging.info(" => Loaded %d targets", self.parser.targetList.count())
-            if GlobalConfig.verbosity >= 3:
-                self.parser.printCellCounts()
-
     @classmethod
     def create_global_target(cls):
-        # In blueconfig mode the _ALL_ target refers to base single population)
-        if not SimConfig.is_sonata_config:
-            return _HocTarget(TargetSpec.GLOBAL_TARGET_NAME, None)  # None population -> generic
         return NodesetTarget(TargetSpec.GLOBAL_TARGET_NAME, [])
 
     def register_target(self, target):
@@ -172,7 +145,6 @@ class TargetManager:
     def clear_simulation_data(self):
         self.local_nodes.clear()
         self.parser.updateTargets(Nd.Vector(), 0)
-        self.init_hoc_manager(None)  # Init/release cell manager
 
     def get_target(self, target_spec: TargetSpec, target_pop=None):
         """Retrieves a target from any .target file or Sonata nodeset files.
@@ -206,24 +178,9 @@ class TargetManager:
             self.register_target(target)
             return get_concrete_target(target)
 
-        if self._has_hoc_targets:
-            if self.hoc is not None:
-                log_verbose("Retrieved `%s` from Hoc TargetManager", target_spec)
-                hoc_target = self.hoc.getTarget(target_name)
-            else:
-                log_verbose("Retrieved `%s` from the Hoc TargetParser", target_spec)
-                hoc_target = self.parser.getTarget(target_name)
-            target = _HocTarget(target_name, hoc_target)
-            self._targets[target_name] = target
-            return get_concrete_target(target)
-
         raise ConfigurationError(
             "Target {} can't be loaded. Check target sources".format(target_name)
         )
-
-    def init_hoc_manager(self, cell_manager):
-        # give a TargetManager the TargetParser's completed targetList
-        self.hoc = Nd.TargetManager(self.parser.targetList, cell_manager)
 
     def get_target_points(self, target, cell_manager, **kw):
         """Helper to retrieve the points of a target.
@@ -269,9 +226,100 @@ class TargetManager:
             return TargetSpec(src1) == TargetSpec(src2) and TargetSpec(dst1) == TargetSpec(dst2)
         return self.intersecting(src1, src2) and self.intersecting(dst1, dst2)
 
-    def __getattr__(self, item):
-        logging.debug("Compat interface to TargetManager::" + item)
-        return getattr(self.hoc, item)
+    def getPointList(self, target):
+        return self.get_target_points(self._targets[target], self._cell_manager)
+
+    def getMETypes(self, target_name):
+        """
+        Convenience function for objects like StimulusManager to get access to METypes of cell
+        objects without having a direct line to the CellDistributor object.
+
+        :param target_name: Target Name to get the GIDs and collect references to cell MEtypes
+        :return: List containing MEtypes for each cell object associated with the target
+        """
+        result_list = compat.List()
+        target = self._targets[target_name]
+        gids = target.get_local_gids()
+
+        for gid in gids:
+            metype = self._cell_manager.getMEType(gid)
+            result_list.append(metype)
+
+        return result_list
+
+    def gid_to_sections(self, gid):
+        """
+        For a given gid, return a list of section references stored for random access.
+        If the list does not exist, it is built and stored for future use.
+
+        :param gid: GID of the cell
+        :return: SerializedSections object with SectionRefs to every section in the cell
+        """
+        if gid not in self._section_access:
+            cell_ref = self._cell_manager.get_cellref(gid)
+            if cell_ref is None:
+                logging.warning("No cell found for GID: %d", gid)
+                return None
+            result_serial = SerializedSections(cell_ref)
+            self._section_access[gid] = result_serial
+        else:
+            result_serial = self._section_access[gid]
+
+        return result_serial
+
+    def location_to_point(self, gid, isec, ipt, offset):
+        """
+        Given a location for a cell, section id, segment id, and offset into the segment,
+        create a list containing a section reference to there.
+
+        :param gid: GID of the cell
+        :param isec: Section index
+        :param ipt: Distance to start of segment
+        :param offset: Offset distance beyond the ipt (microns)
+        :return: List with 1 item, where the synapse should go
+        """
+        # Soma connection, just zero it
+        if offset < 0:
+            offset = 0
+
+        result_point = Nd.TPointList(gid)
+        cell_sections = self.gid_to_sections(gid)
+        if not cell_sections:
+            raise Exception("Getting locations for non-bg sims is not implemented yet...")
+
+        if isec >= cell_sections.num_sections:
+            raise Exception(f"Error: section {isec} out of bounds ({cell_sections.num_sections} "
+                            "total). Morphology section count is low, is this a good morphology?")
+
+        distance = 0.5
+        tmp_section = cell_sections.isec2sec[int(isec)]
+
+        if tmp_section is None:  # Assume we are in LoadBalance mode
+            result_point.append(None, -1)
+        elif ipt == -1:
+            # SYN2/Sonata spec have a pre-calculated distance field.
+            # In such cases, segment (ipt) is -1 and offset is that distance.
+            offset = max(min(offset, 0.9999999), 0.0000001)
+            result_point.append(tmp_section, offset)
+        else:
+            # Adjust for section orientation and calculate distance
+            section = tmp_section.sec
+            if section.orientation() == 1:
+                ipt = section.n3d() - 1 - ipt
+                offset = -offset
+
+            if ipt < section.n3d():
+                distance = (section.arc3d(int(ipt)) + offset) / section.L
+                if distance == 0.0:
+                    distance = 0.0000001
+                if distance >= 1.0:
+                    distance = 0.9999999
+
+            if section.orientation() == 1:
+                distance = 1 - distance
+
+            result_point.append(tmp_section, distance)
+        return result_point
 
 
 class NodeSetReader:
@@ -414,50 +462,7 @@ class _TargetInterface(metaclass=ABCMeta):
         pass
 
 
-class _HocTargetInterface:
-    """
-    Interface of Hoc targets to be respected when we want to use objects
-    in place of hoc targets.
-
-    This interface provides a default implementation suitable for Nodeset targets
-    where it will be primarily used
-    """
-
-    def isCellTarget(self, **kw):
-        section_type = kw.get("sections", "soma")
-        compartment_type = kw.get("compartments", "center" if section_type == "soma" else "all")
-        return section_type == "soma" and compartment_type == "center"
-
-    def isCompartmentTarget(self, *_):
-        return 0
-
-    def isSectionTarget(self, *_):
-        return 0
-
-    def isSynapseTarget(self, *_):
-        return 0
-
-    def getCellCount(self):
-        return self.gid_count()
-
-    def completegids(self):
-        return compat.hoc_vector(self.get_raw_gids())
-
-    def gids(self):
-        return compat.hoc_vector(self.get_local_gids())
-
-    @abstractmethod
-    def getPointList(self, _cell_manager, **_kw):
-        return NotImplemented
-
-    def set_offset(self, *_):
-        pass  # Only hoc targets require manually setting offsets
-
-    def get_offset(self, *_):
-        pass  # nodeset targets can span multiple multipopulation -> multiple offsets
-
-
-class NodesetTarget(_TargetInterface, _HocTargetInterface):
+class NodesetTarget(_TargetInterface):
     def __init__(self, name, nodesets: List[_NodeSetBase], local_nodes=None, **_kw):
         self.name = name
         self.nodesets = nodesets
@@ -600,118 +605,31 @@ class NodesetTarget(_TargetInterface, _HocTargetInterface):
         return [[targets[cycle_i] for targets in new_targets.values()]
                     for cycle_i in range(n_parts)]
 
+    def set_offset(self, *_):
+        pass  # Only hoc targets require manually setting offsets
 
-class _HocTarget(_TargetInterface):
-    """
-    A wrapper around Hoc targets to implement _TargetInterface
-    """
-    GID_DTYPE = numpy.uint32
 
-    def __init__(self, name, hoc_target, pop_name=None, *, _raw_gids=None):
-        self.name = name
-        self.population_name = pop_name
-        self.hoc_target = hoc_target
-        self.offset = 0
-        self._raw_gids = _raw_gids and numpy.array(_raw_gids, dtype=self.GID_DTYPE)
+class SerializedSections:
+    def __init__(self, cell):
+        self.num_sections = int(cell.nSecAll)
+        # Initialize list to store SectionRef objects
+        self.isec2sec = [None] * self.num_sections
+        # Flag to control warning message display
+        self._serialized_sections_warned = False
 
-    @property
-    def population_names(self):
-        return {self.population_name}
-
-    @property
-    def populations(self):
-        return {self.population_name: NodeSet(self.get_gids())}
-
-    def gid_count(self):
-        return len(self.get_raw_gids())
-
-    def get_gids(self):
-        if not self.offset:
-            return self.get_raw_gids()
-        try:
-            return numpy.add(self.get_raw_gids(), self.offset, dtype=self.GID_DTYPE)
-        except numpy.core._exceptions.UFuncTypeError as e:
-            logging.error("Type error: please use type uint32 for the array of raw gids.")
-            raise e
-
-    def get_raw_gids(self):
-        if self._raw_gids is None:
-            assert self.hoc_target
-            self._raw_gids = self.hoc_target.completegids().as_numpy().astype(self.GID_DTYPE)
-            self._raw_gids.sort()
-        return self._raw_gids
-
-    def get_hoc_target(self):
-        return self.hoc_target
-
-    def gids(self):
-        """This target gids on this rank, with offset"""
-        return self.hoc_target.gids()
-
-    def get_local_gids(self):
-        return self.hoc_target.gids().as_numpy().astype(self.GID_DTYPE)
-
-    def getPointList(self, cell_manager, **kw):
-        return self.hoc_target.getPointList(cell_manager)
-
-    def make_subtarget(self, pop_name):
-        if pop_name is not None:
-            # Old targets have only one population. Ensure one doesn't assign more than once
-            if self.name == TargetSpec.GLOBAL_TARGET_NAME:  # This target is special
-                return _HocTarget(pop_name + "__ALL__", Nd.Target(self.name), pop_name)
-            if self.population_name not in (None, pop_name):
-                raise ConfigurationError("Target %s cannot be reassigned population %s (cur: %s)"
-                                         % (self.name, pop_name, self.population_name))
-            self.population_name = pop_name
-        return self
-
-    def append_nodeset(self, nodeset: NodeSet):
-        # Not very common but we may want to set the nodes later (e.g. the _ALL_ target)
-        if self.population_name is not None:
-            logging.warning("[Compat] Skipping adding population %s to HOC target %s",
-                            nodeset.population_name, self.name)
-            return
-        self.population_name = nodeset.population_name
-        self.offset = nodeset.offset
-        self._raw_gids = numpy.asarray(nodeset.raw_gids())
-        hoc_gids = compat.hoc_vector(self._raw_gids)
-        self.hoc_target = Nd.Target(self.name, hoc_gids, self.population_name)
-
-    def __contains__(self, item):
-        return self.hoc_target.completeContains(item)
-
-    def is_void(self):
-        return not bool(self.hoc_target)  # old targets could match with any population
-
-    def set_offset(self, offset):
-        self.hoc_target.set_offset(offset)
-        self.offset = offset
-
-    def isCellTarget(self, **kw):
-        return self.hoc_target.isCellTarget()
-
-    def generate_subtargets(self, n_parts):
-        """generate sub hoc targets for multi-cycle runs
-        Returns:
-            list of subtargets
-        """
-        if not n_parts or n_parts == 1:
-            return False
-
-        allgids = self.get_gids()
-        new_targets = []
-
-        for cycle_i in range(n_parts):
-            target = Nd.Target()
-            target.name = "{}_{}".format(self.name, cycle_i)
-            new_targets.append(_HocTarget(target.name, target, self.population_name))
-
-        target_looper = itertools.cycle(new_targets)
-        for gid in allgids:
-            target = next(target_looper)
-            target.hoc_target.gidMembers.append(gid)
-
-        return new_targets
-
-    def __getattr__(self, item):
-        return getattr(self.hoc_target, item)
+        index = 0
+        for sec in cell.all:
+            # Accessing the 'v' value at location 0.0001 of the section
+            v_value = sec(0.0001).v
+            if v_value >= self.num_sections:
+                logging.debug("{%s} v(1)={sec(1).v} n3d()={%f}", sec.name(), sec.n3d())
+                raise Exception("Error: failure in mk2_isec2sec()")
+            if v_value < 0:
+                if not self._serialized_sections_warned:
+                    logging.warning("SerializedSections: v(0.0001) < 0. index={%d} v()={%f}",
+                                    index, v_value)
+                    self._serialized_sections_warned = True
+            else:
+                # Store a SectionRef to the section at the index specified by v_value
+                self.isec2sec[int(v_value)] = Nd.SectionRef(sec=sec)
+            index += 1

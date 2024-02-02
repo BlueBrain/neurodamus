@@ -1,4 +1,3 @@
-import numpy as np
 import numpy.testing as npt
 import pytest
 
@@ -37,26 +36,6 @@ def test_targetspec_overlap():
     assert not TargetSpec("pop1:").overlap(TargetSpec("pop2:"))  # disjoint pop
     assert TargetSpec("pop1:").overlap(TargetSpec("pop1:ahh"))
     assert not TargetSpec("pop1:t1").overlap(TargetSpec("pop1:t2"))
-
-
-@pytest.mark.forked
-def test_hoc_target_intersect():
-    from neurodamus.target_manager import _HocTarget
-    ht1 = _HocTarget("t1", None, pop_name=None)
-    ht2 = _HocTarget("t2", None, pop_name=None)
-    ht1_pop1 = _HocTarget("t1", None, pop_name="pop1")
-    ht1_pop2 = _HocTarget("t1", None, pop_name="pop2")
-
-    # different population is short circuited -> gids aren't necessary to see they dont intersect
-    assert not ht1_pop1.intersects(ht1_pop2)
-    # We override the internal gid cache to avoid creating hoc targets
-    ht1._raw_gids = np.array([1, 2], dtype="uint32")
-    ht2._raw_gids = np.array([1, 2], dtype="uint32")
-    assert ht1.intersects(ht2)
-    ht2._raw_gids = np.array([2, 3], dtype="uint32")
-    assert ht1.intersects(ht2)
-    ht2._raw_gids = np.array([3, 4], dtype="uint32")
-    assert not ht1.intersects(ht2)
 
 
 @pytest.mark.forked

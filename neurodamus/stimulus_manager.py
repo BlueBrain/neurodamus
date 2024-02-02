@@ -56,7 +56,7 @@ class StimulusManager:
         if SimConfig.cli_options.experimental_stims or stim_t and stim_t.IsPythonOnly:
             # New style Stim, in Python
             log_verbose("Using new-gen stimulus")
-            cell_manager = self._target_manager.hoc.cellDistributor
+            cell_manager = self._target_manager._cell_manager
             stim = stim_t(target, stim_info, cell_manager)
             self._stimulus.append(stim)
         else:

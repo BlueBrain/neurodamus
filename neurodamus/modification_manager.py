@@ -46,7 +46,7 @@ class ModificationManager:
         if not mod_t:
             raise ConfigurationError("Unknown Modification {}".format(mod_t_name))
         target = self._target_manager.get_target(target_spec)
-        cell_manager = self._target_manager.hoc.cellDistributor
+        cell_manager = self._target_manager._cell_manager
         mod = mod_t(target, mod_info, cell_manager)
         self._modifications.append(mod)
 
