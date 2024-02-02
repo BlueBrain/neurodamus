@@ -16,8 +16,8 @@ def target_manager():
     from neurodamus.core.nodeset import NodeSet
     nodes_t1 = NodeSet([1, 11, 21, 31, 41, 51, 61, 71, 81, 91, 101, 111]).register_global("All")
     nodes_t2 = NodeSet([1, 11, 21, 31, 41, 51]).register_global("All")
-    t1 = NodesetTarget("Small", [nodes_t1])
-    t2 = NodesetTarget("VerySmall", [nodes_t2])
+    t1 = NodesetTarget("Small", [nodes_t1], [nodes_t1])
+    t2 = NodesetTarget("VerySmall", [nodes_t2], [nodes_t2])
     return MockedTargetManager(t1, t2)
 
 
@@ -63,8 +63,7 @@ def circuit_conf():
     PROJ = "/gpfs/bbp.cscs.ch/project"
     return CircuitConfig(
         CircuitPath=PROJ + "/proj12/jenkins/cellular/circuit-2k",
-        CellLibraryFile=PROJ + "/proj12/jenkins/cellular/circuit-2k/nodes.h5",
-        MEComboInfoFile=PROJ + "/proj64/entities/emodels/2017.11.03/mecombo_emodel.tsv",
+        CellLibraryFile=PROJ + "/proj12/jenkins/cellular/circuit-2k/nodes_v2.h5",
         METypePath=PROJ + "/proj64/entities/emodels/2017.11.03/hoc",
         MorphologyPath=PROJ + "/proj12/jenkins/cellular/circuit-2k/morphologies/ascii",
         nrnPath="<NONE>",  # no connectivity
@@ -81,20 +80,20 @@ def test_load_balance_integrated(target_manager, circuit_conf):
     cell_manager = CellDistributor(circuit_conf, target_manager)
     cell_manager.load_nodes()
 
-    lbal = LoadBalance(1, circuit_conf.CircuitPath, "", target_manager, 4)
+    lbal = LoadBalance(1, circuit_conf.CircuitPath, "All", target_manager, 4)
     t1 = TargetSpec("All:Small")
     assert not lbal._cx_valid(t1)
 
     with lbal.generate_load_balance(t1, cell_manager):
         cell_manager.finalize()
 
-    assert "Small" in lbal._cx_targets
-    assert "Small" in lbal._valid_loadbalance
+    assert "All_Small" in lbal._cx_targets
+    assert "All_Small" in lbal._valid_loadbalance
     assert lbal._cx_valid(t1)
 
     # Check subtarget
-    assert "VerySmall" not in lbal._cx_targets
-    assert "VerySmall" not in lbal._valid_loadbalance
+    assert "All_VerySmall" not in lbal._cx_targets
+    assert "All_VerySmall" not in lbal._valid_loadbalance
     assert lbal._reuse_cell_complexity(TargetSpec("All:VerySmall"))
 
     # Check not super-targets
@@ -111,7 +110,7 @@ def test_multisplit(target_manager, circuit_conf, capsys):
 
     cell_manager = CellDistributor(circuit_conf, target_manager)
     cell_manager.load_nodes()
-    lbal = LoadBalance(MULTI_SPLIT, circuit_conf.CircuitPath, "", target_manager, 4)
+    lbal = LoadBalance(MULTI_SPLIT, circuit_conf.CircuitPath, "All", target_manager, 4)
     t1 = TargetSpec("All:Small")
     assert not lbal._cx_valid(t1)
 
@@ -121,24 +120,24 @@ def test_multisplit(target_manager, circuit_conf, capsys):
     captured = capsys.readouterr()
     assert "13 pieces" in captured.out
     assert "at least one cell is broken into 2 pieces" in captured.out
-    assert "Small" in lbal._cx_targets
-    assert "Small" in lbal._valid_loadbalance
+    assert "All_Small" in lbal._cx_targets
+    assert "All_Small" in lbal._valid_loadbalance
     assert lbal._cx_valid(t1)
 
     # Convert balance for 1 CPU so we can import
     lbal.target_cpu_count = 1
-    lbal._cpu_assign("Small")
+    lbal._cpu_assign("All_Small")
     binfo = lbal.load_balance_info(t1)
     assert binfo.npiece() == 13
 
     # Ensure load-bal is reused for smaller targets in multisplit too
-    assert "VerySmall" not in lbal._cx_targets
-    assert "VerySmall" not in lbal._valid_loadbalance
-    assert lbal.valid_load_distribution(TargetSpec("VerySmall"))
-    assert "VerySmall" in lbal._cx_targets
-    assert "VerySmall" in lbal._valid_loadbalance
+    assert "All_VerySmall" not in lbal._cx_targets
+    assert "All_VerySmall" not in lbal._valid_loadbalance
+    assert lbal.valid_load_distribution(TargetSpec("All:VerySmall"))
+    assert "All_VerySmall" in lbal._cx_targets
+    assert "All_VerySmall" in lbal._valid_loadbalance
     captured = capsys.readouterr()
-    assert "Target VerySmall is a subset of the target Small" in captured.out
+    assert "Target VerySmall is a subset of the target All_Small" in captured.out
 
 
 def test_loadbal_integration():
@@ -160,7 +159,10 @@ class MockedTargetManager:
     """
 
     def __init__(self, *targets) -> None:
-        self.targets = {t.name: t for t in targets}
+        self.targets = {}
+        for t in targets:
+            *_, name = t.name.split(":")
+            self.targets[name] = t
 
     def get_target(self, target_spec, target_pop=None):
         from neurodamus.target_manager import TargetSpec
