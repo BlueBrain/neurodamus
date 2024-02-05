@@ -9,9 +9,9 @@
     `node`, `cell_distributor`, etc; and still depends on several low-level HOC files at runtime.
 """
 from __future__ import absolute_import
-import pkg_resources
+import importlib.metadata
 try:
-    __version__ = pkg_resources.get_distribution(__name__).version
+    __version__ = importlib.metadata.version(__name__)
 except Exception:
     __version__ = 'devel'
 
