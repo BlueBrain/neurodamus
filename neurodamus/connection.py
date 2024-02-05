@@ -556,12 +556,17 @@ class Connection(ConnectionBase):
         else:
             syn_obj.NMDA_ratio = value
 
+    def _configure_hoc(self, synapses, configuration):
+        res = self.ConnUtils.executeConfigure(synapses, configuration)
+        if res > 0:
+            raise ValueError(f"Errors found in configuration: {configuration}")
+
     def _configure_cell(self, cell):
         """ Internal helper to apply all the configuration statements on
         a given cell synapses
         """
         for config in self._configurations:
-            self.ConnUtils.executeConfigure(cell.CellRef.synlist, config)
+            self._configure_hoc(cell.CellRef.synlist, config)
 
     def _configure_synapses(self):
         """ Internal helper to apply all the configuration statements to
@@ -574,7 +579,7 @@ class Connection(ConnectionBase):
         """ Helper function to execute a configuration statement (hoc)
         on all connection synapses.
         """
-        self.ConnUtils.executeConfigure(self._synapses, configuration)
+        self._configure_hoc(self._synapses, configuration)
 
     def restart_events(self):
         """Restart the artificial events, coming from Replay or Spont-Minis"""
