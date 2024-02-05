@@ -35,7 +35,7 @@ def test_save_restore_cli():
             checkpoint_dir = test_folder_path / "output-save" / "checkpoint"
 
             command = ["neurodamus", test_folder_path / CONFIG_FILE_MINI,
-                        "--" + action, checkpoint_dir]
+                        "--" + action + "=" + str(checkpoint_dir)]
             # Save-Restore raises exception when using NEURON
             if simulator == "NEURON":
                 with pytest.raises(subprocess.CalledProcessError):
