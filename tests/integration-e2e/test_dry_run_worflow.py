@@ -1,3 +1,7 @@
+from neurodamus.utils.memory import (distribute_cells,
+                                     export_allocation_stats,
+                                     import_allocation_stats)
+
 
 def test_dry_run_workflow(USECASE3):
     """
@@ -24,12 +28,10 @@ def test_dry_run_workflow(USECASE3):
     assert nd._dry_run_stats.metype_counts == expected_items
     assert nd._dry_run_stats.suggest_nodes(0.3) > 0
 
-    # Test that the dry run mode works with a pickle file
-    import pickle
-    try:
-        with open((str(USECASE3 / "allocation.bin")), 'rb') as f:
-            rank_allocation = pickle.load(f)
-    except Exception as e:
-        print("Unable to import allocation stats: {}".format(e))
+    # Test that the allocation works and can be saved and loaded
+    rank_allocation, _ = distribute_cells(nd._dry_run_stats, 2)
+    export_allocation_stats(rank_allocation, USECASE3 / "allocation.bin")
+    rank_allocation = import_allocation_stats(USECASE3 / "allocation.bin")
+
     expected_items = {'NodeA': {0: [3]}, 'NodeB': {1: [2]}}
     assert rank_allocation == expected_items

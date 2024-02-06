@@ -1868,7 +1868,7 @@ class Neurodamus(Node):
             log_stage("============= DRY RUN (SKIP SIMULATION) =============")
             self._dry_run_stats.display_total()
             self._dry_run_stats.display_node_suggestions()
-            ranks = int(SimConfig.prosp_hosts)
+            ranks = int(SimConfig.num_target_ranks)
             self._dry_run_stats.collect_all_mpi()
             allocation, total_memory_per_rank = distribute_cells(self._dry_run_stats, ranks)
             print_allocation_stats(allocation, total_memory_per_rank)

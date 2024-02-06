@@ -55,7 +55,8 @@ def neurodamus(args=None):
         --enable-shm=[ON, OFF]  Enables the use of /dev/shm for coreneuron_input [default: ON]
         --model-stats           Show model stats in CoreNEURON simulations [default: False]
         --dry-run               Dry-run simulation to estimate memory usage [default: False]
-        --prosp-hosts=<number>  Number of prospective hosts for dry-run load balancing [default: 40]
+        --num-target-ranks=<number>  Number of ranks to target for dry-run load balancing
+                                [default: 40]
     """
     options = docopt_sanitize(docopt(neurodamus.__doc__, args))
     config_file = options.pop("ConfigFile")

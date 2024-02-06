@@ -13,6 +13,7 @@ import multiprocessing
 import heapq
 
 from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
+from collections import defaultdict
 
 import numpy as np
 
@@ -181,22 +182,8 @@ def distribute_cells(dry_run_stats, num_ranks, batch_size=10) -> (dict, dict):
     """
     logging.debug("Distributing cells across %d ranks", num_ranks)
 
-    def validate_inputs(dry_run_stats, num_ranks, batch_size):
-        assert isinstance(dry_run_stats, DryRunStats), "dry_run_stats must be a DryRunStats object"
-        assert isinstance(num_ranks, int), "num_ranks must be an integer"
-        assert num_ranks > 0, "num_ranks must be a positive integer"
-        assert isinstance(batch_size, int), "batch_size must be an integer"
-        assert batch_size > 0, "batch_size must be a positive integer"
-        set_metype_gids = set()
-        for values in dry_run_stats.metype_gids.values():
-            set_metype_gids.update(values.keys())
-        assert set_metype_gids == set(dry_run_stats.metype_memory.keys())
-        average_syns_keys = set(dry_run_stats.average_syns_per_cell.keys())
-        metype_memory_keys = set(dry_run_stats.metype_memory.keys())
-        assert average_syns_keys == metype_memory_keys
-
     # Check inputs
-    validate_inputs(dry_run_stats, num_ranks, batch_size)
+    dry_run_stats.validate_inputs_distribute(num_ranks, batch_size)
 
     # Multiply the average number of synapses per cell by 2.0
     # This is done since the biggest memory load for a synapse is 2.0 kB and at this point in the
@@ -208,19 +195,20 @@ def distribute_cells(dry_run_stats, num_ranks, batch_size=10) -> (dict, dict):
     # We sum the memory load of the cell type and the average number of synapses per cell
     def generate_cells(metype_gids):
         for cell_type, gids in metype_gids.items():
+            memory_usage = (dry_run_stats.metype_memory[cell_type] +
+                            average_syns_mem_per_cell[cell_type])
             for gid in gids:
-                memory_usage = (dry_run_stats.metype_memory[cell_type] +
-                                average_syns_mem_per_cell[cell_type])
                 yield gid, memory_usage
 
     # Initialize structures
     ranks = [(0, i) for i in range(num_ranks)]  # (total_memory, rank_id)
     heapq.heapify(ranks)
-    rank_allocation = {}
-    rank_memory = {}
+    rank_allocation = defaultdict(dict)
+    rank_memory = defaultdict(dict)
 
-    def assign_cells_to_rank(rank_id, batch_memory, rank_allocation, total_memory,
-                             rank_memory, pop):
+    def assign_cells_to_rank(batch_memory, pop):
+        total_memory, rank_id = heapq.heappop(ranks)
+        logging.debug("Assigning batch to rank %d", rank_id)
         if rank_id not in rank_allocation[pop]:
             rank_allocation[pop][rank_id] = []
         rank_allocation[pop][rank_id].append(cell_id)
@@ -233,8 +221,6 @@ def distribute_cells(dry_run_stats, num_ranks, batch_size=10) -> (dict, dict):
     # Start distributing cells across ranks
     for pop, metype_gids in dry_run_stats.metype_gids.items():
         logging.info("Distributing cells of population %s", pop)
-        rank_allocation[pop] = {}
-        rank_memory[pop] = {}
         batch = []
         batch_memory = 0
 
@@ -242,21 +228,13 @@ def distribute_cells(dry_run_stats, num_ranks, batch_size=10) -> (dict, dict):
             batch.append(cell_id)
             batch_memory += memory
             if len(batch) == batch_size:
-                # Get the rank with the lowest memory load
-                total_memory, rank_id = heapq.heappop(ranks)
-                logging.debug("Assigning batch to rank %d", rank_id)
-                # Add the cell to the rank
-                assign_cells_to_rank(rank_id, batch_memory, rank_allocation, total_memory,
-                                     rank_memory, pop)
+                assign_cells_to_rank(batch_memory, pop)
                 batch = []
                 batch_memory = 0
 
         # Assign any remaining cells in the last, potentially incomplete batch
         if batch:
-            total_memory, rank_id = heapq.heappop(ranks)
-            logging.debug("Assigning remaining cells in batch to rank %d", rank_id)
-            assign_cells_to_rank(rank_id, batch_memory, rank_allocation, total_memory,
-                                 rank_memory, pop)
+            assign_cells_to_rank(batch_memory, pop)
 
     return rank_allocation, rank_memory
 
@@ -493,3 +471,16 @@ class DryRunStats:
                      f"{pretty_printing_memory_mb(node_total_memory)} on the current node.")
         logging.info("Please remember that it is suggested to use the same class of nodes "
                      "for both the dryrun and the actual simulation.")
+
+    def validate_inputs_distribute(self, num_ranks, batch_size):
+        assert isinstance(num_ranks, int), "num_ranks must be an integer"
+        assert num_ranks > 0, "num_ranks must be a positive integer"
+        assert isinstance(batch_size, int), "batch_size must be an integer"
+        assert batch_size > 0, "batch_size must be a positive integer"
+        set_metype_gids = set()
+        for values in self.metype_gids.values():
+            set_metype_gids.update(values.keys())
+        assert set_metype_gids == set(self.metype_memory.keys())
+        average_syns_keys = set(self.average_syns_per_cell.keys())
+        metype_memory_keys = set(self.metype_memory.keys())
+        assert average_syns_keys == metype_memory_keys
