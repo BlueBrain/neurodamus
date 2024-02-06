@@ -86,12 +86,12 @@ class TargetSpec:
 
 class TargetManager:
 
-    def __init__(self, run_conf, cell_manager):
+    def __init__(self, run_conf):
         """
         Initializes a new TargetManager
         """
         self._run_conf = run_conf
-        self._cell_manager = cell_manager
+        self._cell_manager = None
         self.parser = Nd.TargetParser()
         self._targets = {}
         self._section_access = {}
@@ -130,6 +130,9 @@ class TargetManager:
     @classmethod
     def create_global_target(cls):
         return NodesetTarget(TargetSpec.GLOBAL_TARGET_NAME, [])
+
+    def register_cell_manager(self, cell_manager):
+        self._cell_manager = cell_manager
 
     def register_target(self, target):
         self._targets[target.name] = target
@@ -184,8 +187,7 @@ class TargetManager:
 
     def get_target_points(self, target, cell_manager, **kw):
         """Helper to retrieve the points of a target.
-        If target is a cell then uses compartmentCast to obtain its points.
-        Otherwise returns the result of calling getPointList directly on the target.
+        Returns the result of calling getPointList directly on the target.
 
         Args:
             target: The target name or object (faster)
@@ -226,8 +228,8 @@ class TargetManager:
             return TargetSpec(src1) == TargetSpec(src2) and TargetSpec(dst1) == TargetSpec(dst2)
         return self.intersecting(src1, src2) and self.intersecting(dst1, dst2)
 
-    def getPointList(self, target):
-        return self.get_target_points(self._targets[target], self._cell_manager)
+    def getPointList(self, target, **kw):
+        return self.get_target_points(self._targets[target], self._cell_manager, **kw)
 
     def getMETypes(self, target_name):
         """

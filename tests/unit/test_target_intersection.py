@@ -71,7 +71,7 @@ def test_nodeset_gids():
         [nodes_popA, nodes_popB],
         local_nodes=[local_nodes_popA, local_nodes_popB]
     )
-    gids = t.gids()
+    gids = t.get_local_gids()
     npt.assert_array_equal(gids, [5, 6, 1003, 1004, 1005])
 
     t2 = NodesetTarget(
@@ -79,7 +79,7 @@ def test_nodeset_gids():
         [nodes_popA, nodes_popB],
         local_nodes=[local_nodes_popA]
     )
-    gids = t2.gids()
+    gids = t2.get_local_gids()
     npt.assert_array_equal(gids, [5, 6])
 
     t3 = NodesetTarget(
@@ -87,7 +87,7 @@ def test_nodeset_gids():
         [nodes_popB],
         local_nodes=[local_nodes_popA, local_nodes_popB]
     )
-    gids = t3.gids()
+    gids = t3.get_local_gids()
     npt.assert_array_equal(gids, [1003, 1004, 1005])
 
     t4 = NodesetTarget(
@@ -95,5 +95,5 @@ def test_nodeset_gids():
         [nodes_popB],
         local_nodes=[local_nodes_popA]
     )
-    gids = t4.gids()
+    gids = t4.get_local_gids()
     npt.assert_array_equal(gids, [])

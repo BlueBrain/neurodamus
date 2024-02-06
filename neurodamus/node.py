@@ -262,17 +262,6 @@ class Node:
             Nd.init()  # ensure/load neurodamus mods
         self._run_conf: dict  # Multi-cycle runs preserve this
 
-        # Init unconditionally
-        self._circuits = CircuitManager()
-        self._stim_list = None
-        self._report_list = None
-        self._stim_manager = None
-        self._elec_manager = None
-        self._sim_ready = False
-        self._jumpstarters = []
-        self._cell_state_dump_t = None
-        self._bbss = Nd.BBSaveState()
-
         # The Recipe being None is allowed internally for e.g. setting up multi-cycle runs
         # It shall not be used as Public API
         if config_file is not None:
@@ -290,7 +279,7 @@ class Node:
                 # the empty ranks. This need to be done before the circuit is finitialized
                 CoreConfig.instantiate_artificial_cell()
             self._run_conf = SimConfig.run_conf
-            self._target_manager = TargetManager(self._run_conf, self._circuits.global_manager)
+            self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
             if SimConfig.use_neuron:
                 self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True)
@@ -308,8 +297,20 @@ class Node:
         else:
             self._run_conf  # Assert this is defined (if not multicyle runs are not properly set)
 
+        # Init unconditionally
+        self._circuits = CircuitManager()
+        self._stim_list = None
+        self._report_list = None
+        self._stim_manager = None
+        self._elec_manager = None
+        self._sim_ready = False
+        self._jumpstarters = []
+        self._cell_state_dump_t = None
+        self._bbss = Nd.BBSaveState()
+
         # Register the global target and cell manager
         self._target_manager.register_target(self._circuits.global_target)
+        self._target_manager.register_cell_manager(self._circuits.global_manager)
 
     #
     # public 'read-only' properties - object modification on user responsibility
@@ -1300,7 +1301,6 @@ class Node:
                                 "Increase the number of nodes to reduce the memory footprint "
                                 "(Current use node: %d MB / SHM Limit: %d MB / Mem. Limit: %d MB)",
                                 (rss_req >> 20), (shm_avail >> 20), (mem_avail >> 20))
-
         return corenrn_datadir if not self._shm_enabled else corenrn_datadir_shm
 
     # -
