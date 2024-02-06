@@ -108,7 +108,7 @@ class CellManagerBase(_CellManager):
     """
 
     _node_loader = None
-    """Default function implementing the loading of nodes data, a.k.a. MVD
+    """Default function implementing the loading of nodes data
 
     signature:
         load(circuit_conf, gidvec, stride=1, stride_offset=0)
