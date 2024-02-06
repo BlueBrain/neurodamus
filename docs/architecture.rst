@@ -391,6 +391,31 @@ part in the execution, is then multiplied by the number of ranks used in the exe
 The final result is then printed to the user in a human readable format together with an estimate
 of the number of nodes needed to run the simulation on the same machine used to run the dry run.
 
+Dry Run Memory Load Balancing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The dry run mode also provides a memory load balancing feature. It helps balance the memory usage
+of the ranks of the simulation, so that the user does not incur easily in out-of-memory errors.
+At the moment the implementation is still WIP so the user can save the allocation data to a file
+but cannot import to use it in a real simulation.
+
+The workflow of the memory load balancing is as follows: for each cell in the circuit we have an
+estimate of both the memory load of the cell itself based on their METype and the amount of synapses
+that each METype has on average. With this information we can have a good estimate of the memory
+load of each gid in the circuit.
+
+We've opted for a greedy approach to distribute the gids in order to keep the implementation simple
+and fast. The algorithm is as follows:
+
+- Sort our ranks in a heap so that the emptiest rank is always at the top
+- Assign gids in batches of 10 to the emptiest rank
+- Rince and repeat until all gids are assigned
+
+The user can specify the number of ranks to target using the `--num-target-ranks` flag in the CLI of neurodamus.
+The default value is 40. The allocation dictionary, containing the assignment of gids to ranks per each population,
+is then saved to the `allocation.bin` file in a pickled format. In the near future users will be able to
+import this data in any following simulation in order to improve the memory balance.
+
 Development
 ------------
 
