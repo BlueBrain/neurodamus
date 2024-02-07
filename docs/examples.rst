@@ -85,7 +85,7 @@ Dry run mode
 ~~~~~~~~~~~~
 In order to obtain a more accurate estimation of the resources needed for a simulation,
 users can also run Neurodamus in dry run mode. This functionality is only available
-for libsonata circuits. MVD3 circuits are not supported.
+for SONATA circuits.
 
 This mode will partially instantiate cells and synapses to get a statistical overview
 of the memory used but won't run the actual simulation.
