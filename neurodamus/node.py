@@ -582,14 +582,6 @@ class Node:
         if conn_manager.is_file_open:  # Base connectivity
             conn_manager.create_connections()
 
-        # Continue support for compatibility, but new BlueConfigs should use Projection blocks
-        bonus_file = circuit_conf.get("BonusSynapseFile")
-        if bonus_file:
-            logging.info(" > Loading Circuit BonusSynapseFile")
-            n_synapse_files = int(circuit_conf.get("NumBonusFiles", 1))
-            conn_manager.open_synapse_file(bonus_file, None, n_synapse_files)
-            conn_manager.create_connections()
-
     # -
     @mpi_no_errors
     def _load_projections(self, pname, projection, **kw):

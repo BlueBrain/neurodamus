@@ -6,5 +6,4 @@ netstim_inhpoisson.mod
 SonataReportHelper.mod
 SonataReports.mod
 SpikeWriter.mod
-SynapseReader.mod
 VecStim.mod

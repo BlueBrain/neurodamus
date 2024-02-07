@@ -2,14 +2,12 @@
 Main module for handling and instantiating synaptical connections
 """
 from __future__ import absolute_import
-import logging
 import numpy as np
 from os import path as ospath
 
 from .connection_manager import ConnectionManagerBase
 from .core.configuration import ConfigurationError
-from .io.synapse_reader import SynapseReader, SynReaderNRN, SonataReader, SynapseParameters, \
-    FormatNotSupported
+from .io.synapse_reader import SynapseReader, SonataReader, SynapseParameters
 from .utils import compat
 from .utils.logging import log_verbose
 
@@ -28,22 +26,13 @@ class GapJunctionConnParameters(SynapseParameters):
 class GapJunctionSynapseReader(SynapseReader):
     """ Derived from SynapseReader, used for reading GapJunction synapses.
         Factory create() will attempt to instantiate GapJunctionSynToolReader,
-        followed by SynReaderNRN.
     """
 
     @classmethod
     def create(cls, syn_src, conn_type, population=None, *args, **kw):
         """Instantiates a synapse reader, giving preference to GapJunctionSynToolReader
         """
-        if fn := cls._get_sonata_circuit(syn_src):
-            log_verbose("[SynReader] Using SonataReader.")
-            return GapJunctionSonataReader(fn, conn_type, population, **kw)
-
-        # Syn2 support dropped (July 2023)
-        if not ospath.isdir(syn_src) and not syn_src.endswith(".h5"):
-            raise FormatNotSupported("File: {syn_src}")
-        logging.info("[GapJunctionSynReader] Attempting legacy hdf5 reader.")
-        return SynReaderNRN(syn_src, conn_type, None, *args, **kw)
+        return super().create(syn_src, GapJunctionSonataReader, conn_type, population, **kw)
 
 
 class GapJunctionSonataReader(SonataReader):
