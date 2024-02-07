@@ -14,10 +14,7 @@ neurodamus.io.cell\_readers
 
    .. autosummary::
 
-      load_mvd3
-      load_ncs
-      load_nodes_mvd3
-      load_combo_metypes
+      load_sonata
       split_round_robin
 
    .. rubric:: Exceptions

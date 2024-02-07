@@ -32,7 +32,7 @@ class ACellType(BaseCell):
         pass
 
     def __init__(self, gid, cell_info, circuit_conf):
-        """Instantiate a new Cell from mvd/node info"""
+        """Instantiate a new Cell from node info"""
         from neurodamus.core import NeurodamusCore as Nd  # dont load top-level because of pytest
         super().__init__(gid, cell_info, circuit_conf)
         self.gid = gid
@@ -47,7 +47,6 @@ class ACellType(BaseCell):
 
 class ACellManager(CellManagerBase):
     CellType = ACellType
-    _node_format = "fake"
 
     @staticmethod
     def _node_loader(circuit_conf, gidvec, stride=1, stride_offset=0, **_kw):

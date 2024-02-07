@@ -24,7 +24,7 @@ class Astrocyte(BaseCell):
     __slots__ = ('_glut_list', '_secidx2names', '_nseg_warning')
 
     def __init__(self, gid, meinfos, circuit_conf):
-        """Instantiate a new Cell from mvd/node info."""
+        """Instantiate a new Cell from node info."""
         super().__init__(gid, meinfos, None)
         morpho_path = circuit_conf.MorphologyPath
         morph_filename = meinfos.morph_name + "." + circuit_conf.MorphologyType
@@ -207,7 +207,7 @@ class Astrocyte(BaseCell):
 
 class AstrocyteManager(CellDistributor):
     # Cell Manager is the same as CellDistributor, so it's able to handle
-    # the same Node formats (mvd, ...) and Cell morphologies.
+    # the same Node formats and Cell morphologies.
     # The difference lies only in the Cell Type
     CellType = Astrocyte
     _sonata_with_extra_attrs = False
