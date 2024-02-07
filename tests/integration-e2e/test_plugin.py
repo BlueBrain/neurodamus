@@ -47,7 +47,6 @@ class ACellType(BaseCell):
 
 class ACellManager(CellManagerBase):
     CellType = ACellType
-    _node_format = "fake"
 
     @staticmethod
     def _node_loader(circuit_conf, gidvec, stride=1, stride_offset=0, **_kw):

@@ -159,10 +159,7 @@ class MockedTargetManager:
     """
 
     def __init__(self, *targets) -> None:
-        self.targets = {}
-        for t in targets:
-            *_, name = t.name.split(":")
-            self.targets[name] = t
+        self.targets = {t.name.split(":")[-1]: t for t in targets}
 
     def get_target(self, target_spec, target_pop=None):
         from neurodamus.target_manager import TargetSpec

@@ -180,7 +180,6 @@ considered a cell manager, but by far lighter than a full cell manager.
 
   * `CellType`: The default cell class this manager handles.
   * `_node_loader`: The default loader function for nodes (cell metadata)
-  * `_node_format`: The default file format of nodes, .e.g. Sonata
 
 - Instance properties:
 

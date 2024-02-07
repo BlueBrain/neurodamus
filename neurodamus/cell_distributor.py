@@ -8,7 +8,6 @@ import logging  # active only in rank 0 (init)
 import os
 import weakref
 from contextlib import contextmanager
-from enum import Enum
 from io import StringIO
 from os import path as ospath
 from pathlib import Path
@@ -29,10 +28,6 @@ from .target_manager import TargetSpec
 from .utils import compat
 from .utils.logging import log_verbose, log_all
 from .utils.memory import DryRunStats, get_mem_usage_kb
-
-
-class NodeFormat(Enum):
-    SONATA = 1
 
 
 class VirtualCellPopulation:
@@ -113,10 +108,6 @@ class CellManagerBase(_CellManager):
     signature:
         load(circuit_conf, gidvec, stride=1, stride_offset=0)
     """
-
-    _node_format = NodeFormat.SONATA
-    """Default Node file format"""
-
     def __init__(self, circuit_conf, target_manager, _run_conf=None, **_kw):
         """Initializes CellDistributor
 
@@ -538,7 +529,7 @@ class CellDistributor(CellManagerBase):
         loader_opts["load_dynamic_props"] = cell_requirements
         loader_opts["has_extra_data"] = self._sonata_with_extra_attrs
 
-        log_verbose("Nodes Format: %s, Loader: %s", self._node_format, loader.__name__)
+        log_verbose("Nodes Format: SONATA , Loader: %s", loader.__name__)
         return super().load_nodes(load_balancer, _loader=loader, loader_opts=loader_opts)
 
     def _instantiate_cells(self, dry_run_stats_obj: DryRunStats = None, **opts):
