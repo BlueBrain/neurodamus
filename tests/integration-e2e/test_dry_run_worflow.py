@@ -1,6 +1,12 @@
-from neurodamus.utils.memory import (distribute_cells,
-                                     export_allocation_stats,
-                                     import_allocation_stats)
+from neurodamus.utils.memory import import_allocation_stats, export_allocation_stats
+
+
+def convert_to_standard_types(obj):
+    """Converts an object containing defaultdicts of Vectors to standard Python types."""
+    result = {}
+    for node, vectors in obj.items():
+        result[node] = {key: list(vector) for key, vector in vectors.items()}
+    return result
 
 
 def test_dry_run_workflow(USECASE3):
@@ -29,9 +35,14 @@ def test_dry_run_workflow(USECASE3):
     assert nd._dry_run_stats.suggest_nodes(0.3) > 0
 
     # Test that the allocation works and can be saved and loaded
-    rank_allocation, _ = distribute_cells(nd._dry_run_stats, 2)
+    rank_allocation, _ = nd._dry_run_stats.distribute_cells(2)
     export_allocation_stats(rank_allocation, USECASE3 / "allocation.bin")
     rank_allocation = import_allocation_stats(USECASE3 / "allocation.bin")
+    rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
-    expected_items = {'NodeA': {0: [3]}, 'NodeB': {1: [2]}}
-    assert rank_allocation == expected_items
+    expected_items = {
+        'NodeA': {0: [1, 2, 3]},
+        'NodeB': {1: [1, 2]}
+    }
+
+    assert rank_allocation_standard == expected_items
