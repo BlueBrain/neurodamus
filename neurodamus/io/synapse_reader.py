@@ -180,7 +180,8 @@ class SynapseReader:
 
     @classmethod
     def create(cls, syn_src, conn_type=SYNAPSES, population=None, *args, **kw):
-        """Instantiates a synapse reader, giving preference to SonataReader
+        """Instantiates a synapse reader, by default SonataReader.
+           syn_src must point to a SONATA edge file.
         """
         kw["verbose"] = (MPI.rank == 0)
         if fn := cls._get_sonata_circuit(syn_src):
