@@ -9,7 +9,6 @@
 
 // Neurodamus - Do not change order
 {load_file("ConfigParser.hoc")}
-{load_file("TargetParser.hoc")}
 {load_file("RNGSettings.hoc")}
 {load_file("ElectrodeManager.hoc")}
 {load_file("StimulusManager.hoc")}
