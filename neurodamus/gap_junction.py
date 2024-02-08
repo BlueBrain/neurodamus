@@ -23,19 +23,7 @@ class GapJunctionConnParameters(SynapseParameters):
         return npa
 
 
-class GapJunctionSynapseReader(SynapseReader):
-    """ Derived from SynapseReader, used for reading GapJunction synapses.
-        Factory create() will attempt to instantiate GapJunctionSynToolReader,
-    """
-
-    @classmethod
-    def create(cls, syn_src, conn_type, population=None, *args, **kw):
-        """Instantiates a synapse reader, giving preference to GapJunctionSynToolReader
-        """
-        return super().create(syn_src, GapJunctionSonataReader, conn_type, population, **kw)
-
-
-class GapJunctionSonataReader(SonataReader):
+class GapJunctionSynapseReader(SonataReader):
     Parameters = GapJunctionConnParameters
     parameter_mapping = {
         "weight": "conductance",

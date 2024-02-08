@@ -179,18 +179,16 @@ class SynapseReader:
         return None
 
     @classmethod
-    def create(cls, syn_src, syn_reader=None, conn_type=SYNAPSES, population=None, *args, **kw):
+    def create(cls, syn_src, conn_type=SYNAPSES, population=None, *args, **kw):
         """Instantiates a synapse reader, giving preference to SonataReader
         """
-        # If create() called from this class then FACTORY. Otherwise instantiate directly
-        if cls is not SynapseReader:
-            return cls(syn_src, conn_type, population, *args, **kw)
-
-        reader = syn_reader or SonataReader
         kw["verbose"] = (MPI.rank == 0)
         if fn := cls._get_sonata_circuit(syn_src):
-            log_verbose("[SynReader] Using SonataReader.")
-            return reader(fn, conn_type, population, **kw)
+            if cls is not SynapseReader:
+                return cls(fn, conn_type, population, *args, **kw)
+            else:
+                log_verbose("[SynReader] Using SonataReader.")
+                return SonataReader(fn, conn_type, population, *args, **kw)
         else:
             raise FormatNotSupported(f"File: {syn_src}. Please provide SONATA edges")
 
