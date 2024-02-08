@@ -211,14 +211,13 @@ class TargetManager:
         Returns the result of calling getPointList directly on the target.
 
         Args:
-            target: The target name or object (faster)
+            target: The target name or object
             manager: The cell manager to access gids and metype infos
 
         Returns: The target list of points
         """
-        if isinstance(target, TargetSpec):
-            target = self.get_target(target)
-        return target.getPointList(self._cell_manager, **kw)
+        nodeset_target = self.get_target(target)
+        return nodeset_target.getPointList(self._cell_manager, **kw)
 
     def getMETypes(self, target_name):
         """
