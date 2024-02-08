@@ -36,8 +36,8 @@ def test_dry_run_workflow(USECASE3):
 
     # Test that the allocation works and can be saved and loaded
     rank_allocation, _ = nd._dry_run_stats.distribute_cells(2)
-    export_allocation_stats(rank_allocation, USECASE3 / "allocation.bin")
-    rank_allocation = import_allocation_stats(USECASE3 / "allocation.bin")
+    export_allocation_stats(rank_allocation, USECASE3 / "allocation.gz")
+    rank_allocation = import_allocation_stats(USECASE3 / "allocation.gz")
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
     expected_items = {

@@ -413,7 +413,7 @@ and fast. The algorithm is as follows:
 
 The user can specify the number of ranks to target using the `--num-target-ranks` flag in the CLI of neurodamus.
 The default value is 40. The allocation dictionary, containing the assignment of gids to ranks per each population,
-is then saved to the `allocation.bin` file in a pickled format. In the near future users will be able to
+is then saved to the `allocation.gz` file in a pickled gzipped format. In the near future users will be able to
 import this data in any following simulation in order to improve the memory balance.
 
 Development

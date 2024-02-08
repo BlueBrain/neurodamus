@@ -12,6 +12,7 @@ import psutil
 import multiprocessing
 import heapq
 import pickle
+import gzip
 
 from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
 from .compat import Vector
@@ -194,8 +195,9 @@ def export_allocation_stats(rank_allocation, filename):
     """
     Export allocation dictionary to serialized pickle file.
     """
+    compressed_data = gzip.compress(pickle.dumps(rank_allocation))
     with open(filename, 'wb') as f:
-        pickle.dump(rank_allocation, f)
+        f.write(compressed_data)
 
 
 @run_only_rank0
@@ -204,7 +206,9 @@ def import_allocation_stats(filename):
     Import allocation dictionary from serialized pickle file.
     """
     with open(filename, 'rb') as f:
-        return pickle.load(f)
+        compressed_data = f.read()
+
+    return pickle.loads(gzip.decompress(compressed_data))
 
 
 @run_only_rank0
@@ -234,7 +238,7 @@ class SynapseMemoryUsage:
 
 class DryRunStats:
     _MEMORY_USAGE_FILENAME = "cell_memory_usage.json"
-    _ALLOCATION_FILENAME = "allocation.bin"
+    _ALLOCATION_FILENAME = "allocation.gz"
 
     def __init__(self) -> None:
         self.metype_memory = {}
@@ -416,7 +420,6 @@ class DryRunStats:
         """
         logging.debug("Distributing cells across %d ranks", num_ranks)
 
-        # Check inputs
         self.validate_inputs_distribute(num_ranks, batch_size)
 
         # Multiply the average number of synapses per cell by 2.0
@@ -434,7 +437,6 @@ class DryRunStats:
                 for gid in gids:
                     yield gid, memory_usage
 
-        # Initialize structures
         ranks = [(0, i) for i in range(num_ranks)]  # (total_memory, rank_id)
         heapq.heapify(ranks)
         all_allocation = {}
@@ -444,13 +446,10 @@ class DryRunStats:
             total_memory, rank_id = heapq.heappop(ranks)
             logging.debug("Assigning batch to rank %d", rank_id)
             rank_allocation[rank_id].extend(batch)
-            # Update the total memory load of the rank
             total_memory += batch_memory
             rank_memory[rank_id] = total_memory
-            # Update total memory and re-add to the heap
             heapq.heappush(ranks, (total_memory, rank_id))
 
-        # Start distributing cells across ranks
         for pop, metype_gids in self.metype_gids.items():
             logging.info("Distributing cells of population %s", pop)
             rank_allocation = defaultdict(Vector)
@@ -466,14 +465,12 @@ class DryRunStats:
                     batch = []
                     batch_memory = 0
 
-            # Assign any remaining cells in the last, potentially incomplete batch
             if batch:
                 assign_cells_to_rank(rank_allocation, rank_memory, batch, batch_memory)
 
             all_allocation[pop] = rank_allocation
             all_memory[pop] = rank_memory
 
-        # Print and export allocation stats
         print_allocation_stats(all_allocation, all_memory)
         export_allocation_stats(all_allocation, self._ALLOCATION_FILENAME)
 
