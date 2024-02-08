@@ -7,7 +7,7 @@ from typing import List
 import libsonata
 import numpy
 
-from .core import MPI, NeurodamusCore as Nd
+from .core import NeurodamusCore as Nd
 from .core.configuration import ConfigurationError, find_input_file
 from .core.nodeset import _NodeSetBase, NodeSet, SelectionNodeSet
 from .utils import compat
