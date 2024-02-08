@@ -1023,7 +1023,7 @@ class Node:
         if sum_currents_into_soma and rep_type == "Summation":
             sections = "all"
             compartments = "all"
-        points = self._target_manager.getPointList(target, global_manager,
+        points = self._target_manager.getPointList(target,
                                                    sections=sections,
                                                    compartments=compartments)
         for point in points:
@@ -1091,8 +1091,7 @@ class Node:
             log_verbose("Apply configuration \"%s\" on target %s",
                         config.get("Configure").s, target_name)
 
-            points = self._target_manager.getPointList(target_name,
-                                                       self._circuits.base_cell_manager)
+            points = self._target_manager.getPointList(target_name)
             # iterate the pointlist and execute the command on the section
             for tpoint_list in points:
                 for sec_i, sc in enumerate(tpoint_list.sclst):
