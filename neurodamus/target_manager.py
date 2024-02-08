@@ -216,8 +216,9 @@ class TargetManager:
 
         Returns: The target list of points
         """
-        nodeset_target = self.get_target(target)
-        return nodeset_target.getPointList(self._cell_manager, **kw)
+        if not isinstance(target, NodesetTarget):
+            target = self.get_target(target)
+        return target.getPointList(self._cell_manager, **kw)
 
     def getMETypes(self, target_name):
         """
