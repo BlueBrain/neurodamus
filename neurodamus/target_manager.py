@@ -92,12 +92,9 @@ class TargetManager:
         """
         self._run_conf = run_conf
         self._cell_manager = None
-        self.parser = Nd.TargetParser()
         self._targets = {}
         self._section_access = {}
         self._nodeset_reader = self._init_nodesets(run_conf)
-        if MPI.rank == 0:
-            self.parser.isVerbose = 1
         # A list of the local node sets
         self.local_nodes = []
 
@@ -113,8 +110,8 @@ class TargetManager:
                NodeSetReader(config_nodeset_file, simulation_nodesets_file)
 
     def load_targets(self, circuit):
-        """Provided that the circuit location is known and whether a user.target file has been
-        specified, load any target files via a TargetParser.
+        """Provided that the circuit location is known and whether a nodes file has been
+        specified, load any target files.
         Note that these will be moved into a TargetManager after the cells have been distributed,
         instantiated, and potentially split.
         """
@@ -136,18 +133,13 @@ class TargetManager:
 
     def register_target(self, target):
         self._targets[target.name] = target
-        hoc_target = target.get_hoc_target()
-        if hoc_target:
-            self.parser.updateTargetList(target)
 
     def register_local_nodes(self, local_nodes):
         """Registers the local nodes so that targets can be scoped to current rank"""
         self.local_nodes.append(local_nodes)
-        self.parser.updateTargets(local_nodes.final_gids(), 1)
 
     def clear_simulation_data(self):
         self.local_nodes.clear()
-        self.parser.updateTargets(Nd.Vector(), 0)
 
     def get_target(self, target_spec: TargetSpec, target_pop=None):
         """Retrieves a target from any .target file or Sonata nodeset files.
