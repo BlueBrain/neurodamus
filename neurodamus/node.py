@@ -1463,10 +1463,6 @@ class Node:
         round robin distribution, we want to clear the cells and synapses in order to have a
         clean slate on which to instantiate the balanced cells.
         """
-        if not self._target_manager.parser:
-            # Target parser is the ground block. If not there model is clear
-            return
-
         logging.info("Clearing model")
         self._pc.gid_clear()
         self._target_manager.clear_simulation_data()
