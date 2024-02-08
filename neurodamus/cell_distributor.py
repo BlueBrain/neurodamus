@@ -334,8 +334,6 @@ class CellManagerBase(_CellManager):
         cell_offset = self._local_nodes.offset
         if cell_offset and self._target_spec.name:
             target = self._target_manager.get_target(self._target_spec)
-            if not hasattr(target, "set_offset"):
-                raise NotImplementedError("No gid offsetting supported by neurodamus Target.hoc")
             target.set_offset(cell_offset)
         # Add local gids to matching targets
         self._target_manager.register_local_nodes(self._local_nodes)
