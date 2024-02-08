@@ -603,13 +603,9 @@ class ConnectionManagerBase(object):
         cur_conn.add_synapses(self._target_manager, syns_params, base_id)
 
     # -
-    def get_updated_population_offsets(self, src_target, dst_target):
+    def get_updated_population_offsets(self):
         sgid_offset = self._src_cell_manager.local_nodes.offset
         tgid_offset = self._cell_manager.local_nodes.offset
-        if src_target:
-            src_target.set_offset(sgid_offset)
-        if dst_target:
-            dst_target.set_offset(tgid_offset)
         return sgid_offset, tgid_offset
 
     # -
@@ -656,7 +652,7 @@ class ConnectionManagerBase(object):
 
         gids = target_gids(gids)
         created_conns_0 = self._cur_population.count()
-        sgid_offset, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
+        sgid_offset, tgid_offset = self.get_updated_population_offsets()
 
         self._synapse_reader.configure_override(mod_override)
         self._synapse_reader.preload_data(gids)
@@ -823,7 +819,7 @@ class ConnectionManagerBase(object):
         if src_target and src_target.is_void() or dst_target.is_void():
             return
 
-        _, tgid_offset = self.get_updated_population_offsets(src_target, dst_target)
+        _, tgid_offset = self.get_updated_population_offsets()
         populations: List[ConnectionSet] = (conn_population,) if conn_population is not None \
             else self._populations.values()
 

@@ -177,20 +177,6 @@ class TargetManager:
             "Target {} can't be loaded. Check target sources".format(target_name)
         )
 
-    def get_target_points(self, target, cell_manager, **kw):
-        """Helper to retrieve the points of a target.
-        Returns the result of calling getPointList directly on the target.
-
-        Args:
-            target: The target name or object (faster)
-            manager: The cell manager to access gids and metype infos
-
-        Returns: The target list of points
-        """
-        if isinstance(target, TargetSpec):
-            target = self.get_target(target)
-        return target.getPointList(cell_manager, **kw)
-
     @lru_cache()
     def intersecting(self, target1, target2):
         """Checks whether two targets intersect"""
@@ -221,7 +207,18 @@ class TargetManager:
         return self.intersecting(src1, src2) and self.intersecting(dst1, dst2)
 
     def getPointList(self, target, **kw):
-        return self.get_target_points(self._targets[target], self._cell_manager, **kw)
+        """Helper to retrieve the points of a target.
+        Returns the result of calling getPointList directly on the target.
+
+        Args:
+            target: The target name or object (faster)
+            manager: The cell manager to access gids and metype infos
+
+        Returns: The target list of points
+        """
+        if isinstance(target, TargetSpec):
+            target = self.get_target(target)
+        return target.getPointList(self._cell_manager, **kw)
 
     def getMETypes(self, target_name):
         """
@@ -232,7 +229,7 @@ class TargetManager:
         :return: List containing MEtypes for each cell object associated with the target
         """
         result_list = compat.List()
-        target = self._targets[target_name]
+        target = self.get_target(target_name)
         gids = target.get_local_gids()
 
         for gid in gids:
@@ -291,7 +288,7 @@ class TargetManager:
         if tmp_section is None:  # Assume we are in LoadBalance mode
             result_point.append(None, -1)
         elif ipt == -1:
-            # SYN2/Sonata spec have a pre-calculated distance field.
+            # Sonata spec have a pre-calculated distance field.
             # In such cases, segment (ipt) is -1 and offset is that distance.
             offset = max(min(offset, 0.9999999), 0.0000001)
             result_point.append(tmp_section, offset)
@@ -304,10 +301,7 @@ class TargetManager:
 
             if ipt < section.n3d():
                 distance = (section.arc3d(int(ipt)) + offset) / section.L
-                if distance == 0.0:
-                    distance = 0.0000001
-                if distance >= 1.0:
-                    distance = 0.9999999
+                distance = max(min(distance, 0.9999999), 0.0000001)
 
             if section.orientation() == 1:
                 distance = 1 - distance
@@ -599,11 +593,9 @@ class NodesetTarget(_TargetInterface):
         return [[targets[cycle_i] for targets in new_targets.values()]
                     for cycle_i in range(n_parts)]
 
-    def set_offset(self, *_):
-        pass  # Only hoc targets require manually setting offsets
-
 
 class SerializedSections:
+    """Serializes the sections of a cell for easier random access."""
     def __init__(self, cell):
         self.num_sections = int(cell.nSecAll)
         # Initialize list to store SectionRef objects

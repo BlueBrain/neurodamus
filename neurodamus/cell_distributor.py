@@ -331,10 +331,6 @@ class CellManagerBase(_CellManager):
 
     def _update_targets_local_gids(self):
         logging.info(" > Updating targets")
-        cell_offset = self._local_nodes.offset
-        if cell_offset and self._target_spec.name:
-            target = self._target_manager.get_target(self._target_spec)
-            target.set_offset(cell_offset)
         # Add local gids to matching targets
         self._target_manager.register_local_nodes(self._local_nodes)
 
