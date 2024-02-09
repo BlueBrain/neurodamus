@@ -35,6 +35,7 @@ from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import DryRunStats, trim_memory, pool_shrink, free_event_queues, print_mem_usage
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
+from .io.sonata_config import ConnectionTypes
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
 
@@ -44,9 +45,9 @@ class METypeEngine(EngineBase):
     InnerConnectivityCls = SynapseRuleManager
     ConnectionTypes = {
         None: SynapseRuleManager,
-        "Synaptic": SynapseRuleManager,
-        "GapJunction": GapJunctionManager,
-        "NeuroModulation": NeuroModulationManager
+        ConnectionTypes.Synaptic: SynapseRuleManager,
+        ConnectionTypes.GapJunction: GapJunctionManager,
+        ConnectionTypes.NeuroModulation: NeuroModulationManager
     }
     CircuitPrecedence = 0
 
@@ -580,14 +581,6 @@ class Node:
     # -
     def _load_connections(self, circuit_conf, conn_manager):
         if conn_manager.is_file_open:  # Base connectivity
-            conn_manager.create_connections()
-
-        # Continue support for compatibility, but new BlueConfigs should use Projection blocks
-        bonus_file = circuit_conf.get("BonusSynapseFile")
-        if bonus_file:
-            logging.info(" > Loading Circuit BonusSynapseFile")
-            n_synapse_files = int(circuit_conf.get("NumBonusFiles", 1))
-            conn_manager.open_synapse_file(bonus_file, None, n_synapse_files)
             conn_manager.create_connections()
 
     # -

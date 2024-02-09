@@ -35,8 +35,7 @@ neurodamus.io.synapse\_reader
    .. autosummary::
       SynapseParameters
       SynapseReader
-      SynReaderNRN
-
+      SonataReader
 
    .. rubric:: Exceptions
 
