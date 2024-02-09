@@ -10,7 +10,7 @@ import sys
 import logging
 from os import path as Path
 
-RECIPE_FILE = Path.expanduser("~/dev/TestData/build/circuitBuilding_1000neurons/BlueConfig")
+RECIPE_FILE = Path.join(Path.dirname(__file__), "../tests/simulations/usecase3/simulation_sonata.json")
 DEFAULT_LOG_LEVEL = 2
 TRACE_LOG_LEVEL = 5
 
@@ -38,7 +38,6 @@ def test_node_run(trace=False):
 
     logging.info("Create connections")
     node.create_synapses()
-    node.create_gap_junctions()
 
     logging.info("Enable Stimulus")
     node.enable_stimulus()
@@ -55,7 +54,7 @@ def test_node_run(trace=False):
     node.enable_reports()
 
     logging.info("Run")
-    node.run(True)
+    node.run_all()
 
     logging.info("Simulation finished. Gather spikes then clean up.")
     node.spike2file("out.dat")
