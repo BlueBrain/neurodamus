@@ -310,7 +310,7 @@ class Node:
 
         # Register the global target and cell manager
         self._target_manager.register_target(self._circuits.global_target)
-        self._target_manager.init_hoc_manager(self._circuits.global_manager)
+        self._target_manager.register_cell_manager(self._circuits.global_manager)
 
     #
     # public 'read-only' properties - object modification on user responsibility
@@ -339,8 +339,6 @@ class Node:
         for circuit in self.all_circuits():
             log_verbose("Loading targets for circuit %s", circuit._name or "(default)")
             self._target_manager.load_targets(circuit)
-
-        self._target_manager.load_user_target()
 
     # -
     @mpi_no_errors
@@ -958,13 +956,6 @@ class Node:
                             or self._default_population)
         log_verbose("Report on Population: %s, Target: %s", population_name, rep_target.name)
 
-        target_population = rep_target.population or self._target_spec.population
-        pop_offsets, alias_pop = pop_offsets_alias_pop
-        offset = pop_offsets[target_population] if target_population in pop_offsets \
-                    else pop_offsets[alias_pop[target_population]]
-        if offset > 0:  # dont reset if not needed (recent hoc API)
-            target.set_offset(offset)
-
         report_on = rep_conf["ReportOn"]
         return self.ReportParams(
             os.path.basename(rep_conf.get("FileName", rep_name)),
@@ -984,45 +975,6 @@ class Node:
     #
     def _report_write_coreneuron_config(self, rep_name, rep_conf, target, rep_params):
         target_spec = TargetSpec(rep_conf["Target"])
-        corenrn_target = target
-
-        # 0=Compartment, 1=Cell, Section { 2=Soma, 3=Axon, 4=Dendrite, 5=Apical }
-        target_type = target.isCellTarget()
-        compartment_offset = 0
-
-        # Note: CoreNEURON does not support more than one Section in a Compartment target
-        if target.isCompartmentTarget():
-            for activeTarget in target.subtargets:
-                if activeTarget.isSectionTarget():
-                    # Ensure only one Section (i.e., number of subtargets is also 1)
-                    if target.subtargets.count() > 1:
-                        logging.error("Report '%s': only a single Section is allowed in a "
-                                      "Compartment target", rep_name)
-                        return False
-
-                    # If we reach this point, update original target and offset
-                    corenrn_target = activeTarget
-                    compartment_offset = 4
-
-        if corenrn_target.isSectionTarget():
-            if (corenrn_target.subtargets.count() != 1
-                    or not corenrn_target.subtargets[0].isCellTarget()):
-                logging.error("Report '%s': only a single Cell subtarget is allowed in a "
-                              "Section target", rep_name)
-                return False
-
-            section_type = corenrn_target.targetSubsets[0].s
-
-            if section_type == "soma":
-                target_type = 2 + compartment_offset
-            elif section_type == "axon":
-                target_type = 3 + compartment_offset
-            elif section_type == "dend":
-                target_type = 4 + compartment_offset
-            elif section_type == "apic":
-                target_type = 5 + compartment_offset
-            else:
-                target_type = 0
 
         # for sonata config, compute target_type from user inputs
         if "Sections" in rep_conf and "Compartments" in rep_conf:
@@ -1035,6 +987,7 @@ class Node:
                     raise ConfigurationError(f"Report: invalid compartment type {compartment_type}")
                 if section_type == "all":  # for "all sections", support only target_type=0
                     return 0
+                # 0=Compartment, Section { 2=Soma, 3=Axon, 4=Dendrite, 5=Apical, 6=SomaAll ... }
                 return sections.index(section_type)+1+4*compartments.index(compartment_type)
 
             section_type = rep_conf.get("Sections")
@@ -1065,15 +1018,14 @@ class Node:
         # value on the soma. Otherwise, get target points as normal.
         sections = rep_conf.get("Sections")
         compartments = rep_conf.get("Compartments")
-        is_cell_target = target.isCellTarget(sections=sections,
-                                             compartments=compartments)
+        sum_currents_into_soma = (sections == "soma" and compartments == "center")
         # In case of summation in the soma, we need all points anyway
-        if is_cell_target and rep_type == "Summation":
+        if sum_currents_into_soma and rep_type == "Summation":
             sections = "all"
             compartments = "all"
-        points = self._target_manager.get_target_points(target, global_manager,
-                                                        sections=sections,
-                                                        compartments=compartments)
+        points = self._target_manager.getPointList(target,
+                                                   sections=sections,
+                                                   compartments=compartments)
         for point in points:
             gid = point.gid
             pop_name, pop_offset = global_manager.getPopulationInfo(gid)
@@ -1086,7 +1038,7 @@ class Node:
                     cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
             elif rep_type == "Summation":
                 report.addSummationReport(
-                    cell, point, is_cell_target, spgid, SimConfig.use_coreneuron,
+                    cell, point, sum_currents_into_soma, spgid, SimConfig.use_coreneuron,
                     pop_name, pop_offset)
             elif rep_type == "Synapse":
                 report.addSynapseReport(
@@ -1139,8 +1091,7 @@ class Node:
             log_verbose("Apply configuration \"%s\" on target %s",
                         config.get("Configure").s, target_name)
 
-            points = self._target_manager.get_target_points(target_name,
-                                                            self._circuits.base_cell_manager)
+            points = self._target_manager.getPointList(target_name)
             # iterate the pointlist and execute the command on the section
             for tpoint_list in points:
                 for sec_i, sc in enumerate(tpoint_list.sclst):
@@ -1349,7 +1300,6 @@ class Node:
                                 "Increase the number of nodes to reduce the memory footprint "
                                 "(Current use node: %d MB / SHM Limit: %d MB / Mem. Limit: %d MB)",
                                 (rss_req >> 20), (shm_avail >> 20), (mem_avail >> 20))
-
         return corenrn_datadir if not self._shm_enabled else corenrn_datadir_shm
 
     # -
@@ -1512,10 +1462,6 @@ class Node:
         round robin distribution, we want to clear the cells and synapses in order to have a
         clean slate on which to instantiate the balanced cells.
         """
-        if not self._target_manager.parser:
-            # Target parser is the ground block. If not there model is clear
-            return
-
         logging.info("Clearing model")
         self._pc.gid_clear()
         self._target_manager.clear_simulation_data()
