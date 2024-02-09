@@ -595,7 +595,10 @@ class NodesetTarget(_TargetInterface):
 
 
 class SerializedSections:
-    """Serializes the sections of a cell for easier random access."""
+    """ Serializes the sections of a cell for easier random access.
+    Note that this is possible because the v field in the section has been assigned
+    an integer corresponding to the target index as read from the morphology file.
+    """
     def __init__(self, cell):
         self.num_sections = int(cell.nSecAll)
         # Initialize list to store SectionRef objects
