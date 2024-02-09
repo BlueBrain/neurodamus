@@ -46,7 +46,7 @@ class ModificationManager:
         if not mod_t:
             raise ConfigurationError("Unknown Modification {}".format(mod_t_name))
         target = self._target_manager.get_target(target_spec)
-        cell_manager = self._target_manager.hoc.cellDistributor
+        cell_manager = self._target_manager._cell_manager
         mod = mod_t(target, mod_info, cell_manager)
         self._modifications.append(mod)
 
@@ -65,10 +65,7 @@ class TTX:
     Uses TTXDynamicsSwitch as in BGLibPy. Overrides HOC version, which is outdated
     """
     def __init__(self, target, mod_info: dict, cell_manager):
-        if target.isCellTarget():  # get all compartments for each cell
-            tpoints = self.compartment_cast(target, "").getPointList(cell_manager)
-        else:  # use compartments present in target
-            tpoints = target.getPointList(cell_manager)
+        tpoints = target.getPointList(cell_manager, sections='all')
 
         # insert and activate TTX mechanism in all sections of each cell in target
         for tpoint_list in tpoints:
@@ -101,11 +98,7 @@ class ConfigureAllSections:
     """
     def __init__(self, target, mod_info: dict, cell_manager):
         config, config_attrs = self.parse_section_config(mod_info['SectionConfigure'])
-
-        if target.isCellTarget():  # get all compartments for each cell
-            tpoints = self.compartment_cast(target, "").getPointList(cell_manager)
-        else:  # use compartments present in target
-            tpoints = target.getPointList(cell_manager)
+        tpoints = target.getPointList(cell_manager, sections='all')
 
         napply = 0  # number of sections where config applies
         # change mechanism variable in all sections that have it
