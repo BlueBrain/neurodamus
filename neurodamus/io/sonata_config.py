@@ -5,6 +5,15 @@ import json
 import libsonata
 import logging
 import os.path
+from enum import StrEnum
+
+
+class ConnectionTypes(StrEnum):
+    Synaptic = "Synaptic"
+    GapJunction = "GapJunction"
+    NeuroModulation = "NeuroModulation"
+    NeuroGlial = "NeuroGlial"
+    GlioVascular = "GlioVascular"
 
 
 class SonataConfig:
@@ -289,11 +298,11 @@ class SonataConfig:
     @property
     def parsedProjections(self):
         projection_type_convert = dict(
-            chemical="Synaptic",
-            electrical="GapJunction",
-            synapse_astrocyte="NeuroGlial",
-            endfoot="GlioVascular",
-            neuromodulatory="NeuroModulation"
+            chemical=ConnectionTypes.Synaptic,
+            electrical=ConnectionTypes.GapJunction,
+            synapse_astrocyte=ConnectionTypes.NeuroGlial,
+            endfoot=ConnectionTypes.GlioVascular,
+            neuromodulatory=ConnectionTypes.NeuroModulation
         )
         internal_edge_pops = set(c_conf["nrnPath"] for c_conf in self._bc_circuits.values())
         projections = {}
@@ -323,10 +332,10 @@ class SonataConfig:
                     Type=projection_type_convert.get(pop_type)
                 )
                 # Reverse projection direction for Astrocyte projection: from neurons to astrocytes
-                if projection.get("Type") == "NeuroGlial":
+                if projection.get("Type") == ConnectionTypes.NeuroGlial:
                     projection["Source"], projection["Destination"] = projection["Destination"], \
                         projection["Source"]
-                if projection.get("Type") == "GlioVascular":
+                if projection.get("Type") == ConnectionTypes.GlioVascular:
                     for node_file_info in self._circuit_networks["nodes"]:
                         for _, pop_info in node_file_info["populations"].items():
                             if pop_info.get("type") == "vasculature":

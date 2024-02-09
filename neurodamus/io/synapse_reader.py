@@ -2,7 +2,6 @@
 Module implementing interfaces to the several synapse readers (eg.: synapsetool, Hdf5Reader)
 """
 import logging
-import os
 from abc import abstractmethod
 
 import libsonata
@@ -73,14 +72,10 @@ class SynapseParameters(metaclass=_SynParametersMeta):
 
 class SynapseReader:
     """ Synapse Readers base class.
-        Factory create() will attempt to instantiate a SONATA reader, followed by SynReaderNRN.
+        Factory create() will instantiate a SONATA reader.
     """
-    # Data types to read
-    SYNAPSES = 0
-    GAP_JUNCTIONS = 1
 
-    def __init__(self, src, conn_type, population=None, *_, **kw):
-        self._conn_type = conn_type
+    def __init__(self, src, population=None, *_, **kw):
         self._ca_concentration = kw.get("extracellular_calcium")
         self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
         self._open_file(src, population, kw.get("verbose", False))
@@ -180,24 +175,19 @@ class SynapseReader:
         return None
 
     @classmethod
-    def create(cls, syn_src, conn_type=SYNAPSES, population=None, *args, **kw):
-        """Instantiates a synapse reader, giving preference to SonataReader
+    def create(cls, syn_src, population=None, *args, **kw):
+        """Instantiates a synapse reader, by default SonataReader.
+           syn_src must point to a SONATA edge file.
         """
-        # If create() called from this class then FACTORY. Otherwise instantiate directly
-        if cls is not SynapseReader:
-            return cls(syn_src, conn_type, population, *args, **kw)
-
         kw["verbose"] = (MPI.rank == 0)
         if fn := cls._get_sonata_circuit(syn_src):
-            log_verbose("[SynReader] Using SonataReader.")
-            return SonataReader(fn, conn_type, population, **kw)
-
-        # We dropped syntool (july-2023). If not SONATA try with the old nrn reader
-        if os.path.isdir(syn_src) or syn_src.endswith(".h5"):
-            logging.info("[SynReader] Attempting legacy hdf5 reader.")
-            return SynReaderNRN(syn_src, conn_type, None, *args, **kw)
-
-        raise FormatNotSupported(f"File: {syn_src}. Please provide SONATA edges")
+            if cls is not SynapseReader:
+                return cls(fn, population, *args, **kw)
+            else:
+                log_verbose("[SynReader] Using SonataReader.")
+                return SonataReader(fn, population, *args, **kw)
+        else:
+            raise FormatNotSupported(f"File: {syn_src}. Please provide SONATA edges")
 
 
 class SonataReader(SynapseReader):
@@ -394,87 +384,6 @@ class SonataReader(SynapseReader):
         data = self._population.get_attribute(group_by, edge_ids)
         values, counts = np.unique(data, return_counts=True)
         return dict(zip(values, counts))
-
-
-class SynReaderNRN(SynapseReader):
-    """ Synapse Reader for NRN format only, using the hdf5_reader mod.
-    """
-    def __init__(self,
-                 syn_src, conn_type, population=None,
-                 n_synapse_files=None, local_gids=(),  # Specific to NRNReader
-                 *_, **kw):
-        if os.path.isdir(syn_src):
-            filename = "nrn_gj.h5" if conn_type == self.GAP_JUNCTIONS else "nrn.h5"
-            syn_src = os.path.join(syn_src, filename)
-            log_verbose("Found nrn file: %s", filename)
-
-        # Hdf5 reader doesnt do checks, failing badly (and cryptically) later
-        if not os.path.isfile(syn_src) and not os.path.isfile(syn_src + ".1"):
-            raise RuntimeError("NRN synapses file not found: " + syn_src)
-
-        # Generic init now that we know the file
-        self._n_synapse_files = n_synapse_files or 1  # needed during init
-        SynapseReader.__init__(self, syn_src, conn_type, population, **kw)
-
-        if self._n_synapse_files > 1:
-            vec = Nd.Vector(len(local_gids))  # excg-location requires true vector
-            for num in local_gids:
-                vec.append(num)
-            self._syn_reader.exchangeSynapseLocations(vec)
-
-    def _open_file(self, syn_src, population, verbose=False):
-        if population:
-            raise RuntimeError("HDF5Reader doesn't support Populations.")
-        log_verbose("Opening synapse file: %s", syn_src)
-        self._syn_reader = Nd.HDF5Reader(syn_src, self._n_synapse_files)
-        self.nrn_version = self._syn_reader.checkVersion()
-
-    def has_nrrp(self):
-        return self.nrn_version > 4
-
-    def has_property(self, field_name):
-        logging.warning("has_property() without SynapseReader returns always False")
-        return False
-
-    def _load_synapse_parameters(self, gid):
-        reader = self._syn_reader
-        cell_name = "a%d" % gid
-
-        ret = reader.loadData(gid) if self._n_synapse_files > 1 \
-            else reader.loadData(cell_name)
-
-        if ret < 0:  # No dataset
-            return SynapseParameters.empty
-        nrow = int(reader.numberofrows(cell_name))
-        if nrow == 0:
-            return SynapseParameters.empty
-
-        conn_syn_params = SynapseParameters.create_array(nrow)
-        has_nrrp = self.has_nrrp()
-
-        for i in range(nrow):
-            params = conn_syn_params[i]
-            params[0] = reader.getData(cell_name, i, 0)   # sgid
-            params[1] = reader.getData(cell_name, i, 1)   # delay
-            params[2] = reader.getData(cell_name, i, 2)   # isec
-            params[3] = reader.getData(cell_name, i, 3)   # ipt
-            params[4] = reader.getData(cell_name, i, 4)   # offset
-            params[5] = reader.getData(cell_name, i, 8)   # weight
-            params[6] = reader.getData(cell_name, i, 9)   # U
-            params[7] = reader.getData(cell_name, i, 10)  # D
-            params[8] = reader.getData(cell_name, i, 11)  # F
-            params[9] = reader.getData(cell_name, i, 12)  # DTC
-            params[10] = reader.getData(cell_name, i, 13)  # isynType
-            if has_nrrp:
-                params[11] = reader.getData(cell_name, i, 17)  # nrrp
-            else:
-                params[11] = -1
-
-            # placeholder for u_hill_coefficient and conductance_ratio, not supported by HDF5Reader
-            params[12] = -1
-            params[13] = -1
-
-        return conn_syn_params
 
 
 class FormatNotSupported(Exception):

@@ -13,6 +13,7 @@ from .connection_manager import ConnectionManagerBase
 from .core import EngineBase
 from .core import NeurodamusCore as Nd, MPI
 from .core.configuration import GlobalConfig
+from .io.sonata_config import ConnectionTypes
 from .io.synapse_reader import SynapseParameters, SonataReader
 from .utils import bin_search
 from .utils.logging import log_verbose
@@ -342,7 +343,7 @@ class NeuroGliaConnManager(ConnectionManagerBase):
     must be used
     """
 
-    CONNECTIONS_TYPE = "NeuroGlial"
+    CONNECTIONS_TYPE = ConnectionTypes.NeuroGlial
     conn_factory = NeuroGlialConnection
     SynapseReader = NeuroGlialSynapseReader
 
@@ -450,7 +451,7 @@ class NeuroGliaConnManager(ConnectionManagerBase):
 
 
 class GlioVascularManager(ConnectionManagerBase):
-    CONNECTIONS_TYPE = "GlioVascular"
+    CONNECTIONS_TYPE = ConnectionTypes.GlioVascular
     InnerConnectivityCls = None  # No synapses
 
     def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
@@ -552,6 +553,6 @@ class GlioVascularManager(ConnectionManagerBase):
 class NGVEngine(EngineBase):
     CellManagerCls = AstrocyteManager
     ConnectionTypes = {
-        "NeuroGlial": NeuroGliaConnManager,
-        "GlioVascular": GlioVascularManager
+        ConnectionTypes.NeuroGlial: NeuroGliaConnManager,
+        ConnectionTypes.GlioVascular: GlioVascularManager
     }

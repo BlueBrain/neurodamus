@@ -15,6 +15,7 @@ from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core import run_only_rank0
 from .core.configuration import GlobalConfig, SimConfig, ConfigurationError, find_input_file
 from .connection import Connection, ReplayMode
+from .io.sonata_config import ConnectionTypes
 from .io.synapse_reader import SynapseReader
 from .target_manager import TargetManager, TargetSpec
 from .utils import compat, bin_search, dict_filter_map
@@ -286,18 +287,16 @@ class ConnectionManagerBase(object):
     def open_edge_location(self, syn_source, circuit_conf, **kw):
         edge_file, *pop = syn_source.split(":")
         pop_name = pop[0] if pop else None
-        n_files = circuit_conf.get("NumSynapseFiles")
         src_pop_id = _get_projection_population_id(circuit_conf)
-        return self.open_synapse_file(edge_file, pop_name, n_files, src_pop_id=src_pop_id, **kw)
+        return self.open_synapse_file(edge_file, pop_name, src_pop_id=src_pop_id, **kw)
 
-    def open_synapse_file(self, synapse_file, edge_population, n_files=1, *,
-                          src_pop_id=None, src_name=None, **_kw):
+    def open_synapse_file(self, synapse_file, edge_population, *, src_pop_id=None, src_name=None,
+                          **_kw):
         """Initializes a reader for Synapses config objects and associated population
 
         Args:
             synapse_file: The nrn/edge file. For old nrn files it may be a dir.
             edge_population: The population of the edges
-            n_files: (nrn only) the number of nrn files in the directory (without nrn.h5)
             src_pop_id: (compat) Allow overriding the src population ID
             src_name: The source pop name, normally matching that of the source cell manager
         """
@@ -307,11 +306,9 @@ class ConnectionManagerBase(object):
         if not ospath.exists(synapse_file):
             raise ConfigurationError("Connectivity (Edge) file not found: {}".format(synapse_file))
         if ospath.isdir(synapse_file):
-            logging.warning("Edges source is a directory (legacy nrn.h5 only)")
-            if ospath.isfile(ospath.join(synapse_file, "nrn.h5")):
-                n_files = 1
+            raise ConfigurationError("Edges source is a directory")
 
-        self._synapse_reader = self._open_synapse_file(synapse_file, edge_population, n_files)
+        self._synapse_reader = self._open_synapse_file(synapse_file, edge_population)
         if self._load_offsets:
             if not self._synapse_reader.has_property("synapse_index"):
                 raise Exception("Synapse offsets required but not available. "
@@ -322,12 +319,10 @@ class ConnectionManagerBase(object):
         return synapse_file
 
     # - override if needed
-    def _open_synapse_file(self, synapse_file, pop_name, n_nrn_files=None):
+    def _open_synapse_file(self, synapse_file, pop_name):
         logging.debug("Opening Synapse file %s, population: %s", synapse_file, pop_name)
         return self.SynapseReader.create(
-            synapse_file, self.CONNECTIONS_TYPE, pop_name,
-            n_nrn_files, self._raw_gids,  # Used eventually by NRN reader
-            extracellular_calcium=SimConfig.extracellular_calcium
+            synapse_file, pop_name, extracellular_calcium=SimConfig.extracellular_calcium
         )
 
     def _init_conn_population(self, src_pop_name, pop_id_override):
@@ -1202,7 +1197,7 @@ class SynapseRuleManager(ConnectionManagerBase):
     created.
     """
 
-    CONNECTIONS_TYPE = SynapseReader.SYNAPSES
+    CONNECTIONS_TYPE = ConnectionTypes.Synaptic
 
     def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
         """Initializes a Connection/Edge manager for standard METype synapses
