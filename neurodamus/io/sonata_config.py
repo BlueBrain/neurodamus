@@ -6,6 +6,8 @@ import libsonata
 import logging
 import os.path
 
+from ..core.configuration import ConnectionTypes
+
 
 class SonataConfig:
 
@@ -289,11 +291,11 @@ class SonataConfig:
     @property
     def parsedProjections(self):
         projection_type_convert = dict(
-            chemical="Synaptic",
-            electrical="GapJunction",
-            synapse_astrocyte="NeuroGlial",
-            endfoot="GlioVascular",
-            neuromodulatory="NeuroModulation"
+            chemical=ConnectionTypes.Synaptic,
+            electrical=ConnectionTypes.GapJunction,
+            synapse_astrocyte=ConnectionTypes.NeuroGlial,
+            endfoot=ConnectionTypes.GlioVascular,
+            neuromodulatory=ConnectionTypes.NeuroModulation
         )
         internal_edge_pops = set(c_conf["nrnPath"] for c_conf in self._bc_circuits.values())
         projections = {}

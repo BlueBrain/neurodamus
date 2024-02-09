@@ -6,8 +6,8 @@ import numpy as np
 from os import path as ospath
 
 from .connection_manager import ConnectionManagerBase
-from .core.configuration import ConfigurationError
-from .io.synapse_reader import SynapseReader, SonataReader, SynapseParameters
+from .core.configuration import ConfigurationError, ConnectionTypes
+from .io.synapse_reader import SonataReader, SynapseParameters
 from .utils import compat
 from .utils.logging import log_verbose
 
@@ -41,7 +41,7 @@ class GapJunctionManager(ConnectionManagerBase):
     The user will have the capacity to scale the conductance weights.
     """
 
-    CONNECTIONS_TYPE = SynapseReader.GAP_JUNCTIONS
+    CONNECTIONS_TYPE = ConnectionTypes.GapJunction
     _gj_offsets = None
     SynapseReader = GapJunctionSynapseReader
 

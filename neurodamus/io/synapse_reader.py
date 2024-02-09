@@ -74,12 +74,8 @@ class SynapseReader:
     """ Synapse Readers base class.
         Factory create() will instantiate a SONATA reader.
     """
-    # Data types to read
-    SYNAPSES = 0
-    GAP_JUNCTIONS = 1
 
     def __init__(self, src, conn_type, population=None, *_, **kw):
-        self._conn_type = conn_type
         self._ca_concentration = kw.get("extracellular_calcium")
         self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
         self._open_file(src, population, kw.get("verbose", False))
@@ -179,17 +175,17 @@ class SynapseReader:
         return None
 
     @classmethod
-    def create(cls, syn_src, conn_type=SYNAPSES, population=None, *args, **kw):
+    def create(cls, syn_src, population=None, *args, **kw):
         """Instantiates a synapse reader, by default SonataReader.
            syn_src must point to a SONATA edge file.
         """
         kw["verbose"] = (MPI.rank == 0)
         if fn := cls._get_sonata_circuit(syn_src):
             if cls is not SynapseReader:
-                return cls(fn, conn_type, population, *args, **kw)
+                return cls(fn, population, *args, **kw)
             else:
                 log_verbose("[SynReader] Using SonataReader.")
-                return SonataReader(fn, conn_type, population, *args, **kw)
+                return SonataReader(fn, population, *args, **kw)
         else:
             raise FormatNotSupported(f"File: {syn_src}. Please provide SONATA edges")
 

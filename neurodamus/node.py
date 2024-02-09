@@ -16,7 +16,7 @@ from shutil import copyfileobj, move
 
 from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
 from .core import NeurodamusCore as Nd
-from .core.configuration import CircuitConfig, Feature, GlobalConfig, SimConfig
+from .core.configuration import CircuitConfig, Feature, GlobalConfig, SimConfig, ConnectionTypes
 from .core._engine import EngineBase
 from .core._shmutils import SHMUtil
 from .core.configuration import ConfigurationError, find_input_file, get_debug_cell_gid
@@ -44,9 +44,9 @@ class METypeEngine(EngineBase):
     InnerConnectivityCls = SynapseRuleManager
     ConnectionTypes = {
         None: SynapseRuleManager,
-        "Synaptic": SynapseRuleManager,
-        "GapJunction": GapJunctionManager,
-        "NeuroModulation": NeuroModulationManager
+        ConnectionTypes.Synaptic: SynapseRuleManager,
+        ConnectionTypes.GapJunction: GapJunctionManager,
+        ConnectionTypes.NeuroModulation: NeuroModulationManager
     }
     CircuitPrecedence = 0
 

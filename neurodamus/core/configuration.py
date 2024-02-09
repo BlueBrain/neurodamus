@@ -183,6 +183,14 @@ class LoadBalanceMode(Enum):
         return lb_mode, reason
 
 
+class ConnectionTypes(Enum):
+    Synaptic = "Synaptic"
+    GapJunction = "GapJunction"
+    NeuroModulation = "NeuroModulation"
+    NeuroGlial = "NeuroGlial"
+    GlioVascular = "GlioVascular"
+
+
 class _SimConfig(object):
     """
     A class initializing several HOC config objects and proxying to simConfig

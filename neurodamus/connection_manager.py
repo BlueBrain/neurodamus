@@ -14,6 +14,7 @@ from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core import run_only_rank0
 from .core.configuration import GlobalConfig, SimConfig, ConfigurationError, find_input_file
+from .core.configuration import ConnectionTypes
 from .connection import Connection, ReplayMode
 from .io.synapse_reader import SynapseReader
 from .target_manager import TargetManager, TargetSpec
@@ -321,9 +322,7 @@ class ConnectionManagerBase(object):
     def _open_synapse_file(self, synapse_file, pop_name):
         logging.debug("Opening Synapse file %s, population: %s", synapse_file, pop_name)
         return self.SynapseReader.create(
-            synapse_file, self.CONNECTIONS_TYPE, pop_name,
-            self._raw_gids,  # Used eventually by NRN reader
-            extracellular_calcium=SimConfig.extracellular_calcium
+            synapse_file, pop_name, extracellular_calcium=SimConfig.extracellular_calcium
         )
 
     def _init_conn_population(self, src_pop_name, pop_id_override):
@@ -1198,7 +1197,7 @@ class SynapseRuleManager(ConnectionManagerBase):
     created.
     """
 
-    CONNECTIONS_TYPE = SynapseReader.SYNAPSES
+    CONNECTIONS_TYPE = ConnectionTypes.Synaptic
 
     def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
         """Initializes a Connection/Edge manager for standard METype synapses
