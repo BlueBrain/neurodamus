@@ -6,7 +6,8 @@ import numpy as np
 from os import path as ospath
 
 from .connection_manager import ConnectionManagerBase
-from .core.configuration import ConfigurationError, ConnectionTypes
+from .core.configuration import ConfigurationError
+from .io.sonata_config import ConnectionTypes
 from .io.synapse_reader import SonataReader, SynapseParameters
 from .utils import compat
 from .utils.logging import log_verbose

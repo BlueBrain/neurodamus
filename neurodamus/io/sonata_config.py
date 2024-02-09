@@ -5,8 +5,15 @@ import json
 import libsonata
 import logging
 import os.path
+from enum import Enum
 
-from ..core.configuration import ConnectionTypes
+
+class ConnectionTypes(Enum):
+    Synaptic = "Synaptic"
+    GapJunction = "GapJunction"
+    NeuroModulation = "NeuroModulation"
+    NeuroGlial = "NeuroGlial"
+    GlioVascular = "GlioVascular"
 
 
 class SonataConfig:

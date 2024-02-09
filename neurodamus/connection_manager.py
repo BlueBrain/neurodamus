@@ -14,8 +14,8 @@ from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core import run_only_rank0
 from .core.configuration import GlobalConfig, SimConfig, ConfigurationError, find_input_file
-from .core.configuration import ConnectionTypes
 from .connection import Connection, ReplayMode
+from .io.sonata_config import ConnectionTypes
 from .io.synapse_reader import SynapseReader
 from .target_manager import TargetManager, TargetSpec
 from .utils import compat, bin_search, dict_filter_map

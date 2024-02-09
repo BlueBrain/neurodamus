@@ -16,7 +16,7 @@ from shutil import copyfileobj, move
 
 from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
 from .core import NeurodamusCore as Nd
-from .core.configuration import CircuitConfig, Feature, GlobalConfig, SimConfig, ConnectionTypes
+from .core.configuration import CircuitConfig, Feature, GlobalConfig, SimConfig
 from .core._engine import EngineBase
 from .core._shmutils import SHMUtil
 from .core.configuration import ConfigurationError, find_input_file, get_debug_cell_gid
@@ -35,6 +35,7 @@ from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import DryRunStats, trim_memory, pool_shrink, free_event_queues, print_mem_usage
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig
+from .io.sonata_config import ConnectionTypes
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
 

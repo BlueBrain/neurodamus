@@ -12,7 +12,8 @@ from .connection import Connection
 from .connection_manager import ConnectionManagerBase
 from .core import EngineBase
 from .core import NeurodamusCore as Nd, MPI
-from .core.configuration import GlobalConfig, ConnectionTypes
+from .core.configuration import GlobalConfig
+from .io.sonata_config import ConnectionTypes
 from .io.synapse_reader import SynapseParameters, SonataReader
 from .utils import bin_search
 from .utils.logging import log_verbose

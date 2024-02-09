@@ -75,7 +75,7 @@ class SynapseReader:
         Factory create() will instantiate a SONATA reader.
     """
 
-    def __init__(self, src, conn_type, population=None, *_, **kw):
+    def __init__(self, src, population=None, *_, **kw):
         self._ca_concentration = kw.get("extracellular_calcium")
         self._syn_params = {}  # Parameters cache by post-gid (previously loadedMap)
         self._open_file(src, population, kw.get("verbose", False))
