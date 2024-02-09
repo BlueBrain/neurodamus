@@ -5,10 +5,10 @@ import json
 import libsonata
 import logging
 import os.path
-from enum import Enum
+from enum import StrEnum
 
 
-class ConnectionTypes(Enum):
+class ConnectionTypes(StrEnum):
     Synaptic = "Synaptic"
     GapJunction = "GapJunction"
     NeuroModulation = "NeuroModulation"
@@ -332,10 +332,10 @@ class SonataConfig:
                     Type=projection_type_convert.get(pop_type)
                 )
                 # Reverse projection direction for Astrocyte projection: from neurons to astrocytes
-                if projection.get("Type") == "NeuroGlial":
+                if projection.get("Type") == ConnectionTypes.NeuroGlial:
                     projection["Source"], projection["Destination"] = projection["Destination"], \
                         projection["Source"]
-                if projection.get("Type") == "GlioVascular":
+                if projection.get("Type") == ConnectionTypes.GlioVascular:
                     for node_file_info in self._circuit_networks["nodes"]:
                         for _, pop_info in node_file_info["populations"].items():
                             if pop_info.get("type") == "vasculature":
