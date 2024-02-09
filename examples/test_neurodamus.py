@@ -10,7 +10,8 @@ import sys
 import logging
 from os import path as Path
 
-RECIPE_FILE = Path.join(Path.dirname(__file__), "../tests/simulations/usecase3/simulation_sonata.json")
+RECIPE_FILE = Path.join(Path.dirname(__file__),
+                        "../tests/simulations/usecase3/simulation_sonata.json")
 DEFAULT_LOG_LEVEL = 2
 TRACE_LOG_LEVEL = 5
 
