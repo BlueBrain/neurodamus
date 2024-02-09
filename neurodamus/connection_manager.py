@@ -652,7 +652,7 @@ class ConnectionManagerBase(object):
 
         gids = target_gids(gids)
         created_conns_0 = self._cur_population.count()
-        sgid_offset, tgid_offset = self.get_updated_population_offsets()
+        sgid_offset, tgid_offset = self.get_population_offsets()
 
         self._synapse_reader.configure_override(mod_override)
         self._synapse_reader.preload_data(gids)
