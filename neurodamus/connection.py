@@ -6,7 +6,7 @@ import numpy
 import re
 from enum import Enum
 from .core import NeurodamusCore as Nd
-from .core.configuration import GlobalConfig, SimConfig
+from .core.configuration import GlobalConfig, SimConfig, ConfigurationError
 from .utils import compat
 from .utils.logging import log_all
 from .utils.pyutils import append_recarray
@@ -559,7 +559,7 @@ class Connection(ConnectionBase):
     def _configure(self, synapses, configuration):
         res = self.ConnUtils.executeConfigure(synapses, configuration)
         if res > 0:
-            raise ValueError(f"Errors found in configuration: {configuration}")
+            raise ConfigurationError(f"Errors found in configuration: {configuration}")
 
     def _configure_cell(self, cell):
         """ Internal helper to apply all the configuration statements on

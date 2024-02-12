@@ -2,6 +2,8 @@ import json
 import os
 import pytest
 from pathlib import Path
+
+from neurodamus.core.configuration import ConfigurationError
 from neurodamus.io.synapse_reader import SynapseParameters
 from neurodamus.node import Node
 from tempfile import NamedTemporaryFile
@@ -14,11 +16,10 @@ CONFIG_FILE_MINI = SIM_DIR / "simulation_config_mini.json"
 def sonata_config_file_err(sonata_config):
     extra_config = {"connection_overrides": [
         {
-            "name": "scheme_CaUse_ee_ERR",
-            "source": "Excitatory",
-            "target": "Excitatory",
-            "weight": 1.0,
-            "synapse_configure": "%s.dummy=1 cao_CR_GluSynapse = 1.2 %s.Use_d *= 0.158401372855"
+            "name": "config_ERR",
+            "source": "nodesPopB",
+            "target": "nodesPopB",
+            "synapse_configure": "%s.dummy=1"
         }
     ]}
 
@@ -53,15 +54,10 @@ def test_add_synapses():
 
 @pytest.mark.slow
 def test_config_error(sonata_config_file_err):
-    with pytest.raises(ValueError):
-        n = Node(str(sonata_config_file_err))
+    with pytest.raises(ConfigurationError):
+        n = Node(str(sonata_config_file_err.name))
         n.load_targets()
         n.create_cells()
         n.create_synapses()
-        syn_manager = n.circuits.get_edge_manager("default", "default")
-        conn = list(syn_manager.get_connections(62798))[0]
-        new_params = SynapseParameters.create_array(1)
-        new_params[0].sgid = conn.sgid
-        conn.add_synapses(n._target_manager, new_params)
         for syn_manager in n._circuits.all_synapse_managers():
             syn_manager.finalize(0, False)
