@@ -238,7 +238,7 @@ class SynapseMemoryUsage:
 
 class DryRunStats:
     _MEMORY_USAGE_FILENAME = "cell_memory_usage.json"
-    _ALLOCATION_FILENAME = "allocation.gz"
+    _ALLOCATION_FILENAME = "allocation.pkl.gz"
 
     def __init__(self) -> None:
         self.metype_memory = {}
