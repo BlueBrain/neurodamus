@@ -1,12 +1,34 @@
+import json
+import os
 import pytest
 from pathlib import Path
 from neurodamus.io.synapse_reader import SynapseParameters
 from neurodamus.node import Node
-
+from tempfile import NamedTemporaryFile
 
 SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "v5_sonata"
 CONFIG_FILE_MINI = SIM_DIR / "simulation_config_mini.json"
-CONFIG_FILE_ERR = SIM_DIR / "simulation_config_err.json"
+
+
+@pytest.fixture
+def sonata_config_file_err(sonata_config):
+    extra_config = {"connection_overrides": [
+        {
+            "name": "scheme_CaUse_ee_ERR",
+            "source": "Excitatory",
+            "target": "Excitatory",
+            "weight": 1.0,
+            "synapse_configure": "%s.dummy=1 cao_CR_GluSynapse = 1.2 %s.Use_d *= 0.158401372855"
+        }
+    ]}
+
+    sonata_config.update(extra_config)
+
+    with NamedTemporaryFile("w", suffix='.json', delete=False) as config_file:
+        json.dump(sonata_config, config_file)
+
+    yield config_file
+    os.unlink(config_file.name)
 
 
 @pytest.mark.slow
@@ -30,9 +52,9 @@ def test_add_synapses():
 
 
 @pytest.mark.slow
-def test_hoc_config_error():
+def test_config_error(sonata_config_file_err):
     with pytest.raises(ValueError):
-        n = Node(str(CONFIG_FILE_ERR))
+        n = Node(str(sonata_config_file_err))
         n.load_targets()
         n.create_cells()
         n.create_synapses()
