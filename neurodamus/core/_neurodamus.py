@@ -106,7 +106,7 @@ class _NeurodamusCore(_Neuron):
         # which might not bring the model (support for split neurodamus) in which case
         # we should load only the model libs pointed by BGLIBPY_MOD_LIBRARY_PATH.
 
-        if not check_load_lib("SpikeWriter", "NRNMECH_LIB_PATH"):
+        if not check_load_lib("SonataReports", "NRNMECH_LIB_PATH"):
             logging.error("Could not load neurodamus core mechs from NRNMECH_LIB_PATH")
             sys.exit(1)
         if not check_load_lib("ProbAMPANMDA_EMS", "BGLIBPY_MOD_LIBRARY_PATH"):
