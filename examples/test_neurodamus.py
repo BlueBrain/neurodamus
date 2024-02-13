@@ -57,8 +57,7 @@ def test_node_run(trace=False):
     logging.info("Run")
     node.run_all()
 
-    logging.info("Simulation finished. Gather spikes then clean up.")
-    node.spike2file("out.dat")
+    logging.info("Simulation finished.")
     node.cleanup()
 
 
