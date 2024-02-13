@@ -243,9 +243,9 @@ class DryRunStats:
     def __init__(self) -> None:
         self.metype_memory = {}
         self.average_syns_per_cell = {}
+        self.metype_gids = {}
         self.metype_counts = Counter()
         self.synapse_counts = Counter()
-        self.metype_gids = {}
         _, _, self.base_memory, _ = get_task_level_mem_usage()
 
     @run_only_rank0
