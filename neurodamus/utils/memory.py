@@ -10,8 +10,13 @@ import os
 import json
 import psutil
 import multiprocessing
+import heapq
+import pickle
+import gzip
 
 from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
+from .compat import Vector
+from collections import defaultdict
 
 import numpy as np
 
@@ -160,6 +165,60 @@ def pretty_printing_memory_mb(memory_mb):
         return "%.2lf PB" % (memory_mb / 1024 ** 3)
 
 
+@run_only_rank0
+def print_allocation_stats(rank_allocation, rank_memory):
+    """
+    Print statistics of the memory allocation across ranks.
+
+    Args:
+        rank_allocation (dict): A dictionary where keys are rank IDs and
+                                values are lists of cell IDs assigned to each rank.
+        rank_memory (dict): A dictionary where keys are rank IDs
+                            and values are the total memory load on each rank.
+    """
+    logging.debug("Rank allocation: {}".format(rank_allocation))
+    logging.debug("Total memory per rank: {}".format(rank_memory))
+    import statistics
+    for pop, rank_dict in rank_memory.items():
+        values = list(rank_dict.values())
+        logging.info("Population: {}".format(pop))
+        logging.info("Mean allocation per rank [KB]: {}".format(round(statistics.mean(values))))
+        try:
+            stdev = round(statistics.stdev(values))
+        except statistics.StatisticsError:
+            stdev = 0
+        logging.info("Stdev of allocation per rank [KB]: {}".format(stdev))
+
+
+@run_only_rank0
+def export_allocation_stats(rank_allocation, filename):
+    """
+    Export allocation dictionary to serialized pickle file.
+    """
+    compressed_data = gzip.compress(pickle.dumps(rank_allocation))
+    with open(filename, 'wb') as f:
+        f.write(compressed_data)
+
+
+@run_only_rank0
+def import_allocation_stats(filename):
+    """
+    Import allocation dictionary from serialized pickle file.
+    """
+    with open(filename, 'rb') as f:
+        compressed_data = f.read()
+
+    return pickle.loads(gzip.decompress(compressed_data))
+
+
+@run_only_rank0
+def allocation_stats_exists(filename):
+    """
+    Check if the allocation stats file exists.
+    """
+    return os.path.exists(filename)
+
+
 class SynapseMemoryUsage:
     ''' A small class that works as a lookup table
     for the memory used by each type of synapse.
@@ -179,9 +238,12 @@ class SynapseMemoryUsage:
 
 class DryRunStats:
     _MEMORY_USAGE_FILENAME = "cell_memory_usage.json"
+    _ALLOCATION_FILENAME = "allocation.pkl.gz"
 
     def __init__(self) -> None:
         self.metype_memory = {}
+        self.average_syns_per_cell = {}
+        self.metype_gids = {}
         self.metype_counts = Counter()
         self.synapse_counts = Counter()
         _, _, self.base_memory, _ = get_task_level_mem_usage()
@@ -213,6 +275,8 @@ class DryRunStats:
         # We combine memory dict via update(). That means if a previous circuit computed
         # cells for the same METype (hopefully unlikely!) the last estimate prevails.
         self.metype_memory = MPI.py_reduce(self.metype_memory, {}, lambda x, y: x.update(y))
+        self.average_syns_per_cell = MPI.py_reduce(self.average_syns_per_cell, {},
+                                                   lambda x, y: x.update(y))
         self.metype_counts = self.metype_counts  # Cell counts is complete in every rank
 
     @run_only_rank0
@@ -335,3 +399,92 @@ class DryRunStats:
                      f"{pretty_printing_memory_mb(node_total_memory)} on the current node.")
         logging.info("Please remember that it is suggested to use the same class of nodes "
                      "for both the dryrun and the actual simulation.")
+
+    @run_only_rank0
+    def distribute_cells(self, num_ranks, batch_size=10) -> (dict, dict):
+        """
+        Distributes cells across ranks based on their memory load.
+
+        This function uses a greedy algorithm to distribute cells across ranks such that
+        the total memory load is balanced. Cells with higher memory load are distributed first.
+
+        Args:
+            dry_run_stats (DryRunStats): A DryRunStats object.
+            num_ranks (int): The number of ranks.
+
+        Returns:
+            rank_allocation (dict): A dictionary where keys are rank IDs and
+                                    values are lists of cell IDs assigned to each rank.
+            rank_memory (dict): A dictionary where keys are rank IDs
+                                and values are the total memory load on each rank.
+        """
+        logging.debug("Distributing cells across %d ranks", num_ranks)
+
+        self.validate_inputs_distribute(num_ranks, batch_size)
+
+        # Multiply the average number of synapses per cell by 2.0
+        # This is done since the biggest memory load for a synapse is 2.0 kB and at this point in
+        # the code we have lost the information on whether they are excitatory or inhibitory
+        # so we just take the biggest value to be safe. (the difference between the two is minimal)
+        average_syns_mem_per_cell = {k: v * 2.0 for k, v in self.average_syns_per_cell.items()}
+
+        # Prepare a list of tuples (cell_id, memory_load)
+        # We sum the memory load of the cell type and the average number of synapses per cell
+        def generate_cells(metype_gids):
+            for cell_type, gids in metype_gids.items():
+                memory_usage = (self.metype_memory[cell_type] +
+                                average_syns_mem_per_cell[cell_type])
+                for gid in gids:
+                    yield gid, memory_usage
+
+        ranks = [(0, i) for i in range(num_ranks)]  # (total_memory, rank_id)
+        heapq.heapify(ranks)
+        all_allocation = {}
+        all_memory = {}
+
+        def assign_cells_to_rank(rank_allocation, rank_memory, batch, batch_memory):
+            total_memory, rank_id = heapq.heappop(ranks)
+            logging.debug("Assigning batch to rank %d", rank_id)
+            rank_allocation[rank_id].extend(batch)
+            total_memory += batch_memory
+            rank_memory[rank_id] = total_memory
+            heapq.heappush(ranks, (total_memory, rank_id))
+
+        for pop, metype_gids in self.metype_gids.items():
+            logging.info("Distributing cells of population %s", pop)
+            rank_allocation = defaultdict(Vector)
+            rank_memory = {}
+            batch = []
+            batch_memory = 0
+
+            for cell_id, memory in generate_cells(metype_gids):
+                batch.append(cell_id)
+                batch_memory += memory
+                if len(batch) == batch_size:
+                    assign_cells_to_rank(rank_allocation, rank_memory, batch, batch_memory)
+                    batch = []
+                    batch_memory = 0
+
+            if batch:
+                assign_cells_to_rank(rank_allocation, rank_memory, batch, batch_memory)
+
+            all_allocation[pop] = rank_allocation
+            all_memory[pop] = rank_memory
+
+        print_allocation_stats(all_allocation, all_memory)
+        export_allocation_stats(all_allocation, self._ALLOCATION_FILENAME)
+
+        return all_allocation, rank_memory
+
+    def validate_inputs_distribute(self, num_ranks, batch_size):
+        assert isinstance(num_ranks, int), "num_ranks must be an integer"
+        assert num_ranks > 0, "num_ranks must be a positive integer"
+        assert isinstance(batch_size, int), "batch_size must be an integer"
+        assert batch_size > 0, "batch_size must be a positive integer"
+        set_metype_gids = set()
+        for values in self.metype_gids.values():
+            set_metype_gids.update(values.keys())
+        assert set_metype_gids == set(self.metype_memory.keys())
+        average_syns_keys = set(self.average_syns_per_cell.keys())
+        metype_memory_keys = set(self.metype_memory.keys())
+        assert average_syns_keys == metype_memory_keys

@@ -744,12 +744,13 @@ class ConnectionManagerBase(object):
             return {}
 
         local_counter = Counter()
+        dst_pop_name = self._cell_manager.population_name
 
         # NOTE:
         #  - Estimation (and extrapolation) is performed per metype since properties can vary
         #  - Consider only the cells for the current target
 
-        for metype, me_gids in self._dry_run_stats.metype_gids.items():
+        for metype, me_gids in self._dry_run_stats.metype_gids[dst_pop_name].items():
             me_gids = set(me_gids).intersection(new_gids)
             me_gids_count = len(me_gids)
             if not me_gids_count:
@@ -787,8 +788,10 @@ class ConnectionManagerBase(object):
             # Extrapolation
             logging.debug("Cells samples / total: %d / %s", sampled_gids_count, me_gids_count)
             me_estimated_sum = sum(metype_estimate.values())
+            average_syns_per_cell = me_estimated_sum / me_gids_count
+            self._dry_run_stats.average_syns_per_cell[metype] = average_syns_per_cell
             log_all(VERBOSE_LOGLEVEL, "%s: Average syns/cell: %.1f, Estimated total: %d ",
-                    metype, me_estimated_sum / me_gids_count, me_estimated_sum)
+                    metype, average_syns_per_cell, me_estimated_sum)
             local_counter.update(metype_estimate)
 
         return local_counter
