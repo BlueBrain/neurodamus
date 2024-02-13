@@ -14,7 +14,7 @@ class SpikeManager:
     """ Holds and manages gid spike time information, specially for Replay.
 
     A SynapseReplay stim can be used for a single gid that has all the synapses instantiated.
-    Given an out.dat file from a previous run, this object uses a NetStim object to retrigger
+    Given a spikes file from a previous run, this object uses a NetStim object to retrigger
     the synapses at the appropriate time as though the presynaptic cells were present and active.
 
     Internally the spikes are stored in a :py:class:`neurodamus.utils.multimap.GroupedMultiMap`

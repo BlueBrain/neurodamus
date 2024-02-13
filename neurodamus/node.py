@@ -12,7 +12,6 @@ import subprocess
 from os import path as ospath
 from collections import namedtuple, defaultdict
 from contextlib import contextmanager
-from shutil import copyfileobj, move
 
 from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
 from .core import NeurodamusCore as Nd
@@ -1335,15 +1334,11 @@ class Node:
         timings = None
         if SimConfig.use_neuron:
             timings = self._run_neuron()
-            if not SimConfig.is_sonata_config:
-                self.spike2file("out.dat")
             self.sonata_spikes()
         if SimConfig.use_coreneuron:
             print_mem_usage()
             self.clear_model(avoid_clearing_queues=False)
             self._run_coreneuron()
-            if not SimConfig.is_sonata_config:
-                self.adapt_spikes("out.dat")
         return timings
 
     # -
@@ -1486,36 +1481,6 @@ class Node:
     # -------------------------------------------------------------------------
     #  output
     # -------------------------------------------------------------------------
-
-    @run_only_rank0
-    def adapt_spikes(self, outfile):
-        """Prepend /scatter to spikes file after coreneuron sim finishes.
-        """
-        output_root = SimConfig.output_root
-        outfile = ospath.join(output_root, outfile)
-        tmpfile = ospath.join(output_root, 'tmp.out')
-        with open(outfile, 'r') as f_src:
-            with open(tmpfile, 'w') as f_dest:
-                f_dest.write("/scatter\n")
-                copyfileobj(f_src, f_dest)
-        move(tmpfile, outfile)
-
-    @mpi_no_errors
-    def spike2file(self, outfile):
-        """ Write the spike events that occured on each node into a single output file.
-        Nodes will write in order, one after the other.
-        """
-        logging.info("Writing spikes to %s", outfile)
-        output_root = SimConfig.output_root
-        outfile = ospath.join(output_root, outfile)
-        spikevec = Nd.Vector()
-        idvec = Nd.Vector()
-        # merge spike_vecs and id_vecs for SpikeWriter
-        for spikes, ids in self._spike_vecs:
-            spikevec.append(spikes)
-            idvec.append(ids)
-        spikewriter = Nd.SpikeWriter()
-        spikewriter.write(spikevec, idvec, outfile)
 
     def sonata_spikes(self):
         """ Write the spike events that occured on each node into a single output SONATA file.

@@ -5,5 +5,4 @@ lookupTableV2.mod
 netstim_inhpoisson.mod
 SonataReportHelper.mod
 SonataReports.mod
-SpikeWriter.mod
 VecStim.mod
