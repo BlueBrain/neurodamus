@@ -19,7 +19,15 @@ jobs:
   simulation:
     runs-on: ubuntu-22.04
 
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11, 3.12]
     steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
     - name: Checkout neurodamus repository
       uses: actions/checkout@v4
       with:
