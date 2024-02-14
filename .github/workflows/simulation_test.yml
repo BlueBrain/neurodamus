@@ -69,10 +69,17 @@ jobs:
         git clone --branch="${NEURON_BRANCH:-master}" https://github.com/neuronsimulator/nrn.git --depth=1
         python -m pip install --upgrade pip -r nrn/nrn_requirements.txt
         python -m pip install --upgrade -r nmodl/requirements.txt
-        cd nrn
-        mkdir build && cd build
-        cmake -G Ninja -DPYTHON_EXECUTABLE=$(which python) -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DNRN_ENABLE_MPI=ON -DNRN_ENABLE_INTERVIEWS=OFF \
-          -DNRN_ENABLE_CORENEURON=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCORENRN_ENABLE_REPORTING=ON -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR ..
+        mkdir -p nrn/build && cd nrn/build
+        cmake -G Ninja \
+          -DPYTHON_EXECUTABLE=$(which python) \
+          -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
+          -DNRN_ENABLE_MPI=ON \
+          -DNRN_ENABLE_INTERVIEWS=OFF \
+          -DNRN_ENABLE_CORENEURON=ON \
+          -DCMAKE_C_COMPILER=gcc \
+          -DCMAKE_CXX_COMPILER=g++ \
+          -DCORENRN_ENABLE_REPORTING=ON \
+          -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR ..
         cmake --build . --parallel
         cmake --build . --target install
 
