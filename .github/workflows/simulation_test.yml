@@ -27,14 +27,31 @@ env:
 
 jobs:
   simulation:
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
 
+    strategy:
+      matrix:
+        os: [ubuntu-22.04]
+        python-version: [3.8, 3.9, 3.10, 3.11, 3.12]
     steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
     - name: Checkout neurodamus repository
       uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: 0
+
+    - name: Cache pip
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ matrix.os }}-pip-${{ matrix.python-version }}-v1
+        restore-keys: |
+          ${{ matrix.os }}-pip-
 
     - name: Get HEAD commit message and look for branches
       run: |
@@ -45,10 +62,15 @@ jobs:
         LIBSONATA_REPORT_BRANCH=$(echo $COMMIT_MESSAGE | grep -Po 'LIBSONATA_REPORT_BRANCH=\K[0-9a-zA-Z/_.\-]*' || true)
         if [[ ! -z $LIBSONATA_REPORT_BRANCH ]]; then echo "LIBSONATA_REPORT_BRANCH=$LIBSONATA_REPORT_BRANCH" >> $GITHUB_ENV; fi
 
-    - name: Install hdf5-mpich
+    - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install mpich libmpich-dev libhdf5-mpich-dev hdf5-tools
+        sudo apt-get install -y mpich libmpich-dev libhdf5-mpich-dev hdf5-tools flex libfl-dev bison ninja-build
+
+    - name: Upgrade pip and install base Python packages
+      run: |
+        python -m pip install --upgrade pip setuptools
+        pip install cython numpy wheel pkgconfig
 
     - name: Cache python virtual env
       id: cache-venv
@@ -100,17 +122,25 @@ jobs:
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
         sudo apt-get install flex libfl-dev bison ninja-build
         . ./venv/bin/activate
-        git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git
+        git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git --recursive --shallow-submodules --depth=1
         cd nrn
         if [[ ${{ env.NEURON_BRANCH }} == 'master' ]]; then
           git checkout ${{ env.NEURON_COMMIT_ID }}
         fi
-        python -m pip install --upgrade pip -r nrn_requirements.txt
-        mkdir build && cd build
-        cmake -G Ninja -DPYTHON_EXECUTABLE=$(which python) -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DNRN_ENABLE_MPI=ON -DNRN_ENABLE_INTERVIEWS=OFF \
-          -DNRN_ENABLE_CORENEURON=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCORENRN_ENABLE_REPORTING=ON -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR ..
-        cmake --build . --parallel
-        cmake --build . --target install
+        cd ..
+        python -m pip install --upgrade pip -r nrn/nrn_requirements.txt
+        cmake -B nrn/build -S nrn -G Ninja \
+          -DPYTHON_EXECUTABLE=$(which python) \
+          -DCMAKE_INSTALL_PREFIX=$(pwd)/nrn/build/install \
+          -DNRN_ENABLE_MPI=ON \
+          -DNRN_ENABLE_INTERVIEWS=OFF \
+          -DNRN_ENABLE_CORENEURON=ON \
+          -DCMAKE_C_COMPILER=gcc \
+          -DCMAKE_CXX_COMPILER=g++ \
+          -DCORENRN_ENABLE_REPORTING=ON \
+          -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR
+        cmake --build nrn/build --parallel
+        cmake --build nrn/build --target install
 
     - name: Install mpi4py
       if: steps.cache-venv.outputs.cache-hit != 'true'
@@ -121,7 +151,7 @@ jobs:
     - name: Build h5py with the local hdf5
       run: |
         . ./venv/bin/activate
-        pip install cython numpy wheel pkgconfig
+        pip install cython numpy wheel pkgconfig mpi4py
         CC="mpicc" HDF5_MPI="ON" HDF5_INCLUDEDIR=/usr/include/hdf5/mpich HDF5_LIBDIR=/usr/lib/x86_64-linux-gnu/hdf5/mpich \
           pip install --no-cache-dir --no-binary=h5py h5py --no-build-isolation
 
@@ -144,6 +174,9 @@ jobs:
     - name: Example run
       run: |
         . ./venv/bin/activate
+        if [ ${{ matrix.python-version }} == 3.9 ]; then
+          export RDMAV_FORK_SAFE=1
+        fi;
         export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
         cp neurodamus/data/hoc/* tests/share/hoc/
         export HOC_LIBRARY_PATH=$(pwd)/tests/share/hoc
