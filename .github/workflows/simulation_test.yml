@@ -65,7 +65,7 @@ jobs:
       run: |
         sudo apt-get install flex libfl-dev bison ninja-build
         pip install -U pip setuptools
-        pip install "cython<3" pytest sympy
+        pip install "cython<3" pytest sympy jinja2
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
         git clone --branch="${NEURON_BRANCH:-master}" https://github.com/neuronsimulator/nrn.git --depth=1
         cd nrn
