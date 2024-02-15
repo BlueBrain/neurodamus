@@ -233,6 +233,7 @@ upload-to-docker-hub:
       when: manual
 
 upload-to-pypi:
+  stage: publish
   script:
     python3 -m twine upload --username $PYPI_USER --password $PYPI_PASSWORD --repository-url $PYPI_URL dist/*
 
