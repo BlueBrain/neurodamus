@@ -3,6 +3,17 @@ on:
   schedule:
     # every evening at 20:00 UTC
     - cron: '0 20 * * *'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      NEURON_BRANCH:
+        description: 'NEURON branch to use'
+        required: false
+      LIBSONATA_REPORT_BRANCH:
+        description: 'libsonatareport branch to use'
+        required: false
 
 jobs:
   simulation:
