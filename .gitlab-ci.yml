@@ -232,6 +232,12 @@ upload-to-docker-hub:
     - if: $CI_PIPELINE_SOURCE == "web"
       when: manual
 
+upload-to-pypi:
+  stage: publish
+  script:
+    pip install twine
+    python -m twine upload --username $PYPI_USER --password $PYPI_PASSWORD --repository-url $PYPI_URL dist/*
+
 # The following stages are overrides. Don't rename
 # Always add the manual option to create sdist/wheel or upload
 build-package:
@@ -242,11 +248,6 @@ publish-package:
   rules:
     - when: manual
       allow_failure: true
-
-upload-to-pypi:
-  stage: publish
-  script:
-    python3 -m twine upload --username $PYPI_USER --password $PYPI_PASSWORD --repository-url $PYPI_URL dist/*
 
 docs:
   variables:
