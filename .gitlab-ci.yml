@@ -244,7 +244,7 @@ publish-package:
       allow_failure: true
 
 upload-to-pypi:
-  needs: [build-package]
+  stage: publish
   script:
     python3 -m twine upload --username $PYPI_USER --password $PYPI_PASSWORD --repository-url $PYPI_URL dist/*
 
