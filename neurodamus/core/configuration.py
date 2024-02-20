@@ -9,7 +9,6 @@ import re
 from collections import defaultdict
 from enum import Enum
 
-from ..io.config_parser import BlueConfig
 from ..io.sonata_config import SonataConfig
 from ..utils import compat
 from ..utils.logging import log_verbose
@@ -29,7 +28,7 @@ class LogLevel:
 
 class ConfigurationError(Exception):
     """
-    Error due to invalid settings in BlueConfig
+    Error due to invalid settings in simulation config
     ConfigurationError should be raised by all ranks to be caught
     properly. Otherwise we might end up with deadlocks.
     For Exceptions that are raised by a single rank Exception
@@ -207,12 +206,12 @@ class _SimConfig(object):
     # Hoc objects used
     _config_parser = None
     _parsed_run = None
-    _blueconfig = None  # new python BlueConfig parser
+    _simulation_config = None
     _simconf = None
     rng_info = None
 
     # In principle not all vars need to be required as they'r set by the parameter functions
-    blueconfig_dir = None
+    simulation_config_dir = None
     current_dir = None
     default_neuron_dt = 0.025
     buffer_time = 25
@@ -232,7 +231,6 @@ class _SimConfig(object):
     simulate_model = True
     loadbal_mode = None
     synapse_options = {}
-    is_sonata_config = False
     spike_location = "soma"
     spike_threshold = -30
     dry_run = False
@@ -253,19 +251,15 @@ class _SimConfig(object):
         if not os.path.isfile(config_file):
             raise ConfigurationError("Config file not found: " + config_file)
         logging.info("Initializing Simulation Configuration and Validation")
-        cls.is_sonata_config = config_file.endswith(".json")
 
         log_verbose("ConfigFile: %s", config_file)
         log_verbose("CLI Options: %s", cli_options)
         cls.config_file = config_file
         cls._config_parser = cls._init_config_parser(config_file)
         cls._parsed_run = compat.Map(cls._config_parser.parsedRun)  # easy access to hoc Map
-        if not cls.is_sonata_config:
-            cls._blueconfig = BlueConfig(config_file)
-        else:
-            cls._blueconfig = cls._config_parser   # Please refactor me
-            cls.sonata_circuits = cls._config_parser.circuits
-        cls.blueconfig_dir = os.path.dirname(os.path.abspath(config_file))
+        cls._simulation_config = cls._config_parser   # Please refactor me
+        cls.sonata_circuits = cls._config_parser.circuits
+        cls.simulation_config_dir = os.path.dirname(os.path.abspath(config_file))
 
         cls.projections = compat.Map(cls._config_parser.parsedProjections)
         cls.connections = compat.Map(cls._config_parser.parsedConnects)
@@ -290,35 +284,23 @@ class _SimConfig(object):
             requisitor(cls, cls._config_parser)
 
         logging.info("Initializing hoc config objects")
-        if not cls.is_sonata_config:
-            cls._parsed_run.update(run_conf)  # sync hoc config
         cls._init_hoc_config_objs()
 
     @classmethod
-    def get_blueconfig_hoc_section(cls, section_name):
+    def get_simulation_hoc_section(cls, section_name):
         # Sonata config sections are stored as PyMap, so we need to convert first
-        if isinstance(cls._config_parser, SonataConfig):
-            section = getattr(cls._config_parser, section_name)
-            return section and section.hoc_map
-        return getattr(cls._config_parser, section_name)
+        section = getattr(cls._config_parser, section_name)
+        return section and section.hoc_map
 
     @classmethod
     def _init_config_parser(cls, config_file):
         if not config_file.endswith(".json"):
-            config_parser = cls._init_hoc_config_parser(config_file)  # legacy reader
-        else:
+            raise ConfigurationError("Invalid configuration file format. "
+                                     "The configuration file must be a .json file.")
+        try:
             config_parser = SonataConfig(config_file)
-        if config_parser.parsedRun is None:
-            raise ConfigurationError("No 'Run' block found in BlueConfig %s", config_file)
-        return config_parser
-
-    @classmethod
-    def _init_hoc_config_parser(cls, config_file):
-        from . import NeurodamusCore as Nd
-        config_parser = Nd.ConfigParser()
-        config_parser.open(config_file)
-        if Nd.pc.id == 0:
-            config_parser.toggleVerbose()
+        except Exception as e:
+            raise ConfigurationError(f"Failed to initialize SonataConfig with {config_file}: {e}")
         return config_parser
 
     @classmethod
@@ -326,11 +308,9 @@ class _SimConfig(object):
         """Init objects which parse/check configs in the hoc world"""
         from neuron import h
         parsed_run = cls._parsed_run.hoc_map
-        cls._simconf = h.simConfig
-        cls._simconf.interpret(parsed_run)
 
         cls.rng_info = h.RNGSettings()
-        cls.rng_info.interpret(parsed_run)
+        cls.rng_info.interpret(parsed_run, cls.use_coreneuron)
         if parsed_run.exists("BaseSeed"):
             logging.info("User-defined RNG base seed %s", parsed_run.valueOf("BaseSeed"))
 
@@ -414,7 +394,7 @@ def find_input_file(filepath, search_paths=(), alt_filename=None):
     Raises:
         (ConfigurationError) If the file could not be found
     """
-    search_paths += (SimConfig.current_dir, SimConfig.blueconfig_dir)
+    search_paths += (SimConfig.current_dir, SimConfig.simulation_config_dir)
 
     def try_find_in(fullpath):
         if os.path.isfile(fullpath):
@@ -452,31 +432,31 @@ def _check_params(section_name, data, required_fields,
     """
     for param in required_fields:
         if param not in data:
-            raise ConfigurationError("BlueConfig mandatory param not present: [%s] %s"
+            raise ConfigurationError("simulation config mandatory param not present: [%s] %s"
                                      % (section_name, param))
     for param in set(numeric_fields + non_negatives):
         val = data.get(param)
         try:
             val and float(val)
         except ValueError:
-            raise ConfigurationError("BlueConfig param must be numeric: [%s] %s"
+            raise ConfigurationError("simulation config param must be numeric: [%s] %s"
                                      % (section_name, param))
     for param in non_negatives:
         val = data.get(param)
         if val and float(val) < 0:
-            raise ConfigurationError("BlueConfig param must be positive: [%s] %s"
+            raise ConfigurationError("simulation config param must be positive: [%s] %s"
                                      % (section_name, param))
 
     for param, valid in (valid_values or {}).items():
         val = data.get(param)
         if val and val not in valid:
-            raise ConfigurationError("BlueConfig param value is invalid: [%s] %s = %s"
+            raise ConfigurationError("simulation config param value is invalid: [%s] %s = %s"
                                      % (section_name, param, val))
 
     for param, deprecated in (deprecated_values or {}).items():
         val = data.get(param)
         if val and val in deprecated:
-            logging.warning("BlueConfig param value is deprecated: [%s] %s = %s"
+            logging.warning("simulation config param value is deprecated: [%s] %s = %s"
                             % (section_name, param, val))
 
 
@@ -593,7 +573,7 @@ def _extra_circuits(config: _SimConfig, run_conf):
     from . import EngineBase
     extra_circuits = {}
 
-    for name, circuit_info in config._blueconfig.Circuit.items():
+    for name, circuit_info in config._simulation_config.Circuit.items():
         log_verbose("CIRCUIT %s (%s)", name, circuit_info.get("Engine", "(default)"))
         if "Engine" in circuit_info:
             # Replace name by actual engine
@@ -691,13 +671,13 @@ _condition_checks = {
 
 @SimConfig.validator
 def _simulator_globals(config: _SimConfig, run_conf):
-    if not hasattr(config._blueconfig, "Conditions"):
+    if not hasattr(config._simulation_config, "Conditions"):
         return None
     from neuron import h
     # Hackish but some constants only live in the helper
     h.load_file("GABAABHelper.hoc")
 
-    for group in config._blueconfig.Conditions.values():
+    for group in config._simulation_config.Conditions.values():
         for key, value in group.items():
             validator = _condition_checks.get(key)
             if validator:
@@ -769,11 +749,10 @@ def _randomize_gaba_risetime(config: _SimConfig, run_conf):
 @SimConfig.validator
 def _current_dir(config: _SimConfig, run_conf):
     curdir = run_conf.get("CurrentDir")
-    run_conf["BlueConfigDir"] = config.blueconfig_dir
 
     if curdir is None:
-        log_verbose("CurrentDir using BlueConfig path [default]")
-        curdir = config.blueconfig_dir
+        log_verbose("CurrentDir using simulation config path [default]")
+        curdir = config.simulation_config_dir
     else:
         if not os.path.isabs(curdir):
             if curdir == ".":
@@ -978,10 +957,6 @@ def _model_building_steps(config: _SimConfig, run_conf):
     user_config = config.cli_options
     if user_config.modelbuilding_steps is not None:
         ncycles = int(user_config.modelbuilding_steps)
-        src_is_cli = True
-    elif "ModelBuildingSteps" in run_conf:
-        ncycles = int(run_conf["ModelBuildingSteps"])
-        src_is_cli = False
     else:
         return None
 
@@ -996,7 +971,7 @@ def _model_building_steps(config: _SimConfig, run_conf):
             "Multi-iteration coreneuron data generation requires CircuitTarget")
 
     logging.info("Splitting Target for multi-iteration CoreNeuron data generation")
-    logging.info(" -> Cycles: %d. [src: %s]", ncycles, "CLI" if src_is_cli else "BlueConfig")
+    logging.info(" -> Cycles: %d. [src: %s]", ncycles, "CLI")
     config.modelbuilding_steps = ncycles
 
 
@@ -1042,7 +1017,7 @@ def get_debug_cell_gid(cli_options):
         gid = int(gid) if gid is not None else SimConfig.run_conf.get("prCellGid")
     except ValueError as e:
         raise ConfigurationError("Cannot parse Gid for dump-cell-state: " + gid) from e
-    if gid and SimConfig.is_sonata_config:
+    if gid:
         # In sonata mode, user will provide a 0-based, add 1.
         gid += 1
     return gid

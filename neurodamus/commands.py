@@ -36,7 +36,7 @@ def neurodamus(args=None):
                                 - OFF: Don't build the model. Simulation may fail to start
         --simulate-model=[ON, OFF]
                                 Shall the simulation start automatically? [default: ON]
-        --output-path=PATH      Alternative output directory, overriding BlueConfigs
+        --output-path=PATH      Alternative output directory, overriding the config file's
         --keep-build            Keep coreneuron intermediate data. Otherwise deleted at the end
         --modelbuilding-steps=<number>
                                 Set the number of ModelBuildingSteps for the CoreNeuron sim
