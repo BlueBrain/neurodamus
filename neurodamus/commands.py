@@ -41,13 +41,15 @@ def neurodamus(args=None):
         --modelbuilding-steps=<number>
                                 Set the number of ModelBuildingSteps for the CoreNeuron sim
         --experimental-stims    Shall use only Python stimuli? [default: False]
-        --lb-mode=[RoundRobin, WholeCell, MultiSplit]
+        --lb-mode=[RoundRobin, WholeCell, MultiSplit, Memory]
                                 The Load Balance mode.
                                 - RoundRobin: Disable load balancing. Good for quick simulations
                                 - WholeCell: Does a first pass to compute load balancing and
                                     redistributes cells so that CPU load is similar among ranks
                                 - MultiSplit: Allows splitting cells into pieces for distribution.
                                     WARNING: This mode is incompatible with CoreNeuron
+                                - Memory: Load balance based on memory usage. By default, it uses
+                                    the "allocation.pkl.gz" file to load a pre-computed load balance.
         --save=<PATH>           Path to create a save point to enable resume.
         --save-time=<TIME>      The simulation time [ms] to save the state. (Default: At the end)
         --restore=<PATH>        Restore and resume simulation from a save point on disk

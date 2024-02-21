@@ -32,6 +32,7 @@ from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import DryRunStats, trim_memory, pool_shrink, free_event_queues, print_mem_usage
+from .utils.memory import import_allocation_stats
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig, CompartmentMapping
 from .io.sonata_config import ConnectionTypes
@@ -371,6 +372,9 @@ class Node:
         lb_mode = LoadBalance.select_lb_mode(SimConfig, self._run_conf, target)
         if lb_mode == LoadBalanceMode.RoundRobin:
             return None
+        elif lb_mode == LoadBalanceMode.Memory:
+            logging.info("Load Balancing ENABLED. Mode: Memory")
+            return import_allocation_stats("allocation.pkl.gz")
 
         # Build load balancer as per requested options
         data_src = circuit.CircuitPath

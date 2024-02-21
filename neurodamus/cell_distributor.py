@@ -201,11 +201,13 @@ class CellManagerBase(_CellManager):
         loader_f = (lambda *args: _loader(*args, **loader_opts)) if loader_opts else _loader
 
         logging.info("Reading Nodes (METype) info from '%s'", conf.CellLibraryFile)
-        if load_balancer and load_balancer.population != self._target_spec.population:
+        if load_balancer and hasattr(load_balancer, 'population') and load_balancer.population != self._target_spec.population:
             log_verbose("Load balance object doesn't apply to '%s'", self._target_spec.population)
             load_balancer = None
         if not load_balancer or SimConfig.dry_run:
             gidvec, me_infos, *cell_counts = self._load_nodes(loader_f)
+        elif load_balancer and SimConfig.loadbal_mode == LoadBalanceMode.Memory:
+            gidvec, me_infos, *cell_counts = self._load_nodes_balance_mem(loader_f, load_balancer)
         else:
             gidvec, me_infos, *cell_counts = self._load_nodes_balance(loader_f, load_balancer)
         self._local_nodes.add_gids(gidvec, me_infos)
@@ -240,6 +242,15 @@ class CellManagerBase(_CellManager):
         all_gids = numpy.unique(
             self._binfo.gids.as_numpy().astype("uint32") - self._local_nodes.offset
         )
+        total_cells = len(all_gids)
+        gidvec, me_infos, full_size = loader_f(self._circuit_conf, all_gids)
+        return gidvec, me_infos, total_cells, full_size
+
+    def _load_nodes_balance_mem(self, loader_f, load_balancer):
+        targetspec: TargetSpec = self._target_spec
+
+        population = targetspec.population
+        all_gids = load_balancer[population][MPI.rank]
         total_cells = len(all_gids)
         gidvec, me_infos, full_size = loader_f(self._circuit_conf, all_gids)
         return gidvec, me_infos, total_cells, full_size

@@ -136,6 +136,7 @@ class LoadBalanceMode(Enum):
     RoundRobin = 0
     WholeCell = 1
     MultiSplit = 2
+    Memory = 3
 
     @classmethod
     def parse(cls, lb_mode):
@@ -149,7 +150,8 @@ class LoadBalanceMode(Enum):
             "roundrobin": cls.RoundRobin,
             "wholecell": cls.WholeCell,
             "loadbalance": cls.MultiSplit,
-            "multisplit": cls.MultiSplit
+            "multisplit": cls.MultiSplit,
+            "memory": cls.Memory
         }
         lb_mode_enum = _modes.get(lb_mode.lower())
         if lb_mode_enum is None:

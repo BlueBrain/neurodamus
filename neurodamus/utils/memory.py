@@ -205,10 +205,17 @@ def import_allocation_stats(filename):
     """
     Import allocation dictionary from serialized pickle file.
     """
+    def convert_to_standard_types(obj):
+        """Converts an object containing defaultdicts of Vectors to standard Python types."""
+        result = {}
+        for node, vectors in obj.items():
+            result[node] = {key: list(vector) for key, vector in vectors.items()}
+        return result
+
     with open(filename, 'rb') as f:
         compressed_data = f.read()
 
-    return pickle.loads(gzip.decompress(compressed_data))
+    return convert_to_standard_types(pickle.loads(gzip.decompress(compressed_data)))
 
 
 @run_only_rank0
