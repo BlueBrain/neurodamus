@@ -238,12 +238,21 @@ upload-to-pypi:
   script:
     pip install twine
     python -m twine upload --username $PYPI_USER --password $PYPI_PASSWORD --repository-url $PYPI_URL ${PYTHON_PROJECT_DIR}/wheelhouse
+  rules:
+    - when: manual
 
 # The following stages are overrides. Don't rename
 # Always add the manual option to create sdist/wheel or upload
 build-package:
   rules:
     - when: on_success
+
+build-wheels:
+  parallel:
+    matrix:
+      - PY_VERSION: [py311, py312]
+  rules:
+    - when: manual
 
 publish-package:
   rules:
