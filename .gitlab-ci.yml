@@ -233,7 +233,9 @@ upload-to-docker-hub:
       when: manual
 
 upload-to-pypi:
-  stage: publish
+  image: python:3.11
+  stage: build
+  needs: [build-wheels]
   script:
     pip install twine
     python -m twine upload --username $PYPI_USER --password $PYPI_PASSWORD --repository-url $PYPI_URL dist/*
