@@ -200,7 +200,8 @@ def export_allocation_stats(rank_allocation, filename):
         f.write(compressed_data)
 
 
-def import_allocation_stats(filename):
+@run_only_rank0
+def import_allocation_stats(filename) -> dict:
     """
     Import allocation dictionary from serialized pickle file.
     """
