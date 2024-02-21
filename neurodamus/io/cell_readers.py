@@ -121,7 +121,6 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
             return load_base_info_dry_run()
 
         meinfos = METypeManager()
-        import pdb; pdb.set_trace()
         gidvec = split_round_robin(all_gids, stride, stride_offset, total_cells)
 
         if not len(gidvec):
@@ -129,6 +128,8 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
             return gidvec, meinfos, total_cells
 
         log_verbose("Loading nodes info")
+        if not isinstance(gidvec, np.ndarray):
+            gidvec = np.array(gidvec, dtype="uint32")
         node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
         morpho_names = node_pop.get_attribute("morphology", node_sel)
         mtypes = node_pop.get_attribute("mtype", node_sel)
