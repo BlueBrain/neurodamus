@@ -200,7 +200,6 @@ def export_allocation_stats(rank_allocation, filename):
         f.write(compressed_data)
 
 
-@run_only_rank0
 def import_allocation_stats(filename):
     """
     Import allocation dictionary from serialized pickle file.
@@ -209,7 +208,7 @@ def import_allocation_stats(filename):
         """Converts an object containing defaultdicts of Vectors to standard Python types."""
         result = {}
         for node, vectors in obj.items():
-            result[node] = {key: list(vector) for key, vector in vectors.items()}
+            result[node] = {key: np.array(vector) for key, vector in vectors.items()}
         return result
 
     with open(filename, 'rb') as f:
