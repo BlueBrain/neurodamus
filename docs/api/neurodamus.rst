@@ -21,7 +21,6 @@ Sub-Modules
    neurodamus.connection_manager
    neurodamus.connection
    neurodamus.gap_junction
-   neurodamus.managers
    neurodamus.metype
    neurodamus.modification_manager
    neurodamus.ngv
