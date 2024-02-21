@@ -9,7 +9,6 @@
 
 // Neurodamus - Do not change order
 {load_file("RNGSettings.hoc")}
-{load_file("ElectrodeManager.hoc")}
 {load_file("StimulusManager.hoc")}
 {load_file("Cell.hoc")}
 {load_file("TDistFunc.hoc")}
