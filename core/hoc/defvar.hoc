@@ -1,0 +1,34 @@
+{load_file("stdlib.hoc")}
+
+proc default_var() {localobj s, pc
+	s = new String()
+	if (name_declared($s1) == 0) {
+		if (argtype(2) == 2) {
+			sprint(s.s, "~strdef %s", $s1)
+			execute(s.s)
+			sprint(s.s, "%s = \"%s\"", $s1, $s2)
+		}else{
+			hoc_ac_ = $2
+			sprint(s.s, "%s = hoc_ac_", $s1)
+		}
+		execute(s.s)
+	}
+}
+
+
+// Define if not defined
+default_var("simulator", "NEURON")
+
+
+// Version t\stuff
+default_var("NEURODAMUS_MODEL", "UNKNOWN_NEURODAMUS_MODEL")
+default_var("NEURODAMUS_MODEL_VERSION", "UNKNOWN_NEURODAMUS_VERSION")
+default_var("NEURODAMUS_MODEL_HASH", "UNKNOWN_NEURODAMUS_HASH")
+default_var("NEURODAMUS_CORE_VERSION", "UNKNOWN_CORE_VERSION")
+default_var("NEURODAMUS_CORE_HASH", "UNKNOWN_CORE_HASH")
+
+obfunc get_version() {localobj version_message
+    version_message = new String()
+    sprint(version_message.s, "Version: %s@%s %s Core: %s %s", NEURODAMUS_MODEL, NEURODAMUS_MODEL_VERSION, NEURODAMUS_MODEL_HASH, NEURODAMUS_CORE_VERSION, NEURODAMUS_CORE_HASH)
+    return version_message
+}
