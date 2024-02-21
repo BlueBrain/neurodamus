@@ -1233,6 +1233,7 @@ class Node:
     # -
     def _sim_corenrn_configure_datadir(self, corenrn_restore):
         corenrn_datadir = SimConfig.coreneuron_datadir
+        os.makedirs(corenrn_datadir, exist_ok=True)
         corenrn_datadir_shm = SHMUtil.get_datadir_shm(corenrn_datadir)
 
         # Clean-up any previous simulations in the same output directory
