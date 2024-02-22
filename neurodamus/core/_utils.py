@@ -8,6 +8,7 @@ from functools import wraps
 from inspect import Signature, signature
 from ._mpi import MPI
 from ..utils import progressbar
+from . import NeurodamusCore as Nd
 
 
 class ProgressBarRank0(progressbar.Progress):
@@ -67,8 +68,39 @@ class run_only_rank0:
         return rank0_wrapper
 
 
-def return_neuron_timings(f):
-    """Decorator to collect and return timings on a neuron run
+class SimulationProgress:
+    def __init__(self):
+        """
+        Utility class which will set up a timer to perioducally check the amount of time lapsed
+        in the simulation compared to the final tstop value.  This is converted into a percentage
+        of the job complete which is then printed to the console.
+        """
+        self.last_time_check = time.time()
+        self.sim_start = self.last_time_check
+        self.update_progress()
+
+    @run_only_rank0
+    def update_progress(self):
+        """
+        Callback function that refreshes the progress value (if enough time has elapsed) and then
+        inserts the next call into the event queue.
+        """
+        current_time = time.time()
+        sim_t = Nd.t
+        sim_tstop = Nd.tstop
+        if (current_time - self.last_time_check > 0.75) and (sim_t > 0):
+            self.last_time_check = current_time
+            sec_remain = (self.last_time_check - self.sim_start) * (sim_tstop / sim_t - 1)
+            hours = sec_remain / 3600
+            minutes = (sec_remain % 3600) / 60
+            seconds = (sec_remain % 3600) % 60
+            print(f"\r[t={sim_t:5.2f}] Completed {sim_t*100/sim_tstop:2.0f}% "
+                  f"ETA: {hours:02.0f}:{minutes:02.0f}:{seconds:02.0f}  ", end='', flush=True)
+        Nd.cvode.event(sim_t + 1, self.update_progress)
+
+
+def return_neuron_timings_and_progress(f):
+    """Decorator to collect, return timings and show the progress on a neuron run
     """
     @wraps(f)
     def timings_wrapper(*args, **kw):
@@ -78,6 +110,7 @@ def return_neuron_timings(f):
         pc = MPI.pc
         wait_base = pc.wait_time()
 
+        SimulationProgress()
         f(*args, **kw)  # Discard return values
 
         tdat[0] = pc.wait_time() - wait_base

@@ -20,7 +20,7 @@ neurodamus.core package
    .. rubric:: Decorators
 
    .. autosummary::
-      return_neuron_timings
+      return_neuron_timings_and_progress
       mpi_no_errors
       run_only_rank0
 
@@ -67,7 +67,7 @@ Module API
 
 **Decorators**
 
-.. autofunction:: return_neuron_timings
+.. autofunction:: return_neuron_timings_and_progress
 
 .. autofunction:: mpi_no_errors
 

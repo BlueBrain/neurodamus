@@ -13,7 +13,7 @@ from os import path as ospath
 from collections import namedtuple, defaultdict
 from contextlib import contextmanager
 
-from .core import MPI, mpi_no_errors, return_neuron_timings, run_only_rank0
+from .core import MPI, mpi_no_errors, return_neuron_timings_and_progress, run_only_rank0
 from .core import NeurodamusCore as Nd
 from .core.configuration import CircuitConfig, Feature, GlobalConfig, SimConfig
 from .core._engine import EngineBase
@@ -1299,10 +1299,8 @@ class Node:
         return timings
 
     # -
-    @return_neuron_timings
+    @return_neuron_timings_and_progress
     def _run_neuron(self):
-        Nd.load_hoc("ShowProgress")  # TODO: Drop this
-        _ = Nd.ShowProgress(Nd.cvode, MPI.rank)
         self.solve()
         logging.info("Simulation finished.")
 
