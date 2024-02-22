@@ -375,6 +375,9 @@ class Node:
         elif lb_mode == LoadBalanceMode.Memory:
             logging.info("Load Balancing ENABLED. Mode: Memory")
             alloc = import_allocation_stats("allocation.pkl.gz")
+            for pop, ranks in alloc.items():
+                for rank, gids in ranks.items():
+                    logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
             if MPI.rank == 0:
                 unique_ranks = set(rank for pop in alloc.values() for rank in pop.keys())
                 logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))

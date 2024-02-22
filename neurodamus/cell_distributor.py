@@ -202,7 +202,8 @@ class CellManagerBase(_CellManager):
 
         logging.info("Reading Nodes (METype) info from '%s'", conf.CellLibraryFile)
         if load_balancer and \
-           getattr(load_balancer, 'population', None) != self._target_spec.population:
+           hasattr(load_balancer, 'population') and \
+           load_balancer.population != self._target_spec.population:
             log_verbose("Load balance object doesn't apply to '%s'", self._target_spec.population)
             load_balancer = None
         if not load_balancer or SimConfig.dry_run:
@@ -252,6 +253,7 @@ class CellManagerBase(_CellManager):
 
         population = targetspec.population
         all_gids = load_balancer[population][MPI.rank]
+        logging.debug("Loading %d cells in rank %d", len(all_gids), MPI.rank)
         total_cells = len(all_gids)
         gidvec, me_infos, full_size = loader_f(self._circuit_conf, all_gids)
         return gidvec, me_infos, total_cells, full_size
