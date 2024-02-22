@@ -380,9 +380,9 @@ class Node:
                 logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))
                 if MPI.size != len(unique_ranks):
                     raise ConfigurationError(
-                        "The number of ranks in the allocation file is different from the number of "
-                        "ranks in the current run. The allocation file was created with a different "
-                        "number of ranks."
+                        "The number of ranks in the allocation file is different from the number "
+                        "of ranks in the current run. The allocation file was created with a "
+                        "different number of ranks."
                     )
             return alloc
 

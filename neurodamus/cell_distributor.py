@@ -201,7 +201,8 @@ class CellManagerBase(_CellManager):
         loader_f = (lambda *args: _loader(*args, **loader_opts)) if loader_opts else _loader
 
         logging.info("Reading Nodes (METype) info from '%s'", conf.CellLibraryFile)
-        if load_balancer and hasattr(load_balancer, 'population') and load_balancer.population != self._target_spec.population:
+        if load_balancer and \
+           getattr(load_balancer, 'population', None) != self._target_spec.population:
             log_verbose("Load balance object doesn't apply to '%s'", self._target_spec.population)
             load_balancer = None
         if not load_balancer or SimConfig.dry_run:
