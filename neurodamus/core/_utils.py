@@ -69,15 +69,23 @@ class run_only_rank0:
 
 
 class SimulationProgress:
-    def __init__(self):
+    def __init__(self, f):
         """
-        Utility class which will set up a timer to perioducally check the amount of time lapsed
+        Decorator class which will set up a timer to perioducally check the amount of time lapsed
         in the simulation compared to the final tstop value.  This is converted into a percentage
         of the job complete which is then printed to the console.
         """
+        self.f = f
+        wraps(f)(self)
+
+    def __call__(self, *args, **kwargs):
+        # Start / update progress tracking
         self.last_time_check = time.time()
         self.sim_start = self.last_time_check
         self.update_progress()
+        # Execute the decorated function
+        result = self.f(*args, **kwargs)
+        return result
 
     @run_only_rank0
     def update_progress(self):
@@ -99,7 +107,7 @@ class SimulationProgress:
         Nd.cvode.event(sim_t + 1, self.update_progress)
 
 
-def return_neuron_timings_and_progress(f):
+def return_neuron_timings(f):
     """Decorator to collect, return timings and show the progress on a neuron run
     """
     @wraps(f)
@@ -110,7 +118,6 @@ def return_neuron_timings_and_progress(f):
         pc = MPI.pc
         wait_base = pc.wait_time()
 
-        SimulationProgress()
         f(*args, **kw)  # Discard return values
 
         tdat[0] = pc.wait_time() - wait_base
