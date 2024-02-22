@@ -1012,14 +1012,13 @@ def _spikes_sort_order(config: _SimConfig, run_conf):
 
 
 def get_debug_cell_gid(cli_options):
-    gid = None if not cli_options else cli_options.get("dump_cell_state")
-    try:
-        gid = int(gid) if gid is not None else SimConfig.run_conf.get("prCellGid")
-    except ValueError as e:
-        raise ConfigurationError("Cannot parse Gid for dump-cell-state: " + gid) from e
+    gid = cli_options.get("dump_cell_state") if cli_options else None
     if gid:
-        # In sonata mode, user will provide a 0-based, add 1.
-        gid += 1
+        try:
+            # Convert to integer and adjust for sonata mode (0-based to 1-based indexing)
+            gid = int(gid) + 1
+        except ValueError as e:
+            raise ConfigurationError("Cannot parse Gid for dump-cell-state: " + gid) from e
     return gid
 
 

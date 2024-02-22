@@ -375,10 +375,9 @@ class Node:
             return None
 
         # Build load balancer as per requested options
-        prosp_hosts = self._run_conf.get("ProspectiveHosts")
         data_src = circuit.CircuitPath
         pop = target_spec.population
-        load_balancer = LoadBalance(lb_mode, data_src, pop, self._target_manager, prosp_hosts)
+        load_balancer = LoadBalance(lb_mode, data_src, pop, self._target_manager)
 
         if load_balancer.valid_load_distribution(target_spec):
             logging.info("Load Balancing done.")
@@ -407,15 +406,6 @@ class Node:
         """Instantiate and distributes the cells of the network.
         Any targets will be updated to know which cells are local to the cpu.
         """
-        # We wont go further if ProspectiveHosts is defined to some other cpu count
-        prosp_hosts = self._run_conf.get("ProspectiveHosts")
-        if load_balance and prosp_hosts not in (None, MPI.size):
-            logging.warning(
-                "Load Balance requested for %d CPUs (as per ProspectiveHosts). "
-                "To continue execution launch on a partition of that size",
-                prosp_hosts)
-            Nd.quit(1)
-
         if SimConfig.dry_run:
             logging.info("Memory usage after inizialization:")
             print_mem_usage()
