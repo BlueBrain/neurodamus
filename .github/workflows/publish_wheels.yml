@@ -53,4 +53,4 @@ jobs:
             PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |
           pip3 install twine
-          DIST_FILE=`ls dist/neurodamus*whl` && python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password $PYPI_TOKEN --repository-url $PYPI_URL DIST_FILE
+          DIST_FILE=`ls dist/neurodamus*whl` && python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password $PYPI_TOKEN --repository-url $PYPI_URL $DIST_FILE
