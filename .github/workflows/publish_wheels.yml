@@ -1,6 +1,6 @@
 name: Neurodamus Wheels
 
-on: workflow_dispatch
+on: push
 
 jobs:
   wheel:
