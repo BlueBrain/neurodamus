@@ -47,21 +47,8 @@ def test_dry_run_workflow(USECASE3):
 
     assert rank_allocation_standard == expected_items
 
-
-def test_dry_run_workflow_1rank(USECASE3):
-    """
-    Test that the dry run mode works
-    """
-
-    from neurodamus import Neurodamus
-    nd = Neurodamus(
-        str(USECASE3 / "simulation_sonata.json"),
-        dry_run=True
-    )
-
-    nd.run()
-
     # Test that the allocation works and can be saved and loaded
+    # and generate allocation.pkl.gz for 1 rank
     rank_allocation, _ = nd._dry_run_stats.distribute_cells(1)
     export_allocation_stats(rank_allocation, USECASE3 / "allocation.pkl.gz")
     rank_allocation = import_allocation_stats(USECASE3 / "allocation.pkl.gz")
