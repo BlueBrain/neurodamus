@@ -39,6 +39,7 @@ Tracker = "https://github.com/BlueBrain/neurodamus/issues"
 exclude=["tests"]
 
 [tool.setuptools_scm]
+local_scheme = "no-local-version"
 
 [tool.pytest.ini_options]
 addopts = "--verbose"
