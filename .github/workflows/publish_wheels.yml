@@ -24,6 +24,7 @@ jobs:
           sudo curl -sS https://bootstrap.pypa.io/get-pip.py | python${{ matrix.python_version }}
           sudo apt-get install -y cmake ninja-build
           sudo apt-get install -y libhdf5-mpich-dev
+          pip3 install pipx
       - name: Build libsonatareport
         run: |
           git clone https://github.com/BlueBrain/libsonatareport.git --recursive
@@ -44,13 +45,12 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE
           pip3 install tox
-          DIST_FILE=`ls dist/neurodamus*whl` tox --installpkg=dist/*.whl -e ${{ matrix.python_version }}
+          DIST_FILE=`ls dist/*whl` && tox --installpkg=$DIST_FILE -e ${{ matrix.python_version }}
       - name: Upload Wheel
         env:
             PYPI_URL: ${{ secrets.PYPI_URL }}
             PYPI_USER: ${{ secrets.PYPI_USER }}
             PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |
-          pip3 install twine argcomplete
-          DIST_FILE=`ls dist/neurodamus*whl` tox --installpkg=dist/*.whl -e ${{ matrix.python_version }}
-          python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password $PYPI_PASSWORD --repository-url $PYPI_URL DIST_FILE
+          pip3 install twine
+          DIST_FILE=`ls dist/neurodamus*whl` && python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password $PYPI_PASSWORD --repository-url $PYPI_URL DIST_FILE
