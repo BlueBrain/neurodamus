@@ -1300,8 +1300,8 @@ class Node:
 
     # -
     @return_neuron_timings
-    @SimulationProgress
     def _run_neuron(self):
+        SimulationProgress()
         self.solve()
         logging.info("Simulation finished.")
 
