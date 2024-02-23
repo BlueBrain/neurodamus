@@ -287,12 +287,6 @@ class _SimConfig(object):
         cls._init_hoc_config_objs()
 
     @classmethod
-    def get_simulation_hoc_section(cls, section_name):
-        # Sonata config sections are stored as PyMap, so we need to convert first
-        section = getattr(cls._config_parser, section_name)
-        return section and section.hoc_map
-
-    @classmethod
     def _init_config_parser(cls, config_file):
         if not config_file.endswith(".json"):
             raise ConfigurationError("Invalid configuration file format. "

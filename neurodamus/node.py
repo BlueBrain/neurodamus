@@ -302,7 +302,6 @@ class Node:
         self._stim_list = None
         self._report_list = None
         self._stim_manager = None
-        self._elec_manager = None
         self._sim_ready = False
         self._jumpstarters = []
         self._cell_state_dump_t = None
@@ -317,7 +316,6 @@ class Node:
     circuits = property(lambda self: self._circuits)
     target_manager = property(lambda self: self._target_manager)
     stim_manager = property(lambda self: self._stim_manager)
-    elec_manager = property(lambda self: self._elec_manager)
     stims = property(lambda self: self._stim_list)
     reports = property(lambda self: self._report_list)
 
@@ -644,11 +642,8 @@ class Node:
 
         log_stage("Stimulus Apply.")
 
-        # Setup of Electrode objects part of enable stimulus
-        self._enable_electrodes()
-
         # for each stimulus defined in the config file, request the stimmanager to instantiate
-        self._stim_manager = StimulusManager(self._target_manager, self._elec_manager)
+        self._stim_manager = StimulusManager(self._target_manager, None)
 
         # build a dictionary of stims for faster lookup : useful when applying 10k+ stims
         # while we are at it, check if any stims are using extracellular
@@ -684,22 +679,6 @@ class Node:
 
             logging.info(" * [STIM] %s: %s (%s) -> %s", name, stim_name, stim_pattern, target_spec)
             self._stim_manager.interpret(target_spec, stim)
-
-    # -
-    def _enable_electrodes(self):
-        if SimConfig.use_coreneuron:
-            # Coreneuron doesnt support electrodes
-            return False
-        electrode_path = self._run_conf.get("ElectrodesPath")
-        if electrode_path is not None:
-            logging.info("ElectrodeManager using electrodes from %s", electrode_path)
-        else:
-            logging.info("No electrodes path. Extracellular class of stimuli will be unavailable")
-
-        self._elec_manager = Nd.ElectrodeManager(
-            electrode_path and Nd.String(electrode_path),
-            SimConfig.get_simulation_hoc_section("parsedElectrodes")
-        )
 
     # -
     @mpi_no_errors
@@ -876,10 +855,6 @@ class Node:
 
         self._reports_init(pop_offsets_alias)
 
-        # electrode manager is no longer needed. free the memory
-        if self._elec_manager is not None:
-            self._elec_manager.clear()
-
     #
     def _report_build_params(self, rep_name, rep_conf, target, pop_offsets_alias_pop):
         sim_end = self._run_conf["Duration"]
@@ -924,8 +899,6 @@ class Node:
                 logging.error("Invalid report dt %f < %f simulation dt", rep_dt, Nd.dt)
             return None
 
-        electrode = self._elec_manager.getElectrode(rep_conf["Electrode"]) \
-            if SimConfig.use_neuron and "Electrode" in rep_conf else None
         rep_target = TargetSpec(rep_conf["Target"])
         population_name = (rep_target.population or self._target_spec.population
                             or self._default_population)
@@ -942,7 +915,7 @@ class Node:
             start_time,
             end_time,
             SimConfig.output_root,
-            electrode,
+            None,
             Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
             rep_conf.get("ISC", "")
         )
