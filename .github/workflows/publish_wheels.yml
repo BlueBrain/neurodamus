@@ -1,0 +1,56 @@
+name: Neurodamus Wheels
+
+# TODO: set to on: workflow_dispatch before merging to main
+on: push
+
+jobs:
+  wheel:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python_version: [3.11]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Prerequisites
+        run: |
+          sudo apt-get update --fix-missing
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:deadsnakes/ppa
+          sudo TZ=UTC apt-get -y install tzdata
+          sudo apt-get update 
+          sudo apt-get install -y python${{ matrix.python_version }} python${{ matrix.python_version }}-distutils python${{ matrix.python_version }}-venv
+          sudo apt-get install -y curl
+          sudo curl -sS https://bootstrap.pypa.io/get-pip.py | python${{ matrix.python_version }}
+          sudo apt-get install -y cmake ninja-build
+          sudo apt-get install -y libhdf5-mpich-dev
+      - name: Build libsonatareport
+        run: |
+          git clone https://github.com/BlueBrain/libsonatareport.git --recursive
+          cd libsonatareport
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON -GNinja
+          cmake --build build
+          cd ..
+      - name: Install neuron
+        run: |
+          pip3 install neuron
+      - name: Build Wheel
+        run: |
+          cd $GITHUB_WORKSPACE
+          python${{ matrix.python_version }} -m pip install --upgrade build
+          # build wheel
+          python${{ matrix.python_version }} -m build .
+      - name: Test Wheel
+        run: |
+          cd $GITHUB_WORKSPACE
+          pip3 install tox
+          DIST_FILE=`ls dist/neurodamus*whl` tox --installpkg=dist/*.whl -e ${{ matrix.python_version }}
+      - name: Upload Wheel
+        env:
+            PYPI_URL: ${{ secrets.PYPI_URL }}
+            PYPI_USER: ${{ secrets.PYPI_USER }}
+            PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          pip3 install twine argcomplete
+          DIST_FILE=`ls dist/neurodamus*whl` tox --installpkg=dist/*.whl -e ${{ matrix.python_version }}
+          python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password $PYPI_PASSWORD --repository-url $PYPI_URL DIST_FILE

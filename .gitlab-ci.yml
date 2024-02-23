@@ -3,7 +3,6 @@ include:
     file:
       - /ci/lib/tox-bb5.yml
       - /ci/jobs/build-package.yml
-      - /ci/jobs/build-wheels.yml
       - /ci/jobs/publish-package.yml
       - /ci/jobs/docs.yml
       - /ci/jobs/publish-docs.yml
@@ -233,26 +232,12 @@ upload-to-docker-hub:
     - if: $CI_PIPELINE_SOURCE == "web"
       when: manual
 
-upload-to-pypi:
-  needs: [build-wheels]
-  script:
-    pip install twine
-    python -m twine upload --username $PYPI_USER --password $PYPI_PASSWORD --repository-url $PYPI_URL ${PYTHON_PROJECT_DIR}/wheelhouse
-  rules:
-    - when: manual
 
 # The following stages are overrides. Don't rename
 # Always add the manual option to create sdist/wheel or upload
 build-package:
   rules:
     - when: on_success
-
-build-wheels:
-  parallel:
-    matrix:
-      - PY_VERSION: [py311, py312]
-  rules:
-    - when: manual
 
 publish-package:
   rules:
