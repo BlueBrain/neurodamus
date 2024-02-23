@@ -112,7 +112,7 @@ class CellManagerBase(_CellManager):
         """Initializes CellDistributor
 
         Args:
-            circuit_conf: The "Circuit" blueconfig block
+            circuit_conf: The "Circuit" config block
             target_parser: the target parser hoc object, to retrieve target cells' info
             run_conf: Run configuration
 

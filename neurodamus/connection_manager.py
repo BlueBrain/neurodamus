@@ -436,7 +436,7 @@ class ConnectionManagerBase(object):
     # -
     def create_connections(self, src_target=None, dst_target=None):
         """Creates connections according to loaded parameters in 'Connection'
-        blocks of the BlueConfig in the currently active ConnectionSet.
+        blocks of the config in the currently active ConnectionSet.
 
         If no Connection block relates to the current population, then load all
         edges. If a single blocks exists with Weight=0, skip creation entirely.
@@ -491,10 +491,10 @@ class ConnectionManagerBase(object):
 
     # -
     def configure_connections(self, conn_conf):
-        """Configure-only circuit connections according to a BlueConfig Connection block
+        """Configure-only circuit connections according to a config Connection block
 
         Args:
-            conn_conf: The BlueConfig configuration block (dict)
+            conn_conf: The configuration block (dict)
         """
         log_msg = " * Pathway {:s} -> {:s}".format(conn_conf["Source"], conn_conf["Destination"])
 
@@ -835,7 +835,7 @@ class ConnectionManagerBase(object):
 
     # -
     def configure_group(self, conn_config, gidvec=None):
-        """Configure connections according to a BlueConfig Connection block
+        """Configure connections according to a config Connection block
 
         Args:
             conn_config: The connection configuration dict
@@ -1188,7 +1188,7 @@ class SynapseRuleManager(ConnectionManagerBase):
     """
     The SynapseRuleManager is designed to encapsulate the creation of
     synapses for BlueBrain simulations, handling the data coming from
-    the circuit file. If the BlueConfig file provides any Connection
+    the circuit file. If the config file provides any Connection
     Rules, those override which synapses are created.
 
     Note that the Connection rules are processed with the assumption
@@ -1238,7 +1238,7 @@ class SynapseRuleManager(ConnectionManagerBase):
         and add the delay and weight to their delay vectors.
 
         Args:
-            conn_config: Connection configuration parsed from BlueConfig
+            conn_config: Connection configuration parsed from sonata config
         """
         src_target_name = conn_config["Source"]
         dst_target_name = conn_config["Destination"]

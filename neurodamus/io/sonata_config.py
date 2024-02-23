@@ -36,7 +36,7 @@ class SonataConfig:
     _config_sections = (
         "run", "conditions", "output", "inputs", "reports"
     )
-    # New defaults in Sonata config (not applicable to BlueConfig)
+    # New defaults in Sonata config
     _defaults = {
         "network": "circuit_config.json",
     }

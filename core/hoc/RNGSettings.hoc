@@ -5,7 +5,6 @@
  * @date 2017-03-08
  * @remark Copyright © BBP/EPFL 2005-2017; All rights reserved. Do not distribute without further notice.
  */
-{load_file("SimSettings.hoc")}
 {load_file("fileUtils.hoc")}
 
 rngMode = 0  // corresponds to COMPATIBILITY defined below
@@ -20,7 +19,7 @@ begintemplate RNGSettings
 public init, interpret, getRNGMode, getIonChannelSeed, getSynapseSeed, getStimulusSeed, getMinisSeed, getGlobalSeed
 public COMPATIBILITY, RANDOM123, UPMCELLRAN4
 
-external rngMode, ionchannelSeed, synapseSeed, stimulusSeed, minisSeed, globalSeed, simConfig, terminate
+external rngMode, ionchannelSeed, synapseSeed, stimulusSeed, minisSeed, globalSeed, terminate
 
 proc init() {
     // consts for random number handling
@@ -33,11 +32,16 @@ proc init() {
  * Given the Run block from a BlueConfig, check if there are special flags governing rng behavior
  *
  * $o1 ParsedRun from a BlueConfig (type is Map)
+ * $2  coreNeuronUsed: When simulating with CoreNeuron (default: false)
  */
-proc interpret() { localobj runInfo, pc, rng
+proc interpret() { local coreNeuronUsed localobj runInfo, pc, rng
     strdef rngModeField
     runInfo = $o1
     rngMode = RANDOM123
+    coreNeuronUsed = $2
+    if (numarg() < 2) {
+        coreNeuronUsed = 0
+    }
 
     pc = new ParallelContext()
     if( pc.id() == 0 ) {
@@ -60,7 +64,7 @@ proc interpret() { localobj runInfo, pc, rng
         }
     }
 
-    if( simConfig.coreNeuronUsed() && rngMode != RANDOM123) {
+    if( coreNeuronUsed && rngMode != RANDOM123) {
         // Given R123 is now the default there's no sense to allow an explicit invalid option
         terminate( "Config Error: CoreNEURON requires Random123 RNG" )
     }
