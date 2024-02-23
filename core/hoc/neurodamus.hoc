@@ -14,3 +14,4 @@
 {load_file("Report.hoc")}
 {load_file("ConnectionUtils.hoc")}
 {load_file("MorphIO.hoc")}
+{load_file("Map.hoc")}
