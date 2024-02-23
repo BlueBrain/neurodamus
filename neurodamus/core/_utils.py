@@ -4,6 +4,7 @@ Collection of core helpers / utilities
 from __future__ import absolute_import
 import time
 from array import array
+from datetime import timedelta
 from functools import wraps
 from inspect import Signature, signature
 from ._mpi import MPI
@@ -99,11 +100,8 @@ class SimulationProgress:
         if (current_time - self.last_time_check > 0.75) and (sim_t > 0):
             self.last_time_check = current_time
             sec_remain = (self.last_time_check - self.sim_start) * (sim_tstop / sim_t - 1)
-            hours = sec_remain / 3600
-            minutes = (sec_remain % 3600) / 60
-            seconds = (sec_remain % 3600) % 60
-            print(f"\r[t={sim_t:5.2f}] Completed {sim_t*100/sim_tstop:2.0f}% "
-                  f"ETA: {hours:02.0f}:{minutes:02.0f}:{seconds:02.0f}  ", end='', flush=True)
+            print(f"\r[t={sim_t:5.2f}] Completed {sim_t*100/sim_tstop:2.0f}%"
+                  f" ETA: {timedelta(seconds=int(sec_remain))}  ", end='', flush=True)
         Nd.cvode.event(sim_t + 1, self.update_progress)
 
 
