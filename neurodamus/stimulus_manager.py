@@ -21,7 +21,7 @@
 import logging
 from .core import NeurodamusCore as Nd
 from .utils.logging import log_verbose
-from .core.configuration import SimConfig
+from .core.configuration import SimConfig, ConfigurationError
 from .core.stimuli import CurrentSource, ConductanceSource
 from .core import random
 
@@ -36,7 +36,6 @@ class StimulusManager:
     _stim_types = {}  # stimulus handled in Python
 
     def __init__(self, target_manager):
-        self._base_seed = SimConfig.run_conf.get("BaseSeed")
         self._target_manager = target_manager
         self._stim_seed = SimConfig.run_conf.get("StimulusSeed")
         self._stimulus = []
@@ -55,8 +54,8 @@ class StimulusManager:
         self._stimulus.append(stim)
 
     def interpret_extracellulars(self, injects, stimuli):
-        """Hoc only implementation for extra-cellulars"""
-        logging.warning("The stimulus type extracellular_stimulation is not implemented")
+        """Pending for BBPBGLIB-890"""
+        raise ConfigurationError("input_type extracellular_stimulation is not implemented")
 
     def reset_helpers(self):
         ShotNoise.stimCount = 0
@@ -734,7 +733,7 @@ class SEClamp(BaseStim):
 
                 # create single electrode voltage clamp at location
                 seclamp = Nd.h.SEClamp(tpoint_list.x[sec_id], sec=sc.sec)
-                seclamp.rs = self.rs  # always 0.01 in hoc
+                seclamp.rs = self.rs
                 seclamp.dur1 = self.duration
                 seclamp.amp1 = self.vhold
                 self.stimList.append(seclamp)  # save SEClamp
