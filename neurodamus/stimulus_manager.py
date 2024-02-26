@@ -667,7 +667,6 @@ class Pulse(BaseStim):
 
     def parse_check_all_parameters(self, stim_info: dict):
         self.amp = float(stim_info["AmpStart"])  # amplitude [nA]
-        # how about AmpEnd ?
         self.freq = float(stim_info["Frequency"])  # frequency [Hz]
         self.width = float(stim_info["Width"])  # pulse width [ms]
 
