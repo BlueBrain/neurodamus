@@ -58,19 +58,6 @@ neurodamus.connection\_manager
       :inherited-members:
 
 
-neurodamus.managers
-===================
-
-.. automodule:: neurodamus.managers
-   :members:
-   :undoc-members:
-
-   .. rubric:: Classes
-
-   .. autosummary::
-      ElectrodeManager
-
-
 neurodamus.metype
 =================
 

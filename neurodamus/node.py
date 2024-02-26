@@ -56,7 +56,7 @@ class CircuitManager:
     Holds and manages populations and associated nodes and edges
 
     For backward compat, base population doesnt have a population name (it is '')
-    All other nodes must have a name, read from sonata pop name, or the BlueConfig circuit
+    All other nodes must have a name or read from sonata pop name
     As so, Sonata is preferred when using multiple node files
     """
 
@@ -302,7 +302,6 @@ class Node:
         self._stim_list = None
         self._report_list = None
         self._stim_manager = None
-        self._elec_manager = None
         self._sim_ready = False
         self._jumpstarters = []
         self._cell_state_dump_t = None
@@ -317,7 +316,6 @@ class Node:
     circuits = property(lambda self: self._circuits)
     target_manager = property(lambda self: self._target_manager)
     stim_manager = property(lambda self: self._stim_manager)
-    elec_manager = property(lambda self: self._elec_manager)
     stims = property(lambda self: self._stim_list)
     reports = property(lambda self: self._report_list)
 
@@ -348,18 +346,16 @@ class Node:
         CellDistributor to split cells and balance those pieces across the available CPUs.
         """
         log_stage("Computing Load Balance")
-        is_sonata_config = SimConfig.is_sonata_config
         circuit = self._base_circuit
-        if is_sonata_config:
-            for name, circuit in self._extra_circuits.items():
-                if circuit.get("PopulationType") != "virtual":
-                    break
-            if circuit.get("PopulationType") == "virtual":
-                logging.warning(
-                    "Cannot calculate the load balance because only virtual populations were found"
-                )
-                return None
-            logging.info("Activating experimental LB for Sonata circuit '%s'", name)
+        for name, circuit in self._extra_circuits.items():
+            if circuit.get("PopulationType") != "virtual":
+                break
+        if circuit.get("PopulationType") == "virtual":
+            logging.warning(
+                "Cannot calculate the load balance because only virtual populations were found"
+            )
+            return None
+        logging.info("Activating experimental LB for Sonata circuit '%s'", name)
 
         if not circuit.CircuitPath:
             logging.info(" => No circuit for Load Balancing. Skipping... ")
@@ -377,15 +373,9 @@ class Node:
             return None
 
         # Build load balancer as per requested options
-        # Compat Note:
-        # data_src in BlueConfig mode was the nrnPath. Not anymore (except if not defined or <NONE>)
-        prosp_hosts = self._run_conf.get("ProspectiveHosts")
-        data_src = (
-            circuit.CircuitPath if is_sonata_config
-            else self._run_conf["nrnPath"] or circuit.CircuitPath
-        )
+        data_src = circuit.CircuitPath
         pop = target_spec.population
-        load_balancer = LoadBalance(lb_mode, data_src, pop, self._target_manager, prosp_hosts)
+        load_balancer = LoadBalance(lb_mode, data_src, pop, self._target_manager)
 
         if load_balancer.valid_load_distribution(target_spec):
             logging.info("Load Balancing done.")
@@ -414,15 +404,6 @@ class Node:
         """Instantiate and distributes the cells of the network.
         Any targets will be updated to know which cells are local to the cpu.
         """
-        # We wont go further if ProspectiveHosts is defined to some other cpu count
-        prosp_hosts = self._run_conf.get("ProspectiveHosts")
-        if load_balance and prosp_hosts not in (None, MPI.size):
-            logging.warning(
-                "Load Balance requested for %d CPUs (as per ProspectiveHosts). "
-                "To continue execution launch on a partition of that size",
-                prosp_hosts)
-            Nd.quit(1)
-
         if SimConfig.dry_run:
             logging.info("Memory usage after inizialization:")
             print_mem_usage()
@@ -661,11 +642,8 @@ class Node:
 
         log_stage("Stimulus Apply.")
 
-        # Setup of Electrode objects part of enable stimulus
-        self._enable_electrodes()
-
         # for each stimulus defined in the config file, request the stimmanager to instantiate
-        self._stim_manager = StimulusManager(self._target_manager, self._elec_manager)
+        self._stim_manager = StimulusManager(self._target_manager, None)
 
         # build a dictionary of stims for faster lookup : useful when applying 10k+ stims
         # while we are at it, check if any stims are using extracellular
@@ -703,25 +681,9 @@ class Node:
             self._stim_manager.interpret(target_spec, stim)
 
     # -
-    def _enable_electrodes(self):
-        if SimConfig.use_coreneuron:
-            # Coreneuron doesnt support electrodes
-            return False
-        electrode_path = self._run_conf.get("ElectrodesPath")
-        if electrode_path is not None:
-            logging.info("ElectrodeManager using electrodes from %s", electrode_path)
-        else:
-            logging.info("No electrodes path. Extracellular class of stimuli will be unavailable")
-
-        self._elec_manager = Nd.ElectrodeManager(
-            electrode_path and Nd.String(electrode_path),
-            SimConfig.get_blueconfig_hoc_section("parsedElectrodes")
-        )
-
-    # -
     @mpi_no_errors
     def enable_replay(self):
-        """Activate replay according to BlueConfig. Call before connManager.finalize
+        """Activate replay according to config file. Call before connManager.finalize
         """
         if Feature.Replay not in SimConfig.cli_options.restrict_features:
             logging.warning("Skipped Replay (restrict_features)")
@@ -817,7 +779,7 @@ class Node:
     @mpi_no_errors
     @timeit(name="Enable Modifications")
     def enable_modifications(self):
-        """Iterate over any Modification blocks read from the BlueConfig and apply them to the
+        """Iterate over any Modification blocks read from the config file and apply them to the
         network. The steps needed are more complex than NeuronConfigures, so the user should not be
         expected to write the hoc directly, but rather access a library of already available mods.
         """
@@ -840,7 +802,7 @@ class Node:
     # @mpi_no_errors - not required since theres a call inside before make_comm()
     @timeit(name="Enable Reports")
     def enable_reports(self):
-        """Iterate over reports defined in BlueConfig and instantiate them.
+        """Iterate over reports defined in the config file and instantiate them.
         """
         log_stage("Reports Enabling")
         n_errors = 0
@@ -893,10 +855,6 @@ class Node:
 
         self._reports_init(pop_offsets_alias)
 
-        # electrode manager is no longer needed. free the memory
-        if self._elec_manager is not None:
-            self._elec_manager.clear()
-
     #
     def _report_build_params(self, rep_name, rep_conf, target, pop_offsets_alias_pop):
         sim_end = self._run_conf["Duration"]
@@ -941,8 +899,6 @@ class Node:
                 logging.error("Invalid report dt %f < %f simulation dt", rep_dt, Nd.dt)
             return None
 
-        electrode = self._elec_manager.getElectrode(rep_conf["Electrode"]) \
-            if SimConfig.use_neuron and "Electrode" in rep_conf else None
         rep_target = TargetSpec(rep_conf["Target"])
         population_name = (rep_target.population or self._target_spec.population
                             or self._default_population)
@@ -959,7 +915,7 @@ class Node:
             start_time,
             end_time,
             SimConfig.output_root,
-            electrode,
+            None,
             Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
             rep_conf.get("ISC", "")
         )
@@ -1068,7 +1024,7 @@ class Node:
     # -
     @mpi_no_errors
     def execute_neuron_configures(self):
-        """Iterate over any NeuronConfigure blocks from the BlueConfig.
+        """Iterate over any NeuronConfigure blocks from the config file.
         These are simple hoc statements that can be executed with minimal substitutions
         """
         printed_warning = False
@@ -1240,6 +1196,7 @@ class Node:
     # -
     def _sim_corenrn_configure_datadir(self, corenrn_restore):
         corenrn_datadir = SimConfig.coreneuron_datadir
+        os.makedirs(corenrn_datadir, exist_ok=True)
         corenrn_datadir_shm = SHMUtil.get_datadir_shm(corenrn_datadir)
 
         # Clean-up any previous simulations in the same output directory
@@ -1326,7 +1283,7 @@ class Node:
 
     # -
     def run_all(self):
-        """Run the whole simulation according to BlueConfig
+        """Run the whole simulation according to the simulation config file
         """
         if not self._sim_ready:
             self.sim_init()
@@ -1612,7 +1569,7 @@ class Neurodamus(Node):
          * Activate reports if requested
 
         Args:
-            config_file: The BlueConfig recipe file
+            config_file: The simulation config recipe file
             logging_level: (int) Redefine the global logging level.
                 0 - Only warnings / errors
                 1 - Info messages (default)
@@ -1620,7 +1577,7 @@ class Neurodamus(Node):
                 3 - Debug messages
             cleanup_atexit: (bool) Call cleanup in the destructor
                 [for more see: https://bbpteam.epfl.ch/project/issues/browse/BBPBGLIB-976]
-            user_opts: Options to Neurodamus overriding BlueConfig
+            user_opts: Options to Neurodamus overriding the simulation config file
         """
         self._init_ok = False
         self.cleanup_atexit = cleanup_atexit
@@ -1772,65 +1729,10 @@ class Neurodamus(Node):
         logging.info("MULTI-CYCLE RUN: {} Cycles".format(n_cycles))
         TimerManager.archive(archive_name="Before Cycle Loop")
 
-        if SimConfig.is_sonata_config:
-            PopulationNodes.freeze_offsets()
-            sub_targets = target.generate_subtargets(n_cycles)
+        PopulationNodes.freeze_offsets()
+        sub_targets = target.generate_subtargets(n_cycles)
 
-            for cycle_i, cur_targets in enumerate(sub_targets):
-                logging.info("")
-                logging.info("-" * 60)
-                log_stage("==> CYCLE {} (OUT OF {})".format(cycle_i + 1, n_cycles))
-                logging.info("-" * 60)
-
-                self.clear_model()
-
-                for cur_target in cur_targets:
-                    self._target_manager.register_target(cur_target)
-                    pop = list(cur_target.population_names)[0]
-                    for circuit in itertools.chain([self._base_circuit],
-                                                   self._extra_circuits.values()):
-                        tmp_target_spec = TargetSpec(circuit.CircuitTarget)
-                        if tmp_target_spec.population == pop:
-                            tmp_target_spec.name = cur_target.name
-                            circuit.CircuitTarget = str(tmp_target_spec)
-
-                self._cycle_i = cycle_i
-                self._build_model()
-
-                # Move generated files aside (to be merged later)
-                if MPI.rank == 0:
-                    base_filesdat = ospath.join(SimConfig.coreneuron_datadir, 'files')
-                    os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
-                # Archive timers for this cycle
-                TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
-
-        else:
-            self._multi_cycle_run_blueconfig_setting(n_cycles)
-
-        if MPI.rank == 0:
-            self._merge_filesdat(n_cycles)
-
-    def _multi_cycle_run_blueconfig_setting(self, n_cycles):
-        """
-            Running multi cycle model buildings for blueconfig settings,
-            Different from sonata setting because for blueconfig target is set per circuit
-            thus can be different.
-            This step will be deprecated once the migration to SONATA is complete.
-        """
-        sub_targets = defaultdict(list)
-        for circuit in itertools.chain([self._base_circuit], self._extra_circuits.values()):
-            if not circuit.CircuitPath:
-                continue
-            if circuit.CircuitTarget is None:
-                raise ConfigurationError("Multi building steps requires a circuit target "
-                                         "for circuit %s" % circuit._name)
-
-            target_spec = TargetSpec(circuit.CircuitTarget)
-            target = self._target_manager.get_target(target_spec)
-            circuit_subtargets = target.generate_subtargets(n_cycles)
-            sub_targets[circuit._name or "Base"] = circuit_subtargets
-
-        for cycle_i in range(n_cycles):
+        for cycle_i, cur_targets in enumerate(sub_targets):
             logging.info("")
             logging.info("-" * 60)
             log_stage("==> CYCLE {} (OUT OF {})".format(cycle_i + 1, n_cycles))
@@ -1838,14 +1740,15 @@ class Neurodamus(Node):
 
             self.clear_model()
 
-            for circuit_name, circuit_subtargets in sub_targets.items():
-                cur_target = circuit_subtargets[cycle_i]
-                cur_target.name += "_" + circuit_name
+            for cur_target in cur_targets:
                 self._target_manager.register_target(cur_target)
-                circuit = self._extra_circuits.get(circuit_name, self._base_circuit)
-                tmp_target_spec = TargetSpec(circuit.CircuitTarget)
-                tmp_target_spec.name = cur_target.name
-                circuit.CircuitTarget = str(tmp_target_spec)
+                pop = list(cur_target.population_names)[0]
+                for circuit in itertools.chain([self._base_circuit],
+                                                self._extra_circuits.values()):
+                    tmp_target_spec = TargetSpec(circuit.CircuitTarget)
+                    if tmp_target_spec.population == pop:
+                        tmp_target_spec.name = cur_target.name
+                        circuit.CircuitTarget = str(tmp_target_spec)
 
             self._cycle_i = cycle_i
             self._build_model()
@@ -1856,6 +1759,9 @@ class Neurodamus(Node):
                 os.rename(base_filesdat + '.dat', base_filesdat + "_{}.dat".format(cycle_i))
             # Archive timers for this cycle
             TimerManager.archive(archive_name="Cycle Run {:d}".format(cycle_i + 1))
+
+        if MPI.rank == 0:
+            self._merge_filesdat(n_cycles)
 
     # -
     @timeit(name="finished Run")

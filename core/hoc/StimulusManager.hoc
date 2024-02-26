@@ -9,6 +9,7 @@
 {load_file("TStim.hoc")}  //note that the TStim functions are used in a way where our naming schemes don't match 100%
 {load_file("EStim.hoc")}
 {load_file("fileUtils.hoc")}
+{load_file("Map.hoc")}
 
 begintemplate StimulusManager
 
