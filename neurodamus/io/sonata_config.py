@@ -5,7 +5,6 @@ import json
 import libsonata
 import logging
 import os.path
-
 from enum import Enum
 
 

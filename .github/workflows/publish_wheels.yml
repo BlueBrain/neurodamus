@@ -24,19 +24,7 @@ jobs:
           sudo apt-get install -y python${{ matrix.python_version }} python${{ matrix.python_version }}-distutils python${{ matrix.python_version }}-venv
           sudo apt-get install -y curl
           sudo curl -sS https://bootstrap.pypa.io/get-pip.py | python${{ matrix.python_version }}
-          sudo apt-get install -y cmake ninja-build
-          sudo apt-get install -y libhdf5-mpich-dev
           pip3 install pipx
-      - name: Build libsonatareport
-        run: |
-          git clone https://github.com/BlueBrain/libsonatareport.git --recursive
-          cd libsonatareport
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON -GNinja
-          cmake --build build
-          cd ..
-      - name: Install neuron
-        run: |
-          pip3 install neuron
       - name: Build Wheel
         run: |
           cd $GITHUB_WORKSPACE
@@ -55,4 +43,4 @@ jobs:
             PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |
           pip3 install twine
-          python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password $PYPI_TOKEN dist/*
+          python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password --repository testpypi $PYPI_TOKEN dist/*
