@@ -437,16 +437,16 @@ class ConductanceSource(SignalSource):
             
             
             # Check sif new conductanceSource mechanism is available
-            mt = h.MechanismType(1)
-            mname = h.ref('')
+            mt = Neuron.h.MechanismType(1)
+            mname = Neuron.h.ref('')
             mList = []
             for i in range(mt.count()):
                 mt.select(i)
                 mt.selected(mname)
                 mList.append(mname[0])
                                 
-            if 'conductanceSource' in mList
-            
+            if 'conductanceSource' in mList:
+
                 self.clamp = Neuron.h.conductanceSource(position, sec=cell_section)
             
             else:
