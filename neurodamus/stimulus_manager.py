@@ -753,7 +753,22 @@ class SEClamp(BaseStim):
                     continue
 
                 # create single electrode voltage clamp at location
-                seclamp = Nd.h.conductanceSource(tpoint_list.x[sec_id], sec=sc.sec)
+                
+                # Checks if new conductanceSource mechanism is available
+                mt = h.MechanismType(1)
+                mname = h.ref('')
+                mList = []
+                for i in range(mt.count()):
+                    mt.select(i)
+                    mt.selected(mname)
+                    mList.append(mname[0])
+                                    
+                # If conductanceSource not available, insert standard SEClamp
+                if 'conductanceSource' in mList:              
+                    seclamp = Nd.h.conductanceSource(tpoint_list.x[sec_id], sec=sc.sec)
+                else:
+                    seclamp = Nd.h.SEClamp(tpoint_list.x[sec_id], sec=sc.sec)
+                
                 seclamp.rs = self.rs
                 seclamp.dur1 = self.duration
                 seclamp.amp1 = self.vhold
