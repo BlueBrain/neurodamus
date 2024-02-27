@@ -736,8 +736,8 @@ class SEClamp(BaseStim):
                 # create single electrode voltage clamp at location
                 
                 # Checks if new conductanceSource mechanism is available
-                mt = h.MechanismType(1)
-                mname = h.ref('')
+                mt = Nd.h.MechanismType(1)
+                mname = Nd.h.ref('')
                 mList = []
                 for i in range(mt.count()):
                     mt.select(i)
