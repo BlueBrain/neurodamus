@@ -364,13 +364,17 @@ class SonataConfig:
             "extracellular_stimulation": "Extracellular",
             "conductance": "Conductance"
         }
+        _module_translation = {
+            "seclamp": "SEClamp",
+            "subthreshold": "SubThreshold"
+        }
 
         stimuli = {}
         for name in self._sim_conf.list_input_names:
             stimulus = self._translate_dict("inputs", self._sim_conf.input(name))
             self._adapt_libsonata_fields(stimulus)
-            stimulus["Pattern"] = "SEClamp" if stimulus["Pattern"] == "seclamp" \
-                else snake_to_camel(stimulus["Pattern"])
+            stimulus["Pattern"] = _module_translation.get(stimulus["Pattern"],
+                                                          snake_to_camel(stimulus["Pattern"]))
             stimulus["Mode"] = _input_type_translation.get(stimulus["Mode"], stimulus["Mode"])
             stimuli[name] = stimulus
         return stimuli

@@ -130,6 +130,14 @@ contents = """
             "module": "hyperpolarizing",
             "delay": 0.0,
             "duration": 10000.0
+        },
+        "subthreshould_mosaic": {
+            "module": "subthreshold",
+            "input_type": "current_clamp",
+            "delay": 0.0,
+            "duration": 30000.0,
+            "node_set": "Mosaic",
+            "percent_less": 50.0
         }
     }
 }
@@ -210,3 +218,6 @@ def test_parse_inputs(sonataconfig):
     assert input_RSN["SDPercent"] == 40.
     assert input_RSN["Dt"] == 0.25
     assert input_RSN.get("Seed") is None
+    input_subthreshold = SimConfig.stimuli["subthreshould_mosaic"]
+    assert input_subthreshold["Pattern"] == "SubThreshold"
+    assert input_subthreshold["PercentLess"] == 50.0
