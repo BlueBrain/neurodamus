@@ -43,4 +43,4 @@ jobs:
             PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |
           pip3 install twine
-          python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password --repository testpypi $PYPI_TOKEN dist/*
+          python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password $PYPI_PASSWORD --repository testpypi $PYPI_TOKEN dist/*
