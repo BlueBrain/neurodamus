@@ -1,6 +1,5 @@
 ALU.mod
 CoreNEURONArtificialCell.mod
-HDF5reader.mod
 netstim_inhpoisson.mod
 SonataReportHelper.mod
 SonataReports.mod
