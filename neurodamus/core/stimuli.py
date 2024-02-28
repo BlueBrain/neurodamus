@@ -435,17 +435,8 @@ class ConductanceSource(SignalSource):
                      stim_vec_mode=True, time_vec=None, stim_vec=None,
                      reversal=0.0, **clamp_params):
             
-            
-            # Check sif new conductanceSource mechanism is available
-            mt = Neuron.h.MechanismType(1)
-            mname = Neuron.h.ref('')
-            mList = []
-            for i in range(mt.count()):
-                mt.select(i)
-                mt.selected(mname)
-                mList.append(mname[0])
-                                
-            if 'conductanceSource' in mList:
+            # Checks if new conductanceSource mechanism is available 
+            if hasattr(Nd.h,"conductanceSource"):
 
                 self.clamp = Neuron.h.conductanceSource(position, sec=cell_section)
             
