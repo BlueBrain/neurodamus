@@ -434,9 +434,8 @@ class ConductanceSource(SignalSource):
         def __init__(self, cell_section, position=0.5, clamp_container=None,
                      stim_vec_mode=True, time_vec=None, stim_vec=None,
                      reversal=0.0, **clamp_params):
-            
-            
-            # Check sif new conductanceSource mechanism is available
+
+            # Checks if new conductanceSource mechanism is available
             mt = Neuron.h.MechanismType(1)
             mname = Neuron.h.ref('')
             mList = []
@@ -444,11 +443,9 @@ class ConductanceSource(SignalSource):
                 mt.select(i)
                 mt.selected(mname)
                 mList.append(mname[0])
-                                
-            if 'conductanceSource' in mList:
 
+            if 'conductanceSource' in mList:
                 self.clamp = Neuron.h.conductanceSource(position, sec=cell_section)
-            
             else:
                 self.clamp = Neuron.h.SEClamp(position, sec=cell_section)
 
