@@ -80,7 +80,6 @@ class SimulationProgress:
         self.sim_start = self.last_time_check
         self.update_progress()
 
-    @run_only_rank0
     def update_progress(self):
         """
         Callback function that refreshes the progress value (if enough time has elapsed) and then

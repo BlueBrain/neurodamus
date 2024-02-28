@@ -1301,7 +1301,8 @@ class Node:
     # -
     @return_neuron_timings
     def _run_neuron(self):
-        SimulationProgress()
+        if MPI.rank == 0:
+            _ = SimulationProgress()
         self.solve()
         logging.info("Simulation finished.")
 
