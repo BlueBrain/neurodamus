@@ -356,7 +356,7 @@ class SignalSource:
 
     @classmethod
     def ornstein_uhlenbeck(cls, tau, sigma, mean, duration, dt=0.25, base_amp=.0, **kw):
-        return cls(base_amp, **kw).add_ornstein_uhlenbeck(tau, sigma, mean,duration, dt)
+        return cls(base_amp, **kw).add_ornstein_uhlenbeck(tau, sigma, mean, duration, dt)
 
     # Operations
     def __add__(self, other):
@@ -437,9 +437,7 @@ class ConductanceSource(SignalSource):
             
             # Checks if new conductanceSource mechanism is available 
             if hasattr(Nd.h,"conductanceSource"):
-
                 self.clamp = Neuron.h.conductanceSource(position, sec=cell_section)
-            
             else:
                 self.clamp = Neuron.h.SEClamp(position, sec=cell_section)
 
