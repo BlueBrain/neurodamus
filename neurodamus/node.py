@@ -33,7 +33,7 @@ from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import DryRunStats, trim_memory, pool_shrink, free_event_queues, print_mem_usage
 from .utils.timeit import TimerManager, timeit
-from .core.coreneuron_configuration import CoreConfig
+from .core.coreneuron_configuration import CoreConfig, CompartmentMapping
 from .io.sonata_config import ConnectionTypes
 # Internal Plugins
 from . import ngv as _ngv  # NOQA
@@ -1181,7 +1181,7 @@ class Node:
         base_manager.load_artificial_cell(fake_gid, CoreConfig.artificial_cell_object)
         yield
 
-        # Nd.registerMapping doesn't work for this artificial cell as somatic attr is
+        # register_mapping() doesn't work for this artificial cell as somatic attr is
         # missing, so create a dummy mapping file manually, required for reporting
         cur_files = glob.glob("%s/*_3.dat" % corenrn_data)
         example_mapfile = cur_files[0]
@@ -1259,7 +1259,7 @@ class Node:
         fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
         if not corenrn_restore:
-            Nd.registerMapping(self._circuits.global_manager)
+            CompartmentMapping(self._circuits.global_manager).register_mapping()
             with self._coreneuron_ensure_all_ranks_have_gids(CoreConfig.datadir):
                 self._pc.nrnbbcore_write(CoreConfig.datadir)
                 MPI.barrier()  # wait for all ranks to finish corenrn data generation
