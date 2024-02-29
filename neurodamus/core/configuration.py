@@ -108,8 +108,6 @@ class CircuitConfig(ConfigT):
 
 
 class RNGConfig(ConfigT):
-    Modes = Enum("Mode", "COMPATIBILITY RANDOM123 UPMCELLRAN4")
-    mode = Modes.COMPATIBILITY
     global_seed = None
     IonChannelSeed = None
     StimulusSeed = None

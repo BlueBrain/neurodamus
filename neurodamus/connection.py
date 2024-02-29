@@ -714,36 +714,12 @@ class SpontMinis(ArtificialStim):
         self._store(ips, netcon)
 
         src_pop_id, dst_pop_id = conn.population_id
-        rng_mode = self._rng_info.getRNGMode()
         rng_seed = self._rng_info.getMinisSeed()
         tgid_seed = conn.tgid + 250
 
-        if rng_mode == self._rng_info.RANDOM123:
-            seed2 = (src_pop_id * 65536 + dst_pop_id + rng_seed)
-            ips.setRNGs(syn_obj.synapseID + 200, tgid_seed, seed2 + 300,
-                        syn_obj.synapseID + 200, tgid_seed, seed2 + 350)
-        else:
-            seed2 = src_pop_id * 16777216
-            exprng = Nd.Random()
-            if rng_mode == self._rng_info.COMPATIBILITY:
-                exprng.MCellRan4(syn_obj.synapseID * 100000 + 200,
-                                 tgid_seed + base_seed + rng_seed)
-            else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
-                exprng.MCellRan4(syn_obj.synapseID * 1000 + 200,
-                                 seed2 + tgid_seed + base_seed + rng_seed)
-
-            exprng.negexp(1)
-            uniformrng = Nd.Random()
-            if rng_mode == self._rng_info.COMPATIBILITY:
-                uniformrng.MCellRan4(syn_obj.synapseID * 100000 + 300,
-                                     tgid_seed + base_seed + rng_seed)
-            else:  # if ( rngIndo.getRNGMode()== rng_info.UPMCELLRAN4 ):
-                uniformrng.MCellRan4(syn_obj.synapseID * 1000 + 300,
-                                     seed2 + tgid_seed + base_seed + rng_seed)
-
-            uniformrng.uniform(0.0, 1.0)
-            ips.setRNGs(exprng, uniformrng)
-            self._keep_alive += (exprng, uniformrng)
+        seed2 = (src_pop_id * 65536 + dst_pop_id + rng_seed)
+        ips.setRNGs(syn_obj.synapseID + 200, tgid_seed, seed2 + 300,
+                    syn_obj.synapseID + 200, tgid_seed, seed2 + 350)
 
     def __bool__(self):
         """object is considered False in case rate is not positive"""
