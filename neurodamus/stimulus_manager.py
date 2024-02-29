@@ -565,20 +565,11 @@ class Noise(BaseStim):
         self.parse_check_all_parameters(stim_info)
 
         sim_dt = float(SimConfig.run_conf["Dt"])  # simulation time-step [ms]
-        rng_mode = SimConfig.rng_info.getRNGMode()  # simulation RNGMode
 
         # setup RNG
-        if rng_mode == SimConfig.rng_info.COMPATIBILITY:
-            rand = lambda gid: random.RNG(seed=gid + Noise.stimCount)
-        elif rng_mode == SimConfig.rng_info.UPMCELLRAN4:
-            rand = lambda gid: random.MCellRan4(Noise.stimCount * 10000 + 100,
-                                                SimConfig.rng_info.getGlobalSeed() +
-                                                SimConfig.rng_info.getStimulusSeed() +
-                                                gid * 1000)
-        elif rng_mode == SimConfig.rng_info.RANDOM123:
-            rand = lambda gid: random.Random123(Noise.stimCount + 100,
-                                                SimConfig.rng_info.getStimulusSeed() + 500,
-                                                gid + 300)
+        rand = lambda gid: random.Random123(Noise.stimCount + 100,
+                                            SimConfig.rng_info.getStimulusSeed() + 500,
+                                            gid + 300)
 
         # apply stim to each point in target
         tpoints = target.getPointList(cell_manager)
@@ -590,7 +581,7 @@ class Noise(BaseStim):
 
             rng = rand(gid)  # setup RNG
             # draw already used numbers
-            if rng_mode != SimConfig.rng_info.COMPATIBILITY and self.delay > 0:
+            if self.delay > 0:
                 self.draw_already_used_numbers(rng, sim_dt)
 
             for sec_id, sc in enumerate(tpoint_list.sclst):

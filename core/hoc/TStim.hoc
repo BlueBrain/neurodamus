@@ -8,8 +8,6 @@
 
 D__TSTIMHOC = 1
 
-{load_file("RNGSettings.hoc")}
-
 /**
 * TStim class is intended to make it easy to use current injection stimulation.
 * it has injection premitives (pulse, ramp, segment, sinspec, noise)
@@ -167,11 +165,9 @@ begintemplate TStim
         rand.normal($3,$4)
         tstim_end = $1+$2
 
-        rngInfo = new RNGSettings()
-
         // To help with save state, we want Noise stimulus to continue where it left off
         // so first draw the numbers that were already used (not very efficient, but can be improved later)
-        if( rngInfo.getRNGMode() != rngInfo.COMPATIBILITY ) if( $1 > 0 ) {
+        if( $1 > 0 ) {
 
             // this can use up a lot of memory as simulation times increase.  Should do a proper rewrite, but for now
             // make sure no chunk is larger than what we will use for the actual simulation
@@ -199,8 +195,8 @@ begintemplate TStim
 
         // If the stimulus starts with a delay from simulation start time, we will want 0 amps until the next Dt.
         // Note that for Resume, we will be at t > 0 and delay was offset by previous save time. Ergo, we must check that delay > t
-        // Note that for legacy versions, we always start with 0 amps; when we stop support for legacy, we should selectively set initial slot to 0
-        if( rngInfo.getRNGMode() == rngInfo.COMPATIBILITY || $1 > t ) {
+
+        if( $1 > t ) {
             stim.x[0] = 0
         }
 
