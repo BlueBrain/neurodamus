@@ -1,6 +1,9 @@
 name: Neurodamus Wheels
 
-on: push
+on:
+  push:
+    tags:
+      - '*'
 
 jobs:
   wheel:
@@ -36,4 +39,4 @@ jobs:
             PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |
           pip3 install twine
-          python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password $PYPI_TOKEN --repository testpypi dist/*
+          python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password $PYPI_TOKEN dist/*
