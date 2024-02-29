@@ -643,7 +643,7 @@ class Node:
         log_stage("Stimulus Apply.")
 
         # for each stimulus defined in the config file, request the stimmanager to instantiate
-        self._stim_manager = StimulusManager(self._target_manager, None)
+        self._stim_manager = StimulusManager(self._target_manager)
 
         # build a dictionary of stims for faster lookup : useful when applying 10k+ stims
         # while we are at it, check if any stims are using extracellular
@@ -1151,7 +1151,6 @@ class Node:
             with timeit(name="restoretime"):
                 logging.info("Restoring state...")
                 self._stim_manager.saveStatePreparation(self._bbss)
-                self._stim_manager.reevent()
                 self._bbss.vector_play_init()
                 self._restart_events()  # On restore the event queue is cleared
                 return  # Upon restore sim is ready
