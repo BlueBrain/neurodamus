@@ -734,7 +734,7 @@ class SEClamp(BaseStim):
                     continue
 
                 # If conductanceSource not available, insert standard SEClamp
-                if hasattr(Nd.h, "conductanceSource"):              
+                if hasattr(Nd.h, "conductanceSource"):
                     seclamp = Nd.h.conductanceSource(tpoint_list.x[sec_id], sec=sc.sec)
                 else:
                     # create single electrode voltage clamp at location
