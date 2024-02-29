@@ -4,27 +4,20 @@ on: push
 
 jobs:
   wheel:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
-        python_version: ["3.11"]
+        python_version: [3.11]
     steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python_version }}
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 500
           fetch-tags: true
-      - name: Prerequisites
-        run: |
-          sudo apt-get update --fix-missing
-          sudo apt-get install -y software-properties-common
-          sudo add-apt-repository -y ppa:deadsnakes/ppa
-          sudo TZ=UTC apt-get -y install tzdata
-          sudo apt-get update 
-          sudo apt-get install -y python${{ matrix.python_version }} python${{ matrix.python_version }}-venv
-          sudo apt-get install -y curl
-          sudo curl -sS https://bootstrap.pypa.io/get-pip.py | python${{ matrix.python_version }}
-          pip3 install pipx
       - name: Build Wheel
         run: |
           cd $GITHUB_WORKSPACE
