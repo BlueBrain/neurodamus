@@ -12,7 +12,7 @@ from .connection import Connection
 from .connection_manager import ConnectionManagerBase
 from .core import EngineBase
 from .core import NeurodamusCore as Nd, MPI
-from .core.configuration import GlobalConfig
+from .core.configuration import GlobalConfig, LogLevel
 from .io.sonata_config import ConnectionTypes
 from .io.synapse_reader import SynapseParameters, SonataReader
 from .utils import bin_search
@@ -395,6 +395,9 @@ class NeuroGliaConnManager(ConnectionManagerBase):
         syn_gid_base = 1_000_000  # Below 1M is reserved for cell ids
         total_created = 0
 
+        def ustate_event_handler(tgid, syn_gid):
+            return lambda: print(f"[gid={tgid}] Ustate netcon event. Spiking via v-gid:", syn_gid)
+
         for conn in base_manager.all_connections():
             syn_objs = conn.synapses
             tgid_syn_offset = syn_gid_base + conn.synapses_offset
@@ -406,6 +409,9 @@ class NeuroGliaConnManager(ConnectionManagerBase):
                     pc.set_gid2node(synapse_gid, MPI.rank)
                     netcon = Nd.NetCon(syn_objs[param_i]._ref_Ustate, None, 0, 0, 1.1, sec=sec)
                     pc.cell(synapse_gid, netcon)
+                    if GlobalConfig.verbosity >= LogLevel.DEBUG:
+                        netcon.record(ustate_event_handler(conn.tgid, synapse_gid))
+
                     conn._netcons.append(netcon)
                     total_created += 1
 
