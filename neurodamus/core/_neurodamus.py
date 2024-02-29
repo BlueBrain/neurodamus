@@ -58,7 +58,6 @@ class _NeurodamusCore(_Neuron):
 
         # Additional libraries introduced in saveUpdate
         sys.path.append(os.environ['HOC_LIBRARY_PATH'])
-        cls.load_hoc("CompartmentMapping")
 
         # Attempt to instantiate BBSaveState to early detect errors
         cls._h.BBSaveState()
