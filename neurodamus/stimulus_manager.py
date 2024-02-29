@@ -21,7 +21,7 @@
 import logging
 from .core import NeurodamusCore as Nd
 from .utils.logging import log_verbose
-from .core.configuration import SimConfig
+from .core.configuration import SimConfig, ConfigurationError
 from .core.stimuli import CurrentSource, ConductanceSource
 from .core import random
 
@@ -35,10 +35,7 @@ class StimulusManager:
 
     _stim_types = {}  # stimulus handled in Python
 
-    def __init__(self, target_manager, elec_manager=None):
-        base_seed = SimConfig.run_conf.get("BaseSeed")
-        xargs = () if base_seed is None else (base_seed,)
-        self._hoc = Nd.StimulusManager(target_manager, elec_manager, *xargs)
+    def __init__(self, target_manager):
         self._target_manager = target_manager
         self._stim_seed = SimConfig.run_conf.get("StimulusSeed")
         self._stimulus = []
@@ -46,30 +43,21 @@ class StimulusManager:
 
     def interpret(self, target_spec, stim_info):
         stim_t = self._stim_types.get(stim_info["Pattern"])
+        if not stim_t:
+            raise ConfigurationError("No implementation for Stimulus %s " % stim_info["Pattern"])
         if self._stim_seed is None and getattr(stim_t, 'IsNoise', False):
             logging.warning("StimulusSeed unset (default %d), "
                             "set explicitly to vary noisy stimuli across runs",
                             SimConfig.rng_info.getStimulusSeed())
-        # Get either hoc target or sonata node_set, needed for python and hoc interpret
-        # If sonata node_set, internally register the target and add to hoc TargetList
         target = self._target_manager.get_target(target_spec)
-        if SimConfig.cli_options.experimental_stims or stim_t and stim_t.IsPythonOnly:
-            # New style Stim, in Python
-            log_verbose("Using new-gen stimulus")
-            cell_manager = self._target_manager._cell_manager
-            stim = stim_t(target, stim_info, cell_manager)
-            self._stimulus.append(stim)
-        else:
-            # Fallback to hoc stim manager
-            self._hoc.interpret(target_spec.name, stim_info.hoc_map)
+        log_verbose("Interpret stimulus")
+        cell_manager = self._target_manager._cell_manager
+        stim = stim_t(target, stim_info, cell_manager)
+        self._stimulus.append(stim)
 
     def interpret_extracellulars(self, injects, stimuli):
-        """Hoc only implementation for extra-cellulars"""
-        self._hoc.interpretExtracellulars(injects.hoc_map, stimuli.hoc_map)
-
-    def __getattr__(self, item):
-        logging.debug("Pass unknown method request to Hoc")
-        return getattr(self._hoc, item)
+        """Pending for BBPBGLIB-890"""
+        raise ConfigurationError("input_type extracellular_stimulation is not implemented")
 
     def reset_helpers(self):
         ShotNoise.stimCount = 0
@@ -82,13 +70,16 @@ class StimulusManager:
         cls._stim_types[stim_class.__name__] = stim_class
         return stim_class
 
+    def saveStatePreparation(self, ss_obj):
+        for stim in self._stimulus:
+            ss_obj.ignore(stim)
+
 
 class BaseStim:
     """
     Barebones stimulus class
     """
 
-    IsPythonOnly = False
     IsNoise = False
 
     def __init__(self, _target, stim_info: dict, _cell_manager):
@@ -101,7 +92,6 @@ class OrnsteinUhlenbeck(BaseStim):
     """
     Ornstein-Uhlenbeck process, injected as current or conductance
     """
-    IsPythonOnly = True
     IsNoise = True
     stimCount = 0  # global count for seeding
 
@@ -193,7 +183,6 @@ class RelativeOrnsteinUhlenbeck(OrnsteinUhlenbeck):
     Ornstein-Uhlenbeck process, injected as current or conductance,
     relative to cell threshold current or inverse input resistance
     """
-    IsPythonOnly = True
     IsNoise = True
 
     def __init__(self, target, stim_info: dict, cell_manager):
@@ -231,7 +220,6 @@ class ShotNoise(BaseStim):
     ShotNoise stimulus handler implementing Poisson shot noise
     with bi-exponential response and gamma-distributed amplitudes
     """
-    IsPythonOnly = True
     IsNoise = True
     stimCount = 0  # global count for seeding
 
@@ -361,7 +349,6 @@ class RelativeShotNoise(ShotNoise):
     RelativeShotNoise stimulus handler, same as ShotNoise
     but parameters relative to cell threshold current or inverse input resistance
     """
-    IsPythonOnly = True
     IsNoise = True
 
     def __init__(self, target, stim_info: dict, cell_manager):
@@ -411,7 +398,6 @@ class AbsoluteShotNoise(ShotNoise):
     AbsoluteShotNoise stimulus handler, same as ShotNoise
     but parameters from given mean and std. dev.
     """
-    IsPythonOnly = True
     IsNoise = True
 
     def __init__(self, target, stim_info: dict, cell_manager):
@@ -568,17 +554,12 @@ class Noise(BaseStim):
         rng_mode = SimConfig.rng_info.getRNGMode()  # simulation RNGMode
 
         # setup RNG
-        if rng_mode == SimConfig.rng_info.COMPATIBILITY:
-            rand = lambda gid: random.RNG(seed=gid + Noise.stimCount)
-        elif rng_mode == SimConfig.rng_info.UPMCELLRAN4:
-            rand = lambda gid: random.MCellRan4(Noise.stimCount * 10000 + 100,
-                                                SimConfig.rng_info.getGlobalSeed() +
-                                                SimConfig.rng_info.getStimulusSeed() +
-                                                gid * 1000)
-        elif rng_mode == SimConfig.rng_info.RANDOM123:
+        if rng_mode == SimConfig.rng_info.RANDOM123:
             rand = lambda gid: random.Random123(Noise.stimCount + 100,
                                                 SimConfig.rng_info.getStimulusSeed() + 500,
                                                 gid + 300)
+        else:
+            raise Exception("rng_mod is not RANDOM123")
 
         # apply stim to each point in target
         tpoints = target.getPointList(cell_manager)
@@ -590,7 +571,7 @@ class Noise(BaseStim):
 
             rng = rand(gid)  # setup RNG
             # draw already used numbers
-            if rng_mode != SimConfig.rng_info.COMPATIBILITY and self.delay > 0:
+            if self.delay > 0:
                 self.draw_already_used_numbers(rng, sim_dt)
 
             for sec_id, sc in enumerate(tpoint_list.sclst):
@@ -752,10 +733,8 @@ class SEClamp(BaseStim):
                 if not sc.exists():
                     continue
 
-                # create single electrode voltage clamp at location
-                
                 # If conductanceSource not available, insert standard SEClamp
-                if hasattr(Nd.h,"conductanceSource"):              
+                if hasattr(Nd.h, "conductanceSource"):
                     seclamp = Nd.h.conductanceSource(tpoint_list.x[sec_id], sec=sc.sec)
                 else:
                     # create single electrode voltage clamp at location

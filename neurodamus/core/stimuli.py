@@ -434,9 +434,8 @@ class ConductanceSource(SignalSource):
         def __init__(self, cell_section, position=0.5, clamp_container=None,
                      stim_vec_mode=True, time_vec=None, stim_vec=None,
                      reversal=0.0, **clamp_params):
-            
-            # Checks if new conductanceSource mechanism is available 
-            if hasattr(Nd.h,"conductanceSource"):
+            # Checks if new conductanceSource mechanism is available
+            if hasattr(Neuron.h, "conductanceSource"):
                 self.clamp = Neuron.h.conductanceSource(position, sec=cell_section)
             else:
                 self.clamp = Neuron.h.SEClamp(position, sec=cell_section)
