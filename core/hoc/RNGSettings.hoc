@@ -7,6 +7,7 @@
  */
 {load_file("fileUtils.hoc")}
 
+rngMode = 1  // corresponds to RANDOM123 defined below
 ionchannelSeed = 0
 synapseSeed = 0
 stimulusSeed = 0
@@ -15,11 +16,14 @@ globalSeed = 0
 
 begintemplate RNGSettings
 
-public init, interpret, getIonChannelSeed, getSynapseSeed, getStimulusSeed, getMinisSeed, getGlobalSeed
+public init, interpret, getRNGMode, getIonChannelSeed, getSynapseSeed, getStimulusSeed, getMinisSeed, getGlobalSeed
+public RANDOM123
 
-external ionchannelSeed, synapseSeed, stimulusSeed, minisSeed, globalSeed, terminate
+external rngMode, ionchannelSeed, synapseSeed, stimulusSeed, minisSeed, globalSeed, terminate
 
 proc init() {
+    // consts for random number handling
+    RANDOM123 = 1
 }
 
 /**
@@ -31,6 +35,7 @@ proc init() {
 proc interpret() { local coreNeuronUsed localobj runInfo, pc, rng
     strdef rngModeField
     runInfo = $o1
+    rngMode = RANDOM123
     coreNeuronUsed = $2
     if (numarg() < 2) {
         coreNeuronUsed = 0
@@ -39,6 +44,15 @@ proc interpret() { local coreNeuronUsed localobj runInfo, pc, rng
     pc = new ParallelContext()
     if( pc.id() == 0 ) {
         print "As of Oct 2020 Neurodamus uses Random123 as default"
+    }
+
+    if( runInfo.exists( "RNGMode" ) ) {
+        rngModeField = runInfo.get( "RNGMode" ).s
+        if( strcmp( rngModeField, "Random123" ) == 0 ) {
+            rngMode = RANDOM123
+        } else {
+            terminate( "Invalid RNGMode (only Random123 is currently supported) ", rngModeField )
+        }
     }
 
     if( runInfo.exists("BaseSeed") ) {
@@ -61,6 +75,10 @@ proc interpret() { local coreNeuronUsed localobj runInfo, pc, rng
     if( runInfo.exists("SynapseSeed") ) {
         synapseSeed = runInfo.valueOf( "SynapseSeed" )
     }
+}
+
+func getRNGMode() {
+    return rngMode
 }
 
 func getIonChannelSeed() {
