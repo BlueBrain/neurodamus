@@ -7,33 +7,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  wheel:
-    runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        python_version: [3.11]
+  publish-wheel:
     steps:
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python_version }}
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 500
-          fetch-tags: true
-      - name: Build Wheel
-        run: |
-          cd $GITHUB_WORKSPACE
-          python${{ matrix.python_version }} -m pip install --upgrade build
-          # build wheel
-          python${{ matrix.python_version }} -m build .
-      - name: Test Wheel
-        run: |
-          cd $GITHUB_WORKSPACE
-          pip3 install tox
-          DIST_FILE=`ls dist/*whl` && tox --installpkg=$DIST_FILE -e ${{ matrix.python_version }}
       - name: Upload Wheel
+        uses: BlueBrainProject/neurodamus/.github/workflows/build_test_wheels@v1
+        needs: build-wheel
         env:
             PYPI_URL: ${{ secrets.PYPI_URL }}
             PYPI_USER: ${{ secrets.PYPI_USER }}
