@@ -75,7 +75,7 @@ class CliOptions(ConfigT):
     model_stats = False
     simulator = None
     dry_run = False
-    num_target_ranks = 40
+    num_target_ranks = None
 
     # Restricted Functionality support, mostly for testing
 
@@ -236,7 +236,7 @@ class _SimConfig(object):
     spike_location = "soma"
     spike_threshold = -30
     dry_run = False
-    num_target_ranks = 40
+    num_target_ranks = None
 
     _validators = []
     _requisitors = []

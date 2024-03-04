@@ -1789,7 +1789,7 @@ class Neurodamus(Node):
             log_stage("============= DRY RUN (SKIP SIMULATION) =============")
             self._dry_run_stats.display_total()
             self._dry_run_stats.display_node_suggestions()
-            ranks = int(SimConfig.num_target_ranks)
+            ranks = self._dry_run_stats.get_num_target_ranks(SimConfig.num_target_ranks)
             self._dry_run_stats.collect_all_mpi()
             self._dry_run_stats.distribute_cells(ranks)
             return

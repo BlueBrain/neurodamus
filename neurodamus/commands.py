@@ -58,7 +58,6 @@ def neurodamus(args=None):
         --model-stats           Show model stats in CoreNEURON simulations [default: False]
         --dry-run               Dry-run simulation to estimate memory usage [default: False]
         --num-target-ranks=<number>  Number of ranks to target for dry-run load balancing
-                                [default: 40]
     """
     options = docopt_sanitize(docopt(neurodamus.__doc__, args))
     config_file = options.pop("ConfigFile")
