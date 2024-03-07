@@ -1,10 +1,6 @@
 name: Neurodamus Wheels
 
-on:
-  push:
-    tags:
-      - '*'
-  workflow_dispatch:
+on: [pull_request, push, workflow_dispatch]
 
 jobs:
   wheel:
@@ -34,6 +30,7 @@ jobs:
           pip3 install tox
           DIST_FILE=`ls dist/*whl` && tox --installpkg=$DIST_FILE -e ${{ matrix.python_version }}
       - name: Upload Wheel
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
         env:
             PYPI_URL: ${{ secrets.PYPI_URL }}
             PYPI_USER: ${{ secrets.PYPI_USER }}
