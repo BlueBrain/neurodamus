@@ -46,3 +46,31 @@ def test_dry_run_workflow(USECASE3):
     }
 
     assert rank_allocation_standard == expected_items
+
+    # Test that the allocation works and can be saved and loaded
+    # and generate allocation.pkl.gz for 1 rank
+    rank_allocation, _ = nd._dry_run_stats.distribute_cells(1)
+    export_allocation_stats(rank_allocation, USECASE3 / "allocation.pkl.gz")
+    rank_allocation = import_allocation_stats(USECASE3 / "allocation.pkl.gz")
+    rank_allocation_standard = convert_to_standard_types(rank_allocation)
+
+    expected_items = {
+        'NodeA': {0: [1, 2, 3]},
+        'NodeB': {0: [1, 2]}
+    }
+
+    assert rank_allocation_standard == expected_items
+
+
+def test_memory_load_balance_workflow(USECASE3):
+    """
+    Test that the memory load balance works
+    """
+
+    from neurodamus import Neurodamus
+    nd = Neurodamus(
+        str(USECASE3 / "simulation_sonata.json"),
+        lb_mode="Memory",
+    )
+
+    nd.run()

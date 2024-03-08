@@ -201,14 +201,21 @@ def export_allocation_stats(rank_allocation, filename):
 
 
 @run_only_rank0
-def import_allocation_stats(filename):
+def import_allocation_stats(filename) -> dict:
     """
     Import allocation dictionary from serialized pickle file.
     """
+    def convert_to_standard_types(obj):
+        """Converts an object containing defaultdicts of Vectors to standard Python types."""
+        result = {}
+        for node, vectors in obj.items():
+            result[node] = {key: np.array(vector) for key, vector in vectors.items()}
+        return result
+
     with open(filename, 'rb') as f:
         compressed_data = f.read()
 
-    return pickle.loads(gzip.decompress(compressed_data))
+    return convert_to_standard_types(pickle.loads(gzip.decompress(compressed_data)))
 
 
 @run_only_rank0
@@ -246,6 +253,7 @@ class DryRunStats:
         self.metype_gids = {}
         self.metype_counts = Counter()
         self.synapse_counts = Counter()
+        self.suggested_nodes = 0
         _, _, self.base_memory, _ = get_task_level_mem_usage()
 
     @run_only_rank0
@@ -390,15 +398,27 @@ class DryRunStats:
         if node_total_memory is None:
             logging.warning("Unable to get the total memory available on the current node.")
             return
-        suggested_nodes = self.suggest_nodes(0.3)
+        self.suggested_nodes = self.suggest_nodes(0.3)
         logging.info(f"Based on the memory available on the current node, "
-                     f"it is suggested to use at least {suggested_nodes} node(s).")
+                     f"it is suggested to use at least {self.suggested_nodes} node(s).")
         logging.info("This is just a suggestion and the actual number of nodes "
                      "needed to run the simulation may be different.")
         logging.info(f"The calculation was based on a total memory available of "
                      f"{pretty_printing_memory_mb(node_total_memory)} on the current node.")
         logging.info("Please remember that it is suggested to use the same class of nodes "
                      "for both the dryrun and the actual simulation.")
+
+    @run_only_rank0
+    def get_num_target_ranks(self, num_ranks):
+        """
+        Return the number of ranks to target for dry-run load balancing
+        """
+        if num_ranks is None:
+            logging.info("No number of ranks specified. Using suggested number of nodes.")
+            logging.info("Detected number of physical cores: %d", psutil.cpu_count(logical=False))
+            return self.suggested_nodes * psutil.cpu_count(logical=False)
+        else:
+            return int(num_ranks)
 
     @run_only_rank0
     def distribute_cells(self, num_ranks, batch_size=10) -> (dict, dict):
@@ -418,7 +438,7 @@ class DryRunStats:
             rank_memory (dict): A dictionary where keys are rank IDs
                                 and values are the total memory load on each rank.
         """
-        logging.debug("Distributing cells across %d ranks", num_ranks)
+        logging.info("Distributing cells across %d ranks", num_ranks)
 
         self.validate_inputs_distribute(num_ranks, batch_size)
 
