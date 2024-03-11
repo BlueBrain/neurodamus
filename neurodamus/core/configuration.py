@@ -75,7 +75,7 @@ class CliOptions(ConfigT):
     model_stats = False
     simulator = None
     dry_run = False
-    num_target_ranks = 40
+    num_target_ranks = None
 
     # Restricted Functionality support, mostly for testing
 
@@ -134,6 +134,7 @@ class LoadBalanceMode(Enum):
     RoundRobin = 0
     WholeCell = 1
     MultiSplit = 2
+    Memory = 3
 
     @classmethod
     def parse(cls, lb_mode):
@@ -147,7 +148,8 @@ class LoadBalanceMode(Enum):
             "roundrobin": cls.RoundRobin,
             "wholecell": cls.WholeCell,
             "loadbalance": cls.MultiSplit,
-            "multisplit": cls.MultiSplit
+            "multisplit": cls.MultiSplit,
+            "memory": cls.Memory
         }
         lb_mode_enum = _modes.get(lb_mode.lower())
         if lb_mode_enum is None:
@@ -232,7 +234,7 @@ class _SimConfig(object):
     spike_location = "soma"
     spike_threshold = -30
     dry_run = False
-    num_target_ranks = 40
+    num_target_ranks = None
 
     _validators = []
     _requisitors = []

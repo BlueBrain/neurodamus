@@ -32,6 +32,7 @@ from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import DryRunStats, trim_memory, pool_shrink, free_event_queues, print_mem_usage
+from .utils.memory import import_allocation_stats
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig, CompartmentMapping
 from .io.sonata_config import ConnectionTypes
@@ -371,6 +372,22 @@ class Node:
         lb_mode = LoadBalance.select_lb_mode(SimConfig, self._run_conf, target)
         if lb_mode == LoadBalanceMode.RoundRobin:
             return None
+        elif lb_mode == LoadBalanceMode.Memory:
+            logging.info("Load Balancing ENABLED. Mode: Memory")
+            alloc = import_allocation_stats("allocation.pkl.gz")
+            for pop, ranks in alloc.items():
+                for rank, gids in ranks.items():
+                    logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
+            if MPI.rank == 0:
+                unique_ranks = set(rank for pop in alloc.values() for rank in pop.keys())
+                logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))
+                if MPI.size != len(unique_ranks):
+                    raise ConfigurationError(
+                        "The number of ranks in the allocation file is different from the number "
+                        "of ranks in the current run. The allocation file was created with a "
+                        "different number of ranks."
+                    )
+            return alloc
 
         # Build load balancer as per requested options
         data_src = circuit.CircuitPath
@@ -1772,7 +1789,7 @@ class Neurodamus(Node):
             log_stage("============= DRY RUN (SKIP SIMULATION) =============")
             self._dry_run_stats.display_total()
             self._dry_run_stats.display_node_suggestions()
-            ranks = int(SimConfig.num_target_ranks)
+            ranks = self._dry_run_stats.get_num_target_ranks(SimConfig.num_target_ranks)
             self._dry_run_stats.collect_all_mpi()
             self._dry_run_stats.distribute_cells(ranks)
             return
