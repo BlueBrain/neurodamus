@@ -396,8 +396,6 @@ Dry Run Memory Load Balancing
 
 The dry run mode also provides a memory load balancing feature. It helps balance the memory usage
 of the ranks of the simulation, so that the user does not incur easily in out-of-memory errors.
-At the moment the implementation is still WIP so the user can save the allocation data to a file
-but cannot import to use it in a real simulation.
 
 The workflow of the memory load balancing is as follows: for each cell in the circuit we have an
 estimate of both the memory load of the cell itself based on their METype and the amount of synapses
@@ -413,8 +411,17 @@ and fast. The algorithm is as follows:
 
 The user can specify the number of ranks to target using the `--num-target-ranks` flag in the CLI of neurodamus.
 The default value is 40. The allocation dictionary, containing the assignment of gids to ranks per each population,
-is then saved to the `allocation.pkl.gz` file in a pickled gzipped format. In the near future users will be able to
-import this data in any following simulation in order to improve the memory balance.
+is then saved to the `allocation.pkl.gz` file in a pickled gzipped format.
+
+Now that the `allocation.pkl.gz` has been generated, the user can load it in the main simulation and use it to load balance the
+simulation. The user can do this by using the `--lb-mode=Memory` flag in the CLI of neurodamus. During the execution
+Neurodamus will check if the amount of ranks used in the simulation is the same as the amount of ranks used in the
+dry run. If the amount of ranks is different, the user will be prompted to run a new dry run with the new amount of
+ranks. If the amount of ranks is the same, the allocation dictionary will be loaded and used to load balance the
+simulation.
+
+This way the exact gids that were assigned to each rank in the dry run will be assigned to the actual simulation,
+possibly avoiding out-of-memory errors.
 
 Development
 ------------
