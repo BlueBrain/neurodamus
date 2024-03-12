@@ -2,6 +2,14 @@
 Change Log
 ==========
 
+Version 3.1.1
+=============
+**12 Mar 2024**
+
+*Bug Fixes*
+  * Fix fetching error in GH workflow triggered by tag
+
+
 Version 3.1.0
 =============
 **12 Mar 2024**
