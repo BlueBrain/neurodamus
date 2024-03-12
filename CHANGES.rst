@@ -7,7 +7,7 @@ Version 3.1.0
 **12 Mar 2024**
 
 *New Features*
-  * [BBPGLIB-1102] (Part two) Load memory balance from file (#129)
+  * [BBPBGLIB-1102] (Part two) Load memory balance from file (#129)
   * [BBPBGLIB-1102] Add memory load balance export based on dry run estimate (#111)
 
 *Bug Fixes*
