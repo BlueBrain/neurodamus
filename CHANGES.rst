@@ -2,6 +2,42 @@
 Change Log
 ==========
 
+Version 3.1.1
+=============
+**12 Mar 2024**
+
+*Bug Fixes*
+  * Fix fetching error in GH workflow triggered by tag
+
+
+Version 3.1.0
+=============
+**12 Mar 2024**
+
+*New Features*
+  * [BBPBGLIB-1102] (Part two) Load memory balance from file (#129)
+  * [BBPBGLIB-1102] Add memory load balance export based on dry run estimate (#111)
+
+*Bug Fixes*
+  * StrEnum not working with older python versions (#125)
+  * Fix unit tests (#119)
+
+*Improvements*
+  * [BBPBGLIB-1125] GH forkflow for building a wheel (#121)
+  * On --debug install a hook for NGV to show neuro-glial "spikes" (#137)
+  * [BBPBGLIB-1132] Replace StimulusManager.hoc with the python classes (#132)
+  * [BBPBGLIB-1134] Move ShowProgress.hoc to python (#131)
+  * [BBPBGLIB-1135] Move CompartmentMapping to python (#133)
+  * [BBPBGLIB-1133] Remove ElectrodeManager.hoc and LookupTableV2.mod (#128)
+  * [BBPBGLIB-1121] Remove BlueConfig parser (#127)
+  * Use actions/checkout@v4 to use Node 20 (#126)
+  * [BBPBGLIB-1127] Remove SpikeWriter.mod and out.dat (#123)
+  * [BBPBGLIB-1110] Error now raised when executeConfigure is returned with errors (#120)
+  * Remove SynapseReader.mod and SynReaderNRN (#122)
+  * [BBPBGLIB-1124] Remove hoc targets related code (#118)
+  * [BBPBGLIB-1120] Remove node loaders for MVD3 and NCS (#117)
+
+
 Version 3.0.0
 =============
 **31 Jan 2024**

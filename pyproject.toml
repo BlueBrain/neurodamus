@@ -21,6 +21,7 @@ dependencies = [
     "libsonata",
     "psutil"
 ]
+requires-python=">=3.9"
 
 [project.optional-dependencies]
 plotting=['matplotlib'] # only for Neurodamus HL API
@@ -39,13 +40,11 @@ Tracker = "https://github.com/BlueBrain/neurodamus/issues"
 exclude=["tests"]
 
 [tool.setuptools_scm]
+local_scheme = "no-local-version"
 
 [tool.pytest.ini_options]
 addopts = "--verbose"
 markers = ["slow: marks tests as slow"]
-
-[tool.distutils.bdist_wheel]
-universal = 1
 
 [tool.flake8]
 exclude = [".*", "__pycache__", ".eggs", "*.egg", "build", "dist", "docs", "venv", "*.egg-info", "_benchmarks", "core"]
