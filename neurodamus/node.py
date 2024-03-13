@@ -362,55 +362,56 @@ class Node:
             logging.info(" => No circuit for Load Balancing. Skipping... ")
             return None
 
-        _ = PopulationNodes.offset_freezer()  # Dont offset while in loadbal
+        with PopulationNodes.offset_freezer():  # Dont offset while in loadbal
+            # Info about the cells to be distributed
+            target_spec = TargetSpec(circuit.CircuitTarget)
+            target = self.target_manager.get_target(target_spec)
 
-        # Info about the cells to be distributed
-        target_spec = TargetSpec(circuit.CircuitTarget)
-        target = self.target_manager.get_target(target_spec)
+            # Check / set load balance mode
+            lb_mode = LoadBalance.select_lb_mode(SimConfig, self._run_conf, target)
+            if lb_mode == LoadBalanceMode.RoundRobin:
+                return None
+            elif lb_mode == LoadBalanceMode.Memory:
+                logging.info("Load Balancing ENABLED. Mode: Memory")
+                alloc = import_allocation_stats("allocation.pkl.gz")
+                for pop, ranks in alloc.items():
+                    for rank, gids in ranks.items():
+                        logging.debug("Population: %s, Rank: %s, Number of GIDs: %s",
+                                      pop, rank, len(gids))
+                if MPI.rank == 0:
+                    unique_ranks = set(rank for pop in alloc.values() for rank in pop.keys())
+                    logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))
+                    if MPI.size != len(unique_ranks):
+                        raise ConfigurationError(
+                            "The number of ranks in the allocation file is different from the "
+                            "number of ranks in the current run. The allocation file was created "
+                            "with a different number of ranks."
+                        )
+                return alloc
 
-        # Check / set load balance mode
-        lb_mode = LoadBalance.select_lb_mode(SimConfig, self._run_conf, target)
-        if lb_mode == LoadBalanceMode.RoundRobin:
-            return None
-        elif lb_mode == LoadBalanceMode.Memory:
-            logging.info("Load Balancing ENABLED. Mode: Memory")
-            alloc = import_allocation_stats("allocation.pkl.gz")
-            for pop, ranks in alloc.items():
-                for rank, gids in ranks.items():
-                    logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
-            if MPI.rank == 0:
-                unique_ranks = set(rank for pop in alloc.values() for rank in pop.keys())
-                logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))
-                if MPI.size != len(unique_ranks):
-                    raise ConfigurationError(
-                        "The number of ranks in the allocation file is different from the number "
-                        "of ranks in the current run. The allocation file was created with a "
-                        "different number of ranks."
-                    )
-            return alloc
+            # Build load balancer as per requested options
+            data_src = circuit.CircuitPath
+            pop = target_spec.population
+            load_balancer = LoadBalance(lb_mode, data_src, pop, self._target_manager)
 
-        # Build load balancer as per requested options
-        data_src = circuit.CircuitPath
-        pop = target_spec.population
-        load_balancer = LoadBalance(lb_mode, data_src, pop, self._target_manager)
+            if load_balancer.valid_load_distribution(target_spec):
+                logging.info("Load Balancing done.")
+                return load_balancer
 
-        if load_balancer.valid_load_distribution(target_spec):
-            logging.info("Load Balancing done.")
-            return load_balancer
+            logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
+            cell_dist = self._circuits.new_node_manager(
+                circuit, self._target_manager, self._run_conf)
+            with load_balancer.generate_load_balance(target_spec, cell_dist):
+                # Instantiate a basic circuit to evaluate complexities
+                cell_dist.finalize()
+                self._circuits.global_manager.finalize()
+                SimConfig.update_connection_blocks(self._circuits.alias)
+                target_manager = self._target_manager
+                self._create_synapse_manager(SynapseRuleManager, self._base_circuit, target_manager)
 
-        logging.info("Could not reuse load balance data. Doing a Full Load-Balance")
-        cell_dist = self._circuits.new_node_manager(circuit, self._target_manager, self._run_conf)
-        with load_balancer.generate_load_balance(target_spec, cell_dist):
-            # Instantiate a basic circuit to evaluate complexities
-            cell_dist.finalize()
-            self._circuits.global_manager.finalize()
-            SimConfig.update_connection_blocks(self._circuits.alias)
-            target_manager = self._target_manager
-            self._create_synapse_manager(SynapseRuleManager, self._base_circuit, target_manager)
-
-        # reset since we instantiated with RR distribution
-        Nd.t = .0  # Reset time
-        self.clear_model()
+            # reset since we instantiated with RR distribution
+            Nd.t = .0  # Reset time
+            self.clear_model()
 
         return load_balancer
 

@@ -90,8 +90,7 @@ class PopulationNodes:
         base_pop, other_pops = [], cls._global_populations
         if cls._has_base_population:
             base_pop, other_pops = cls._global_populations[0:1], cls._global_populations[1:]
-        # Keep the order from the _extra_circuits dictionary
-        cls._global_populations = base_pop + other_pops
+        cls._global_populations = base_pop + sorted(other_pops, key=lambda x: x.name)
         new_population._compute_offset(cls._find_previous(new_population))
         return new_population
 
