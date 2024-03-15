@@ -5,7 +5,7 @@ Basic Usage
 -----------
 
 Neurodamus-py, as an application, is very similar to the HOC version, both
-run a simulaton fully unmanned guided by the BlueConfig. However, neurodamus-py does
+run a simulaton fully unmanned guided by the simulation config file. However, neurodamus-py does
 accept CLI options to define some parameters of the simulations.
 
 Once installed, you should be able to find `neurodamus` in your path:
@@ -14,7 +14,7 @@ Once installed, you should be able to find `neurodamus` in your path:
 
   $ neurodamus
     Usage:
-        neurodamus <BlueConfig> [options]
+        neurodamus <ConfigFile> [options]
         neurodamus --help
 
 Among the options you will find flags to tune run behavior, which was not possible in HOC.

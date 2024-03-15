@@ -9,7 +9,8 @@ Neurodamus
 
 Neurodamus is a BBP Simulation Control application for Neuron.
 
-The Python implementation offers a comprehensive Python API for fine tuning of the simulation, initially defined by a BlueConfig file.
+The Python implementation offers a comprehensive Python API for fine tuning of the simulation, defined by a json formatted
+`simulation configuration file <https://sonata-extension.readthedocs.io/en/latest/sonata_simulation.html>`_.
 
 
 Description
@@ -17,7 +18,7 @@ Description
 
 Neurodamus is the BBP in-house developed application for setting up large-scale neuronal simulations.
 It has traditionally been implemented as a set of extensions to Neuron, in the form of .hoc and .mod files.
-The parameters of the simulation are loaded from a configuration file, by default BlueConfig.
+The parameters of the simulation are loaded from a configuration file.
 
 To address several limitations of the Hoc implementation, including development effort, the
 high-level layers of Neurodamus have been reimplemented in Python.

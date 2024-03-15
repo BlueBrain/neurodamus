@@ -422,8 +422,3 @@ simulation.
 
 This way the exact gids that were assigned to each rank in the dry run will be assigned to the actual simulation,
 possibly avoiding out-of-memory errors.
-
-Development
-------------
-
-You can find more information `here <development.rst>`_.
