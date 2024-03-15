@@ -29,7 +29,7 @@ class PopulationNodes:
     _do_offsetting = True
     """False will freeze offsets to ensure final gids are consistent"""
 
-    def __init__(self, name):
+    def __init__(self, name, is_virtual):
         """Ctor for a group of nodes belonging to the same population.
         It wont probably be used publicly given `get()` is also a factory.
         """
@@ -37,6 +37,7 @@ class PopulationNodes:
         self.nodesets = WeakList()  # each population might contain several NodeSet's
         self.max_gid = 0  # maximum raw gid (without offset)
         self.offset = 0
+        self.is_virtual = is_virtual
 
     def _append(self, nodeset):
         self.nodesets.append(nodeset)
@@ -78,8 +79,8 @@ class PopulationNodes:
         return obj
 
     @classmethod
-    def create_pop(cls, population_name, *, is_base_pop=False):
-        new_population = cls(population_name)
+    def create_pop(cls, population_name, *, is_base_pop=False, is_virtual=False):
+        new_population = cls(population_name, is_virtual)
         if is_base_pop:
             cls._global_populations.insert(0, new_population)
             cls._has_base_population = True
@@ -90,8 +91,9 @@ class PopulationNodes:
         base_pop, other_pops = [], cls._global_populations
         if cls._has_base_population:
             base_pop, other_pops = cls._global_populations[0:1], cls._global_populations[1:]
-        # Keep the order from the _extra_circuits dictionary
-        cls._global_populations = base_pop + other_pops
+        # Keep the order from the _extra_circuits dictionary with non virtual populations first
+        sorted_other_pops = sorted(other_pops, key=lambda x: (x.is_virtual, x.name))
+        cls._global_populations = base_pop + sorted_other_pops
         new_population._compute_offset(cls._find_previous(new_population))
         return new_population
 
@@ -151,7 +153,7 @@ class _NodeSetBase:
     offset = property(lambda self: self._offset)
     max_gid = property(lambda self: self._max_gid)
 
-    def register_global(self, population_name, is_base_pop=False):
+    def register_global(self, population_name, is_base_pop=False, is_virtual=False):
         """ Registers a node set as being part of a population, potentially implying an offsett
 
         Args:
@@ -159,7 +161,7 @@ class _NodeSetBase:
             is_base_population: In case we want this population the be the base, without offset
         """
         self._population_group = PopulationNodes.register(
-            population_name, self, is_base_pop=is_base_pop
+            population_name, self, is_base_pop=is_base_pop, is_virtual=is_virtual
         )
         return self
 
