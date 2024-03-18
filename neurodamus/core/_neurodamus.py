@@ -44,11 +44,6 @@ class _NeurodamusCore(_Neuron):
         setup_logging(GlobalConfig.verbosity, log_name, MPI.rank)
         log_stage("Initializing Neurodamus... Logfile: " + log_name)
 
-        # Some previous executions may have left a bad exception node file
-        # This is done now so it's a very early stage and we know the mpi rank
-        if MPI.rank == 0 and os.path.exists(EXCEPTION_NODE_FILENAME):
-            os.remove(EXCEPTION_NODE_FILENAME)
-
         # Load mods if not available
         cls._load_nrnmechlibs()
         log_verbose("Mechanisms (mod) library(s) successfully loaded")
