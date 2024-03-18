@@ -170,7 +170,6 @@ def show_exception_abort(err_msg, exc_info):
         logging.critical(err_msg, exc_info=exc_info)
 
     time.sleep(ALL_RANKS_SYNC_WINDOW)  # give time to the rank that logs the exception
-    os.remove(err_file)
     _mpi_abort()  # abort all ranks which have waited. Seems to help avoiding MPT stack
 
 
