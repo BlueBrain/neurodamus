@@ -25,6 +25,7 @@ from .cell_distributor import LoadBalance, LoadBalanceMode
 from .connection_manager import SynapseRuleManager, edge_node_pop_names
 from .gap_junction import GapJunctionManager
 from .replay import MissingSpikesPopulationError, SpikeManager
+from .report import Report
 from .stimulus_manager import StimulusManager
 from .modification_manager import ModificationManager
 from .neuromodulation_manager import NeuroModulationManager
@@ -853,10 +854,12 @@ class Node:
             if SimConfig.restore_coreneuron:
                 continue  # we dont even need to initialize reports
 
-            report = Nd.Report(*rep_params)
+            report = Report(*rep_params)
 
             if not SimConfig.use_coreneuron or rep_params.rep_type == "Synapse":
-                self._report_setup(report, rep_conf, target, rep_params.rep_type)
+                if not self._report_setup(report, rep_conf, target, rep_params.rep_type):
+                    n_errors += 1
+                    continue
 
             # Custom reporting. TODO: Move `_report_setup` to cellManager.enable_report
             target_population = target_spec.population or self._target_spec.population
@@ -933,7 +936,7 @@ class Node:
             end_time,
             SimConfig.output_root,
             None,
-            Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
+            rep_conf["Scaling"] if "Scaling" in rep_conf else None,
             rep_conf.get("ISC", "")
         )
 
@@ -975,39 +978,44 @@ class Node:
 
         if rep_type not in ("compartment", "Summation", "Synapse", "lfp"):
             logging.warning("Unsupported report type: %s.", rep_type)
-            return  # Nothing to do
+            return False
 
-        # Go through the target members, one cell at a time. We give a cell reference
-        # For summation targets - check if we were given a Cell target because we really
-        # want all points of the cell which will ultimately be collapsed to a single
-        # value on the soma. Otherwise, get target points as normal.
-        sections = rep_conf.get("Sections")
-        compartments = rep_conf.get("Compartments")
-        sum_currents_into_soma = (sections == "soma" and compartments == "center")
-        # In case of summation in the soma, we need all points anyway
-        if sum_currents_into_soma and rep_type == "Summation":
-            sections = "all"
-            compartments = "all"
-        points = self._target_manager.getPointList(target,
-                                                   sections=sections,
-                                                   compartments=compartments)
-        for point in points:
-            gid = point.gid
-            pop_name, pop_offset = global_manager.getPopulationInfo(gid)
-            cell = global_manager.get_cellref(gid)
-            spgid = global_manager.getSpGid(gid)
+        try:
+            # Go through the target members, one cell at a time. We give a cell reference
+            # For summation targets - check if we were given a Cell target because we really
+            # want all points of the cell which will ultimately be collapsed to a single
+            # value on the soma. Otherwise, get target points as normal.
+            sections = rep_conf.get("Sections")
+            compartments = rep_conf.get("Compartments")
+            sum_currents_into_soma = (sections == "soma" and compartments == "center")
+            # In case of summation in the soma, we need all points anyway
+            if sum_currents_into_soma and rep_type == "Summation":
+                sections = "all"
+                compartments = "all"
+            points = self._target_manager.getPointList(target,
+                                                       sections=sections,
+                                                       compartments=compartments)
+            for point in points:
+                gid = point.gid
+                pop_name, pop_offset = global_manager.getPopulationInfo(gid)
+                cell = global_manager.get_cellref(gid)
+                spgid = global_manager.getSpGid(gid)
 
-            # may need to take different actions based on report type
-            if rep_type == "compartment":
-                report.addCompartmentReport(
-                    cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
-            elif rep_type == "Summation":
-                report.addSummationReport(
-                    cell, point, sum_currents_into_soma, spgid, SimConfig.use_coreneuron,
-                    pop_name, pop_offset)
-            elif rep_type == "Synapse":
-                report.addSynapseReport(
-                    cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+                # may need to take different actions based on report type
+                if rep_type == "compartment":
+                    report.add_compartment_report(
+                        cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+                elif rep_type == "Summation":
+                    report.add_summation_report(
+                        cell, point, sum_currents_into_soma, spgid, SimConfig.use_coreneuron,
+                        pop_name, pop_offset)
+                elif rep_type == "Synapse":
+                    report.add_synapse_report(
+                        cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+        except Exception as e:
+            logging.error("Error setting up report '%s': %s", report.report_name, e)
+            return False
+        return True
 
     def _reports_init(self, pop_offsets_alias):
         pop_offsets = pop_offsets_alias[0]
