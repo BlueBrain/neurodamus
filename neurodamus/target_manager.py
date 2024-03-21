@@ -653,7 +653,7 @@ class TPointList:
             # Called with a section and a point
             section, point = args
             self.x.append(point)
-            self.sclst.append(Nd.SectionRef(sec=section))  # Create and append a SectionRef
+            self.sclst.append(Nd.SectionRef(section.sec))  # Create and append a SectionRef
         else:
             raise ValueError("append() takes 1 or 2 arguments ({} given)".format(len(args)))
 
