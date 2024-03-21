@@ -1,0 +1,39 @@
+name: Neurodamus Wheels
+
+on: [pull_request, push, workflow_dispatch]
+
+jobs:
+  wheel:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python_version: [3.11]
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python_version }}
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 500
+      - name: Build Wheel
+        run: |
+          cd $GITHUB_WORKSPACE
+          python${{ matrix.python_version }} -m pip install --upgrade build
+          # build wheel
+          python${{ matrix.python_version }} -m build .
+      - name: Test Wheel
+        run: |
+          cd $GITHUB_WORKSPACE
+          pip3 install tox
+          DIST_FILE=`ls dist/*whl` && tox --installpkg=$DIST_FILE -e ${{ matrix.python_version }}
+      - name: Upload Wheel
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+        env:
+            PYPI_URL: ${{ secrets.PYPI_URL }}
+            PYPI_USER: ${{ secrets.PYPI_USER }}
+            PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          pip3 install twine
+          python${{ matrix.python_version }} -m twine upload --username $PYPI_USER --password $PYPI_TOKEN dist/*
