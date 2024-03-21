@@ -628,7 +628,7 @@ class TPointList:
     def __init__(self, gid):
         self.gid = gid
         self.sclst = []  # To store section references
-        self.x = Nd.Vector()  # To store point values
+        self.x = []  # To store point values
 
     def append(self, *args):
         """

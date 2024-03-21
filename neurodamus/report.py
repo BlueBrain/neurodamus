@@ -50,7 +50,6 @@ class Report:
         self.report_dt = dt
         self.scaling_mode = self.determine_scaling_mode(scaling_option)
 
-        logging.info("Creating report %s", report_name)
         self.alu_list = []
         self.report = Nd.SonataReport(0.5, report_name, output_dir, start_time,
                                       end_time, dt, unit, "compartment")
@@ -120,7 +119,6 @@ class Report:
         synapse_list = []
         mechanism, variable = self.parse_variable_names()[0]
         # Evaluate which synapses to report on
-        logging.info("add_synapse_report for gid %d", gid)
         for i, sc in enumerate(point.sclst):
             section = sc.sec
             x = point.x[i]
