@@ -1,5 +1,5 @@
 {
-    "version": QQQ,
+    "version": 1,
     "manifest": {
         "$OUTPUT_DIR": "./reporting",
         "$INPUT_DIR": "./"
