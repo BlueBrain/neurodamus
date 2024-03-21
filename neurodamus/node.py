@@ -854,7 +854,8 @@ class Node:
             if SimConfig.restore_coreneuron:
                 continue  # we dont even need to initialize reports
 
-            report = Report(*rep_params)
+            has_gids = self._circuits.global_manager.get_final_gids().size > 0
+            report = Report(*rep_params) if has_gids else None
 
             if not SimConfig.use_coreneuron or rep_params.rep_type == "Synapse":
                 if not self._report_setup(report, rep_conf, target, rep_params.rep_type):
