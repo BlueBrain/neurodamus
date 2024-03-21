@@ -273,7 +273,7 @@ class TargetManager:
         if offset < 0:
             offset = 0
 
-        result_point = Nd.TPointList(gid)
+        result_point = TPointList(gid)
         cell_sections = self.gid_to_sections(gid)
         if not cell_sections:
             raise Exception("Getting locations for non-bg sims is not implemented yet...")
@@ -551,7 +551,7 @@ class NodesetTarget(_TargetInterface):
         compartment_type = kw.get("compartments") or ("center" if section_type == "soma" else "all")
         pointList = compat.List()
         for gid in self.get_local_gids():
-            point = Nd.TPointList(gid)
+            point = TPointList(gid)
             cellObj = cell_manager.get_cellref(gid)
             secs = getattr(cellObj, section_type)
             for sec in secs:
@@ -622,3 +622,42 @@ class SerializedSections:
                 # Store a SectionRef to the section at the index specified by v_value
                 self.isec2sec[int(v_value)] = Nd.SectionRef(sec=sec)
             index += 1
+
+
+class TPointList:
+    def __init__(self):
+        self.sclst = []  # To store section references
+        self.x = Nd.Vector()  # To store point values
+
+    def append(self, *args):
+        """
+        Appends a point, optionally with a section or another TPointList object.
+        Can be called with just a point (e.g., append(0.5)),
+        with a section and a point (e.g., append(section, 0.5)),
+        or with another TPointList object (e.g., append(tpointList)).
+        """
+        if len(args) == 1:
+            arg = args[0]
+            if isinstance(arg, TPointList):
+                # Append points and sections from another TPointList object
+                for secRef, point in zip(arg.sclst, arg.x):
+                    self.x.append(point)
+                    self.sclst.append(secRef)
+            else:
+                # Called with just a point
+                point = arg
+                self.x.append(point)
+                self.sclst.append(Nd.SectionRef())  # Append new SectionRef to maintain alignment
+        elif len(args) == 2:
+            # Called with a section and a point
+            section, point = args
+            self.x.append(point)
+            self.sclst.append(Nd.SectionRef(sec=section))  # Create and append a SectionRef
+        else:
+            raise ValueError("append() takes 1 or 2 arguments ({} given)".format(len(args)))
+
+    def count(self):
+        """
+        Returns the number of points in the list.
+        """
+        return len(self.sclst)
