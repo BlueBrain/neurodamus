@@ -814,7 +814,7 @@ class Node:
 
     # Reporting
     ReportParams = namedtuple("ReportParams", "name, rep_type, report_on, unit, format, dt, "
-                              "start, end, output_dir, electrode, scaling, isc")
+                              "start, end, output_dir, scaling")
 
     # -
     # @mpi_no_errors - not required since theres a call inside before make_comm()
@@ -854,8 +854,8 @@ class Node:
             if SimConfig.restore_coreneuron:
                 continue  # we dont even need to initialize reports
 
-            has_gids = self._circuits.global_manager.get_final_gids().size > 0
-            report = Report(*rep_params) if has_gids else None
+            has_gids = len(self._circuits.global_manager.get_final_gids()) > 0
+            report = Report(*rep_params, SimConfig.use_coreneuron) if has_gids else None
 
             if not SimConfig.use_coreneuron or rep_params.rep_type == "Synapse":
                 if not self._report_setup(report, rep_conf, target, rep_params.rep_type):
@@ -936,9 +936,7 @@ class Node:
             start_time,
             end_time,
             SimConfig.output_root,
-            None,
-            rep_conf["Scaling"] if "Scaling" in rep_conf else None,
-            rep_conf.get("ISC", "")
+            rep_conf.get("Scaling"),
         )
 
     #
@@ -1004,15 +1002,12 @@ class Node:
 
                 # may need to take different actions based on report type
                 if rep_type == "compartment":
-                    report.add_compartment_report(
-                        cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+                    report.add_compartment_report(cell, point, spgid, pop_name, pop_offset)
                 elif rep_type == "Summation":
-                    report.add_summation_report(
-                        cell, point, sum_currents_into_soma, spgid, SimConfig.use_coreneuron,
-                        pop_name, pop_offset)
+                    report.add_summation_report(cell, point, sum_currents_into_soma,
+                                                spgid, pop_name, pop_offset)
                 elif rep_type == "Synapse":
-                    report.add_synapse_report(
-                        cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+                    report.add_synapse_report(cell, point, spgid, pop_name, pop_offset)
         except Exception as e:
             logging.error("Error setting up report '%s': %s", report.report_name, e)
             return False
