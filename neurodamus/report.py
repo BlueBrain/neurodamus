@@ -40,15 +40,15 @@ def get_section_index(cell, section):
 
 
 class Report:
-    INTRINSIC_CURRENTS = {"i_membrane", "i_membrane_", "ina", "ica", "ik", "i_pas", "i_cap",
-                          "ihcn_Ih", "ihcn_hcn3", "icsa_csa", "reportcai_mcd"}
+    INTRINSIC_CURRENTS = {"i_membrane", "i_membrane_", "ina", "ica", "ik", "i_pas", "i_cap"}
 
     def __init__(self, report_name, report_type, variable_name, unit, format, dt, start_time,
-                 end_time, output_dir, electrode=None, scaling_option=None, isc_param=None):
+                 end_time, output_dir, scaling_option=None, use_coreneuron=False):
         self.report_name = report_name
         self.variable_name = variable_name
         self.report_dt = dt
         self.scaling_mode = self.determine_scaling_mode(scaling_option)
+        self.use_coreneuron = use_coreneuron
 
         self.alu_list = []
         self.report = Nd.SonataReport(0.5, report_name, output_dir, start_time,
@@ -63,9 +63,8 @@ class Report:
         else:
             return 2  # SCALING_ELECTRODE
 
-    def add_compartment_report(self, cell_obj, point, vgid, use_coreneuron=False,
-                                pop_name="default", pop_offset=0):
-        if use_coreneuron:
+    def add_compartment_report(self, cell_obj, point, vgid, pop_name="default", pop_offset=0):
+        if self.use_coreneuron:
             return
         gid = cell_obj.gid
         vgid = vgid or gid
@@ -80,9 +79,9 @@ class Report:
             section_index = get_section_index(cell_obj, section)
             self.report.AddVar(var_ref, section_index, gid, pop_name)
 
-    def add_summation_report(self, cell_obj, point, collapsed, vgid=None, use_coreneuron=False,
-                              pop_name="default", pop_offset=0):
-        if use_coreneuron:
+    def add_summation_report(self, cell_obj, point, collapsed, vgid,
+                             pop_name="default", pop_offset=0):
+        if self.use_coreneuron:
             return
         gid = cell_obj.gid
         vgid = vgid or gid
@@ -99,8 +98,8 @@ class Report:
             if not collapsed:
                 alu_helper = self.setup_alu_for_summation(x, collapsed)
 
-            variable_names = self.handle_point_processes(section, x, alu_helper, variable_names)
             self.handle_intrinsic_currents(section, x, alu_helper, variable_names)
+            self.handle_point_processes(section, x, alu_helper, variable_names)
 
             if not collapsed:
                 section_index = get_section_index(cell_obj, section)
@@ -109,8 +108,7 @@ class Report:
             # soma
             self.add_summation_var_and_commit_alu(alu_helper, 0, gid, pop_name)
 
-    def add_synapse_report(self, cell_obj, point, vgid=None, use_coreneuron=False,
-                            pop_name="default", pop_offset=0):
+    def add_synapse_report(self, cell_obj, point, vgid, pop_name="default", pop_offset=0):
         gid = cell_obj.gid
         # Default to cell's gid if vgid is not provided
         vgid = vgid or cell_obj.gid
@@ -134,7 +132,7 @@ class Report:
 
         if not synapse_list:
             raise AttributeError(f"Mechanism '{mechanism}' not found.")
-        elif not use_coreneuron:
+        elif not self.use_coreneuron:
             # Prepare the report for the cell
             self.report.AddNode(gid, pop_name, pop_offset)
             for synapse in synapse_list:
@@ -160,10 +158,6 @@ class Report:
                         err = f"Variable '{variable}' not found at '{point_process.hname()}'."
                         raise AttributeError(err)
                 Nd.pop_section()
-            if point_processes:
-                # Remove variables that have been processed
-                variable_names.remove((mechanism, variable))
-        return variable_names
 
     def handle_intrinsic_currents(self, section, x, alu_helper, variable_names):
         """Handle intrinsic currents for summation report."""
@@ -171,6 +165,9 @@ class Report:
         area_at_x = section(x).area()
         scalar = 1
         for mechanism, _ in variable_names:
+            if self.get_point_processes(section, mechanism):
+                # Ignore point processes, they are handled separately
+                continue
             if mechanism != "i_membrane" and self.scaling_mode == 1:  # Area scaling
                 # Need to convert distributed current sources units.
                 # NEURON stores/reports them as mA/cm^2; we want nA.
