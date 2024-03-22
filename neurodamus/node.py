@@ -783,7 +783,29 @@ class Node:
 
                 logging.info("=> Population pathway %s -> %s. Source offset: %d",
                              src_pop_str, dst_pop_str, src_pop_offset)
+<<<<<<< HEAD
                 conn_manager.replay(spike_manager, source, target, delay)
+=======
+                if SimConfig.use_coreneuron and not SimConfig.coreneuron_direct_mode:
+                    self._coreneuron_replay_append(spike_manager, src_pop_offset)
+                else:
+                    conn_manager.replay(spike_manager, source, target, delay)
+
+    def _coreneuron_replay_append(self, spike_manager, gid_offset=None):
+        """Write replay spikes in single file for CoreNeuron"""
+        # To be loaded as PatternStim, requires final gids (with offset)
+        # Initialize file if non-existing
+        if not self._core_replay_file:
+            self._core_replay_file = ospath.join(SimConfig.output_root, 'pattern.dat')
+            if MPI.rank == 0:
+                log_verbose("Creating pattern.dat file for CoreNEURON. Gid offset: %d", gid_offset)
+                spike_manager.dump_ascii(self._core_replay_file, gid_offset)
+        else:
+            if MPI.rank == 0:
+                log_verbose("Appending to pattern.dat. Gid offset: %d", gid_offset)
+                with open(self._core_replay_file, "a") as f:
+                    spike_manager.dump_ascii(f, gid_offset)
+>>>>>>> 5b8c3d0... Change CLI option name to --coreneuron-direct-mode
 
     # -
     @mpi_no_errors
