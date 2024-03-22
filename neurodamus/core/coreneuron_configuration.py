@@ -172,25 +172,21 @@ class _CoreNEURONConfig(object):
             fp.write(filename)
             fp.write("\n")
 
-    def psolve_core(self, save_path=None, restore_path=None, skip_write_model=False):
+    def psolve_core(self, save_path=None, restore_path=None, coreneuron_direct_mode=False):
         from neuron import coreneuron
         from . import NeurodamusCore as Nd
 
         Nd.cvode.cache_efficient(1)
         coreneuron.enable = True
-        if not skip_write_model:
-            coreneuron.file_mode = True
-            coreneuron.sim_config = f"{self.output_root}/{self.sim_config_file}"
-            if save_path:
-                coreneuron.save_path = save_path
-            if restore_path:
-                coreneuron.restore_path = restore_path
-            # Model is already written to disk by calling pc.nrncore_write()
-            coreneuron.skip_write_model_to_disk = True
-            coreneuron.model_path = f"{self.datadir}"
-        else:
-            log_verbose("Run CORENEURON direct mode")
-            coreneuron.sim_config = f"{self.output_root}/{self.sim_config_file}"
+        coreneuron.file_mode = not coreneuron_direct_mode
+        coreneuron.sim_config = f"{self.output_root}/{self.sim_config_file}"
+        if save_path:
+            coreneuron.save_path = save_path
+        if restore_path:
+            coreneuron.restore_path = restore_path
+        # Model is already written to disk by calling pc.nrncore_write()
+        coreneuron.skip_write_model_to_disk = True
+        coreneuron.model_path = f"{self.datadir}"
         Nd.pc.psolve(Nd.tstop)
 
 
