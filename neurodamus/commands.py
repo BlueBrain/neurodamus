@@ -62,6 +62,7 @@ def neurodamus(args=None):
     options = docopt_sanitize(docopt(neurodamus.__doc__, args))
     config_file = options.pop("ConfigFile")
     log_level = _pop_log_level(options)
+    ALL_RANKS_SYNC_WINDOW = 1
 
     if not os.path.isfile(config_file):
         logging.error("Config file not found: %s", config_file)
@@ -74,22 +75,25 @@ def neurodamus(args=None):
     # Warning control before starting the process
     _filter_warnings()
 
-    # Some previous executions may have left a bad exception node file
-    # This is done now so it's a very early stage and we know the mpi rank
-    if MPI.rank == 0 and os.path.exists(EXCEPTION_NODE_FILENAME):
-        os.remove(EXCEPTION_NODE_FILENAME)
-
     try:
-        Neurodamus(config_file, True, logging_level=log_level, **options).run()
-    except ConfigurationError as e:  # Common, only show error in Rank 0
+        nrdm = Neurodamus(config_file, True, logging_level=log_level, **options)
+    except Exception as e:
+        # anything that happens at this stage is a configuration / model loading error
+        # supposed to be the same for all ranks, so we only log it once in Rank 0
         if MPI._rank == 0:           # Use _rank so that we avoid init
             logging.error(str(e))
         return 1
-    except OtherRankError:
-        return 1  # no need for _mpi_abort, error is being handled by all ranks
-    except Exception:
-        show_exception_abort("Unhandled Exception. Terminating...", sys.exc_info())
+
+    try:
+        nrdm.run()
+    except Exception as e:
+        # at this stage, this is an error in the simulation itself, can happen in individual nodes
+        # it is OK to log it everywhere it happens
+        logging.critical(f"Unhandled exception. Terminating: {str(e)}", sys.exc_info())
+        time.sleep(ALL_RANKS_SYNC_WINDOW)  # give time to the rank that logs the exception
+        _mpi_abort()  # abort all ranks which have waited. Seems to help avoiding MPT stack
         return 1
+
     return 0
 
 
@@ -146,31 +150,6 @@ def _pop_log_level(options):
         from pprint import pprint
         pprint(options)
     return log_level
-
-
-def show_exception_abort(err_msg, exc_info):
-    """Show an exception info in only one rank
-
-    Several ranks are likely to be in sync so a simple touch wont work.
-    Processes that dont see any file will register (append) their rank id
-    First one is elected to print
-    """
-    err_file = Path(EXCEPTION_NODE_FILENAME)
-    ALL_RANKS_SYNC_WINDOW = 1
-
-    if err_file.exists():
-        return 1
-
-    with open(err_file, 'a') as f:
-        f.write(str(MPI.rank) + "\n")
-
-    with open(err_file, 'r') as f:
-        line0 = open(err_file).readline().strip()
-    if str(MPI.rank) == line0:
-        logging.critical(err_msg, exc_info=exc_info)
-
-    time.sleep(ALL_RANKS_SYNC_WINDOW)  # give time to the rank that logs the exception
-    _mpi_abort()  # abort all ranks which have waited. Seems to help avoiding MPT stack
 
 
 def _attempt_launch_special(config_file):
