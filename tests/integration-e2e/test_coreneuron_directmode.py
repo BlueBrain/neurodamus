@@ -10,7 +10,7 @@ def test_coreneuron_no_write_model(USECASE3):
     nd = Neurodamus(
         str(USECASE3 / "simulation_sonata_coreneuron.json"),
         keep_build=True,
-        skip_write_model=True
+        coreneuron_direct_mode=True
     )
     nd.run()
     coreneuron_data = SimConfig.coreneuron_datadir
