@@ -31,3 +31,7 @@ mkdir -p _lib
 cp -f x86_64/libnrnmech* _lib/
 cp -f $CORE_DIR/hoc/*.hoc _lib/
 cp -f $COMMON_DIR/hoc/*.hoc _lib/
+
+echo $1
+ls -l
+ls -l _lib

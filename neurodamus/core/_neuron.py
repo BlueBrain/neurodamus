@@ -4,6 +4,7 @@ They are then available as singletons objects in neurodamus.core package
 """
 from __future__ import absolute_import
 import logging
+import os  # os.environ
 import os.path
 from contextlib import contextmanager
 from .configuration import NeuronStdrunDefaults
@@ -60,8 +61,8 @@ class _Neuron(object):
         h = (cls._h or cls._init())
         mod_filename = mod_name + ".hoc"
         if not h.load_file(mod_filename):
-            raise RuntimeError("Cant load HOC library {}. Consider checking HOC_LIBRARY_PATH"
-                               .format(mod_filename))
+            raise RuntimeError("Cant load HOC library {}. Consider checking HOC_LIBRARY_PATH (currently '{}')"
+                               .format(mod_filename, os.environ.get("HOC_LIBRARY_PATH")))
         cls._hocs_loaded.add(mod_name)
 
     @classmethod
