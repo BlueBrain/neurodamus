@@ -356,7 +356,7 @@ class SignalSource:
 
     @classmethod
     def ornstein_uhlenbeck(cls, tau, sigma, mean, duration, dt=0.25, base_amp=.0, **kw):
-        return cls(base_amp, **kw).add_ornstein_uhlenbeck(tau, sigma, mean,duration, dt)
+        return cls(base_amp, **kw).add_ornstein_uhlenbeck(tau, sigma, mean, duration, dt)
 
     # Operations
     def __add__(self, other):
@@ -434,7 +434,12 @@ class ConductanceSource(SignalSource):
         def __init__(self, cell_section, position=0.5, clamp_container=None,
                      stim_vec_mode=True, time_vec=None, stim_vec=None,
                      reversal=0.0, **clamp_params):
-            self.clamp = Neuron.h.SEClamp(position, sec=cell_section)
+            # Checks if new conductanceSource mechanism is available
+            if hasattr(Neuron.h, "conductanceSource"):
+                self.clamp = Neuron.h.conductanceSource(position, sec=cell_section)
+            else:
+                self.clamp = Neuron.h.SEClamp(position, sec=cell_section)
+
             if stim_vec_mode:
                 assert time_vec is not None and stim_vec is not None
                 self.clamp.dur1 = time_vec[-1]
