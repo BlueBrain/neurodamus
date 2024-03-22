@@ -283,7 +283,7 @@ class Node:
             self._run_conf = SimConfig.run_conf
             self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
-            if SimConfig.use_neuron or SimConfig.skip_write_model:
+            if SimConfig.use_neuron or SimConfig.coreneuron_direct_mode:
                 self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True)
             self._base_circuit: CircuitConfig = SimConfig.base_circuit
             self._extra_circuits = SimConfig.extra_circuits
@@ -1094,7 +1094,7 @@ class Node:
         if corenrn_gen:
             self._sim_corenrn_write_config()
 
-        if SimConfig.use_neuron or SimConfig.skip_write_model:
+        if SimConfig.use_neuron or SimConfig.coreneuron_direct_mode:
             self._sim_init_neuron()
 
         if ospath.isfile("debug_gids.txt"):
@@ -1278,11 +1278,11 @@ class Node:
 
         if not corenrn_restore:
             CompartmentMapping(self._circuits.global_manager).register_mapping()
-            if not SimConfig.skip_write_model:
+            if not SimConfig.coreneuron_direct_mode:
                 with self._coreneuron_ensure_all_ranks_have_gids(CoreConfig.datadir):
                     self._pc.nrnbbcore_write(CoreConfig.datadir)
                     MPI.barrier()  # wait for all ranks to finish corenrn data generation
-            
+
         CoreConfig.write_sim_config(
             Nd.tstop,
             Nd.dt,
@@ -1313,10 +1313,10 @@ class Node:
             self.sonata_spikes()
         if SimConfig.use_coreneuron:
             print_mem_usage()
-            if not SimConfig.skip_write_model:
+            if not SimConfig.coreneuron_direct_mode:
                 self.clear_model(avoid_clearing_queues=False)
             self._run_coreneuron()
-            if SimConfig.skip_write_model:
+            if SimConfig.coreneuron_direct_mode:
                 self.sonata_spikes()
         return timings
 
@@ -1334,7 +1334,7 @@ class Node:
         CoreConfig.psolve_core(
             getattr(SimConfig, "save", None),
             getattr(SimConfig, "restore", None),
-            SimConfig.skip_write_model
+            SimConfig.coreneuron_direct_mode
         )
 
     #
