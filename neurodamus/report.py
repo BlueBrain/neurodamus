@@ -44,7 +44,6 @@ class Report:
 
     def __init__(self, report_name, report_type, variable_name, unit, format, dt, start_time,
                  end_time, output_dir, scaling_option=None, use_coreneuron=False):
-        self.report_name = report_name
         self.variable_name = variable_name
         self.report_dt = dt
         self.scaling_mode = self.determine_scaling_mode(scaling_option)
