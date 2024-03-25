@@ -275,7 +275,6 @@ class _SimConfig(object):
         cls.cli_options = CliOptions(**(cli_options or {}))
         cls.dry_run = cls.cli_options.dry_run
         cls.num_target_ranks = cls.cli_options.num_target_ranks
-        cls.coreneuron_direct_mode = cls.cli_options.coreneuron_direct_mode
         # change simulator by request before validator and init hoc config
         if cls.cli_options.simulator:
             cls._parsed_run["Simulator"] = cls.cli_options.simulator
@@ -1012,12 +1011,24 @@ def _spikes_sort_order(config: _SimConfig, run_conf):
 
 @SimConfig.validator
 def _coreneuron_direct_mode(config: _SimConfig, run_conf):
-    if config.coreneuron_direct_mode:
+    user_config = config.cli_options
+    direct_mode = user_config.coreneuron_direct_mode
+    if direct_mode:
         if config.use_coreneuron:
-            logging.info("Run CORENEURON without writing model data to disk")
+            logging.info("Run CORENEURON direct mode without writing model data to disk")
         else:
             logging.warning("--coreneuron-direct-mode not valid for NEURON, continue with NEURON")
-            config.coreneuron_direct_mode = False
+            direct_mode = False
+        if config.modelbuilding_steps > 1:
+            logging.warning("--coreneuron-direct-mode not valid for multi-cyle model building, "
+                            "continue with file mode")
+            direct_mode = False
+        if config.save:
+            logging.warning("--coreneuron-direct-mode not valid for save/restore, "
+                            "continue with file mode")
+            direct_mode = False
+
+    config.coreneuron_direct_mode = direct_mode
 
 
 def get_debug_cell_gid(cli_options):
