@@ -1023,7 +1023,7 @@ def _coreneuron_direct_mode(config: _SimConfig, run_conf):
             logging.warning("--coreneuron-direct-mode not valid for multi-cyle model building, "
                             "continue with file mode")
             direct_mode = False
-        if config.save:
+        if config.save or config.restore:
             logging.warning("--coreneuron-direct-mode not valid for save/restore, "
                             "continue with file mode")
             direct_mode = False
