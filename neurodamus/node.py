@@ -1194,9 +1194,11 @@ class Node:
                 dummyfile.write("%s\n0\n" % coredata_version)
 
     # -
-    def _sim_corenrn_configure_datadir(self, corenrn_restore):
+    def _sim_corenrn_configure_datadir(self, corenrn_restore, coreneuron_direct_mode):
         corenrn_datadir = SimConfig.coreneuron_datadir
         os.makedirs(corenrn_datadir, exist_ok=True)
+        if coreneuron_direct_mode:
+            return corenrn_datadir
         corenrn_datadir_shm = SHMUtil.get_datadir_shm(corenrn_datadir)
 
         # Clean-up any previous simulations in the same output directory
@@ -1255,7 +1257,8 @@ class Node:
     @timeit(name="corewrite")
     def _sim_corenrn_write_config(self, corenrn_restore=False):
         log_stage("Dataset generation for CoreNEURON")
-        CoreConfig.datadir = self._sim_corenrn_configure_datadir(corenrn_restore)
+        CoreConfig.datadir = self._sim_corenrn_configure_datadir(corenrn_restore,
+                                                                 SimConfig.coreneuron_direct_mode)
         fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
         if not corenrn_restore:
