@@ -840,6 +840,11 @@ class Node:
             has_gids = len(self._circuits.global_manager.get_final_gids()) > 0
             report = Report(*rep_params, SimConfig.use_coreneuron) if has_gids else None
 
+            # In coreneuron direct (in-memory) mode, i_membrane data is copied
+            # between neuron and coreneuron
+            if SimConfig.coreneuron_direct_mode and "i_membrane" in rep_params.report_on:
+                Nd.cvode.use_fast_imem(1)
+
             if not SimConfig.use_coreneuron or rep_params.rep_type == "Synapse":
                 try:
                     self._report_setup(report, rep_conf, target, rep_params.rep_type)
