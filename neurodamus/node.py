@@ -869,6 +869,11 @@ class Node:
                 continue  # we dont even need to initialize reports
 
             has_gids = len(self._circuits.global_manager.get_final_gids()) > 0
+            # In coreneuron direct (in-memory) mode, i_membrane data is copied
+            # between neuron and coreneuron
+            if SimConfig.coreneuron_direct_mode and "i_membrane" in rep_params.report_on:
+                Nd.cvode.use_fast_imem(1)
+
             report = Report(*rep_params, SimConfig.use_coreneuron) if has_gids else None
 
             # With coreneuron direct mode, enable fast membrane current calculation for i_membrane
