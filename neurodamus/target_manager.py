@@ -121,8 +121,9 @@ class TargetManager:
             return False
 
         nodes_file = circuit.get("CellLibraryFile")
+        is_virtual = (circuit.get("PopulationType") == "virtual")
         if nodes_file and _is_sonata_file(nodes_file) and self._nodeset_reader:
-            self._nodeset_reader.register_node_file(find_input_file(nodes_file))
+            self._nodeset_reader.register_node_file(find_input_file(nodes_file), is_virtual)
 
     @classmethod
     def create_global_target(cls):
@@ -327,10 +328,10 @@ class NodeSetReader:
         if duplicate_nodesets:
             logging.warning("Some node set rules were replaced from %s", simulation_nodesets_file)
 
-    def register_node_file(self, node_file):
+    def register_node_file(self, node_file, is_virtual):
         storage = libsonata.NodeStorage(node_file)
         for pop_name in storage.population_names:
-            self._population_stores[pop_name] = storage
+            self._population_stores[pop_name] = (storage, is_virtual)
 
     def __contains__(self, nodeset_name):
         return nodeset_name in self.nodesets.names
@@ -348,7 +349,7 @@ class NodeSetReader:
             return None
 
         def _get_nodeset(pop_name):
-            storage = self._population_stores.get(pop_name)
+            (storage, is_virtual) = self._population_stores.get(pop_name)
             population = storage.open_population(pop_name)
             # Create NodeSet object with 1-based gids
             try:
@@ -360,7 +361,7 @@ class NodeSetReader:
             if node_selection:
                 logging.debug("Nodeset %s: Appending gis from %s", nodeset_name, pop_name)
                 ns = SelectionNodeSet(node_selection)
-                ns.register_global(pop_name)
+                ns.register_global(pop_name, is_virtual=is_virtual)
                 return ns
             return None
 

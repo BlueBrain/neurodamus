@@ -588,7 +588,14 @@ def _extra_circuits(config: _SimConfig, run_conf):
     # Sort so that iteration is deterministic
     config.extra_circuits = dict(sorted(
         extra_circuits.items(),
-        key=lambda x: (x[1].Engine.CircuitPrecedence if x[1].Engine else 0, x[0])
+        key=lambda x: (
+            # Circuits with Engine go first
+            x[1].Engine.CircuitPrecedence if x[1].Engine else float('inf'),
+            # Then circuits without virtual populations
+            0 if x[1].get("PopulationType", False) != "virtual" else 1,
+            # Circuit identifier as tiebreaker
+            x[0]
+        )
     ))
 
 

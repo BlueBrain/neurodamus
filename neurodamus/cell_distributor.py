@@ -46,7 +46,7 @@ class VirtualCellPopulation:
         """
         self.population_name = population_name
         self.circuit_target = circuit_target
-        self.local_nodes = NodeSet(gids).register_global(population_name or '')
+        self.local_nodes = NodeSet(gids).register_global(population_name or '', is_virtual=True)
         VirtualCellPopulation._total_count += 1
         if VirtualCellPopulation._total_count > 1:
             logging.warning("For non-sonata circuit, "
