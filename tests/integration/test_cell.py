@@ -10,12 +10,12 @@ from pathlib import Path
 
 @pytest.fixture(scope="session")
 def morphologies_root(rootdir):
-    return Path(rootdir) / "tests/sample_data/morphology"
+    return Path(rootdir) / "tests" / "sample_data" / "morphology"
 
 
 @pytest.fixture
 def Cell(rootdir):
-    os.environ["HOC_LIBRARY_PATH"] = str(rootdir) + "/core/hoc"
+    os.environ.setdefault("HOC_LIBRARY_PATH", str(rootdir / "neurodamus" / "data" / "hoc"))
     from neurodamus.core import Cell
     return Cell
 
