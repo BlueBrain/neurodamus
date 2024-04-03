@@ -1523,9 +1523,6 @@ class Node:
         for gid in gids:
             self._pc.prcellstate(gid, suffix)
 
-    # ---------------------------------------------------------------------------
-    # Note: This method may be called automatically from Neurodamus.__del__
-    #     and therefore it must stay as simple as possible as exceptions are ignored
     def cleanup(self):
         """Have the compute nodes wrap up tasks before exiting.
         """
@@ -1537,30 +1534,29 @@ class Node:
             self.clear_model(avoid_creating_objs=True)
 
         if SimConfig.delete_corenrn_data and not SimConfig.dry_run:
-            data_folder = SimConfig.coreneuron_datadir
-            logging.info("Deleting intermediate data in %s", data_folder)
-
             with timeit(name="Delete corenrn data"):
-                if MPI.rank == 0:
-                    if ospath.islink(data_folder):
-                        # in restore, coreneuron data is a symbolic link
-                        os.unlink(data_folder)
-                    else:
-                        subprocess.call(['/bin/rm', '-rf', data_folder])
-                    os.remove(ospath.join(SimConfig.output_root, "sim.conf"))
-                    if self._run_conf["EnableReports"]:
-                        os.remove(ospath.join(SimConfig.output_root, "report.conf"))
+                self._delete_corenrn_data()
+                MPI.barrier()
 
-                # Delete the SHM folder if it was used
-                if self._shm_enabled:
-                    data_folder_shm = SHMUtil.get_datadir_shm(data_folder)
-                    logging.info("Deleting intermediate SHM data in %s", data_folder_shm)
-                    subprocess.call(['/bin/rm', '-rf', data_folder_shm])
+    @run_only_rank0
+    def _delete_corenrn_data(self):
+        data_folder = SimConfig.coreneuron_datadir
+        logging.info("Deleting intermediate data in %s", data_folder)
 
-            MPI.barrier()
+        if ospath.islink(data_folder):
+            # in restore, coreneuron data is a symbolic link
+            os.unlink(data_folder)
+        else:
+            subprocess.call(['/bin/rm', '-rf', data_folder])
+        os.remove(ospath.join(SimConfig.output_root, "sim.conf"))
+        if self._run_conf["EnableReports"]:
+            os.remove(ospath.join(SimConfig.output_root, "report.conf"))
 
-        logging.info("Finished")
-        TimerManager.timeit_show_stats()
+        # Delete the SHM folder if it was used
+        if self._shm_enabled:
+            data_folder_shm = SHMUtil.get_datadir_shm(data_folder)
+            logging.info("Deleting intermediate SHM data in %s", data_folder_shm)
+            subprocess.call(['/bin/rm', '-rf', data_folder_shm])
 
 
 # Helper class
@@ -1592,12 +1588,8 @@ class Neurodamus(Node):
                 1 - Info messages (default)
                 2 - Verbose
                 3 - Debug messages
-            cleanup_atexit: (bool) Call cleanup in the destructor
-                [for more see: https://bbpteam.epfl.ch/project/issues/browse/BBPBGLIB-976]
             user_opts: Options to Neurodamus overriding the simulation config file
         """
-        self._init_ok = False
-        self.cleanup_atexit = cleanup_atexit
         enable_reports = not user_opts.pop("disable_reports", False)
 
         if logging_level is not None:
@@ -1612,16 +1604,12 @@ class Neurodamus(Node):
             self.load_targets()
             self.create_cells()
             self.create_synapses()
-            self._init_ok = True
             return
 
         if SimConfig.restore_coreneuron:
             self._coreneuron_restore()
         elif SimConfig.build_model:
             self._instantiate_simulation()
-
-        # In case an exception occurs we must prevent the destructor from cleaning
-        self._init_ok = True
 
         # Remove .SUCCESS file if exists
         self._success_file = SimConfig.config_file + ".SUCCESS"
@@ -1782,9 +1770,14 @@ class Neurodamus(Node):
 
     # -
     @timeit(name="finished Run")
-    def run(self):
+    def run(self, cleanup=True):
         """Prepares and launches the simulation according to the loaded config.
         If '--only-build-model' option is set, simulation is skipped.
+
+        Args:
+            cleanup (bool): Free up the model and intermediate files [default: true]
+                Rationale is: the high-level run() method it's typically for a
+                one shot simulation so we should cleanup. If not it can be set to False
         """
         if SimConfig.dry_run:
             log_stage("============= DRY RUN (SKIP SIMULATION) =============")
@@ -1803,12 +1796,12 @@ class Neurodamus(Node):
         else:
             log_stage("======================= SIMULATION =======================")
             self.run_all()
+
         # Create SUCCESS file if the simulation finishes successfully
         self._touch_file(self._success_file)
-        logging.info("Creating .SUCCESS file: '%s'", self._success_file)
+        logging.info("Finished! Creating .SUCCESS file: '%s'", self._success_file)
 
-    def __del__(self):
-        if self._init_ok and self.cleanup_atexit:
+        if cleanup:
             self.cleanup()
 
     @run_only_rank0
