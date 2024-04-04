@@ -77,7 +77,7 @@ class _CellManager(abc.ABC):
         """
         if self._binfo:
             # are we in load balance mode? must replace gid with spgid
-            gid = self._binfo.thishost_gid(gid)
+            gid = self._binfo.thishost_gid(gid - self._local_nodes.offset)
         return self._pc.gid2obj(gid)
 
     # Methods for compat with hoc
@@ -242,7 +242,7 @@ class CellManagerBase(_CellManager):
         self._binfo = load_balancer.load_balance_info(target_spec)
         # self._binfo has gidlist, but gids can appear multiple times
         all_gids = numpy.unique(
-            self._binfo.gids.as_numpy().astype("uint32") - self._local_nodes.offset
+            self._binfo.gids.as_numpy().astype("uint32")
         )
         total_cells = len(all_gids)
         gidvec, me_infos, full_size = loader_f(self._circuit_conf, all_gids)
@@ -355,19 +355,21 @@ class CellManagerBase(_CellManager):
         self._init_rng()
         pc = self._pc
 
-        for final_gid, cell in self._gid2cell.items():
+        for gid, cell in self._gid2cell.items():
             cell.re_init_rng(self._ionchannel_seed)
             nc = cell.connect2target(None)  # Netcon doesnt require being stored
+            raw_gid = gid - self._local_nodes.offset
 
             if self._binfo:
-                gid_i = int(self._binfo.gids.indwhere("==", final_gid))
+                gid_i = int(self._binfo.gids.indwhere("==", raw_gid))
                 cb = self._binfo.bilist.object(self._binfo.cbindex.x[gid_i])
                 # multisplit cells call cb.multisplit() instead
                 if cb.subtrees.count() > 0:
                     cb.multisplit(nc, self._binfo.msgid, pc, pc.id())
-                    cell.gid = final_gid
+                    cell.gid = raw_gid
                     continue
 
+            final_gid = raw_gid if self._binfo else gid
             pc.set_gid2node(final_gid, pc.id())
             pc.cell(final_gid, nc)
             cell.gid = final_gid  # update the cell.gid last (RNGs had to use the base gid)
@@ -488,7 +490,7 @@ class GlobalCellManager(_CellManager):
         manager = self._find_manager(gid)
         if manager._binfo:
             # are we in load balance mode? must replace gid with spgid
-            gid = manager._binfo.thishost_gid(gid)
+            gid = manager._binfo.thishost_gid(gid - manager.local_nodes.offset)
         return self._pc.gid2obj(gid)
 
     def getSpGid(self, gid):
@@ -502,7 +504,7 @@ class GlobalCellManager(_CellManager):
         """
         manager = self._find_manager(gid)
         if manager._binfo:
-            return manager._binfo.thishost_gid(gid)
+            return manager._binfo.thishost_gid(gid - manager.local_nodes.offset)
         return gid
 
     def getPopulationInfo(self, gid):
@@ -670,7 +672,7 @@ class LoadBalance:
             return False
 
         logging.info("Attempt reusing cx files from other targets...")
-        target_gids = self._get_target_gids(target_spec)
+        target_gids = self._get_target_raw_gids(target_spec)
         cx_other = {}
 
         for previous_target in self._cx_targets:
@@ -712,7 +714,7 @@ class LoadBalance:
             return False
 
         if target_spec:  # target provided, otherwise everything
-            target_gids = self._get_target_gids(target_spec)
+            target_gids = self._get_target_raw_gids(target_spec)
             if not self._cx_contains_gids(cx_filename, target_gids):
                 logging.warning(" => %s invalid: changed target definition!", cx_filename)
                 return False
@@ -889,8 +891,8 @@ class LoadBalance:
                 fp.write(line)  # raw lines, include \n
 
     # -
-    def _get_target_gids(self, target_spec) -> numpy.ndarray:
-        return self._target_manager.get_target(target_spec).get_gids()
+    def _get_target_raw_gids(self, target_spec) -> numpy.ndarray:
+        return self._target_manager.get_target(target_spec).get_raw_gids()
 
     def load_balance_info(self, target_spec):
         """ Loads a load-balance info for a given target.
