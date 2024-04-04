@@ -772,7 +772,7 @@ class LoadBalance:
 
         for cell in cell_distributor.cells:
             mcomplex.cell_complexity(cell.CellRef)
-            mcomplex.multisplit(cell.gid, lcx, tmp)
+            mcomplex.multisplit(cell.raw_gid, lcx, tmp)
             ms_list.append(tmp.c())
 
         # To output build independently the contents of the file then append
