@@ -48,7 +48,7 @@ class METype(BaseCell):
     __slots__ = ('_threshold_current', '_hypAmp_current', '_netcons',
                  '_synapses', '_syn_helper_list', '_emodel_name',
                  'exc_mini_frequency', 'inh_mini_frequency',
-                 'extra_attrs')
+                 'extra_attrs', 'raw_gid')
 
     def __init__(self, gid, etype_path, emodel, morpho_path, meinfos=None, detailed_axon=False):
         """Instantite a new Cell from METype
@@ -70,6 +70,7 @@ class METype(BaseCell):
         self.exc_mini_frequency = None
         self.inh_mini_frequency = None
         self.extra_attrs = None
+        self.raw_gid = None
 
         self._instantiate_cell(gid, etype_path, emodel, morpho_path, meinfos, detailed_axon)
 

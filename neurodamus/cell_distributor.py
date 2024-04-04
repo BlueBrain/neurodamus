@@ -76,8 +76,9 @@ class _CellManager(abc.ABC):
         Returns: Cell object
         """
         if self._binfo:
-            # are we in load balance mode? must replace gid with spgid
-            gid = self._binfo.thishost_gid(gid - self._local_nodes.offset)
+            # are we in load balance mode? raw gids are in the binfo
+            gid_offset = self._local_nodes.offset
+            gid = self._binfo.thishost_gid(gid - gid_offset) + gid_offset
         return self._pc.gid2obj(gid)
 
     # Methods for compat with hoc
@@ -355,22 +356,24 @@ class CellManagerBase(_CellManager):
         self._init_rng()
         pc = self._pc
 
-        for gid, cell in self._gid2cell.items():
+        for final_gid, cell in self._gid2cell.items():
             cell.re_init_rng(self._ionchannel_seed)
             nc = cell.connect2target(None)  # Netcon doesnt require being stored
-            raw_gid = gid - self._local_nodes.offset
+            raw_gid = final_gid - self._local_nodes.offset
             if self._binfo:
                 gid_i = int(self._binfo.gids.indwhere("==", raw_gid))
                 cb = self._binfo.bilist.object(self._binfo.cbindex.x[gid_i])
                 # multisplit cells call cb.multisplit() instead
                 if cb.subtrees.count() > 0:
                     cb.multisplit(nc, self._binfo.msgid, pc, pc.id())
-                    cell.gid = raw_gid
+                    cell.gid = final_gid
+                    cell.raw_gid = raw_gid
                     continue
 
-            pc.set_gid2node(raw_gid, pc.id())
-            pc.cell(raw_gid, nc)
-            cell.gid = raw_gid  # update the cell.gid last (RNGs had to use the base gid)
+            pc.set_gid2node(final_gid, pc.id())
+            pc.cell(final_gid, nc)
+            cell.gid = final_gid  # update the cell.gid last (RNGs had to use the base gid)
+            cell.raw_gid = raw_gid
 
         pc.multisplit()
 
@@ -487,8 +490,9 @@ class GlobalCellManager(_CellManager):
         """
         manager = self._find_manager(gid)
         if manager._binfo:
-            # are we in load balance mode? must replace gid with spgid
-            gid = manager._binfo.thishost_gid(gid - manager.local_nodes.offset)
+            # are we in load balance mode? raw gids are in the binfo
+            gid_offset = manager.local_nodes.offset
+            gid = manager._binfo.thishost_gid(gid - gid_offset) + gid_offset
         return self._pc.gid2obj(gid)
 
     def getSpGid(self, gid):
@@ -768,7 +772,7 @@ class LoadBalance:
 
         for cell in cell_distributor.cells:
             mcomplex.cell_complexity(cell.CellRef)
-            mcomplex.multisplit(cell.gid, lcx, tmp)
+            mcomplex.multisplit(cell.raw_gid, lcx, tmp)
             ms_list.append(tmp.c())
 
         # To output build independently the contents of the file then append
@@ -801,7 +805,7 @@ class LoadBalance:
     def _compute_complexities(cls, mcomplex, cell_distributor):
         cx_cell = compat.Vector("f")
         pc = cell_distributor.pc
-        for gid in cell_distributor.local_nodes.raw_gids():
+        for gid in cell_distributor.local_nodes.final_gids():
             cx_cell.append(mcomplex.cell_complexity(pc.gid2cell(gid)))
         return cx_cell
 
