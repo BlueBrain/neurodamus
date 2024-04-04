@@ -359,7 +359,6 @@ class CellManagerBase(_CellManager):
             cell.re_init_rng(self._ionchannel_seed)
             nc = cell.connect2target(None)  # Netcon doesnt require being stored
             raw_gid = gid - self._local_nodes.offset
-
             if self._binfo:
                 gid_i = int(self._binfo.gids.indwhere("==", raw_gid))
                 cb = self._binfo.bilist.object(self._binfo.cbindex.x[gid_i])
@@ -369,10 +368,9 @@ class CellManagerBase(_CellManager):
                     cell.gid = raw_gid
                     continue
 
-            final_gid = raw_gid if self._binfo else gid
-            pc.set_gid2node(final_gid, pc.id())
-            pc.cell(final_gid, nc)
-            cell.gid = final_gid  # update the cell.gid last (RNGs had to use the base gid)
+            pc.set_gid2node(raw_gid, pc.id())
+            pc.cell(raw_gid, nc)
+            cell.gid = raw_gid  # update the cell.gid last (RNGs had to use the base gid)
 
         pc.multisplit()
 
@@ -803,7 +801,7 @@ class LoadBalance:
     def _compute_complexities(cls, mcomplex, cell_distributor):
         cx_cell = compat.Vector("f")
         pc = cell_distributor.pc
-        for gid in cell_distributor.local_nodes.final_gids():
+        for gid in cell_distributor.local_nodes.raw_gids():
             cx_cell.append(mcomplex.cell_complexity(pc.gid2cell(gid)))
         return cx_cell
 
