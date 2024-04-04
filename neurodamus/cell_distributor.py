@@ -366,12 +366,14 @@ class CellManagerBase(_CellManager):
                 # multisplit cells call cb.multisplit() instead
                 if cb.subtrees.count() > 0:
                     cb.multisplit(nc, self._binfo.msgid, pc, pc.id())
-                    cell.gid = raw_gid
+                    cell.gid = final_gid
+                    cell.raw_gid = raw_gid
                     continue
 
             pc.set_gid2node(final_gid, pc.id())
             pc.cell(final_gid, nc)
-            cell.gid = raw_gid  # update the cell.gid last (RNGs had to use the base gid)
+            cell.gid = final_gid  # update the cell.gid last (RNGs had to use the base gid)
+            cell.raw_gid = raw_gid
 
         pc.multisplit()
 
@@ -390,9 +392,8 @@ class CellManagerBase(_CellManager):
         cell = EmptyCell(gid, artificial_cell)
         self._store_cell(gid, cell)
         nc = cell.connect2target(None)
-        final_gid = cell.gid + self._local_nodes.offset
-        self._pc.set_gid2node(final_gid, self._pc.id())
-        self._pc.cell(final_gid, nc)
+        self._pc.set_gid2node(cell.gid, self._pc.id())
+        self._pc.cell(cell.gid, nc)
 
     def _init_rng(self):
         rng_info = Nd.RNGSettings()
