@@ -192,7 +192,7 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
             prop_data = node_pop.get_dynamics_attribute(prop_name, node_sel)
         else:
             prop_data = node_pop.get_attribute(prop_name, node_sel)
-        for gid, val in zip(gidvec, prop_data):
+        for gid, val in zip(meinfos.keys(), prop_data):
             meinfos[gid].extra_attrs[prop_name] = val
 
     return gidvec, meinfos, fullsize
