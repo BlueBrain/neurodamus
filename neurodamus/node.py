@@ -1340,33 +1340,41 @@ class Node:
             self.sim_init()
 
         timings = None
-        if SimConfig.use_neuron:
-            timings = self._run_neuron()
-            self.sonata_spikes()
-        if SimConfig.use_coreneuron:
-            print_mem_usage()
-            if not SimConfig.coreneuron_direct_mode:
-                self.clear_model(avoid_clearing_queues=False)
-            self._run_coreneuron()
-            if SimConfig.coreneuron_direct_mode:
-                self.sonata_spikes()
+        for tstop in [15, 20]:
+            if SimConfig.use_neuron:
+                timings = self._run_neuron(tstop)
+                if tstop == 15:
+                    self.enable_modifications()
+                if tstop == 20:
+                    self.sonata_spikes()
+            if SimConfig.use_coreneuron:
+                print_mem_usage()
+                if not SimConfig.coreneuron_direct_mode:
+                    self.clear_model(avoid_clearing_queues=False)
+                self._run_coreneuron(tstop)
+                Nd.t=tstop
+                if tstop == 15:
+                    self.enable_modifications()
+                if SimConfig.coreneuron_direct_mode and tstop == 20:
+                    self.sonata_spikes()
         return timings
 
     # -
     @return_neuron_timings
-    def _run_neuron(self):
+    def _run_neuron(self, tstop=None):
         if MPI.rank == 0:
             _ = SimulationProgress()
-        self.solve()
+        self.solve(tstop)
         logging.info("Simulation finished.")
 
     # -
-    def _run_coreneuron(self):
+    def _run_coreneuron(self, tstop=None):
         logging.info("Launching simulation with CoreNEURON")
         CoreConfig.psolve_core(
             getattr(SimConfig, "save", None),
             getattr(SimConfig, "restore", None),
-            SimConfig.coreneuron_direct_mode
+            SimConfig.coreneuron_direct_mode,
+            tstop
         )
 
     #
@@ -1568,7 +1576,7 @@ class Node:
         print_mem_usage()
 
         # Coreneuron runs clear the model before starting
-        if not SimConfig.use_coreneuron or SimConfig.simulate_model is False:
+        if not SimConfig.use_coreneuron or SimConfig.coreneuron_direct_mode or SimConfig.simulate_model is False:
             self.clear_model(avoid_creating_objs=True)
 
         if SimConfig.delete_corenrn_data and not SimConfig.dry_run:
@@ -1687,7 +1695,7 @@ class Neurodamus(Node):
 
         self.enable_stimulus()
         print_mem_usage()
-        self.enable_modifications()
+        # self.enable_modifications()
 
         if self._run_conf["EnableReports"]:
             self.enable_reports()
