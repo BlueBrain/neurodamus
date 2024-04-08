@@ -140,17 +140,79 @@ def test_multisplit(target_manager, circuit_conf, capsys):
     assert "Target VerySmall is a subset of the target All_Small" in captured.out
 
 
+def _create_tmpconfig_lbal(config_file):
+    import json
+    import shutil
+    from tempfile import NamedTemporaryFile
+
+    with open(config_file, "r") as f:
+        sim_config_data = json.load(f)
+        sim_config_data["connection_overrides"] = [
+            {
+                "name": "virtual_proj",
+                "source": "virtual_target",
+                "target": "l4pc",
+                "weight": 0.0
+            },
+            {
+                "name": "disconnect",
+                "source": "l4pc",
+                "target": "virtual_target",
+                "delay": 0.025,
+                "weight": 0.0
+            }
+        ]
+    tmp_file = NamedTemporaryFile(suffix=".json", dir=os.path.dirname(config_file), delete=True)
+    shutil.copy2(config_file, tmp_file.name)
+
+    with open(tmp_file.name, "w") as f:
+        json.dump(sim_config_data, f, indent=2)
+    return tmp_file
+
+
+def _read_complexity_file(base_dir, pattern, cx_pattern):
+    import glob
+    # Construct the full pattern path
+    full_pattern = os.path.join(base_dir, pattern, cx_pattern)
+
+    # Use glob to find files that match the pattern
+    matching_files = glob.glob(full_pattern)
+
+    # Read each matching file
+    for file_path in matching_files:
+        try:
+            with open(file_path, 'r') as file:
+                content = file.read()
+                return content
+        except FileNotFoundError:
+            print(f"File not found: {file_path}")
+
+
 def test_loadbal_integration():
     """Ensure given the right files are in the lbal dir, the correct situation is detected
     """
     from neurodamus import Node
-    from neurodamus.core.configuration import GlobalConfig
+    from neurodamus.core.configuration import GlobalConfig, SimConfig
     GlobalConfig.verbosity = 2
-    config_file = str(SIM_DIR / "usecase3" / "simulation_sonata.json")
-    nd = Node(config_file, {"lb_mode": "WholeCell"})
+
+    # Add connection_overrides for the virtual population so the offsets are calculated before LB
+    tmp_file = _create_tmpconfig_lbal(SIM_DIR / "usecase3" / "simulation_sonata.json")
+    nd = Node(tmp_file.name, {"lb_mode": "WholeCell"})
     nd.load_targets()
+    SimConfig.check_connections_configure(nd._target_manager)
     lb = nd.compute_load_balance()
     nd.create_cells(lb)
+
+    # Check the complexity file
+    base_dir = "sim_conf"
+    pattern = "_loadbal_*.*"  # Matches any hash and population
+    cx_pattern = "cx_*#.dat"  # Matches any cx file with the pattern
+    assert Path(base_dir).is_dir(), "Directory 'sim_conf' not found."
+    cx_file = _read_complexity_file(base_dir, pattern, cx_pattern)
+    lines = cx_file.splitlines()
+    assert int(lines[1]) == 3, "Number of gids different than 3."
+    # Gid should be without offset (2 instead of 1002)
+    assert int(lines[3].split()[0]) == 2, "gid 2 not found."
 
 
 class MockedTargetManager:
