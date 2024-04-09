@@ -873,7 +873,7 @@ class Node:
             self._report_list.append(report)
 
         if n_errors > 0:
-            raise ConfigurationError("%d reporting errors detected. Terminating" % (n_errors,))
+            raise Exception("%d reporting errors detected. Terminating" % (n_errors,))
 
         MPI.check_no_errors()
 
