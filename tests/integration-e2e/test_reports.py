@@ -3,7 +3,6 @@ import os
 import pytest
 from pathlib import Path
 
-from neurodamus.core.configuration import ConfigurationError
 from neurodamus.node import Node
 from tempfile import NamedTemporaryFile
 
