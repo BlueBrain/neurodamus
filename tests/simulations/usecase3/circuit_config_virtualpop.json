@@ -27,6 +27,14 @@
                         }
                     }
                 }
+            },
+            {
+                "nodes_file": "virtual_neurons.h5",
+                "populations": {
+                    "A_virtual_neurons": {
+                        "type": "virtual"
+                    }
+                }
             }
         ],
         "edges": [

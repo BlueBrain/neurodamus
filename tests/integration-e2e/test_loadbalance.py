@@ -147,6 +147,7 @@ def _create_tmpconfig_lbal(config_file):
 
     with open(config_file, "r") as f:
         sim_config_data = json.load(f)
+        sim_config_data["network"] = "circuit_config_virtualpop.json"
         sim_config_data["connection_overrides"] = [
             {
                 "name": "virtual_proj",
