@@ -18,6 +18,7 @@ By applying Replay to it we should see received events
 def sonata_config_file(sonata_config, request):
     enable_synapse_delay = request.param['enable_synapse_delay']
     simulator = request.param['simulator']
+    sonata_config["node_set"] = "nodesPopA"
     # Add a report for CoreNEURON simulations
     if simulator == "CORENEURON":
         sonata_config["reports"] = {
@@ -105,7 +106,6 @@ def test_synapse_delay_override(sonata_config_file):
     nd = Neurodamus(
         config_file.name,
         simulator=target_simulator,
-        restrict_node_populations=["NodeA"],
         restrict_features=[Feature.Replay, Feature.SynConfigure],  # use config verboseLevel as Flag
         restrict_connectivity=False,
         disable_reports=False if target_simulator == "CORENEURON" else True,
