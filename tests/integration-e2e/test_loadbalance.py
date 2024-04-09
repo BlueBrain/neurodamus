@@ -206,8 +206,8 @@ def test_loadbal_integration():
 
     # Check the complexity file
     base_dir = "sim_conf"
-    pattern = "_loadbal_*.*"  # Matches any hash and population
-    cx_pattern = "cx_*#.dat"  # Matches any cx file with the pattern
+    pattern = "_loadbal_*.NodeA"  # Matches any hash and population
+    cx_pattern = "cx_NodeA*#.dat"  # Matches any cx file with the pattern
     assert Path(base_dir).is_dir(), "Directory 'sim_conf' not found."
     cx_file = _read_complexity_file(base_dir, pattern, cx_pattern)
     lines = cx_file.splitlines()
