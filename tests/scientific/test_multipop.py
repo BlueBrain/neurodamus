@@ -18,7 +18,7 @@ def sonata_config_file(sonata_config, extra_config):
         "spikeReplay": {
             "module": "synapse_replay",
             "input_type": "spikes",
-            "spike_file": str(USECASE3 / "input.dat"),
+            "spike_file": str(USECASE3 / "input.h5"),
             "delay": 0,
             "duration": 1000,
             "node_set": "nodesPopA"
