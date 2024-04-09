@@ -21,8 +21,7 @@
             "delay": 0.0,
             "duration": 100000000.0,
             "module": "synapse_replay",
-            "spike_file": "$CURRENT_DIR/input.dat",
-            "source": "proj_Thalamocortical_VPM_Source"
+            "spike_file": "$CURRENT_DIR/input.h5"
         },
         "ThresholdIntoExc": {
             "node_set": "Excitatory",
