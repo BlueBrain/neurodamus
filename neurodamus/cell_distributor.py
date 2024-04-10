@@ -506,7 +506,8 @@ class GlobalCellManager(_CellManager):
         """
         manager = self._find_manager(gid)
         if manager._binfo:
-            return manager._binfo.thishost_gid(gid - manager.local_nodes.offset)
+            gid_offset = manager.local_nodes.offset
+            return manager._binfo.thishost_gid(gid - gid_offset) + gid_offset
         return gid
 
     def getPopulationInfo(self, gid):
