@@ -443,8 +443,8 @@ class ConductanceSource(SignalSource):
                      stim_vec_mode=True, time_vec=None, stim_vec=None,
                      reversal=0.0, **clamp_params):
             # Checks if new conductanceSource mechanism is available and if source does not represent physical electrode
-            if self._represents_physical_electrode == False and hasattr(Neuron.h, "conductanceSource"):
-                self.clamp = Neuron.h.conductanceSource(position, sec=cell_section)
+            if self._represents_physical_electrode == False and hasattr(Neuron.h, "ConductanceSource"):
+                self.clamp = Neuron.h.ConductanceSource(position, sec=cell_section)
             else:
                 self.clamp = Neuron.h.SEClamp(position, sec=cell_section)
 
