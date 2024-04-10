@@ -10,12 +10,13 @@ import logging
 
 class SignalSource:
 
-    def __init__(self, base_amp=0.0, *, delay=0, rng=None):
+    def __init__(self, base_amp=0.0, *, delay=0, rng=None, represents_physical_electrode=False):
         """
         Creates a new signal source, which can create composed signals
         Args:
             base_amp: The base (resting) amplitude of the signal (Default: 0)
             rng: The Random Number Generator. Used in the Noise functions
+            represents_physical_electrode: Whether the source represents a phsyical electrode or missing synaptic input
         """
         h = Neuron.h
         self.stim_vec = h.Vector()
@@ -23,6 +24,7 @@ class SignalSource:
         self._cur_t = 0
         self._base_amp = base_amp
         self._rng = rng
+        self._represents_physical_electrode = represents_physical_electrode
         if delay > .0:
             self._add_point(base_amp)
             self._cur_t = delay
@@ -379,7 +381,13 @@ class CurrentSource(SignalSource):
         def __init__(self, cell_section, position=0.5, clamp_container=None,
                      stim_vec_mode=True, time_vec=None, stim_vec=None,
                      **clamp_params):
-            self.clamp = Neuron.h.IClamp(position, sec=cell_section)
+
+            # Checks if new MembraneCurrentSource mechanism is available and if source does not represent physical electrode
+            if self._represents_physical_electrode == False and hasattr(Neuron.h, "MembraneCurrentSource"):
+                self.clamp = Neuron.h.MembraneCurrentSource(position, sec=cell_section)
+            else:
+                self.clamp = Neuron.h.IClamp(position, sec=cell_section)
+                
             if stim_vec_mode:
                 assert time_vec is not None and stim_vec is not None
                 self.clamp.dur = time_vec[-1]
@@ -434,8 +442,8 @@ class ConductanceSource(SignalSource):
         def __init__(self, cell_section, position=0.5, clamp_container=None,
                      stim_vec_mode=True, time_vec=None, stim_vec=None,
                      reversal=0.0, **clamp_params):
-            # Checks if new conductanceSource mechanism is available
-            if hasattr(Neuron.h, "conductanceSource"):
+            # Checks if new conductanceSource mechanism is available and if source does not represent physical electrode
+            if self._represents_physical_electrode == False and hasattr(Neuron.h, "conductanceSource"):
                 self.clamp = Neuron.h.conductanceSource(position, sec=cell_section)
             else:
                 self.clamp = Neuron.h.SEClamp(position, sec=cell_section)
