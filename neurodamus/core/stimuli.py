@@ -370,11 +370,12 @@ class SignalSource:
 class CurrentSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, base_amp=0.0, *, delay=0, rng=None):
+    def __init__(self, base_amp=0.0, *, delay=0, rng=None, physical_electrode=False):
         """
         Creates a new current source that injects a signal under IClamp
         """
-        super().__init__(base_amp, delay=delay, rng=rng)
+        super().__init__(base_amp, delay=delay, rng=rng,
+                         represents_physical_electrode=physical_electrode)
         self._clamps = set()
         self._all_sources.append(self)
 
@@ -429,14 +430,16 @@ class CurrentSource(SignalSource):
 class ConductanceSource(SignalSource):
     _all_sources = []
 
-    def __init__(self, reversal=0.0, *, delay=.0, rng=None):
+    def __init__(self, reversal=0.0, *, delay=.0, rng=None, physical_electrode=False):
         """
         Creates a new conductance source that injects a conductance by driving
         the rs of an SEClamp at a given reversal potential.
 
         reversal: reversal potential of conductance (mV)
         """
-        super().__init__(0.0, delay=delay, rng=rng)  # set SignalSource's base_amp to zero
+        # set SignalSource's base_amp to zero
+        super().__init__(reversal, delay=delay, rng=rng,
+                         represents_physical_electrode=physical_electrode)
         self._reversal = reversal   # set reversal from base_amp parameter in classmethods
         self._clamps = set()
         self._all_sources.append(self)
