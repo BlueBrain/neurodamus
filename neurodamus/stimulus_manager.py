@@ -85,6 +85,7 @@ class BaseStim:
     def __init__(self, _target, stim_info: dict, _cell_manager):
         self.duration = float(stim_info["Duration"])  # duration [ms]
         self.delay = float(stim_info["Delay"])        # start time [ms]
+        self.represents_physical_electrode = stim_info.get('represents_physical_electrode', False)
 
 
 @StimulusManager.register_type
@@ -123,7 +124,10 @@ class OrnsteinUhlenbeck(BaseStim):
 
                 rng = random.Random123(seed1, seed2, seed3(gid))  # setup RNG
                 ou_args = (self.tau, self.sigma, self.mean, self.duration)
-                ou_kwargs = {'dt': self.dt, 'delay': self.delay, 'rng': rng}
+                ou_kwargs = {
+                    'dt': self.dt, 'delay': self.delay, 'rng': rng,
+                    'physical_electrode': self.represents_physical_electrode
+                }
                 # inject Ornstein-Uhlenbeck signal
                 if stim_info["Mode"] == "Conductance":
                     cs = ConductanceSource.ornstein_uhlenbeck(*ou_args, **ou_kwargs,
@@ -252,7 +256,10 @@ class ShotNoise(BaseStim):
                 rng = random.Random123(seed1, seed2, seed3(gid))  # setup RNG
                 shotnoise_args = (self.tau_D, self.tau_R, self.rate,
                                   self.amp_mean, self.amp_var, self.duration)
-                shotnoise_kwargs = {'dt': self.dt, 'delay': self.delay, 'rng': rng}
+                shotnoise_kwargs = {
+                    'dt': self.dt, 'delay': self.delay, 'rng': rng,
+                    'physical_electrode': self.represents_physical_electrode
+                }
                 # generate shot noise current source
                 if stim_info["Mode"] == "Conductance":
                     cs = ConductanceSource.shot_noise(*shotnoise_args, **shotnoise_kwargs,
@@ -454,8 +461,11 @@ class Linear(BaseStim):
                     continue
 
                 # generate ramp current source
-                cs = CurrentSource.ramp(self.amp_start, self.amp_end, self.duration,
-                                        delay=self.delay)
+                cs = CurrentSource.ramp(
+                    self.amp_start, self.amp_end, self.duration,
+                    delay=self.delay,
+                    physical_electrode=self.represents_physical_electrode
+                )
                 # attach current source to section
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
                 self.stimList.append(cs)  # save CurrentSource
@@ -580,8 +590,10 @@ class Noise(BaseStim):
                     continue
 
                 # generate noise current source
-                cs = CurrentSource.noise(self.mean, self.var, self.duration,
-                                         dt=self.dt, delay=self.delay, rng=rng)
+                cs = CurrentSource.noise(
+                    self.mean, self.var, self.duration, dt=self.dt, delay=self.delay, rng=rng,
+                    physical_electrode=self.represents_physical_electrode
+                )
                 # attach current source to section
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
                 self.stimList.append(cs)  # save CurrentSource
@@ -660,8 +672,11 @@ class Pulse(BaseStim):
                     continue
 
                 # generate pulse train current source
-                cs = CurrentSource.train(self.amp, self.freq, self.width,
-                                         self.duration, delay=self.delay)
+                cs = CurrentSource.train(
+                    self.amp, self.freq, self.width, self.duration,
+                    delay=self.delay,
+                    physical_electrode=self.represents_physical_electrode
+                )
                 # attach current source to section
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
                 self.stimList.append(cs)  # save CurrentSource
@@ -696,8 +711,10 @@ class Sinusoidal(BaseStim):
                     continue
 
                 # generate sinusoidal current source
-                cs = CurrentSource.sin(self.amp, self.duration, self.freq,
-                                       step=self.dt, delay=self.delay)
+                cs = CurrentSource.sin(
+                    self.amp, self.duration, self.freq, step=self.dt, delay=self.delay,
+                    physical_electrode=self.represents_physical_electrode
+                )
                 # attach current source to section
                 cs.attach_to(sc.sec, tpoint_list.x[sec_id])
                 self.stimList.append(cs)  # save CurrentSource

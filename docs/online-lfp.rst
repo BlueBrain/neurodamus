@@ -140,6 +140,8 @@ Subsequently, an ERROR will be encountered when instantiating the LFP report:
 
 To ensure accurate and valid LFP reports, make sure that the electrodes file corresponds to the circuit being used in your simulation.
 
+- **Stimulus Electrode Compatibility**: A common use case is that current will be injected into a population to account for synaptic inputs from neural populations that are not modeled. In this case, it is neccessary that total current over the neuron sums to zero in order to produce valid extracellular recording results. For IClamp electrodes, this is always the case. However, the Neuron SEClamp class does not fulfill this criterion due to numerical issues. We have created a new point process, `new_conductance_source`, available in `neurodamus-neocortex`, which does fulfill the criterion. Therefore, If an SEClamp source is present in the simulation config file, and `new_conductance_source` is compiled, this will be used instead of the SEClamp mechanism. If `new_conductance_source` is not available, SEClamp will be used, and extracellular recording results should not be trusted.
+
 By keeping these considerations in mind, you can ensure a smooth and successful usage of the online LFP calculation feature.
 
 Conclusion
