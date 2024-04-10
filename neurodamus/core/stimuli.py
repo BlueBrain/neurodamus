@@ -16,7 +16,8 @@ class SignalSource:
         Args:
             base_amp: The base (resting) amplitude of the signal (Default: 0)
             rng: The Random Number Generator. Used in the Noise functions
-            represents_physical_electrode: Whether the source represents a phsyical electrode or missing synaptic input
+            represents_physical_electrode: Whether the source represents a phsyical
+            electrode or missing synaptic input
         """
         h = Neuron.h
         self.stim_vec = h.Vector()
@@ -381,13 +382,14 @@ class CurrentSource(SignalSource):
         def __init__(self, cell_section, position=0.5, clamp_container=None,
                      stim_vec_mode=True, time_vec=None, stim_vec=None,
                      **clamp_params):
-
-            # Checks if new MembraneCurrentSource mechanism is available and if source does not represent physical electrode
-            if self._represents_physical_electrode == False and hasattr(Neuron.h, "MembraneCurrentSource"):
+            represents_physical_electrode = clamp_params.get('represents_physical_electrode', False)
+            # Checks if new MembraneCurrentSource mechanism is available and if source does not
+            # represent physical electrode, otherwise fall back to IClamp.
+            if not represents_physical_electrode and hasattr(Neuron.h, "MembraneCurrentSource"):
                 self.clamp = Neuron.h.MembraneCurrentSource(position, sec=cell_section)
             else:
                 self.clamp = Neuron.h.IClamp(position, sec=cell_section)
-                
+
             if stim_vec_mode:
                 assert time_vec is not None and stim_vec is not None
                 self.clamp.dur = time_vec[-1]
@@ -405,8 +407,9 @@ class CurrentSource(SignalSource):
             del self.clamp  # Force del on the clamp (there might be references to self)
 
     def attach_to(self, section, position=0.5):
-        return CurrentSource._Clamp(section, position, self._clamps, True,
-                                    self.time_vec, self.stim_vec)
+        return CurrentSource._Clamp(
+            section, position, self._clamps, True, self.time_vec, self.stim_vec,
+            represents_physical_electrode=self._represents_physical_electrode)
 
     # Constant has a special attach_to and doesnt share any composing method
     class Constant:
@@ -442,8 +445,10 @@ class ConductanceSource(SignalSource):
         def __init__(self, cell_section, position=0.5, clamp_container=None,
                      stim_vec_mode=True, time_vec=None, stim_vec=None,
                      reversal=0.0, **clamp_params):
-            # Checks if new conductanceSource mechanism is available and if source does not represent physical electrode
-            if self._represents_physical_electrode == False and hasattr(Neuron.h, "conductanceSource"):
+            represents_physical_electrode = clamp_params.get('represents_physical_electrode', False)
+            # Checks if new conductanceSource mechanism is available and if source does not
+            # represent physical electrode, otherwise fall back to SEClamp.
+            if not represents_physical_electrode and hasattr(Neuron.h, "conductanceSource"):
                 self.clamp = Neuron.h.conductanceSource(position, sec=cell_section)
             else:
                 self.clamp = Neuron.h.SEClamp(position, sec=cell_section)
@@ -473,8 +478,9 @@ class ConductanceSource(SignalSource):
             del self.clamp  # Force del on the clamp (there might be references to self)
 
     def attach_to(self, section, position=0.5):
-        return ConductanceSource._DynamicClamp(section, position, self._clamps, True,
-                                               self.time_vec, self.stim_vec, self._reversal)
+        return ConductanceSource._DynamicClamp(
+            section, position, self._clamps, True, self.time_vec, self.stim_vec,
+            self._reversal, represents_physical_electrode=self._represents_physical_electrode)
 
 
 # EStim class is a derivative of TStim for stimuli with an extracelular electrode. The main
