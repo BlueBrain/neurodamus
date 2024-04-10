@@ -9,7 +9,7 @@ from collections import defaultdict, Counter
 from itertools import chain
 from os import path as ospath
 from typing import List, Optional
-from libsonata._libsonata import SonataError
+from libsonata import SonataError
 
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
