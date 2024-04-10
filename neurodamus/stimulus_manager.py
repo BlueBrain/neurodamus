@@ -126,7 +126,7 @@ class OrnsteinUhlenbeck(BaseStim):
                 ou_args = (self.tau, self.sigma, self.mean, self.duration)
                 ou_kwargs = {
                     'dt': self.dt, 'delay': self.delay, 'rng': rng,
-                    'represents_physical_electrode': self.represents_physical_electrode
+                    'physical_electrode': self.represents_physical_electrode
                 }
                 # inject Ornstein-Uhlenbeck signal
                 if stim_info["Mode"] == "Conductance":
@@ -258,7 +258,7 @@ class ShotNoise(BaseStim):
                                   self.amp_mean, self.amp_var, self.duration)
                 shotnoise_kwargs = {
                     'dt': self.dt, 'delay': self.delay, 'rng': rng,
-                    'represents_physical_electrode': self.represents_physical_electrode
+                    'physical_electrode': self.represents_physical_electrode
                 }
                 # generate shot noise current source
                 if stim_info["Mode"] == "Conductance":
@@ -752,7 +752,6 @@ class SEClamp(BaseStim):
 
                 # create single electrode voltage clamp at location
                 seclamp = Nd.h.SEClamp(tpoint_list.x[sec_id], sec=sc.sec)
-
                 seclamp.rs = self.rs
                 seclamp.dur1 = self.duration
                 seclamp.amp1 = self.vhold
