@@ -408,7 +408,6 @@ class DryRunStats:
         logging.info("Please remember that it is suggested to use the same class of nodes "
                      "for both the dryrun and the actual simulation.")
 
-    @run_only_rank0
     def get_num_target_ranks(self, num_ranks):
         """
         Return the number of ranks to target for dry-run load balancing

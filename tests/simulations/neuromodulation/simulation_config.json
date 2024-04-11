@@ -29,8 +29,7 @@
             "delay": 0.0,
             "duration": 5000.0,
             "module": "synapse_replay",
-            "spike_file": "minimal_circuit/proj_spikes.dat",
-            "source": "virtual_neurons"
+            "spike_file": "minimal_circuit/proj_spikes.h5"
         }
     },
     "connection_overrides": [

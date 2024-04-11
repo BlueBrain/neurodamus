@@ -32,7 +32,7 @@ def test_replay_sim(sonata_config):
     from neurodamus import Neurodamus
     from neurodamus.core.configuration import Feature
 
-    config_file = replay_sim_config(sonata_config, [str(USECASE3 / "input.dat")])
+    config_file = replay_sim_config(sonata_config, [str(USECASE3 / "input.h5")])
     nd = Neurodamus(
         config_file.name,
         restrict_node_populations=["NodeA"],
@@ -71,7 +71,7 @@ def test_many_replay_sim(sonata_config):
     from neurodamus import Neurodamus
     from neurodamus.core.configuration import Feature
 
-    replay_files = [str(USECASE3 / file) for file in ["input.dat", "input1.dat", "input2.dat"]]
+    replay_files = [str(USECASE3 / file) for file in ["input.h5", "input1.h5", "input2.h5"]]
     config_file = replay_sim_config(sonata_config, replay_files)
     nd = Neurodamus(
         config_file.name,

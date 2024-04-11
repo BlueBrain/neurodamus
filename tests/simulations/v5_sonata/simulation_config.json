@@ -80,7 +80,7 @@
         "spikeReplay": {
             "module": "synapse_replay",
             "input_type": "spikes",
-            "spike_file": "input.dat",
+            "spike_file": "input.h5",
             "delay": 0,
             "duration": 30000,
             "node_set": "Mosaic"

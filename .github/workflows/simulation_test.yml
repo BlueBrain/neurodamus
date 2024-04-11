@@ -87,19 +87,19 @@ jobs:
         wget --output-document="O1_mods.xz" --quiet "https://zenodo.org/record/8026353/files/O1_mods.xz?download=1"
         tar -xf O1_mods.xz
         cp -r mod tests/share/
-        cp core/mod/*.mod tests/share/mod/
+        cp neurodamus/data/mod/*.mod tests/share/mod/
         ./docker/build_neurodamus.sh tests/share/mod
 
     - name: Example run
       run: |
         export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
-        cp core/hoc/* tests/share/hoc/
+        cp neurodamus/data/hoc/* tests/share/hoc/
         export HOC_LIBRARY_PATH=$(pwd)/tests/share/hoc
         # launch simulation with NEURON
-        mpirun -np 2 ./x86_64/special -mpi -python init.py --configFile=tests/simulations/usecase3/simulation_sonata.json
+        mpirun -np 2 ./x86_64/special -mpi -python neurodamus/data/init.py --configFile=tests/simulations/usecase3/simulation_sonata.json
         ls tests/simulations/usecase3/reporting/*.h5
         # launch simulation with CORENEURON
-        mpirun -np 2 ./x86_64/special -mpi -python init.py --configFile=tests/simulations/usecase3/simulation_sonata_coreneuron.json
+        mpirun -np 2 ./x86_64/special -mpi -python neurodamus/data/init.py --configFile=tests/simulations/usecase3/simulation_sonata_coreneuron.json
         ls tests/simulations/usecase3/reporting_coreneuron/*.h5
 
     # - name: live debug session, comment out

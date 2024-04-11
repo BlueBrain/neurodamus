@@ -74,6 +74,11 @@ def neurodamus(args=None):
     # Warning control before starting the process
     _filter_warnings()
 
+    # Some previous executions may have left a bad exception node file
+    # This is done now so it's a very early stage and we know the mpi rank
+    if MPI.rank == 0 and os.path.exists(EXCEPTION_NODE_FILENAME):
+        os.remove(EXCEPTION_NODE_FILENAME)
+
     try:
         Neurodamus(config_file, True, logging_level=log_level, **options).run()
     except ConfigurationError as e:  # Common, only show error in Rank 0
