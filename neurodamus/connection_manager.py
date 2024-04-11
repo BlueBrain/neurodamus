@@ -777,12 +777,16 @@ class ConnectionManagerBase(object):
                 if not sample_len:
                     continue
                 try:
-                    sample_counts = self._synapse_reader.get_counts(sample, group_by="syn_type_id")
+                    if self.CONNECTIONS_TYPE == ConnectionTypes.Synaptic:
+                        sample_counts = self._synapse_reader.get_counts(
+                            sample, group_by="syn_type_id")
+                    else:
+                        sample_counts = self._synapse_reader.get_counts(sample)
+                        sample_counts = {self.CONNECTIONS_TYPE: sample_counts}
                 except SonataError as e:
                     logging.warning("Error while getting synapse counts: %s", e)
-                    logging.warning("You might be using a non-compliant version of the edge file.")
+                    logging.warning("Skipping range %d:%d", start, stop)
                     continue
-
                 logging.debug("Gids: %s... Types: %s", sample[:10], sample_counts)
                 logging.debug("Average syn/cell: %.2f", sum(sample_counts.values()) / sample_len)
                 sampled_gids_count += sample_len
