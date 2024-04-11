@@ -315,6 +315,8 @@ class DryRunStats:
         log_verbose("+{:=^68}+".format(" Synapse Count "))
         log_verbose("| {:^40s} | {:^10s} | {:^10s} |".format("Synapse Type", "Family", "Count"))
         log_verbose("+{:-^68}+".format(""))
+
+        # Some synapse types are numeric, others are strings, so we need to handle both
         numeric_items = [(syn_type, count)
                          for syn_type, count in master_counter.items()
                          if isinstance(syn_type, (int, np.integer))]
