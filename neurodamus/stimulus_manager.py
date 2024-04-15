@@ -85,7 +85,7 @@ class BaseStim:
     def __init__(self, _target, stim_info: dict, _cell_manager):
         self.duration = float(stim_info["Duration"])  # duration [ms]
         self.delay = float(stim_info["Delay"])        # start time [ms]
-        self.represents_physical_electrode = stim_info.get('represents_physical_electrode', False)
+        self.represents_physical_electrode = stim_info.get('RepresentsPhysicalElectrode', False)
 
 
 @StimulusManager.register_type
