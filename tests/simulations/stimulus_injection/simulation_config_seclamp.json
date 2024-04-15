@@ -1,7 +1,7 @@
 {
   "run": {
     "dt": 0.025,
-    "tstop": 100,
+    "tstop": 10,
     "random_seed": 851,
     "run_mode":"WholeCell",
     "integration_method":2
@@ -37,7 +37,7 @@
         "mean":0.05,
         "sigma":0.01,
         "tau":0.1,
-        "delay":50,
+        "delay":5,
         "duration":2100,
         "node_set": "Cell",
         "represents_physical_electrode":true
@@ -50,7 +50,6 @@
   "current": {
    "type": "summation",
     "cells": "Cell",
-    "sections": "all",
     "variable_name": "i_membrane",
     "unit":"nA",
     "dt": 0.025,
@@ -62,7 +61,6 @@
       "type":"compartment",
       "cells":"Cell",
       "variable_name":"v",
-      "sections":"all",
       "unit":"mV",
       "dt":0.025,
       "start_time":0.0,
