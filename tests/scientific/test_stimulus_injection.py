@@ -1,11 +1,10 @@
 import pytest
 import h5py
 import os
-import numpy as np
+import numpy
 from pathlib import Path
 
 SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "stimulus_injection"
-
 # Read the soma report and return a list with the voltages
 def _read_sonata_soma_report(report_name):
     import libsonata
@@ -16,7 +15,7 @@ def _read_sonata_soma_report(report_name):
     return numpy.array(data.data).flatten().tolist()
 
 def test_current_injection_coreneuron():
-    
+
     from neurodamus import Neurodamus
     from neurodamus.replay import SpikeManager
 
@@ -24,13 +23,13 @@ def test_current_injection_coreneuron():
     os.chdir(SIM_DIR)
     nd = Neurodamus(config_file, disable_reports=False, simulator="CORENEURON",
                     output_path="output_coreneuron")
+
     nd.run()
 
     soma_report_path = os.path.join(nd._run_conf["OutputRoot"], "voltage.h5")
     voltage_vec_iclamp = _read_sonata_soma_report(soma_report_path)
-
+    #
     config_file = str(SIM_DIR / "simulation_config_membranecurrentsource.json")
-    os.chdir(SIM_DIR)
     nd = Neurodamus(config_file, disable_reports=False, simulator="CORENEURON",
                     output_path="output_coreneuron")
     nd.run()
@@ -41,7 +40,7 @@ def test_current_injection_coreneuron():
     numpy.testing.assert_equal(voltage_vec_iclamp,voltage_vec_membranecurrentsource)
 
 def test_conductance_injection_coreneuron():
-    
+
     from neurodamus import Neurodamus
     from neurodamus.replay import SpikeManager
 
@@ -55,7 +54,6 @@ def test_conductance_injection_coreneuron():
     voltage_vec_seclamp = _read_sonata_soma_report(soma_report_path)
 
     config_file = str(SIM_DIR / "simulation_config_conductancesource.json")
-    os.chdir(SIM_DIR)
     nd = Neurodamus(config_file, disable_reports=False, simulator="CORENEURON",
                     output_path="output_coreneuron")
     nd.run()
