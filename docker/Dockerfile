@@ -68,7 +68,7 @@ RUN source $USR_VENV/bin/activate \
 
 # Build h5py with the local hdf5
 RUN source $USR_VENV/bin/activate \
- && MPICC="mpicc -shared" pip install --no-cache-dir --no-binary=mpi4py mpi4py \
+ && pip install mpi4py \
  && CC="mpicc" HDF5_MPI="ON" HDF5_INCLUDEDIR=/usr/include/hdf5/mpich HDF5_LIBDIR=/usr/lib/x86_64-linux-gnu/hdf5/mpich \
     pip install --no-cache-dir --no-binary=h5py h5py --no-build-isolation
 
@@ -78,11 +78,11 @@ RUN source $USR_VENV/bin/activate \
  && git clone https://github.com/BlueBrain/neurodamus.git \
  && cd neurodamus \
  && pip install . \
- && cp tests/share/hoc/* core/hoc/
+ && cp tests/share/hoc/* neurodamus/data/hoc/
 
-ENV HOC_LIBRARY_PATH "$WORKDIR/neurodamus/core/hoc"
-ENV NEURODAMUS_PYTHON "$WORKDIR/neurodamus/"
-ENV NEURODAMUS_MODS_DIR "$WORKDIR/neurodamus/core/mod"
+ENV HOC_LIBRARY_PATH "$WORKDIR/neurodamus/neurodamus/data/hoc"
+ENV NEURODAMUS_PYTHON "$WORKDIR/neurodamus/neurodamus/data"
+ENV NEURODAMUS_MODS_DIR "$WORKDIR/neurodamus/neurodamus/data/mod"
 ENV PATH "$INSTALL_DIR/bin:$USR_VENV/bin:$PATH"
 ENV PYTHONPATH "$INSTALL_DIR/python:$PYTHONPATH"
 
