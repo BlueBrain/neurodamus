@@ -14,11 +14,12 @@ class BaseCell:
     """
     Class representing an basic cell, e.g. an artificial cell
     """
-    __slots__ = ("_cellref", "_ccell")
+    __slots__ = ("_cellref", "_ccell", "raw_gid")
 
     def __init__(self, gid, cell_info, circuit_info):
         self._cellref = None
         self._ccell = None
+        self.raw_gid = None
 
     @property
     def CellRef(self):
