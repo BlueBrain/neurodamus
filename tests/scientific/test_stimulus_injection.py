@@ -38,6 +38,8 @@ def test_current_injection_coreneuron():
     soma_report_path = os.path.join(nd._run_conf["OutputRoot"], "voltage.h5")
     voltage_vec_membranecurrentsource = _read_sonata_soma_report(soma_report_path)
 
+    numpy.testing.assert_equal(voltage_vec_iclamp,voltage_vec_membranecurrentsource)
+
 def test_conductance_injection_coreneuron():
     
     from neurodamus import Neurodamus
@@ -61,4 +63,4 @@ def test_conductance_injection_coreneuron():
     soma_report_path = os.path.join(nd._run_conf["OutputRoot"], "voltage.h5")
     voltage_vec_conductancesource = _read_sonata_soma_report(soma_report_path)
 
-    
+    numpy.testing.assert_equal(voltage_vec_seclamp,voltage_vec_conductancesource)
