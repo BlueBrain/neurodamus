@@ -16,17 +16,7 @@ More information about this file can be found in the `SONATA Simulation Specific
 Generating the Electrodes File
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The electrodes file can be generated using specific steps and considerations. Follow the instructions below to generate the file:
-
-1. Produce a compartment report from a target including the cells that will be used for the LFP calculation.
-
-2. Run the file getPositions.py, using the bash script GetPositions.sh. This will create a folder containing pickle files listing the (x,y,z) position of each segment in each cell in the target.
-
-3. Run the file writeH5_MPI_prelim.py, using the bash script WriteH5Prelim.sh. This will create the weights file, populating all coefficients with 1s. The script writeH5_MPI_prelim.py will have to be modified depending on the desired electrode array; it currently creates the weights file for a Neuropixels probe.
-
-4. Run the file writeH5_MPI.py, using the bash script WriteH5.sh. This populates the weights file with the correct coefficients. This step requires the use of a version of h5py built with MPI support. This two-step procedure is used because the calculation of the LFP coefficients is not feasible without parallelization, but MPI cannot be used when H5 files are created.
-
-The files mentioned can be found `here <https://github.com/joseph-tharayil/create_lfp_weights_for_neurodamus>`_
+The electrodes file can be generated using specific steps and considerations. Code and instructions to generate these files can be found `here <https://github.com/BlueBrain/BlueRecording>`_
 
 Generating the LFP report
 --------------------------

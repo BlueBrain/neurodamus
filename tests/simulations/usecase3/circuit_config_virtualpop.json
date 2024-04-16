@@ -1,0 +1,70 @@
+{
+    "version": 2,
+    "networks": {
+        "nodes": [
+            {
+                "nodes_file": "nodes_A.h5",
+                "populations": {
+                    "NodeA": {
+                        "type": "biophysical",
+                        "morphologies_dir": "CircuitA/morphologies/swc",
+                        "biophysical_neuron_models_dir": "CircuitA/hoc",
+                        "alternate_morphologies": {
+                            "neurolucida-asc": "CircuitA/morphologies/asc"
+                        }
+                    }
+                }
+            },
+            {
+                "nodes_file": "nodes_B.h5",
+                "populations": {
+                    "NodeB": {
+                        "type": "biophysical",
+                        "morphologies_dir": "CircuitB/morphologies/swc",
+                        "biophysical_neuron_models_dir": "CircuitB/hoc",
+                        "alternate_morphologies": {
+                            "neurolucida-asc": "CircuitB/morphologies/asc"
+                        }
+                    }
+                }
+            },
+            {
+                "nodes_file": "virtual_neurons.h5",
+                "populations": {
+                    "A_virtual_neurons": {
+                        "type": "virtual"
+                    }
+                }
+            }
+        ],
+        "edges": [
+            {
+                "edges_file": "local_edges_A.h5",
+                "populations": {
+                    "NodeA__NodeA__chemical": {
+                        "type": "chemical"
+                    }
+                }
+            },
+            {
+                "edges_file": "local_edges_B.h5",
+                "populations": {
+                    "NodeB__NodeB__chemical": {
+                        "type": "chemical"
+                    }
+                }
+            },
+            {
+                "edges_file": "edges_AB.h5",
+                "populations": {
+                    "NodeA__NodeB__chemical": {
+                        "type": "chemical"
+                    },
+                    "NodeB__NodeA__chemical": {
+                        "type": "chemical"
+                    }
+                }
+            }
+        ]
+    }
+}
