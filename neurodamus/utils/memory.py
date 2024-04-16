@@ -17,6 +17,8 @@ import gzip
 from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
 from .compat import Vector
 from collections import defaultdict
+from enum import Enum
+from ..io.sonata_config import ConnectionTypes
 
 import numpy as np
 
@@ -309,24 +311,45 @@ class DryRunStats:
         logging.info(" - Estimated synapse memory usage (MB):")
         from .logging import log_verbose
         inh_count = exc_count = 0
+        gap_count = other_count = 0
         log_verbose("+{:=^68}+".format(" Synapse Count "))
         log_verbose("| {:^40s} | {:^10s} | {:^10s} |".format("Synapse Type", "Family", "Count"))
         log_verbose("+{:-^68}+".format(""))
-        for syn_type, count in sorted(master_counter.items()):
+
+        # Some synapse types are numeric, others are strings, so we need to handle both
+        numeric_items = [(syn_type, count)
+                         for syn_type, count in master_counter.items()
+                         if isinstance(syn_type, (int, np.integer))]
+        for syn_type, count in sorted(numeric_items):
             is_inh = syn_type < 100
-            syn_type_str = "INH" if is_inh else "EXC"
-            log_verbose("| {:40.0f} | {:<10s} | {:10.0f} |".format(syn_type, syn_type_str, count))
+            type_str = "INH" if is_inh else "EXC"
+            log_verbose("| {:40.0f} | {:<10s} | {:10.0f} |".format(syn_type, type_str, count))
             if is_inh:
                 inh_count += count
             else:
                 exc_count += count
+
+        string_items = [(syn_type, count)
+                        for syn_type, count in master_counter.items()
+                        if isinstance(syn_type, (Enum))]
+        for syn_type, count in string_items:
+            is_gap = syn_type == ConnectionTypes.GapJunction
+            type_str = "Gap" if is_gap else "Other"
+            log_verbose("| {:>40s} | {:<10s} | {:10.0f} |".format(str(syn_type), type_str, count))
+            if is_gap:
+                gap_count += count
+            else:
+                other_count += count
+
         log_verbose("+{:-^68}+".format(""))
 
         in_mem = SynapseMemoryUsage.get_memory_usage(inh_count, "ProbGABAAB") / 1024
         ex_mem = SynapseMemoryUsage.get_memory_usage(exc_count, "ProbAMPANMDA") / 1024
-        self.synapse_memory_total = in_mem + ex_mem
+        gap_mem = SynapseMemoryUsage.get_memory_usage(gap_count, "Gap") / 1024
+        self.synapse_memory_total = in_mem + ex_mem + gap_mem
         logging.info("   - Inhibitory: %s", pretty_printing_memory_mb(in_mem))
         logging.info("   - Excitatory: %s", pretty_printing_memory_mb(ex_mem))
+        logging.info("   - Gap: %s", pretty_printing_memory_mb(gap_mem))
         logging.info(" - TOTAL : %s", pretty_printing_memory_mb(self.synapse_memory_total))
 
     @run_only_rank0

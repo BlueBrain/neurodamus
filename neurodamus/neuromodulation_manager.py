@@ -3,6 +3,7 @@ import logging
 from .connection_manager import SynapseRuleManager
 from .connection import Connection, NetConType, ReplayMode
 from .core.configuration import GlobalConfig, SimConfig
+from .io.sonata_config import ConnectionTypes
 from .io.synapse_reader import SynapseParameters, SonataReader
 from .utils.logging import log_all
 
@@ -121,6 +122,7 @@ class NeuroModulationSynapseReader(SonataReader):
 
 
 class NeuroModulationManager(SynapseRuleManager):
+    CONNECTIONS_TYPE = ConnectionTypes.NeuroModulation
     conn_factory = NeuroModulationConnection
     SynapseReader = NeuroModulationSynapseReader
 

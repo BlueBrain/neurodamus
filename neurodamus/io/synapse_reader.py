@@ -376,11 +376,15 @@ class SonataReader(SynapseReader):
 
         return conn_syn_params
 
-    def get_counts(self, raw_ids, group_by):
+    def get_counts(self, raw_ids, group_by=None):
         """
         Counts synapses and groups by the given field.
+        If called with group_by = None returns an int.
+        If called with any group_by it returns a dict.
         """
         edge_ids = self._population.afferent_edges(raw_ids - 1)
+        if group_by is None:
+            return edge_ids.flat_size
         data = self._population.get_attribute(group_by, edge_ids)
         values, counts = np.unique(data, return_counts=True)
         return dict(zip(values, counts))
