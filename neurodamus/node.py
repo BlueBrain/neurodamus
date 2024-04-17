@@ -25,6 +25,7 @@ from .cell_distributor import LoadBalance, LoadBalanceMode
 from .connection_manager import SynapseRuleManager, edge_node_pop_names
 from .gap_junction import GapJunctionManager
 from .replay import MissingSpikesPopulationError, SpikeManager
+from .report import Report
 from .stimulus_manager import StimulusManager
 from .modification_manager import ModificationManager
 from .neuromodulation_manager import NeuroModulationManager
@@ -813,7 +814,7 @@ class Node:
 
     # Reporting
     ReportParams = namedtuple("ReportParams", "name, rep_type, report_on, unit, format, dt, "
-                              "start, end, output_dir, electrode, scaling, isc")
+                              "start, end, output_dir, scaling")
 
     # -
     # @mpi_no_errors - not required since theres a call inside before make_comm()
@@ -853,10 +854,16 @@ class Node:
             if SimConfig.restore_coreneuron:
                 continue  # we dont even need to initialize reports
 
-            report = Nd.Report(*rep_params)
+            has_gids = len(self._circuits.global_manager.get_final_gids()) > 0
+            report = Report(*rep_params, SimConfig.use_coreneuron) if has_gids else None
 
             if not SimConfig.use_coreneuron or rep_params.rep_type == "Synapse":
-                self._report_setup(report, rep_conf, target, rep_params.rep_type)
+                try:
+                    self._report_setup(report, rep_conf, target, rep_params.rep_type)
+                except Exception as e:
+                    logging.error("Error setting up report '%s': %s", rep_name, e)
+                    n_errors += 1
+                    continue
 
             # Custom reporting. TODO: Move `_report_setup` to cellManager.enable_report
             target_population = target_spec.population or self._target_spec.population
@@ -866,7 +873,7 @@ class Node:
             self._report_list.append(report)
 
         if n_errors > 0:
-            raise ConfigurationError("%d reporting errors detected. Terminating" % (n_errors,))
+            raise Exception("%d reporting errors detected. Terminating" % (n_errors,))
 
         MPI.check_no_errors()
 
@@ -932,9 +939,7 @@ class Node:
             start_time,
             end_time,
             SimConfig.output_root,
-            None,
-            Nd.String(rep_conf["Scaling"]) if "Scaling" in rep_conf else None,
-            rep_conf.get("ISC", "")
+            rep_conf.get("Scaling"),
         )
 
     #
@@ -974,8 +979,7 @@ class Node:
         global_manager = self._circuits.global_manager
 
         if rep_type not in ("compartment", "Summation", "Synapse", "lfp"):
-            logging.warning("Unsupported report type: %s.", rep_type)
-            return  # Nothing to do
+            raise ConfigurationError(f"Unsupported report type: {rep_type}")
 
         # Go through the target members, one cell at a time. We give a cell reference
         # For summation targets - check if we were given a Cell target because we really
@@ -989,8 +993,8 @@ class Node:
             sections = "all"
             compartments = "all"
         points = self._target_manager.getPointList(target,
-                                                   sections=sections,
-                                                   compartments=compartments)
+                                                    sections=sections,
+                                                    compartments=compartments)
         for point in points:
             gid = point.gid
             pop_name, pop_offset = global_manager.getPopulationInfo(gid)
@@ -999,15 +1003,12 @@ class Node:
 
             # may need to take different actions based on report type
             if rep_type == "compartment":
-                report.addCompartmentReport(
-                    cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+                report.add_compartment_report(cell, point, spgid, pop_name, pop_offset)
             elif rep_type == "Summation":
-                report.addSummationReport(
-                    cell, point, sum_currents_into_soma, spgid, SimConfig.use_coreneuron,
-                    pop_name, pop_offset)
+                report.add_summation_report(cell, point, sum_currents_into_soma,
+                                            spgid, pop_name, pop_offset)
             elif rep_type == "Synapse":
-                report.addSynapseReport(
-                    cell, point, spgid, SimConfig.use_coreneuron, pop_name, pop_offset)
+                report.add_synapse_report(cell, point, spgid, pop_name, pop_offset)
 
     def _reports_init(self, pop_offsets_alias):
         pop_offsets = pop_offsets_alias[0]
