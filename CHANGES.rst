@@ -2,6 +2,25 @@
 Change Log
 ==========
 
+Version 3.2.0
+=============
+**17 April 2024**
+
+*Bug Fixes*
+  * [BBPBGLIB-1145] Write gids without offset in WholeCell LB complexity file (#148)
+  * [BBPGBLIB-1147] Fixes crashes with KeyError when running sonataconf-sscx-O1 circuit on dry run (#149)
+  * Hotfix to solve crashes when running on certain amount of ranks (#141)
+
+*Improvements*
+  * [BBPBGLIB-1057] Replace Report.hoc by report.py (#145)
+  * [BBPGLIB-1148] Add support for gap junctions in dry run (#151)
+  * Update online-lfp.rst (#152)
+  * Update docker file with the new data location (#153)
+  * Replay with SONATA spikes files (#150)
+  * Clean up wheel contents. (#144)
+  * [BBPBGLIB-1139] Missing exception logging on configuration errors (#142)
+
+
 Version 3.1.1
 =============
 **12 Mar 2024**
