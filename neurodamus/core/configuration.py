@@ -76,6 +76,7 @@ class CliOptions(ConfigT):
     simulator = None
     dry_run = False
     num_target_ranks = None
+    keep_axon = False
 
     # Restricted Functionality support, mostly for testing
 
@@ -581,7 +582,12 @@ def _extra_circuits(config: _SimConfig, run_conf):
                 if field in config.base_circuit and field not in circuit_info:
                     log_verbose(" > Inheriting '%s' from base circuit", field)
                     circuit_info[field] = config.base_circuit[field]
+
         circuit_info.setdefault("nrnPath", False)
+        if config.cli_options.keep_axon and circuit_info["Engine"].__name__ == "METypeEngine":
+            log_verbose("Keeping axons ENABLED")
+            circuit_info.setdefault("DetailedAxon", True)
+
         extra_circuits[name] = _make_circuit_config(circuit_info, req_morphology=False)
         extra_circuits[name]._name = name
 
