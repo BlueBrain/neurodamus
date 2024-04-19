@@ -110,7 +110,7 @@ the main (upstream) repository:
 # Development Environment
 
 Please make sure to install the project requirements,
-see the [dependencies](./README.md#dependencies) section in top README.
+see the [dependencies](./README.rst#prerequisites) section in top README.
 
 This section applies to both Python versions 2 and 3.
 
