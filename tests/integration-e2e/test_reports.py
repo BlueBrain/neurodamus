@@ -8,14 +8,14 @@ from tempfile import NamedTemporaryFile
 
 SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "v5_sonata"
 
-
 @pytest.fixture
-def sonata_config_file_err(sonata_config):
+def sonata_config_synapse_report(sonata_config):
+
     extra_config = {"reports": {
         "synapse_report": {
             "type": "compartment",
             "cells": "Mosaic",
-            "variable_name": "wrong",
+            "variable_name": "v",
             "sections": "all",
             "dt": 0.1,
             "start_time": 0.0,
@@ -25,12 +25,29 @@ def sonata_config_file_err(sonata_config):
 
     sonata_config.update(extra_config)
 
+    return sonata_config
+
+@pytest.fixture
+def sonata_config_file_err(sonata_config_synapse_report):
+
+    sonata_config_synapse_report["reports"]["synapse_report"]["variable_name"] = "wrong"
+
     with NamedTemporaryFile("w", suffix='.json', delete=False) as config_file:
-        json.dump(sonata_config, config_file)
+        json.dump(sonata_config_synapse_report, config_file)
 
     yield config_file
     os.unlink(config_file.name)
 
+@pytest.fixture
+def sonata_config_file_disabled_report(sonata_config_synapse_report):
+
+    sonata_config_synapse_report["reports"]["synapse_report"]["enabled"] = False
+
+    with NamedTemporaryFile("w", suffix='.json', delete=False) as config_file:
+        json.dump(sonata_config_synapse_report, config_file)
+
+    yield config_file
+    os.unlink(config_file.name)
 
 @pytest.mark.slow
 def test_report_config_error(sonata_config_file_err):
@@ -40,6 +57,13 @@ def test_report_config_error(sonata_config_file_err):
         n.create_cells()
         n.enable_reports()
 
+@pytest.mark.slow
+def test_report_disabled(sonata_config_file_disabled_report):
+    n = Node(str(sonata_config_file_disabled_report.name))
+    n.load_targets()
+    n.create_cells()
+    n.enable_reports()
+    assert len(n.reports) == 0
 
 def _read_sonata_report(report_file):
     import libsonata
