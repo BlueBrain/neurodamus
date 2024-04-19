@@ -9,10 +9,10 @@ from tempfile import NamedTemporaryFile
 SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "v5_sonata"
 
 @pytest.fixture
-def sonata_config_synapse_report(sonata_config):
+def sonata_config_new_report(sonata_config):
 
     extra_config = {"reports": {
-        "synapse_report": {
+        "new_report": {
             "type": "compartment",
             "cells": "Mosaic",
             "variable_name": "v",
@@ -28,23 +28,23 @@ def sonata_config_synapse_report(sonata_config):
     return sonata_config
 
 @pytest.fixture
-def sonata_config_file_err(sonata_config_synapse_report):
+def sonata_config_file_err(sonata_config_new_report):
 
-    sonata_config_synapse_report["reports"]["synapse_report"]["variable_name"] = "wrong"
+    sonata_config_new_report["reports"]["new_report"]["variable_name"] = "wrong"
 
     with NamedTemporaryFile("w", suffix='.json', delete=False) as config_file:
-        json.dump(sonata_config_synapse_report, config_file)
+        json.dump(sonata_config_new_report, config_file)
 
     yield config_file
     os.unlink(config_file.name)
 
 @pytest.fixture
-def sonata_config_file_disabled_report(sonata_config_synapse_report):
+def sonata_config_file_disabled_report(sonata_config_new_report):
 
-    sonata_config_synapse_report["reports"]["synapse_report"]["enabled"] = False
+    sonata_config_new_report["reports"]["new_report"]["enabled"] = False
 
     with NamedTemporaryFile("w", suffix='.json', delete=False) as config_file:
-        json.dump(sonata_config_synapse_report, config_file)
+        json.dump(sonata_config_new_report, config_file)
 
     yield config_file
     os.unlink(config_file.name)
