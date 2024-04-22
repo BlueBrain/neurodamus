@@ -824,7 +824,7 @@ class Node:
         """
         log_stage("Reports Enabling")
         n_errors = 0
-        reports_conf = SimConfig.reports
+        reports_conf = {name: conf for name, conf in SimConfig.reports.items() if conf["Enabled"]}
         self._report_list = []
 
         # Create a map of offsets so that it can be used even on coreneuron save-restore
