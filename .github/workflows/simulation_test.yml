@@ -89,9 +89,6 @@ jobs:
         cp -r mod tests/share/
         cp neurodamus/data/mod/*.mod tests/share/mod/
         ./docker/build_neurodamus.sh tests/share/mod
-        export CORENEURONLIB=$(pwd)/x86_64/libcorenrnmech.so
-        export PATH=$(pwd)/x86_64:$PATH
-        which special
 
     - name: Example run
       run: |
@@ -99,6 +96,10 @@ jobs:
         cp neurodamus/data/hoc/* tests/share/hoc/
         export HOC_LIBRARY_PATH=$(pwd)/tests/share/hoc
         export NEURODAMUS_PYTHON=$(pwd)/neurodamus/data
+        export CORENEURONLIB=$(pwd)/x86_64/libcorenrnmech.so
+        export PATH=$(pwd)/x86_64:$PATH
+        which special
+
         # launch simulation with NEURON
         cd tests/simulations/usecase3/
         mpirun -np 2 special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=simulation_sonata.json
