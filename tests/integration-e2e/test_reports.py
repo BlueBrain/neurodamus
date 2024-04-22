@@ -8,6 +8,7 @@ from tempfile import NamedTemporaryFile
 
 SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "v5_sonata"
 
+
 @pytest.fixture
 def sonata_config_new_report(sonata_config):
 
@@ -27,6 +28,7 @@ def sonata_config_new_report(sonata_config):
 
     return sonata_config
 
+
 @pytest.fixture
 def sonata_config_file_err(sonata_config_new_report):
 
@@ -37,6 +39,7 @@ def sonata_config_file_err(sonata_config_new_report):
 
     yield config_file
     os.unlink(config_file.name)
+
 
 @pytest.fixture
 def sonata_config_file_disabled_report(sonata_config_new_report):
@@ -49,6 +52,7 @@ def sonata_config_file_disabled_report(sonata_config_new_report):
     yield config_file
     os.unlink(config_file.name)
 
+
 @pytest.mark.slow
 def test_report_config_error(sonata_config_file_err):
     with pytest.raises(Exception):
@@ -57,6 +61,7 @@ def test_report_config_error(sonata_config_file_err):
         n.create_cells()
         n.enable_reports()
 
+
 @pytest.mark.slow
 def test_report_disabled(sonata_config_file_disabled_report):
     n = Node(str(sonata_config_file_disabled_report.name))
@@ -64,6 +69,7 @@ def test_report_disabled(sonata_config_file_disabled_report):
     n.create_cells()
     n.enable_reports()
     assert len(n.reports) == 0
+
 
 def _read_sonata_report(report_file):
     import libsonata
