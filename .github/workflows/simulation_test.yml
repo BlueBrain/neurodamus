@@ -95,7 +95,7 @@ jobs:
         export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
         cp neurodamus/data/hoc/* tests/share/hoc/
         export HOC_LIBRARY_PATH=$(pwd)/tests/share/hoc
-        export CORENEURONLIB = $(pwd)/x86_64/libcorenrnmech.so
+        export CORENEURONLIB=$(pwd)/x86_64/libcorenrnmech.so
         export PATH=$(pwd)/x86_64:$PATH
         which special
         # launch simulation with NEURON

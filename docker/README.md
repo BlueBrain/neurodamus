@@ -44,7 +44,7 @@ If you have additional hoc files, add the location to `$HOC_LIBRARY_PATH`
 export HOC_LIBRARY_PATH=/mnt/mydata/<your_hoc_dir>:$HOC_LIBRARY_PATH
 ```
 
-If you would like to run with CORENEURON, set the environment variable `CORENEURONLIB` to your built coreneuron library, e.g.
+If you would like to run with CoreNEURON, set the environment variable `CORENEURONLIB` to the built CoreNEURON library, e.g.
 ```
 export CORENEURONLIB=/mnt/mydata/x86_64/libcorenrnmech.so
 ```
