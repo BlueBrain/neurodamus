@@ -783,29 +783,7 @@ class Node:
 
                 logging.info("=> Population pathway %s -> %s. Source offset: %d",
                              src_pop_str, dst_pop_str, src_pop_offset)
-<<<<<<< HEAD
                 conn_manager.replay(spike_manager, source, target, delay)
-=======
-                if SimConfig.use_coreneuron and not SimConfig.coreneuron_direct_mode:
-                    self._coreneuron_replay_append(spike_manager, src_pop_offset)
-                else:
-                    conn_manager.replay(spike_manager, source, target, delay)
-
-    def _coreneuron_replay_append(self, spike_manager, gid_offset=None):
-        """Write replay spikes in single file for CoreNeuron"""
-        # To be loaded as PatternStim, requires final gids (with offset)
-        # Initialize file if non-existing
-        if not self._core_replay_file:
-            self._core_replay_file = ospath.join(SimConfig.output_root, 'pattern.dat')
-            if MPI.rank == 0:
-                log_verbose("Creating pattern.dat file for CoreNEURON. Gid offset: %d", gid_offset)
-                spike_manager.dump_ascii(self._core_replay_file, gid_offset)
-        else:
-            if MPI.rank == 0:
-                log_verbose("Appending to pattern.dat. Gid offset: %d", gid_offset)
-                with open(self._core_replay_file, "a") as f:
-                    spike_manager.dump_ascii(f, gid_offset)
->>>>>>> 5b8c3d0... Change CLI option name to --coreneuron-direct-mode
 
     # -
     @mpi_no_errors
@@ -868,13 +846,11 @@ class Node:
             if SimConfig.restore_coreneuron:
                 continue  # we dont even need to initialize reports
 
-            has_gids = len(self._circuits.global_manager.get_final_gids()) > 0
             # In coreneuron direct (in-memory) mode, i_membrane data is copied
             # between neuron and coreneuron
             if SimConfig.coreneuron_direct_mode and "i_membrane" in rep_params.report_on:
                 Nd.cvode.use_fast_imem(1)
 
-            report = Report(*rep_params, SimConfig.use_coreneuron) if has_gids else None
 
             # With coreneuron direct mode, enable fast membrane current calculation for i_membrane
             if SimConfig.coreneuron_direct_mode and \
@@ -883,6 +859,8 @@ class Node:
 
             if not SimConfig.use_coreneuron or rep_params.rep_type == "Synapse":
                 try:
+                    has_gids = len(self._circuits.global_manager.get_final_gids()) > 0
+                    report = Report(*rep_params, SimConfig.use_coreneuron) if has_gids else None
                     self._report_setup(report, rep_conf, target, rep_params.rep_type)
                 except Exception as e:
                     logging.error("Error setting up report '%s': %s", rep_name, e)
@@ -892,9 +870,10 @@ class Node:
             # Custom reporting. TODO: Move `_report_setup` to cellManager.enable_report
             target_population = target_spec.population or self._target_spec.population
             cell_manager = self._circuits.get_node_manager(target_population)
-            cell_manager.enable_report(report, target, SimConfig.use_coreneuron)
+            # cell_manager.enable_report(report, target, SimConfig.use_coreneuron)
 
-            self._report_list.append(report)
+            if report:
+                self._report_list.append(report)
 
         if n_errors > 0:
             raise Exception("%d reporting errors detected. Terminating" % (n_errors,))
