@@ -410,13 +410,12 @@ class SonataConfig:
 
     @property
     def parsedModifications(self):
-        modifications = {}
-        for name in self._sim_conf.conditions.list_modification_names:
-            setting = self._translate_dict("modifications",
-                                           self._sim_conf.conditions.modification(name))
+        result = {}
+        for modification in self._sim_conf.conditions.modifications():
+            setting = self._translate_dict("modifications", modification)
             self._adapt_libsonata_fields(setting)
-            modifications[name] = setting
-        return modifications
+            result[modification.name] = setting
+        return result
 
     def _dir(self, obj):
         return [x for x in dir(obj) if not x.startswith('__') and not callable(getattr(obj, x))]
