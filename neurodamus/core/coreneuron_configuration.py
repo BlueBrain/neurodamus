@@ -4,7 +4,6 @@ from pathlib import Path
 from ._utils import run_only_rank0
 from . import NeurodamusCore as Nd
 from ..report import get_section_index
-from ..utils.logging import log_verbose
 
 
 class CompartmentMapping:
