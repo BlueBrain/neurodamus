@@ -205,6 +205,7 @@ class _SimConfig(object):
     reports = None
     configures = None
     modifications = None
+    modification_times = []
 
     # Hoc objects used
     _config_parser = None
@@ -272,7 +273,7 @@ class _SimConfig(object):
         cls.injects = compat.Map(cls._config_parser.parsedInjects)
         cls.reports = compat.Map(cls._config_parser.parsedReports)
         cls.configures = compat.Map(cls._config_parser.parsedConfigures or {})
-        cls.modifications = compat.Map(cls._config_parser.parsedModifications or {})
+        cls.modifications = cls._config_parser.parsedModifications or {}
         cls.cli_options = CliOptions(**(cli_options or {}))
         cls.dry_run = cls.cli_options.dry_run
         cls.crash_test_mode = cls.cli_options.crash_test
@@ -516,9 +517,12 @@ def _stimulus_params(config: _SimConfig, run_conf):
 
 @SimConfig.validator
 def _modification_params(config: _SimConfig, run_conf):
+    times = set()
     required_fields = ("Target", "Type",)
     for name, mod_block in config.modifications.items():
         _check_params("Modification " + name, compat.Map(mod_block), required_fields, ())
+        times.add(mod_block["Delay"])
+    config.modification_times = sorted(times)
 
 
 def _make_circuit_config(config_dict, req_morphology=True):

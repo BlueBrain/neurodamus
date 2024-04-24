@@ -788,7 +788,7 @@ class Node:
     # -
     @mpi_no_errors
     @timeit(name="Enable Modifications")
-    def enable_modifications(self):
+    def enable_modifications(self, time=0.0):
         """Iterate over any Modification blocks read from the config file and apply them to the
         network. The steps needed are more complex than NeuronConfigures, so the user should not be
         expected to write the hoc directly, but rather access a library of already available mods.
@@ -798,11 +798,12 @@ class Node:
         log_stage("Enabling modifications...")
 
         mod_manager = ModificationManager(self._target_manager)
-        for name, mod in SimConfig.modifications.items():
-            mod_info = compat.Map(mod)
-            target_spec = TargetSpec(mod_info["Target"])
-            logging.info(" * [MOD] %s: %s -> %s", name, mod_info["Type"], target_spec)
-            mod_manager.interpret(target_spec, mod_info)
+        for name, mod in SimConfig.modifications.copy().items():
+            if mod["Delay"] == time:
+                target_spec = TargetSpec(mod["Target"])
+                logging.info(" * [MOD] %s: %s -> %s", name, mod["Type"], target_spec)
+                mod_manager.interpret(target_spec, mod)
+                del SimConfig.modifications[name]
 
     # Reporting
     ReportParams = namedtuple("ReportParams", "name, rep_type, report_on, unit, format, dt, "
@@ -868,8 +869,8 @@ class Node:
                     continue
 
             # Custom reporting. TODO: Move `_report_setup` to cellManager.enable_report
-            target_population = target_spec.population or self._target_spec.population
-            cell_manager = self._circuits.get_node_manager(target_population)
+            # target_population = target_spec.population or self._target_spec.population
+            # cell_manager = self._circuits.get_node_manager(target_population)
             # cell_manager.enable_report(report, target, SimConfig.use_coreneuron)
 
             if report:
@@ -1319,23 +1320,29 @@ class Node:
             self.sim_init()
 
         timings = None
-        for tstop in [15, 20]:
-            if SimConfig.use_neuron:
-                timings = self._run_neuron(tstop)
-                if tstop == 15:
-                    self.enable_modifications()
-                if tstop == 20:
-                    self.sonata_spikes()
-            if SimConfig.use_coreneuron:
-                print_mem_usage()
-                if not SimConfig.coreneuron_direct_mode:
-                    self.clear_model(avoid_clearing_queues=False)
-                self._run_coreneuron(tstop)
-                Nd.t=tstop
-                if tstop == 15:
-                    self.enable_modifications()
-                if SimConfig.coreneuron_direct_mode and tstop == 20:
-                    self.sonata_spikes()
+
+        for t in SimConfig.modification_times:
+            if t >= Nd.tstop:
+                continue
+            timings = self._run_interval(t)
+            Nd.t = t
+            self.enable_modifications(t)
+
+        timings = self._run_interval()
+        if SimConfig.use_neuron or SimConfig.coreneuron_direct_mode:
+            self.sonata_spikes()
+
+        return timings
+
+    def _run_interval(self, tstop=None):
+        timings = None
+        if SimConfig.use_neuron:
+            timings = self._run_neuron(tstop)
+        if SimConfig.use_coreneuron:
+            print_mem_usage()
+            if not SimConfig.coreneuron_direct_mode:
+                self.clear_model(avoid_clearing_queues=False)
+            self._run_coreneuron(tstop)
         return timings
 
     # -
@@ -1555,7 +1562,8 @@ class Node:
         print_mem_usage()
 
         # Coreneuron runs clear the model before starting
-        if not SimConfig.use_coreneuron or SimConfig.coreneuron_direct_mode or SimConfig.simulate_model is False:
+        if not SimConfig.use_coreneuron or SimConfig.coreneuron_direct_mode \
+                or SimConfig.simulate_model is False:
             self.clear_model(avoid_creating_objs=True)
 
         if SimConfig.delete_corenrn_data and not SimConfig.dry_run:
@@ -1674,7 +1682,9 @@ class Neurodamus(Node):
 
         self.enable_stimulus()
         print_mem_usage()
-        # self.enable_modifications()
+        if SimConfig.modification_times[0] == 0:
+            self.enable_modifications(time=0)
+            SimConfig.modification_times.remove(0)
 
         if self._run_conf["EnableReports"]:
             self.enable_reports()
