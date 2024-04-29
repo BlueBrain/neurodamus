@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from ._utils import run_only_rank0
 from . import NeurodamusCore as Nd
+from ..report import get_section_index
 
 
 class CompartmentMapping:
@@ -11,42 +12,6 @@ class CompartmentMapping:
     def __init__(self, cell_distributor):
         self.cell_distributor = cell_distributor
         self.pc = Nd.ParallelContext()
-
-    def get_section_index(self, cell, section):
-        """
-        Calculate the global index of a given section within its cell.
-        :param cell: The cell instance containing the section of interest
-        :param section: The specific section for which the index is required
-        :return: The global index of the section, applicable for neuron mapping
-        """
-        section_name = str(section)
-        base_offset = 0
-        section_index = 0
-        if "soma" in section_name:
-            pass  # base_offset is 0
-        elif "axon" in section_name:
-            base_offset = cell.nSecSoma
-        elif "dend" in section_name:
-            base_offset = cell.nSecSoma + cell.nSecAxonalOrig
-        elif "apic" in section_name:
-            base_offset = cell.nSecSoma + cell.nSecAxonalOrig + cell.nSecBasal
-        elif "ais" in section_name:
-            base_offset = cell.nSecSoma + cell.nSecAxonalOrig + cell.nSecBasal + cell.nSecApical
-        elif "node" in section_name:
-            base_offset = cell.nSecSoma + cell.nSecAxonalOrig + cell.nSecBasal + cell.nSecApical \
-                        + getattr(cell, 'nSecLastAIS', 0)
-        elif "myelin" in section_name:
-            base_offset = cell.nSecSoma + cell.nSecAxonalOrig + cell.nSecBasal + cell.nSecApical \
-                        + getattr(cell, 'nSecLastAIS', 0) + getattr(cell, 'nSecNodal', 0)
-
-        # Extract the index from the section name
-        try:
-            index_str = section_name.split('[')[-1].rstrip(']')
-            section_index = int(index_str)
-        except ValueError:
-            logging.warning(f"Error while getting section index {index_str}")
-
-        return int(base_offset + section_index)
 
     def create_section_vectors(self, section_id, section, secvec, segvec):
         num_segments = 0
@@ -63,7 +28,7 @@ class CompartmentMapping:
         section_attr = getattr(cell, sections[0], None)
         if section_attr:
             for sec in section_attr:
-                section_index = self.get_section_index(cell, sec)
+                section_index = get_section_index(cell, sec)
                 num_segments += self.create_section_vectors(section_index, sec, secvec, segvec)
 
         if num_electrodes > 0 and all_lfp_factors.size() > 0 and num_segments > 0:
