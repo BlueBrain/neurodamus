@@ -39,9 +39,9 @@ def test_save_restore_cli():
             # Save-Restore raises exception when using NEURON
             if simulator == "NEURON":
                 with pytest.raises(subprocess.CalledProcessError):
-                    subprocess.run(command, check=True)
+                    subprocess.run(command, check=True, capture_output=True)
             else:
-                subprocess.run(command, check=True)
+                subprocess.run(command, check=True, capture_output=True)
 
 
 def test_cli_prcellgid():
@@ -70,6 +70,7 @@ def test_cli_disable_reports():
     subprocess.run(
         ["neurodamus", CONFIG_FILE_MINI, "--disable-reports"],
         check=True,
+        capture_output=True,
         cwd=test_folder_path
     )
     # Spikes are present even if we disable reports
@@ -81,6 +82,7 @@ def test_cli_disable_reports():
     subprocess.run(
         ["neurodamus", CONFIG_FILE_MINI],
         check=True,
+        capture_output=True,
         cwd=test_folder_path
     )
     assert (test_folder_path / sim_config_data["output"]["output_dir"] / "out.h5").is_file()
