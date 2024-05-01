@@ -13,11 +13,6 @@ __pycache__/*
 */.ipynb_checkpoints/*
 .vscode
 spack-*
-.ipynb_checkpoints
-*.SUCCESS
-output_coreneuron*
-._*
-.DS_Store
 
 # Project files
 .ropeproject
