@@ -389,7 +389,7 @@ process before any of the actual instantiation is done. This value, since it's a
 part in the execution, is then multiplied by the number of ranks used in the execution.
 
 On top of this we also need to consider the memory usage of the simulation itself. Unfortunately
-at the moment there are no easy ways to estimate this value, so we have opted for a simple euristic
+at the moment there are no easy ways to estimate this value, so we have opted for a simple heuristic
 approach. We assume that the memory usage of the simulation is proportional to the memory usage of
 the cells and synapses. From tests on a wide variety of circuits we've seen that the simulation memory 
 usage is typically between 1.5 and 2.5 times the memory usage of the cells and synapses. We've opted for
