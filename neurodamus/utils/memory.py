@@ -22,6 +22,11 @@ from ..io.sonata_config import ConnectionTypes
 
 import numpy as np
 
+# The factor to multiply the cell + synapses memory usage by to get the simulation memory estimate.
+# This is an heuristic estimate based on tests on multiple circuits.
+# More info in docs/architecture.rst.
+SIM_ESTIMATE_FACTOR = 2.5
+
 
 def trim_memory():
     """
@@ -256,7 +261,6 @@ class DryRunStats:
         self.metype_counts = Counter()
         self.synapse_counts = Counter()
         self.suggested_nodes = 0
-        self.sim_estimate_factor = 2.5
         _, _, self.base_memory, _ = get_task_level_mem_usage()
 
     @run_only_rank0
@@ -363,7 +367,7 @@ class DryRunStats:
         logging.info("| {:<40s} | {:12.1f} |".format("Cells", self.cell_memory_total))
         logging.info("| {:<40s} | {:12.1f} |".format("Synapses", self.synapse_memory_total))
         self.simulation_estimate = (self.cell_memory_total
-                                    + self.synapse_memory_total) * self.sim_estimate_factor
+                                    + self.synapse_memory_total) * SIM_ESTIMATE_FACTOR
         logging.info("| {:<40s} | {:12.1f} |".format("Simulation", self.simulation_estimate))
         logging.info("+{:-^57}+".format(""))
         grand_total = (full_overhead
@@ -410,7 +414,7 @@ class DryRunStats:
         while (prev_est_nodes is None or est_nodes != prev_est_nodes) and iter_count < max_iter:
             prev_est_nodes = est_nodes
             simulation_estimate = (self.cell_memory_total +
-                                   self.synapse_memory_total) * self.sim_estimate_factor
+                                   self.synapse_memory_total) * SIM_ESTIMATE_FACTOR
             mem_usage_per_node = (full_overhead
                                   + self.cell_memory_total
                                   + self.synapse_memory_total
