@@ -83,7 +83,7 @@
             "spike_file": "input.h5",
             "delay": 0,
             "duration": 30000,
-            "node_set": "Mosaic"
+            "node_set": "Mosaic",
         },
         "ThresholdExc": {
             "module": "noise",
@@ -92,7 +92,8 @@
             "variance": 0.001,
             "delay": 0.0,
             "duration": 30000,
-            "node_set": "Excitatory"
+            "node_set": "Excitatory",
+            "represents_physical_electrode":true
         },
         "ThresholdInh": {
             "module": "noise",
@@ -101,14 +102,16 @@
             "variance": 0.001,
             "delay": 0.0,
             "duration": 30000,
-            "node_set": "Inhibitory"
+            "node_set": "Inhibitory",
+            "represents_physical_electrode":true
         },
         "hypamp_mosaic": {
             "module": "hyperpolarizing",
             "input_type": "current_clamp",
             "delay": 0.0,
             "duration": 30000,
-            "node_set": "Mosaic"
+            "node_set": "Mosaic",
+            "represents_physical_electrode":true
         }
     },
     "reports": {
