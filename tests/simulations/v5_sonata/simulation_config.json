@@ -83,7 +83,7 @@
             "spike_file": "input.h5",
             "delay": 0,
             "duration": 30000,
-            "node_set": "Mosaic",
+            "node_set": "Mosaic"
         },
         "ThresholdExc": {
             "module": "noise",
