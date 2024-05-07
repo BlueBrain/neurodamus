@@ -17,6 +17,7 @@ on:
 
 env:
   NEURON_COMMIT_ID: '13654b3'
+  LIBSONATA_REPORT_TAG: ${{ github.event.inputs.LIBSONATA_REPORT_BRANCH || '1.2.3' }}
 
 jobs:
   simulation:
@@ -47,9 +48,19 @@ jobs:
       run: |
         CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata
 
+    - name: Cache libsonatareport
+      id: cache-libsonatareport
+      uses: actions/cache@v3
+      env:
+        cache-name: cache-libsonatareport
+      with:
+        path: ${{ github.workspace }}/libsonatareport
+        key: build-libsonatareport-${{ env.LIBSONATA_REPORT_TAG }}
+
     - name: Install libsonatareport
+      if: steps.cache-libsonatareport.outputs.cache-hit != 'true'
       run: |
-        git clone --branch="${LIBSONATA_REPORT_BRANCH:-master}" https://github.com/BlueBrain/libsonatareport.git --recursive --depth=1
+        git clone --branch="${{ env.LIBSONATA_REPORT_TAG}}" https://github.com/BlueBrain/libsonatareport.git --recursive --depth=1
         cd libsonatareport
         mkdir build && cd build
         cmake -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON -DSONATA_REPORT_ENABLE_MPI=ON ..
@@ -63,7 +74,7 @@ jobs:
         cache-name: cache-neuron
       with:
         path: ${{ github.workspace }}/nrn
-        key: build-neuron-${{ env.NEURON_COMMIT_ID}}
+        key: build-neuron-${{ env.NEURON_COMMIT_ID }}
 
     - name: Install NEURON
       if: steps.cache-neuron.outputs.cache-hit != 'true'
