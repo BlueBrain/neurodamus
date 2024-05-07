@@ -15,6 +15,9 @@ on:
         description: 'libsonatareport branch to use'
         required: false
 
+env:
+  NEURON_COMMIT_ID: '13654b3'
+
 jobs:
   simulation:
     runs-on: ubuntu-22.04
@@ -53,7 +56,17 @@ jobs:
         cmake --build . --parallel
         cmake --build . --target install
 
+    - name: Cache NEURON
+      id: cache-neuron
+      uses: actions/cache@v3
+      env:
+        cache-name: cache-neuron
+      with:
+        path: ${{ github.workspace }}/nrn
+        key: build-neuron-${{ env.NEURON_COMMIT_ID}}
+
     - name: Install NEURON
+      if: steps.cache-neuron.outputs.cache-hit != 'true'
       run: |
         sudo apt-get install flex libfl-dev bison ninja-build
         pip install -U pip setuptools
