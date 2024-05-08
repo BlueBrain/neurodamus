@@ -1568,7 +1568,6 @@ class Neurodamus(Node):
     def __init__(
         self, config_file,
         auto_init=True,
-        cleanup_atexit=True,
         logging_level=None,
         **user_opts
     ):
