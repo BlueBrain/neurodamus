@@ -2,6 +2,20 @@
 Change Log
 ==========
 
+Version 3.2.1
+**30 April 2024**
+
+*New Features*
+  * [BBPBGLIB-1153] Allow disabling reports from SONATA config (#159)
+
+*Bug Fixes*
+  * Fix dead link from CONTRIBUTING.md to README.rst (#160)
+  * Remove Report.hoc reference (#158)
+
+*Improvements*
+  * [BBPBGLIB-1154] Add information about CORENEURONLIB in the Docker README (#161)
+
+
 Version 3.2.0
 =============
 **17 April 2024**

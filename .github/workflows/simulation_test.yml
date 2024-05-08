@@ -95,12 +95,18 @@ jobs:
         export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
         cp neurodamus/data/hoc/* tests/share/hoc/
         export HOC_LIBRARY_PATH=$(pwd)/tests/share/hoc
+        export NEURODAMUS_PYTHON=$(pwd)/neurodamus/data
+        export CORENEURONLIB=$(pwd)/x86_64/libcorenrnmech.so
+        export PATH=$(pwd)/x86_64:$PATH
+        which special
+
         # launch simulation with NEURON
-        mpirun -np 2 ./x86_64/special -mpi -python neurodamus/data/init.py --configFile=tests/simulations/usecase3/simulation_sonata.json
-        ls tests/simulations/usecase3/reporting/*.h5
+        cd tests/simulations/usecase3/
+        mpirun -np 2 special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=simulation_sonata.json
+        ls reporting/*.h5
         # launch simulation with CORENEURON
-        mpirun -np 2 ./x86_64/special -mpi -python neurodamus/data/init.py --configFile=tests/simulations/usecase3/simulation_sonata_coreneuron.json
-        ls tests/simulations/usecase3/reporting_coreneuron/*.h5
+        mpirun -np 2 special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=simulation_sonata_coreneuron.json
+        ls reporting_coreneuron/*.h5
 
     # - name: live debug session, comment out
     #   if: failure()
