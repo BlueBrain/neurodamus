@@ -279,7 +279,7 @@ class ConnectionManagerBase(object):
         self._load_offsets = kw.get("load_offsets", False)
         # An internal var to enable collection of synapse statistics to a Counter
         self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
-        self._dry_run_counted_cells = set()
+        self._dry_run_connections = set()
 
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
@@ -715,34 +715,31 @@ class ConnectionManagerBase(object):
                 pathway_repr = "Pathway {} -> {}".format(src_target.name, dst_target.name)
             logging.info(" * %s. Created %d connections", pathway_repr, all_created)
 
-    def _get_conn_stats(self, dst_target):
-        """Estimates the number of synapses per type for the given destination target
-        Note: measurement is done without any restriction on the source target.
-        As so it can avoid counting the same synapse twice by keeping track of
-        target cells alone.
+    def _get_conn_stats(self, dst_nodeset, src_nodeset=None):
+        """Estimates the number of synapses per type for the given destination target and source
+            nodesets
 
         Args:
-            dst_target: The target to estimate synapses for
+            dst_nodeset: The target to estimate synapses for
+            src_nodeset: The source nodes allowed for the given synapses
 
         Returns:
             A Counter object with the estimated synapses per type
 
-        Note:
-          - _src target is not considered so we count all inbound synapses
-          -  We will only consider gids which have not been accounted for yet.
         """
         BLOCK_BASE_SIZE = 5000
         SAMPLES_PER_BLOCK = 100
 
         # Get the raw gids for the destination target
-        raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
+        raw_gids = dst_nodeset.get_local_gids(raw_gids=True) if dst_nodeset else self._raw_gids
+        src_raw_gids = src_nodeset and src_nodeset.get_raw_gids()
 
         # Filter out the gids which have been already considered
         # Use sets since they are much faster than numpy
-        new_gids = set(raw_gids) - self._dry_run_counted_cells
-        if not new_gids:
-            # Either target is empty or all the cells were considered before
-            return {}
+        # new_gids = set(raw_gids) - self._dry_run_counted_cells
+        # if not new_gids:
+        #     # Either target is empty or all the cells were considered before
+        #     return {}
 
         local_counter = Counter()
         dst_pop_name = self._cell_manager.population_name
@@ -752,13 +749,13 @@ class ConnectionManagerBase(object):
         #  - Consider only the cells for the current target
 
         for metype, me_gids in self._dry_run_stats.metype_gids[dst_pop_name].items():
-            me_gids = set(me_gids).intersection(new_gids)
+            # me_gids = set(me_gids).intersection(new_gids)
             me_gids_count = len(me_gids)
-            if not me_gids_count:
-                continue
+            # if not me_gids_count:
+            #     continue
 
             logging.debug("Estimating synapses for metype %s", metype)
-            self._dry_run_counted_cells.update(me_gids)  # track as seen
+            self._dry_run_connections.update(me_gids)  # track as seen
             me_gids = numpy.fromiter(me_gids, dtype="uint32")
 
             # NOTE:
@@ -776,10 +773,10 @@ class ConnectionManagerBase(object):
                 sample_len = len(sample)
                 if not sample_len:
                     continue
+
                 try:
                     if self.CONNECTIONS_TYPE == ConnectionTypes.Synaptic:
-                        sample_counts = self._synapse_reader.get_counts(
-                            sample, group_by="syn_type_id")
+                        sample_counts = self._synapse_reader.get_counts(sample, group_by="connection")
                     else:
                         sample_counts = self._synapse_reader.get_counts(sample)
                         sample_counts = {self.CONNECTIONS_TYPE: sample_counts}
@@ -787,6 +784,7 @@ class ConnectionManagerBase(object):
                     logging.warning("Error while getting synapse counts: %s", e)
                     logging.warning("Skipping range %d:%d", start, stop)
                     continue
+
                 logging.debug("Gids: %s... Types: %s", sample[:10], sample_counts)
                 logging.debug("Average syn/cell: %.2f", sum(sample_counts.values()) / sample_len)
                 sampled_gids_count += sample_len

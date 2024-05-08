@@ -385,8 +385,19 @@ class SonataReader(SynapseReader):
         edge_ids = self._population.afferent_edges(raw_ids - 1)
         if group_by is None:
             return edge_ids.flat_size
-        data = self._population.get_attribute(group_by, edge_ids)
-        values, counts = np.unique(data, return_counts=True)
+
+        target_nodes = self._population.target_nodes(edge_ids)
+        if group_by == "target_node":
+            values, counts = np.unique(target_nodes, return_counts=True)
+        elif group_by == "connection":
+            connections = np.empty(len(target_nodes), dtype="uint64,uint64")
+            source_nodes = self._population.source_nodes(edge_ids)
+            connections["f0"] = source_nodes
+            connections["f1"] = target_nodes
+            values, counts = np.unique(connections, return_counts=True)
+            values = map(tuple, values)
+        else:
+            raise ValueError("Invalid value for group_by: " + group_by)
         return dict(zip(values, counts))
 
 
