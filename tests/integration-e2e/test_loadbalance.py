@@ -192,17 +192,14 @@ def _read_complexity_file(base_dir, pattern, cx_pattern):
 def test_loadbal_integration():
     """Ensure given the right files are in the lbal dir, the correct situation is detected
     """
-    from neurodamus import Node
-    from neurodamus.core.configuration import GlobalConfig, SimConfig
+    from neurodamus import Neurodamus
+    from neurodamus.core.configuration import GlobalConfig
     GlobalConfig.verbosity = 2
 
     # Add connection_overrides for the virtual population so the offsets are calculated before LB
     tmp_file = _create_tmpconfig_lbal(SIM_DIR / "usecase3" / "simulation_sonata.json")
-    nd = Node(tmp_file.name, {"lb_mode": "WholeCell"})
-    nd.load_targets()
-    SimConfig.check_connections_configure(nd._target_manager)
-    lb = nd.compute_load_balance()
-    nd.create_cells(lb)
+    nd = Neurodamus(tmp_file.name, lb_mode="WholeCell")
+    nd.run()
 
     # Check the complexity file
     base_dir = "sim_conf"
@@ -214,6 +211,13 @@ def test_loadbal_integration():
     assert int(lines[1]) == 3, "Number of gids different than 3."
     # Gid should be without offset (2 instead of 1002)
     assert int(lines[3].split()[0]) == 2, "gid 2 not found."
+
+    # check the spikes file is not empty
+    from libsonata import SpikeReader
+    spikeFile = SpikeReader(nd._run_conf.get("SpikesFile"))
+    spike_popA = spikeFile['NodeA']
+    spike_popB = spikeFile['NodeB']
+    assert spike_popA.get() or spike_popB.get()
 
 
 class MockedTargetManager:
