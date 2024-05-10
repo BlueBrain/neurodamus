@@ -50,18 +50,23 @@ jobs:
         sudo apt-get update
         sudo apt-get install mpich libmpich-dev libhdf5-mpich-dev hdf5-tools
 
+    - name: Setup python virtual env
+      run: |
+        python -m venv venv
+
     - name: Cache libsonata
       id: cache-libsonata
       uses: actions/cache@v3
       env:
         cache-name: cache-libsonata
       with:
-        path: ${{ github.workspace }}/libsonata
+        path: venv
         key: build-libsonata-${{ env.LIBSONATA_BRANCH }}
 
     - name: Install libsonata
       if: steps.cache-libsonata.outputs.cache-hit != 'true'
       run: |
+        . ./venv/bin/activate
         CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata@${{ env.LIBSONATA_BRANCH }}
 
     - name: Cache libsonatareport
@@ -93,8 +98,9 @@ jobs:
         key: build-neuron-${{ env.NEURON_BRANCH }}-${{ env.NEURON_COMMIT_ID }}
 
     - name: Install NEURON
-      if: steps.cache-neuron.outputs.cache-hit != 'true'
+      # if: steps.cache-neuron.outputs.cache-hit != 'true'
       run: |
+        . ./venv/bin/activate
         sudo apt-get install flex libfl-dev bison ninja-build
         pip install -U pip setuptools
         pip install "cython<3" pytest sympy
@@ -112,6 +118,7 @@ jobs:
 
     - name: Build h5py with the local hdf5
       run: |
+        . ./venv/bin/activate
         pip install -U pip setuptools
         pip install cython numpy wheel pkgconfig
         MPICC="mpicc -shared" pip install --no-cache-dir --no-binary=mpi4py mpi4py
@@ -120,6 +127,7 @@ jobs:
 
     - name: Install neurodamus
       run: |
+        . ./venv/bin/activate
         pip install .
 
     - name: Build models
@@ -135,6 +143,7 @@ jobs:
 
     - name: Example run
       run: |
+        . ./venv/bin/activate
         export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
         cp neurodamus/data/hoc/* tests/share/hoc/
         export HOC_LIBRARY_PATH=$(pwd)/tests/share/hoc
