@@ -14,12 +14,11 @@ on:
         default: 'master'
       LIBSONATA_REPORT_BRANCH:
         description: 'libsonatareport branch to use'
-        required: true
-        default: '1.2.3'
+        required: false
 
 env:
   NEURON_COMMIT_ID: '13654b3'
-  # LIBSONATA_REPORT_TAG: ${{ github.event.inputs.LIBSONATA_REPORT_BRANCH || '1.2.3' }}
+  LIBSONATA_REPORT_TAG: ${{ github.event.inputs.LIBSONATA_REPORT_BRANCH || '1.2.3' }}
 
 jobs:
   simulation:
@@ -57,13 +56,12 @@ jobs:
         cache-name: cache-libsonatareport
       with:
         path: ${{ github.workspace }}/libsonatareport
-        key: build-libsonatareport-${{ github.event.inputs.LIBSONATA_REPORT_BRANCH }}
+        key: build-libsonatareport-${{ env.LIBSONATA_REPORT_TAG }}
 
     - name: Install libsonatareport
       if: steps.cache-libsonatareport.outputs.cache-hit != 'true'
       run: |
-        echo "LIBSONATA_REPORT_BRANCH" ${{ github.event.inputs.LIBSONATA_REPORT_BRANCH }}
-        git clone --branch="${{ github.event.inputs.LIBSONATA_REPORT_BRANCH }}" https://github.com/BlueBrain/libsonatareport.git --recursive --depth=1
+        git clone --branch="${{ env.LIBSONATA_REPORT_TAG}}" https://github.com/BlueBrain/libsonatareport.git --recursive --depth=1
         cd libsonatareport
         mkdir build && cd build
         cmake -DCMAKE_INSTALL_PREFIX=$(pwd)/install -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON -DSONATA_REPORT_ENABLE_MPI=ON ..
