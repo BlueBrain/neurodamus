@@ -45,6 +45,15 @@ jobs:
         LIBSONATA_REPORT_BRANCH=$(echo $COMMIT_MESSAGE | grep -Po 'LIBSONATA_REPORT_BRANCH=\K[0-9a-zA-Z/_.\-]*' || true)
         if [[ ! -z $LIBSONATA_REPORT_BRANCH ]]; then echo "LIBSONATA_REPORT_BRANCH=$LIBSONATA_REPORT_BRANCH" >> $GITHUB_ENV; fi
 
+    - name: Cache libsonata
+      id: cache-libsonata
+      uses: actions/cache@v3
+      env:
+        cache-name: cache-libsonata
+      with:
+        path: venv
+        key: build-${{ env.LIBSONATA_BRANCH }}
+
     - name: Install hdf5-mpich
       run: |
         sudo apt-get update
@@ -53,15 +62,6 @@ jobs:
     - name: Setup python virtual env
       run: |
         python -m venv venv
-
-    - name: Cache libsonata
-      id: cache-libsonata
-      uses: actions/cache@v3
-      env:
-        cache-name: cache-libsonata
-      with:
-        path: venv
-        key: build-libsonata-${{ env.LIBSONATA_BRANCH }}
 
     - name: Install libsonata
       if: steps.cache-libsonata.outputs.cache-hit != 'true'
@@ -160,6 +160,6 @@ jobs:
         mpirun -np 2 special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=simulation_sonata_coreneuron.json
         ls reporting_coreneuron/*.h5
 
-    - name: live debug session, comment out
-      if: failure()
-      uses: mxschmitt/action-tmate@v3
+    # - name: live debug session, comment out
+    #   if: failure()
+    #   uses: mxschmitt/action-tmate@v3
