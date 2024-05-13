@@ -64,10 +64,7 @@ jobs:
       run: |
         python -m venv venv
         . ./venv/bin/activate
-        pip install -U pip setuptools wheel
-        git clone --branch "${{ env.LIBSONATA_BRANCH }}" --depth 1 https://github.com/BlueBrain/libsonata.git
-        cd libsonata
-        pip install .
+        CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata
 
     - name: Cache libsonatareport
       id: cache-libsonatareport
