@@ -1784,7 +1784,7 @@ class Neurodamus(Node):
             self._dry_run_stats.display_node_suggestions()
             ranks = self._dry_run_stats.get_num_target_ranks(SimConfig.num_target_ranks)
             self._dry_run_stats.collect_all_mpi()
-            self._dry_run_stats.distribute_cells(ranks)
+            self._dry_run_stats.distribute_cells(ranks, SimConfig.modelbuilding_steps)
             return
         if not SimConfig.simulate_model:
             self.sim_init()

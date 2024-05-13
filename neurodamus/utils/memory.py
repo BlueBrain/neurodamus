@@ -173,7 +173,7 @@ def pretty_printing_memory_mb(memory_mb):
 
 
 @run_only_rank0
-def print_allocation_stats(rank_allocation, rank_memory):
+def print_allocation_stats(rank_allocation, rank_memory, cell_memory_usage):
     """
     Print statistics of the memory allocation across ranks.
 
@@ -182,28 +182,48 @@ def print_allocation_stats(rank_allocation, rank_memory):
                                 values are lists of cell IDs assigned to each rank.
         rank_memory (dict): A dictionary where keys are rank IDs
                             and values are the total memory load on each rank.
+        cell_memory_usage (dict): A dictionary where keys are cell IDs
+                                  and values are the memory load of each cell.
     """
     logging.debug("Rank allocation: {}".format(rank_allocation))
     logging.debug("Total memory per rank: {}".format(rank_memory))
+    logging.debug("Cell memory usage: {}".format(cell_memory_usage))
     import statistics
     for pop, rank_dict in rank_memory.items():
-        values = list(rank_dict.values())
-        logging.info("Population: {}".format(pop))
-        logging.info("Mean allocation per rank [KB]: {}".format(round(statistics.mean(values))))
-        try:
-            stdev = round(statistics.stdev(values))
-        except statistics.StatisticsError:
-            stdev = 0
-        logging.info("Stdev of allocation per rank [KB]: {}".format(stdev))
+        cycle_memory = defaultdict(list)
+        for rank, memory in rank_dict.items():
+            values = list(memory.values())
+            logging.info("Rank: {}".format(rank))
+            logging.info("Mean allocation per rank [KB]: {}".format(round(statistics.mean(values))))
+            try:
+                logging.info("Stdev of allocation per rank [KB]: {}".format(round(statistics.stdev(values))))
+            except statistics.StatisticsError:
+                logging.info("Stdev of allocation per rank [KB]: 0")
+            for cycle, mem in memory.items():
+                cycle_memory[cycle].append(mem)
+        for cycle, mem_list in cycle_memory.items():
+            mean = round(statistics.mean(mem_list))
+            try:
+                stdev = round(statistics.stdev(mem_list))
+            except statistics.StatisticsError:
+                stdev = 0
+            logging.info("Population: {}".format(pop))
+            logging.info("Cycle: {}".format(cycle))
+            logging.info("Mean allocation per cycle [KB]: {}".format(mean))
+            logging.info("Stdev of allocation per cycle [KB]: {}".format(stdev))
 
 
 @run_only_rank0
-def export_allocation_stats(rank_allocation, filename):
+def export_allocation_stats(rank_allocation, filename, cell_memory_usage, memory_per_cell_filename):
     """
     Export allocation dictionary to serialized pickle file.
     """
     compressed_data = gzip.compress(pickle.dumps(rank_allocation))
     with open(filename, 'wb') as f:
+        f.write(compressed_data)
+
+    compressed_data = gzip.compress(pickle.dumps(cell_memory_usage))
+    with open(memory_per_cell_filename, 'wb') as f:
         f.write(compressed_data)
 
 
@@ -253,6 +273,7 @@ class SynapseMemoryUsage:
 class DryRunStats:
     _MEMORY_USAGE_FILENAME = "cell_memory_usage.json"
     _ALLOCATION_FILENAME = "allocation.pkl.gz"
+    _MEMORY_USAGE_PER_CELL_FILENAME = "memory_per_cell.pkl.gz"
 
     def __init__(self) -> None:
         self.metype_memory = {}
@@ -459,7 +480,7 @@ class DryRunStats:
             return int(num_ranks)
 
     @run_only_rank0
-    def distribute_cells(self, num_ranks, batch_size=10) -> (dict, dict):
+    def distribute_cells(self, num_ranks, cycles=None, batch_size=10) -> (dict, dict):
         """
         Distributes cells across ranks based on their memory load.
 
@@ -469,6 +490,8 @@ class DryRunStats:
         Args:
             dry_run_stats (DryRunStats): A DryRunStats object.
             num_ranks (int): The number of ranks.
+            cycles (int): The number of cycles to distribute cells over (optional).
+            batch_size (int): The number of cells to assign to each rank at a time.
 
         Returns:
             rank_allocation (dict): A dictionary where keys are rank IDs and
@@ -479,6 +502,7 @@ class DryRunStats:
         logging.info("Distributing cells across %d ranks", num_ranks)
 
         self.validate_inputs_distribute(num_ranks, batch_size)
+        cell_memory_usage = {}
 
         # Multiply the average number of synapses per cell by 2.0
         # This is done since the biggest memory load for a synapse is 2.0 kB and at this point in
@@ -494,6 +518,8 @@ class DryRunStats:
                                 average_syns_mem_per_cell[cell_type])
                 for gid in gids:
                     yield gid, memory_usage
+
+                    cell_memory_usage[gid] = memory_usage
 
         ranks = [(0, i) for i in range(num_ranks)]  # (total_memory, rank_id)
         heapq.heapify(ranks)
@@ -529,8 +555,33 @@ class DryRunStats:
             all_allocation[pop] = rank_allocation
             all_memory[pop] = rank_memory
 
-        print_allocation_stats(all_allocation, all_memory)
-        export_allocation_stats(all_allocation, self._ALLOCATION_FILENAME)
+        # If cycles is not None and more than 1, distribute cells also over cycles
+        if cycles is not None and cycles > 1:
+            for pop in all_allocation:
+                for rank_id in all_allocation[pop]:
+                    cells = all_allocation[pop][rank_id]
+                    cycle_allocation = defaultdict(list)
+                    cycle_memory = [(0, i) for i in range(cycles)]
+                    cycle_memory_dict = defaultdict(int)
+                    heapq.heapify(cycle_memory)
+
+                    for cell_id in cells:
+                        memory = cell_memory_usage[cell_id]
+                        total_memory, cycle_id = heapq.heappop(cycle_memory)
+                        cycle_allocation[cycle_id].append(cell_id)
+                        total_memory += memory
+                        heapq.heappush(cycle_memory, (total_memory, cycle_id))
+                        cycle_memory_dict[cycle_id] = total_memory
+
+                    all_allocation[pop][rank_id] = cycle_allocation
+                    # TODO: CHECK THIS ON MONDAY! \/
+                    all_memory[pop][rank_id] = cycle_memory_dict
+
+        print_allocation_stats(all_allocation, all_memory, cell_memory_usage)
+        export_allocation_stats(all_allocation,
+                                self._ALLOCATION_FILENAME,
+                                cell_memory_usage,
+                                self._MEMORY_USAGE_PER_CELL_FILENAME)
 
         return all_allocation, rank_memory
 
