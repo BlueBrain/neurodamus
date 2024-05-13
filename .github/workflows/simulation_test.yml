@@ -98,7 +98,7 @@ jobs:
         key: build-neuron-${{ env.NEURON_BRANCH }}-${{ env.NEURON_COMMIT_ID }}
 
     - name: Install NEURON
-      # if: steps.cache-neuron.outputs.cache-hit != 'true'
+      if: steps.cache-neuron.outputs.cache-hit != 'true'
       run: |
         . ./venv/bin/activate
         sudo apt-get install flex libfl-dev bison ninja-build
