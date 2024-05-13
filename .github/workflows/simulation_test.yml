@@ -45,6 +45,11 @@ jobs:
         LIBSONATA_REPORT_BRANCH=$(echo $COMMIT_MESSAGE | grep -Po 'LIBSONATA_REPORT_BRANCH=\K[0-9a-zA-Z/_.\-]*' || true)
         if [[ ! -z $LIBSONATA_REPORT_BRANCH ]]; then echo "LIBSONATA_REPORT_BRANCH=$LIBSONATA_REPORT_BRANCH" >> $GITHUB_ENV; fi
 
+    - name: Install hdf5-mpich
+      run: |
+        sudo apt-get update
+        sudo apt-get install mpich libmpich-dev libhdf5-mpich-dev hdf5-tools
+
     - name: Cache python virtual env
       id: cache-venv
       uses: actions/cache@v3
@@ -53,11 +58,6 @@ jobs:
       with:
         path: venv
         key: build-libsonata-${{ env.LIBSONATA_BRANCH }} # todo: add python version
-
-    - name: Install hdf5-mpich
-      run: |
-        sudo apt-get update
-        sudo apt-get install mpich libmpich-dev libhdf5-mpich-dev hdf5-tools
 
     - name: Install libsonata
       if: steps.cache-venv.outputs.cache-hit != 'true'
@@ -112,11 +112,16 @@ jobs:
         cmake --build . --parallel
         cmake --build . --target install
 
+    - name: Install mpi4py
+      if: steps.cache-venv.outputs.cache-hit != 'true'
+      run: |
+        . ./venv/bin/activate
+        pip install mpi4py
+
     - name: Build h5py with the local hdf5
       run: |
         . ./venv/bin/activate
         pip install cython numpy wheel pkgconfig
-        pip install mpi4py
         CC="mpicc" HDF5_MPI="ON" HDF5_INCLUDEDIR=/usr/include/hdf5/mpich HDF5_LIBDIR=/usr/lib/x86_64-linux-gnu/hdf5/mpich \
           pip install --no-cache-dir --no-binary=h5py h5py --no-build-isolation
 
@@ -155,6 +160,6 @@ jobs:
         mpirun -np 2 special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=simulation_sonata_coreneuron.json
         ls reporting_coreneuron/*.h5
 
-    - name: live debug session, comment out
-      if: failure()
-      uses: mxschmitt/action-tmate@v3
+    # - name: live debug session, comment out
+    #   if: failure()
+    #   uses: mxschmitt/action-tmate@v3
