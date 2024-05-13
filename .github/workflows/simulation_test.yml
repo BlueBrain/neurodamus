@@ -64,7 +64,7 @@ jobs:
       run: |
         python -m venv venv
         . ./venv/bin/activate
-        pip install -U pip setuptools
+        pip install -U pip setuptools wheel
         git clone --branch "${{ env.LIBSONATA_BRANCH }}" --depth 1 https://github.com/BlueBrain/libsonata.git
         cd libsonata
         pip install .
@@ -158,6 +158,6 @@ jobs:
         mpirun -np 2 special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=simulation_sonata_coreneuron.json
         ls reporting_coreneuron/*.h5
 
-    # - name: live debug session, comment out
-    #   if: failure()
-    #   uses: mxschmitt/action-tmate@v3
+    - name: live debug session, comment out
+      if: failure()
+      uses: mxschmitt/action-tmate@v3
