@@ -59,15 +59,16 @@ jobs:
         sudo apt-get update
         sudo apt-get install mpich libmpich-dev libhdf5-mpich-dev hdf5-tools
 
-    - name: Setup python virtual env
-      run: |
-        python -m venv venv
+    # - name: Setup python virtual env
+    #   run: |
+    #     python -m venv venv
 
     - name: Install libsonata
       if: steps.cache-libsonata.outputs.cache-hit != 'true'
       run: |
+        python -m venv venv
         . ./venv/bin/activate
-        CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata@${{ env.LIBSONATA_BRANCH }}
+        CC=mpicc CXX=mpic++ python -m pip install git+https://github.com/BlueBrain/libsonata@${{ env.LIBSONATA_BRANCH }}
 
     - name: Cache libsonatareport
       id: cache-libsonatareport
