@@ -418,10 +418,11 @@ class CellManagerBase(_CellManager):
         spikevec, idvec = append_spike_vecs or (Nd.Vector(), Nd.Vector())
         if gids is None:
             gids = self._local_nodes.final_gids()
+            gid_offset = self._local_nodes.offset
 
         for gid in gids:
             # only want to collect spikes of cell pieces with the soma (i.e. the real gid)
-            if not self._binfo or self._binfo.thishost_gid(gid) == gid:
+            if not self._binfo or self._binfo.thishost_gid(gid - gid_offset) + gid_offset == gid:
                 self._pc.spike_record(gid, spikevec, idvec)
         return spikevec, idvec
 
