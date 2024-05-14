@@ -18,7 +18,6 @@ on:
         description: 'libsonata branch to use'
         required: false
 
-
 env:
   NEURON_COMMIT_ID: '13654b3'
   NEURON_BRANCH: ${{ inputs.LIBSONATA_REPORT_BRANCH || 'master' }}
@@ -67,11 +66,6 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y mpich libmpich-dev libhdf5-mpich-dev hdf5-tools flex libfl-dev bison ninja-build
 
-    - name: Upgrade pip and install base Python packages
-      run: |
-        python -m pip install --upgrade pip setuptools
-        pip install cython numpy wheel pkgconfig
-
     - name: Cache python virtual env
       id: cache-venv
       uses: actions/cache@v3
@@ -79,12 +73,19 @@ jobs:
         cache-name: cache-venv
       with:
         path: venv
-        key: build-libsonata-${{ env.LIBSONATA_BRANCH }} # todo: add python version
+        key: build-libsonata-${{ env.LIBSONATA_BRANCH }}-py${{ matrix.python-version }}
+
+    - name: Upgrade pip and install base Python packages
+      if: steps.cache-venv.outputs.cache-hit != 'true'
+      run: |
+        python -m venv venv
+        . ./venv/bin/activate
+        python -m pip install --upgrade pip setuptools
+        pip install cython numpy wheel pkgconfig
 
     - name: Install libsonata
       if: steps.cache-venv.outputs.cache-hit != 'true'
       run: |
-        python -m venv venv
         . ./venv/bin/activate
         CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata
 
@@ -121,13 +122,15 @@ jobs:
       run: |
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
         sudo apt-get install flex libfl-dev bison ninja-build
-        . ./venv/bin/activate
-        git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git --recursive --shallow-submodules --depth=1
-        cd nrn
         if [[ ${{ env.NEURON_BRANCH }} == 'master' ]]; then
+          git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git --recursive --shallow-submodules
+          cd nrn
           git checkout ${{ env.NEURON_COMMIT_ID }}
+          cd ..
+        else
+          git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git --recursive --shallow-submodules --depth=1
         fi
-        cd ..
+        . ./venv/bin/activate
         python -m pip install --upgrade pip -r nrn/nrn_requirements.txt
         cmake -B nrn/build -S nrn -G Ninja \
           -DPYTHON_EXECUTABLE=$(which python) \
@@ -151,7 +154,7 @@ jobs:
     - name: Build h5py with the local hdf5
       run: |
         . ./venv/bin/activate
-        pip install cython numpy wheel pkgconfig mpi4py
+        pip install cython numpy wheel pkgconfig
         CC="mpicc" HDF5_MPI="ON" HDF5_INCLUDEDIR=/usr/include/hdf5/mpich HDF5_LIBDIR=/usr/lib/x86_64-linux-gnu/hdf5/mpich \
           pip install --no-cache-dir --no-binary=h5py h5py --no-build-isolation
 
