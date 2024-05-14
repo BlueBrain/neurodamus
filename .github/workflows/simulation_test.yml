@@ -73,7 +73,7 @@ jobs:
         cache-name: cache-venv
       with:
         path: venv
-        key: build-libsonata-${{ env.LIBSONATA_BRANCH }}-py${{ matrix.python-version }}
+        key: ${{ matrix.os }}-libsonata-${{ env.LIBSONATA_BRANCH }}-py${{ matrix.python-version }}
 
     - name: Upgrade pip and install base Python packages
       if: steps.cache-venv.outputs.cache-hit != 'true'
@@ -96,7 +96,7 @@ jobs:
         cache-name: cache-libsonatareport
       with:
         path: libsonatareport
-        key: build-libsonatareport-${{ env.LIBSONATA_REPORT_BRANCH }}
+        key: ${{ matrix.os }}-libsonatareport-${{ env.LIBSONATA_REPORT_BRANCH }}
 
     - name: Install libsonatareport
       if: steps.cache-libsonatareport.outputs.cache-hit != 'true'
@@ -115,7 +115,7 @@ jobs:
         cache-name: cache-neuron
       with:
         path: nrn
-        key: build-neuron-${{ env.NEURON_BRANCH }}-${{ env.NEURON_COMMIT_ID }}
+        key: ${{ matrix.os }}-neuron-${{ env.NEURON_BRANCH }}-${{ env.NEURON_COMMIT_ID }}-${{ matrix.python-version }}
 
     - name: Install NEURON
       if: steps.cache-neuron.outputs.cache-hit != 'true'
