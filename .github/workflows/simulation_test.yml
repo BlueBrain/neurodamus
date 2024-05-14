@@ -96,7 +96,7 @@ jobs:
         cache-name: cache-libsonatareport
       with:
         path: libsonatareport
-        key: ${{ matrix.os }}-libsonatareport-${{ env.LIBSONATA_REPORT_BRANCH }}
+        key: ${{ matrix.os }}-libsonatareport-${{ env.LIBSONATA_REPORT_BRANCH }}-py${{ matrix.python-version }}
 
     - name: Install libsonatareport
       if: steps.cache-libsonatareport.outputs.cache-hit != 'true'
@@ -115,7 +115,7 @@ jobs:
         cache-name: cache-neuron
       with:
         path: nrn
-        key: ${{ matrix.os }}-neuron-${{ env.NEURON_BRANCH }}-${{ env.NEURON_COMMIT_ID }}-${{ matrix.python-version }}
+        key: ${{ matrix.os }}-neuron-${{ env.NEURON_BRANCH }}-${{ env.NEURON_COMMIT_ID }}-py${{ matrix.python-version }}
 
     - name: Install NEURON
       if: steps.cache-neuron.outputs.cache-hit != 'true'
@@ -123,12 +123,12 @@ jobs:
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
         sudo apt-get install flex libfl-dev bison ninja-build
         if [[ ${{ env.NEURON_BRANCH }} == 'master' ]]; then
-          git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git --recursive --shallow-submodules
+          git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git
           cd nrn
           git checkout ${{ env.NEURON_COMMIT_ID }}
           cd ..
         else
-          git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git --recursive --shallow-submodules --depth=1
+          git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git --depth=1
         fi
         . ./venv/bin/activate
         python -m pip install --upgrade pip -r nrn/nrn_requirements.txt
@@ -177,7 +177,7 @@ jobs:
     - name: Example run
       run: |
         . ./venv/bin/activate
-        if [ ${{ matrix.python-version }} == 3.9 ]; then
+        if [ ${{ matrix.python-version }} == 3.8 || ${{ matrix.python-version }} == 3.9 ]; then
           export RDMAV_FORK_SAFE=1
         fi;
         export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
