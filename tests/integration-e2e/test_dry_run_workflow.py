@@ -35,8 +35,11 @@ def test_dry_run_workflow(USECASE3):
     assert nd._dry_run_stats.suggest_nodes(0.3) > 0
 
     # Test that the allocation works and can be saved and loaded
-    rank_allocation, _ = nd._dry_run_stats.distribute_cells(2)
-    export_allocation_stats(rank_allocation, USECASE3 / "allocation.pkl.gz")
+    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2)
+    export_allocation_stats(rank_allocation,
+                            USECASE3 / "allocation.pkl.gz",
+                            cell_memory_usage,
+                            USECASE3 / "memory_per_cell.pkl.gz")
     rank_allocation = import_allocation_stats(USECASE3 / "allocation.pkl.gz")
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 

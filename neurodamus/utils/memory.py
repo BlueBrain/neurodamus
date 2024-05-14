@@ -584,7 +584,7 @@ class DryRunStats:
                                 cell_memory_usage,
                                 self._MEMORY_USAGE_PER_CELL_FILENAME)
 
-        return all_allocation, rank_memory
+        return all_allocation, rank_memory, cell_memory_usage
 
     def validate_inputs_distribute(self, num_ranks, batch_size):
         assert isinstance(num_ranks, int), "num_ranks must be an integer"
