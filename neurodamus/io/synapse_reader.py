@@ -230,12 +230,13 @@ class SonataReader(SynapseReader):
 
         storage = libsonata.EdgeStorage(src, hdf5_reader=hdf5_reader)
         if not population:
-            assert len(storage.population_names) == 1
+            assert len(storage.population_names) == 1, "Populations: %s" % storage.population_names
             population = next(iter(storage.population_names))
         self._population = storage.open_population(population)
-        # _data is a cache which stores all the fields for each gid
-        # E.g. {1: {"sgid": property_numpy}}
+        # A cache which stores all the fields for each gid. E.g. {1: {"sgid": property_numpy}}
         self._data = {}
+        # A cache for connection counts, used mostly in dry run
+        self._counts = {}
 
     def has_nrrp(self):
         """This field is required in SONATA."""
@@ -376,29 +377,43 @@ class SonataReader(SynapseReader):
 
         return conn_syn_params
 
-    def get_counts(self, raw_ids, group_by=None):
+    def get_counts(self, node_ids):
         """
-        Counts synapses and groups by the given field.
-        If called with group_by = None returns an int.
-        If called with any group_by it returns a dict.
+        Counts synapses for the given target neuron ids. Returns a dict
         """
-        edge_ids = self._population.afferent_edges(raw_ids - 1)
-        if group_by is None:
-            return edge_ids.flat_size
-
+        edge_ids = self._population.afferent_edges(node_ids)
         target_nodes = self._population.target_nodes(edge_ids)
-        if group_by == "target_node":
-            values, counts = np.unique(target_nodes, return_counts=True)
-        elif group_by == "connection":
-            connections = np.empty(len(target_nodes), dtype="uint64,uint64")
+        gids, counts = np.unique(target_nodes, return_counts=True)
+        counts_dict = dict(zip(gids, counts))
+        for node_id in node_ids:
+            counts_dict.setdefault(node_id, 0)
+        return counts_dict
+
+    def get_conn_counts(self, node_ids):
+        """
+        Counts synapses per connetion for all the given target neuron ids.
+        Returns a dict whose value is a numpy stuctured array
+        """
+        if missing_ids := set(node_ids) - set(self._counts):
+            missing_ids = np.fromiter(missing_ids, dtype="uint32")
+            missing_ids.sort()
+            edge_ids = self._population.afferent_edges(missing_ids)
+            target_nodes = self._population.target_nodes(edge_ids)
             source_nodes = self._population.source_nodes(edge_ids)
-            connections["f0"] = source_nodes
-            connections["f1"] = target_nodes
-            values, counts = np.unique(connections, return_counts=True)
-            values = map(tuple, values)
-        else:
-            raise ValueError("Invalid value for group_by: " + group_by)
-        return dict(zip(values, counts))
+            connections = np.empty(len(target_nodes), dtype="uint64,uint64")
+            connections["f0"] = target_nodes
+            connections["f1"] = source_nodes
+
+            tgt_src_pairs, counts = np.unique(connections, return_counts=True)
+            pairs_start_i = np.diff(tgt_src_pairs["f0"], prepend=np.nan, append=np.nan).nonzero()[0]
+
+            for conn_i, start_i in enumerate(pairs_start_i[:-1]):
+                end_i = pairs_start_i[conn_i+1]
+                tgid = tgt_src_pairs["f0"][start_i]
+                tgid_counts = {tgt_src_pairs["f1"][j]: counts[j] for j in range(start_i, end_i)}
+                self._counts[tgid] = tgid_counts
+
+        return {tgid: self._counts.get(tgid, 0) for tgid in node_ids}
 
 
 class FormatNotSupported(Exception):
