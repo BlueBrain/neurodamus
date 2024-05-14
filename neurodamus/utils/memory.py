@@ -556,27 +556,27 @@ class DryRunStats:
             all_allocation[pop] = rank_allocation
             all_memory[pop] = rank_memory
 
-        # If cycles is not None and more than 1, distribute cells also over cycles
-        if cycles is not None and cycles > 1:
-            for pop in all_allocation:
-                for rank_id in all_allocation[pop]:
-                    cells = all_allocation[pop][rank_id]
-                    cycle_allocation = defaultdict(list)
-                    cycle_memory = [(0, i) for i in range(cycles)]
-                    cycle_memory_dict = defaultdict(int)
-                    heapq.heapify(cycle_memory)
+        if cycles is None or cycles <= 1:
+            cycles = 1
 
-                    for cell_id in cells:
-                        memory = cell_memory_usage[cell_id]
-                        total_memory, cycle_id = heapq.heappop(cycle_memory)
-                        cycle_allocation[cycle_id].append(cell_id)
-                        total_memory += memory
-                        heapq.heappush(cycle_memory, (total_memory, cycle_id))
-                        cycle_memory_dict[cycle_id] = total_memory
+        for pop in all_allocation:
+            for rank_id in all_allocation[pop]:
+                cells = all_allocation[pop][rank_id]
+                cycle_allocation = defaultdict(list)
+                cycle_memory = [(0, i) for i in range(cycles)]
+                cycle_memory_dict = defaultdict(int)
+                heapq.heapify(cycle_memory)
 
-                    all_allocation[pop][rank_id] = cycle_allocation
-                    # TODO: CHECK THIS ON MONDAY! \/
-                    all_memory[pop][rank_id] = cycle_memory_dict
+                for cell_id in cells:
+                    memory = cell_memory_usage[cell_id]
+                    total_memory, cycle_id = heapq.heappop(cycle_memory)
+                    cycle_allocation[cycle_id].append(cell_id)
+                    total_memory += memory
+                    heapq.heappush(cycle_memory, (total_memory, cycle_id))
+                    cycle_memory_dict[cycle_id] = total_memory
+
+                all_allocation[pop][rank_id] = cycle_allocation
+                all_memory[pop][rank_id] = cycle_memory_dict
 
         print_allocation_stats(all_allocation, all_memory, cell_memory_usage)
         export_allocation_stats(all_allocation,
