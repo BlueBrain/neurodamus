@@ -196,7 +196,8 @@ def print_allocation_stats(rank_allocation, rank_memory, cell_memory_usage):
             logging.info("Rank: {}".format(rank))
             logging.info("Mean allocation per rank [KB]: {}".format(round(statistics.mean(values))))
             try:
-                logging.info("Stdev of allocation per rank [KB]: {}".format(round(statistics.stdev(values))))
+                stdev = round(statistics.stdev(values))
+                logging.info("Stdev of allocation per rank [KB]: {}".format(stdev))
             except statistics.StatisticsError:
                 logging.info("Stdev of allocation per rank [KB]: 0")
             for cycle, mem in memory.items():
