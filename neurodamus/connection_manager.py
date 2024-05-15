@@ -773,6 +773,13 @@ class ConnectionManagerBase(object):
                     continue
 
                 # Ok, we have a whole lot of connections and their syn counts
+                # Let's filter by the src target
+                if src_nodeset:
+                    syns_sgids = numpy.fromiter(sample_counts.keys(), dtype="uint32")
+                    syns_sgids.sort()
+                    sgids_in_target = syns_sgids[src_nodeset.contains(syns_sgids)]
+                    sample_counts = {sgid: sample_counts[sgid] for sgid in sgids_in_target}
+
                 # Let's count those which were not "created" before
                 new_syns_count = 0
 
