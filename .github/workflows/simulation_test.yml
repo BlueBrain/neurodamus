@@ -60,6 +60,8 @@ jobs:
         if [[ ! -z $NEURON_BRANCH ]]; then echo "NEURON_BRANCH=$NEURON_BRANCH" >> $GITHUB_ENV; fi
         LIBSONATA_REPORT_BRANCH=$(echo $COMMIT_MESSAGE | grep -Po 'LIBSONATA_REPORT_BRANCH=\K[0-9a-zA-Z/_.\-]*' || true)
         if [[ ! -z $LIBSONATA_REPORT_BRANCH ]]; then echo "LIBSONATA_REPORT_BRANCH=$LIBSONATA_REPORT_BRANCH" >> $GITHUB_ENV; fi
+        LIBSONATA_BRANCH=$(echo $COMMIT_MESSAGE | grep -Po 'LIBSONATA_BRANCH=\K[0-9a-zA-Z/_.\-]*' || true)
+        if [[ ! -z $LIBSONATA_BRANCH ]]; then echo "LIBSONATA_BRANCH=$LIBSONATA_BRANCH" >> $GITHUB_ENV; fi
 
     - name: Install system dependencies
       run: |
