@@ -14,7 +14,7 @@ from libsonata import SonataError
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core import run_only_rank0
-from .core.configuration import GlobalConfig, SimConfig, ConfigurationError, find_input_file
+from .core.configuration import GlobalConfig, LogLevel, SimConfig, ConfigurationError, find_input_file
 from .connection import Connection, ReplayMode
 from .io.sonata_config import ConnectionTypes
 from .io.synapse_reader import SynapseReader
@@ -279,7 +279,7 @@ class ConnectionManagerBase(object):
         self._load_offsets = kw.get("load_offsets", False)
         # An internal var to enable collection of synapse statistics to a Counter
         self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
-        self._dry_run_connections = set()
+        self._dry_run_conns = set()
 
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
@@ -716,15 +716,14 @@ class ConnectionManagerBase(object):
             logging.info(" * %s. Created %d connections", pathway_repr, all_created)
 
     def _get_conn_stats(self, dst_nodeset, src_nodeset=None):
-        """Estimates the number of synapses per type for the given destination target and source
-            nodesets
+        """Estimates the number of synapses for the given destination and source nodesets
 
         Args:
             dst_nodeset: The target to estimate synapses for
             src_nodeset: The source nodes allowed for the given synapses
 
         Returns:
-            A Counter object with the estimated synapses per type
+            The estimated number of synapses which would be created
 
         """
         BLOCK_BASE_SIZE = 5000
@@ -732,16 +731,10 @@ class ConnectionManagerBase(object):
 
         # Get the raw gids for the destination target
         raw_gids = dst_nodeset.get_local_gids(raw_gids=True) if dst_nodeset else self._raw_gids
-        src_raw_gids = src_nodeset and src_nodeset.get_raw_gids()
+        if not raw_gids:  # Target is empty in this rank
+            return {}
 
-        # Filter out the gids which have been already considered
-        # Use sets since they are much faster than numpy
-        # new_gids = set(raw_gids) - self._dry_run_counted_cells
-        # if not new_gids:
-        #     # Either target is empty or all the cells were considered before
-        #     return {}
-
-        local_counter = Counter()
+        total_estimate = 0
         dst_pop_name = self._cell_manager.population_name
 
         # NOTE:
@@ -749,13 +742,12 @@ class ConnectionManagerBase(object):
         #  - Consider only the cells for the current target
 
         for metype, me_gids in self._dry_run_stats.metype_gids[dst_pop_name].items():
-            # me_gids = set(me_gids).intersection(new_gids)
+            me_gids = set(me_gids).intersection(set(raw_gids))
             me_gids_count = len(me_gids)
-            # if not me_gids_count:
-            #     continue
+            if not me_gids_count:
+                continue
 
             logging.debug("Estimating synapses for metype %s", metype)
-            self._dry_run_connections.update(me_gids)  # track as seen
             me_gids = numpy.fromiter(me_gids, dtype="uint32")
 
             # NOTE:
@@ -763,7 +755,7 @@ class ConnectionManagerBase(object):
             #  - Takes advantage of data locality
             #  - Blocks increase as a geometric progression for handling very large sets
 
-            metype_estimate = Counter()
+            metype_estimate = 0
             sampled_gids_count = 0
 
             for start, stop, in gen_ranges(me_gids_count, BLOCK_BASE_SIZE, block_increase_rate=1.1):
@@ -773,37 +765,40 @@ class ConnectionManagerBase(object):
                 sample_len = len(sample)
                 if not sample_len:
                     continue
-
                 try:
-                    if self.CONNECTIONS_TYPE == ConnectionTypes.Synaptic:
-                        sample_counts = self._synapse_reader.get_counts(sample, group_by="connection")
-                    else:
-                        sample_counts = self._synapse_reader.get_counts(sample)
-                        sample_counts = {self.CONNECTIONS_TYPE: sample_counts}
+                    sample_counts = self._synapse_reader.get_conn_counts(sample)
                 except SonataError as e:
                     logging.warning("Error while getting synapse counts: %s", e)
                     logging.warning("Skipping range %d:%d", start, stop)
                     continue
 
-                logging.debug("Gids: %s... Types: %s", sample[:10], sample_counts)
-                logging.debug("Average syn/cell: %.2f", sum(sample_counts.values()) / sample_len)
+                # Ok, we have a whole lot of connections and their syn counts
+                # Let's count those which were not "created" before
+                new_syns_count = 0
+
+                for tgid, count_map in sample_counts:
+                    for sgid, syn_count in count_map:
+                        conn_key = (tgid, sgid)
+                        if conn_key not in self._dry_run_conns:
+                            new_syns_count += syn_count
+                            self._dry_run_conns.update(conn_key)
+
+                # Useful for debugging, but slow
+                # logging.debug("Sample Gids: %s... Count: %d", sample[:10], new_syns_count)
+                # logging.debug("Average syn/cell: %.2f", new_syns_count / sample_len)
                 sampled_gids_count += sample_len
                 ratio = block_len / sample_len
-                metype_estimate.update({
-                    syn_t: int(n * ratio)
-                    for syn_t, n in sample_counts.items()}
-                )
+                metype_estimate += new_syns_count * ratio
 
-            # Extrapolation
+            # Info on the whole metype
             logging.debug("Cells samples / total: %d / %s", sampled_gids_count, me_gids_count)
-            me_estimated_sum = sum(metype_estimate.values())
-            average_syns_per_cell = me_estimated_sum / me_gids_count
+            average_syns_per_cell = metype_estimate / me_gids_count
             self._dry_run_stats.average_syns_per_cell[metype] = average_syns_per_cell
             log_all(VERBOSE_LOGLEVEL, "%s: Average syns/cell: %.1f, Estimated total: %d ",
-                    metype, average_syns_per_cell, me_estimated_sum)
-            local_counter.update(metype_estimate)
+                    metype, average_syns_per_cell, metype_estimate)
+            total_estimate += metype_estimate
 
-        return local_counter
+        return total_estimate
 
     # -
     def get_target_connections(self, src_target_name,
