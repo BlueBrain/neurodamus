@@ -1,12 +1,13 @@
 import numpy as np
 import numpy.testing as npt
-from neurodamus.gap_junction import GapJunctionSynapseReader
 from pathlib import Path
+from unittest.mock import Mock
 
 SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 
 def test_gapjunction_sonata_reader():
+    from neurodamus.gap_junction import GapJunctionSynapseReader
     sonata_file = str(SIM_DIR / "mini_thalamus_sonata/gapjunction/edges.h5")
     sonata_reader = GapJunctionSynapseReader.create(sonata_file)
     syn_params_sonata = sonata_reader._load_synapse_parameters(1)
@@ -25,7 +26,7 @@ def test_syn_read_counts():
     reader = SonataReader(sonata_file, "NodeA__NodeA__chemical")
 
     full_counts = reader.get_counts(np.arange(3, dtype=int))
-    assert len(full_counts) == 3 # dataset has only two but the count=0 must be set
+    assert len(full_counts) == 3  # dataset has only two but the count=0 must be set
     assert full_counts[0] == 2
     assert full_counts[1] == 2
     assert full_counts[2] == 0
@@ -44,3 +45,30 @@ def test_syn_read_counts():
     conn_counts = reader.get_conn_counts([1])
     assert len(conn_counts) == 1
     assert conn_counts[1] == {0: 2}  # [0->1] 2 synapses
+
+
+def test_conn_manager_syn_stats():
+    """Test _get_conn_stats in isolation using a mocked instance of SynapseRuleManager
+    """
+    from neurodamus.connection_manager import SynapseRuleManager
+    from neurodamus.core.nodeset import NodeSet
+    from neurodamus.io.synapse_reader import SonataReader
+    from neurodamus.target_manager import NodesetTarget
+
+    sonata_file = str(SIM_DIR / "usecase3/local_edges_A.h5")
+    reader = SonataReader(sonata_file, "NodeA__NodeA__chemical")
+    target_ns = NodesetTarget("nodeset1", [NodeSet([1, 2, 3, 4])], [NodeSet([1, 2, 3])])
+
+    manager_mock = Mock(SynapseRuleManager)
+    manager_mock._synapse_reader = reader
+    manager_mock._cell_manager = Mock()
+    manager_mock._cell_manager.population_name = "pop-A"
+    manager_mock._dry_run_stats = Mock()
+    manager_mock._dry_run_stats.metype_gids = {"pop-A": {"metype-x": [1, 2], "metype-y": [3]}}
+    manager_mock._dry_run_conns = set()  # cache obj
+    manager_mock._dry_run_stats.average_syns_per_cell = {}  # for output
+
+    total_synapses = SynapseRuleManager._get_conn_stats(manager_mock, target_ns)
+    assert total_synapses == 2
+    assert manager_mock._dry_run_stats.average_syns_per_cell["metype-x"] == 1
+    assert manager_mock._dry_run_stats.average_syns_per_cell["metype-y"] == 0

@@ -413,7 +413,8 @@ class SonataReader(SynapseReader):
                 tgid_counts = {tgt_src_pairs["f1"][j]: counts[j] for j in range(start_i, end_i)}
                 self._counts[tgid] = tgid_counts
 
-        return {tgid: self._counts.get(tgid, 0) for tgid in node_ids}
+        empty = {}
+        return {tgid: self._counts.get(tgid, empty) for tgid in node_ids}
 
 
 class FormatNotSupported(Exception):

@@ -731,7 +731,7 @@ class ConnectionManagerBase(object):
 
         # Get the raw gids for the destination target
         raw_gids = dst_nodeset.get_local_gids(raw_gids=True) if dst_nodeset else self._raw_gids
-        if not raw_gids:  # Target is empty in this rank
+        if not len(raw_gids):  # Target is empty in this rank
             return {}
 
         total_estimate = 0
@@ -783,8 +783,8 @@ class ConnectionManagerBase(object):
                 # Let's count those which were not "created" before
                 new_syns_count = 0
 
-                for tgid, count_map in sample_counts:
-                    for sgid, syn_count in count_map:
+                for tgid, count_map in sample_counts.items():
+                    for sgid, syn_count in count_map.items():
                         conn_key = (tgid, sgid)
                         if conn_key not in self._dry_run_conns:
                             new_syns_count += syn_count
@@ -805,7 +805,7 @@ class ConnectionManagerBase(object):
                     metype, average_syns_per_cell, metype_estimate)
             total_estimate += metype_estimate
 
-        return total_estimate
+        return int(total_estimate)
 
     # -
     def get_target_connections(self, src_target_name,
