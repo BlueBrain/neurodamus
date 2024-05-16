@@ -4,6 +4,8 @@ on:
     # every evening at 20:00 UTC
     - cron: '0 20 * * *'
   pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
