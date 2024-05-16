@@ -1233,8 +1233,7 @@ class SynapseRuleManager(ConnectionManagerBase):
     def finalize(self, base_seed=0, sim_corenrn=False, **kwargs):
         """Create the actual synapses and netcons. See super() docstring
         """
-        # CoreNeuron will handle replays automatically with its own PatternStim
-        kwargs.setdefault("replay_mode", ReplayMode.NONE if sim_corenrn else ReplayMode.AS_REQUIRED)
+        kwargs.setdefault("replay_mode", ReplayMode.AS_REQUIRED)
         super().finalize(base_seed, sim_corenrn, **kwargs)
 
     def _finalize_conns(self, tgid, conns, base_seed, sim_corenrn, **kw):
