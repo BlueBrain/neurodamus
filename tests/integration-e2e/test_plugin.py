@@ -144,4 +144,5 @@ def test_run_acell_circuit():
         ["bash", "tests/test_simulation.bash", str(simdir), "BlueConfig", ""],
         env=env,
         check=True,
+        capture_output=True,
     )
