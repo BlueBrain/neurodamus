@@ -206,6 +206,7 @@ class SonataReader(SynapseReader):
     SYNAPSE_INDEX_NAMES = ("synapse_index",)
     LOOKUP_BY_TARGET_IDS = True  # False to lookup by Source Ids
     Parameters = SynapseParameters  # By default we load synapses
+    EMPTY_COUNT = {}
 
     custom_parameters = {"isec", "ipt", "offset"}
     """Custom parameters are skipped from direct loading and trigger _load_params_custom()"""
@@ -377,32 +378,35 @@ class SonataReader(SynapseReader):
 
         return conn_syn_params
 
-    def get_counts(self, node_ids):
+    def get_counts(self, tgids):
         """
         Counts synapses for the given target neuron ids. Returns a dict
         """
+        node_ids = tgids - 1
         edge_ids = self._population.afferent_edges(node_ids)
         target_nodes = self._population.target_nodes(edge_ids)
-        gids, counts = np.unique(target_nodes, return_counts=True)
-        counts_dict = dict(zip(gids, counts))
-        for node_id in node_ids:
-            counts_dict.setdefault(node_id, 0)
+        unique_nodes, counts = np.unique(target_nodes, return_counts=True)
+        unique_gids = unique_nodes + 1
+        counts_dict = dict(zip(unique_gids, counts))
+        for gid in tgids:
+            counts_dict.setdefault(gid, 0)
         return counts_dict
 
-    def get_conn_counts(self, node_ids):
+    def get_conn_counts(self, tgids):
         """
         Counts synapses per connetion for all the given target neuron ids.
         Returns a dict whose value is a numpy stuctured array
         """
-        if missing_ids := set(node_ids) - set(self._counts):
-            missing_ids = np.fromiter(missing_ids, dtype="uint32")
-            missing_ids.sort()
-            edge_ids = self._population.afferent_edges(missing_ids)
+        if missing_gids := set(tgids) - set(self._counts):
+            missing_gids = np.fromiter(missing_gids, dtype="uint32")
+            missing_gids.sort()
+            missing_nodes = missing_gids  - 1
+            edge_ids = self._population.afferent_edges(missing_nodes)
             target_nodes = self._population.target_nodes(edge_ids)
             source_nodes = self._population.source_nodes(edge_ids)
             connections = np.empty(len(target_nodes), dtype="uint64,uint64")
-            connections["f0"] = target_nodes
-            connections["f1"] = source_nodes
+            connections["f0"] = target_nodes + 1  # nodes to 1-based gids
+            connections["f1"] = source_nodes + 1
 
             tgt_src_pairs, counts = np.unique(connections, return_counts=True)
             pairs_start_i = np.diff(tgt_src_pairs["f0"], prepend=np.nan, append=np.nan).nonzero()[0]
@@ -413,8 +417,7 @@ class SonataReader(SynapseReader):
                 tgid_counts = {tgt_src_pairs["f1"][j]: counts[j] for j in range(start_i, end_i)}
                 self._counts[tgid] = tgid_counts
 
-        empty = {}
-        return {tgid: self._counts.get(tgid, empty) for tgid in node_ids}
+        return {tgid: self._counts.get(tgid, self.EMPTY_COUNT) for tgid in tgids}
 
 
 class FormatNotSupported(Exception):

@@ -183,7 +183,12 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
 
     # All good. Lets start reading!
     gidvec, meinfos, fullsize = load_nodes_base_info()
-    node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
+
+    if SimConfig.dry_run:
+        load_nodes = np.fromiter(meinfos.keys(), dtype="uint32") - 1
+        node_sel = libsonata.Selection(load_nodes)
+    else:
+        node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
 
     for prop_name in load_dynamic_props:
         log_verbose("Loading extra property: %s ", prop_name)

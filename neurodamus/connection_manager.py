@@ -531,9 +531,9 @@ class ConnectionManagerBase(object):
             only_gids: Create connections only for these tgids (default: Off)
         """
         if SimConfig.dry_run:
-            counts = self._get_conn_stats(None)
-            log_all(VERBOSE_LOGLEVEL, "[Rank %d] Synapse count: %d", MPI.rank, sum(counts.values()))
-            self._dry_run_stats.synapse_counts += counts
+            syn_count = self._get_conn_stats(None)
+            log_all(VERBOSE_LOGLEVEL, "[Rank %d] Synapse count: %d", MPI.rank, syn_count)
+            self._dry_run_stats.synapse_counts[self.CONNECTIONS_TYPE] += syn_count
             return
 
         conn_options = {'weight_factor': weight_factor}
@@ -572,10 +572,9 @@ class ConnectionManagerBase(object):
             return
 
         if SimConfig.dry_run:
-            counts = self._get_conn_stats(dst_target)
-            count_sum = sum(counts.values())
-            log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", pop.src_name, conn_destination, count_sum)
-            self._dry_run_stats.synapse_counts += counts
+            syn_count = self._get_conn_stats(dst_target, src_target)
+            log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", pop.src_name, conn_destination, syn_count)
+            self._dry_run_stats.synapse_counts[self.CONNECTIONS_TYPE] += syn_count
             return
 
         for sgid, tgid, syns_params, extra_params, offset in \
@@ -715,7 +714,7 @@ class ConnectionManagerBase(object):
                 pathway_repr = "Pathway {} -> {}".format(src_target.name, dst_target.name)
             logging.info(" * %s. Created %d connections", pathway_repr, all_created)
 
-    def _get_conn_stats(self, dst_nodeset, src_nodeset=None):
+    def _get_conn_stats(self, dst_target, src_target=None):
         """Estimates the number of synapses for the given destination and source nodesets
 
         Args:
@@ -730,7 +729,7 @@ class ConnectionManagerBase(object):
         SAMPLES_PER_BLOCK = 100
 
         # Get the raw gids for the destination target
-        raw_gids = dst_nodeset.get_local_gids(raw_gids=True) if dst_nodeset else self._raw_gids
+        raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
         if not len(raw_gids):  # Target is empty in this rank
             return {}
 
@@ -774,10 +773,10 @@ class ConnectionManagerBase(object):
 
                 # Ok, we have a whole lot of connections and their syn counts
                 # Let's filter by the src target
-                if src_nodeset:
+                if src_target:
                     syns_sgids = numpy.fromiter(sample_counts.keys(), dtype="uint32")
                     syns_sgids.sort()
-                    sgids_in_target = syns_sgids[src_nodeset.contains(syns_sgids)]
+                    sgids_in_target = syns_sgids[src_target.contains(syns_sgids)]
                     sample_counts = {sgid: sample_counts[sgid] for sgid in sgids_in_target}
 
                 # Let's count those which were not "created" before

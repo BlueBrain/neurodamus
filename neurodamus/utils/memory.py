@@ -1,7 +1,6 @@
 """
 Collection of utility functions related to clearing the used memory in neurodamus-py or NEURON
 """
-from collections import Counter
 import ctypes
 import ctypes.util
 import logging
@@ -13,6 +12,8 @@ import multiprocessing
 import heapq
 import pickle
 import gzip
+from collections import Counter
+from typing import Tuple
 
 from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
 from .compat import Vector
@@ -254,7 +255,7 @@ class DryRunStats:
         self.average_syns_per_cell = {}
         self.metype_gids = {}
         self.metype_counts = Counter()
-        self.synapse_counts = Counter()
+        self.synapse_counts = defaultdict()  # [syn_type -> count]
         self.suggested_nodes = 0
         _, _, self.base_memory, _ = get_task_level_mem_usage()
 
@@ -443,7 +444,7 @@ class DryRunStats:
             return int(num_ranks)
 
     @run_only_rank0
-    def distribute_cells(self, num_ranks, batch_size=10) -> (dict, dict):
+    def distribute_cells(self, num_ranks, batch_size=10) -> Tuple[dict, dict]:
         """
         Distributes cells across ranks based on their memory load.
 
