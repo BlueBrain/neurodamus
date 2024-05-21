@@ -235,10 +235,8 @@ class SynapseMemoryUsage:
     The values are in KB. The values cannot be set by the user.
     '''
     _synapse_memory_usage = {
-        "ProbAMPANMDA": 1.7,
-        "ProbGABAAB": 2.0,
-        "Gap": 2.0,
-        "Glue": 0.5
+        ConnectionTypes.Synaptic: 1.9,  # Average between 1.7 (AMPA) and 2.0 (GABAAB)
+        ConnectionTypes.GapJunction: 2.0,
     }
 
     @classmethod
@@ -255,8 +253,9 @@ class DryRunStats:
         self.average_syns_per_cell = {}
         self.metype_gids = {}
         self.metype_counts = Counter()
-        self.synapse_counts = defaultdict()  # [syn_type -> count]
+        self.synapse_counts = defaultdict(int)  # [syn_type -> count]
         self.suggested_nodes = 0
+        self.synapse_memory_total = 0
         _, _, self.base_memory, _ = get_task_level_mem_usage()
 
     @run_only_rank0
@@ -303,6 +302,7 @@ class DryRunStats:
             self.metype_memory = json.load(fp)
 
     def collect_display_syn_counts(self):
+        from .logging import log_verbose
         master_counter = MPI.py_sum(self.synapse_counts, Counter())
 
         # Done with MPI. Use rank0 to display
@@ -310,47 +310,18 @@ class DryRunStats:
             return
 
         logging.info(" - Estimated synapse memory usage (MB):")
-        from .logging import log_verbose
-        inh_count = exc_count = 0
-        gap_count = other_count = 0
         log_verbose("+{:=^68}+".format(" Synapse Count "))
-        log_verbose("| {:^40s} | {:^10s} | {:^10s} |".format("Synapse Type", "Family", "Count"))
+        log_verbose("| {:^40s} | {:^10s} | {:^10s} |".format("Synapse Type", "Count", "Memory"))
         log_verbose("+{:-^68}+".format(""))
 
         # Some synapse types are numeric, others are strings, so we need to handle both
-        numeric_items = [(syn_type, count)
-                         for syn_type, count in master_counter.items()
-                         if isinstance(syn_type, (int, np.integer))]
-        for syn_type, count in sorted(numeric_items):
-            is_inh = syn_type < 100
-            type_str = "INH" if is_inh else "EXC"
-            log_verbose("| {:40.0f} | {:<10s} | {:10.0f} |".format(syn_type, type_str, count))
-            if is_inh:
-                inh_count += count
-            else:
-                exc_count += count
+        for syn_type, count in master_counter.items():
+            mem_mb = SynapseMemoryUsage.get_memory_usage(count, syn_type) / 1024
+            self.synapse_memory_total += mem_mb
+            mem_str = pretty_printing_memory_mb(mem_mb)
+            log_verbose("| {:<40s} | {:10.0f} | {:>10s} |".format(str(syn_type), count, mem_str))
 
-        string_items = [(syn_type, count)
-                        for syn_type, count in master_counter.items()
-                        if isinstance(syn_type, (Enum))]
-        for syn_type, count in string_items:
-            is_gap = syn_type == ConnectionTypes.GapJunction
-            type_str = "Gap" if is_gap else "Other"
-            log_verbose("| {:>40s} | {:<10s} | {:10.0f} |".format(str(syn_type), type_str, count))
-            if is_gap:
-                gap_count += count
-            else:
-                other_count += count
-
-        log_verbose("+{:-^68}+".format(""))
-
-        in_mem = SynapseMemoryUsage.get_memory_usage(inh_count, "ProbGABAAB") / 1024
-        ex_mem = SynapseMemoryUsage.get_memory_usage(exc_count, "ProbAMPANMDA") / 1024
-        gap_mem = SynapseMemoryUsage.get_memory_usage(gap_count, "Gap") / 1024
-        self.synapse_memory_total = in_mem + ex_mem + gap_mem
-        logging.info("   - Inhibitory: %s", pretty_printing_memory_mb(in_mem))
-        logging.info("   - Excitatory: %s", pretty_printing_memory_mb(ex_mem))
-        logging.info("   - Gap: %s", pretty_printing_memory_mb(gap_mem))
+        log_verbose("+{:-^68}+".format(""))  # Close table
         logging.info(" - TOTAL : %s", pretty_printing_memory_mb(self.synapse_memory_total))
 
     @run_only_rank0

@@ -5,7 +5,7 @@ from __future__ import absolute_import
 import hashlib
 import logging
 import numpy
-from collections import defaultdict, Counter
+from collections import defaultdict
 from itertools import chain
 from os import path as ospath
 from typing import List, Optional
@@ -14,7 +14,7 @@ from libsonata import SonataError
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
 from .core import run_only_rank0
-from .core.configuration import GlobalConfig, LogLevel, SimConfig, ConfigurationError, find_input_file
+from .core.configuration import GlobalConfig, SimConfig, ConfigurationError, find_input_file
 from .connection import Connection, ReplayMode
 from .io.sonata_config import ConnectionTypes
 from .io.synapse_reader import SynapseReader
@@ -772,14 +772,15 @@ class ConnectionManagerBase(object):
                     continue
 
                 # Ok, we have a whole lot of connections and their syn counts
-                # Let's filter by the src target
                 if src_target:
+                    logging.debug("Filtering by source target...")
                     syns_sgids = numpy.fromiter(sample_counts.keys(), dtype="uint32")
                     syns_sgids.sort()
                     sgids_in_target = syns_sgids[src_target.contains(syns_sgids)]
                     sample_counts = {sgid: sample_counts[sgid] for sgid in sgids_in_target}
 
                 # Let's count those which were not "created" before
+                logging.debug("Counting new synapses")
                 new_syns_count = 0
 
                 for tgid, count_map in sample_counts.items():
@@ -797,7 +798,6 @@ class ConnectionManagerBase(object):
                 metype_estimate += new_syns_count * ratio
 
             # Info on the whole metype
-            logging.debug("Cells samples / total: %d / %s", sampled_gids_count, me_gids_count)
             average_syns_per_cell = metype_estimate / me_gids_count
             self._dry_run_stats.average_syns_per_cell[metype] = average_syns_per_cell
             log_all(VERBOSE_LOGLEVEL, "%s: Average syns/cell: %.1f, Estimated total: %d ",
