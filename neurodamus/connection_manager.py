@@ -771,23 +771,22 @@ class ConnectionManagerBase(object):
                     logging.warning("Skipping range %d:%d", start, stop)
                     continue
 
-                # Ok, we have a whole lot of connections and their syn counts
-                if src_target:
-                    logging.debug("Filtering by source target...")
-                    syns_sgids = numpy.fromiter(sample_counts.keys(), dtype="uint32")
-                    syns_sgids.sort()
-                    sgids_in_target = syns_sgids[src_target.contains(syns_sgids)]
-                    sample_counts = {sgid: sample_counts[sgid] for sgid in sgids_in_target}
-
                 # Let's count those which were not "created" before
                 logging.debug("Counting new synapses")
                 new_syns_count = 0
 
-                for tgid, count_map in sample_counts.items():
-                    for sgid, syn_count in count_map.items():
+                for tgid, tgid_conn_counts in sample_counts.items():
+                    if src_target:
+                        conn_sgids = numpy.fromiter(tgid_conn_counts.keys(), dtype="uint32")
+                        conn_sgids.sort()
+                        sgids_in_target = conn_sgids[src_target.contains(conn_sgids)]
+                    else:
+                        sgids_in_target = tgid_conn_counts.keys()
+
+                    for sgid in sgids_in_target:
                         conn_key = (tgid, sgid)
                         if conn_key not in self._dry_run_conns:
-                            new_syns_count += syn_count
+                            new_syns_count += tgid_conn_counts[sgid]
                             self._dry_run_conns.update(conn_key)
 
                 # Useful for debugging, but slow
