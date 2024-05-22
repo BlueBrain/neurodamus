@@ -18,7 +18,6 @@ from typing import Tuple
 from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
 from .compat import Vector
 from collections import defaultdict
-from enum import Enum
 from ..io.sonata_config import ConnectionTypes
 
 import numpy as np
