@@ -22,6 +22,11 @@ from ..io.sonata_config import ConnectionTypes
 
 import numpy as np
 
+# The factor to multiply the cell + synapses memory usage by to get the simulation memory estimate.
+# This is an heuristic estimate based on tests on multiple circuits.
+# More info in docs/architecture.rst.
+SIM_ESTIMATE_FACTOR = 2.5
+
 
 def trim_memory():
     """
@@ -332,8 +337,14 @@ class DryRunStats:
         logging.info("| {:<40s} | {:12.1f} |".format(f"Overhead (ranks={MPI.size})", full_overhead))
         logging.info("| {:<40s} | {:12.1f} |".format("Cells", self.cell_memory_total))
         logging.info("| {:<40s} | {:12.1f} |".format("Synapses", self.synapse_memory_total))
+        self.simulation_estimate = (self.cell_memory_total
+                                    + self.synapse_memory_total) * SIM_ESTIMATE_FACTOR
+        logging.info("| {:<40s} | {:12.1f} |".format("Simulation", self.simulation_estimate))
         logging.info("+{:-^57}+".format(""))
-        grand_total = full_overhead + self.cell_memory_total + self.synapse_memory_total
+        grand_total = (full_overhead
+                       + self.cell_memory_total
+                       + self.synapse_memory_total
+                       + self.simulation_estimate)
         grand_total = pretty_printing_memory_mb(grand_total)
         logging.info("| {:<40s} | {:>12s} |".format("GRAND TOTAL", grand_total))
         logging.info("+{:-^57}+".format(""))
@@ -373,7 +384,12 @@ class DryRunStats:
 
         while (prev_est_nodes is None or est_nodes != prev_est_nodes) and iter_count < max_iter:
             prev_est_nodes = est_nodes
-            mem_usage_per_node = full_overhead + self.cell_memory_total + self.synapse_memory_total
+            simulation_estimate = (self.cell_memory_total +
+                                   self.synapse_memory_total) * SIM_ESTIMATE_FACTOR
+            mem_usage_per_node = (full_overhead
+                                  + self.cell_memory_total
+                                  + self.synapse_memory_total
+                                  + simulation_estimate)
             mem_usage_with_margin = mem_usage_per_node * (1 + margin)
             est_nodes = math.ceil(mem_usage_with_margin / DryRunStats.total_memory_available())
             full_overhead = self.base_memory * ranks_per_node * est_nodes
