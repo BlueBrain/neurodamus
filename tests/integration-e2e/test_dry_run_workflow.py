@@ -1,4 +1,5 @@
 from pathlib import Path
+import numpy as np
 from neurodamus.utils.memory import import_allocation_stats, export_allocation_stats
 from test_multicycle_runs import _create_tmpconfig_coreneuron
 from neurodamus.core.configuration import GlobalConfig, LogLevel
@@ -7,12 +8,17 @@ SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 
 def convert_to_standard_types(obj):
-    """Converts an object containing defaultdicts of Vectors to standard Python types."""
+    """Converts an object containing defaultdicts or dictionaries with NumPy arrays to standard Python types."""
     result = {}
     for node, vectors in obj.items():
         result[node] = {}
         for key, vector in vectors.items():
-            result[node][key] = {k: list(v) for k, v in vector.item().items()}
+            if isinstance(vector, np.ndarray):
+                result[node][key] = vector.tolist()
+            elif isinstance(vector, dict):
+                result[node][key] = {k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in vector.items()}
+            else:
+                result[node][key] = vector
     return result
 
 
@@ -43,7 +49,7 @@ def test_dry_run_workflow(USECASE3):
     assert nd._dry_run_stats.suggest_nodes(0.3) > 0
 
     # Test that the allocation works and can be saved and loaded
-    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2)
+    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2, 1, 1)
     export_allocation_stats(rank_allocation,
                             USECASE3 / "allocation.pkl.gz",
                             cell_memory_usage,
@@ -52,15 +58,15 @@ def test_dry_run_workflow(USECASE3):
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
     expected_items = {
-        'NodeA': {0: {0: [1, 2, 3]}},
-        'NodeB': {1: {0: [1, 2]}}
+        'NodeA': {(0, 0): [1, 2, 3]},
+        'NodeB': {(0, 0): [1, 2]}
     }
 
     assert rank_allocation_standard == expected_items
 
     # Test that the allocation works and can be saved and loaded
     # and generate allocation.pkl.gz for 1 rank
-    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(1)
+    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(1, 1, 1)
     export_allocation_stats(rank_allocation,
                             USECASE3 / "allocation.pkl.gz",
                             cell_memory_usage,
@@ -69,8 +75,8 @@ def test_dry_run_workflow(USECASE3):
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
     expected_items = {
-        'NodeA': {0: {0: [1, 2, 3]}},
-        'NodeB': {0: {0: [1, 2]}}
+        'NodeA': {(0, 0): [1, 2, 3]},
+        'NodeB': {(0, 0): [1, 2]}
     }
 
     assert rank_allocation_standard == expected_items

@@ -187,7 +187,6 @@ def print_allocation_stats(rank_allocation, rank_memory):
     logging.debug("Total memory per rank/cycle: {}".format(rank_memory))
     import statistics
     for pop, rank_dict in rank_memory.items():
-        import pdb; pdb.set_trace()
         values = list(rank_dict.values())
         logging.info("Population: {}".format(pop))
         logging.info("Mean allocation per rank [KB]: {}".format(round(statistics.mean(values))))
@@ -226,7 +225,6 @@ def import_allocation_stats(filename) -> dict:
 
     with open(filename, 'rb') as f:
         compressed_data = f.read()
-
     return convert_to_standard_types(pickle.loads(gzip.decompress(compressed_data)))
 
 
@@ -259,6 +257,14 @@ class DryRunStats:
     _MEMORY_USAGE_FILENAME = "cell_memory_usage.json"
     _ALLOCATION_FILENAME = "allocation.pkl.gz"
     _MEMORY_USAGE_PER_CELL_FILENAME = "memory_per_cell.pkl.gz"
+
+    @staticmethod
+    def defaultdict_vector():
+        return defaultdict(Vector)
+
+    @staticmethod
+    def defaultdict_float():
+        return defaultdict(float)
 
     def __init__(self) -> None:
         self.metype_memory = {}
@@ -465,7 +471,7 @@ class DryRunStats:
             return int(num_ranks)
 
     @run_only_rank0
-    def distribute_cells(self, num_ranks, cycles=None, batch_size=10) -> (dict, dict):
+    def distribute_cells(self, num_ranks, cycles=None, batch_size=10) -> (dict, dict, dict):
         """
         Distributes cells across ranks and cycles based on their memory load.
 
@@ -478,9 +484,9 @@ class DryRunStats:
             batch_size (int): The number of cells to assign to each bucket at a time.
 
         Returns:
-            bucket_allocation (dict): A dictionary where keys are tuples (rank_id, cycle_id)
+            bucket_allocation (dict): A dictionary where keys are tuples (pop, rank_id, cycle_id)
                                     and values are lists of cell IDs assigned to each bucket.
-            bucket_memory (dict): A dictionary where keys are tuples (rank_id, cycle_id)
+            bucket_memory (dict): A dictionary where keys are tuples (pop, rank_id, cycle_id)
                                 and values are the total memory load on each bucket.
             metype_memory_usage (dict): A dictionary where keys are METype IDs
                                         and values are the memory load of each METype.
@@ -511,35 +517,41 @@ class DryRunStats:
                 for gid in gids:
                     yield gid, memory_usage
 
-        # (total_memory, (rank_id, cycle_id))
-        buckets = [(0, (i, j)) for i in range(num_ranks) for j in range(cycles)]
-        heapq.heapify(buckets)
-        bucket_allocation = defaultdict(Vector)
-        bucket_memory = defaultdict(float)
+        bucket_allocation = defaultdict(DryRunStats.defaultdict_vector)
+        bucket_memory = defaultdict(DryRunStats.defaultdict_float)
 
-        def assign_cells_to_bucket(bucket_allocation, bucket_memory, batch, batch_memory):
+        def assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory):
             total_memory, (rank_id, cycle_id) = heapq.heappop(buckets)
             logging.debug("Assigning batch to bucket (%d, %d)", rank_id, cycle_id)
-            bucket_allocation[(rank_id, cycle_id)].extend(batch)
+            rank_allocation[(rank_id, cycle_id)].extend(batch)
             total_memory += batch_memory
-            bucket_memory[(rank_id, cycle_id)] = total_memory
+            rank_memory[(rank_id, cycle_id)] = total_memory
             heapq.heappush(buckets, (total_memory, (rank_id, cycle_id)))
 
         for pop, metype_gids in self.metype_gids.items():
             logging.info("Distributing cells of population %s", pop)
+            rank_allocation = defaultdict(Vector)
+            rank_memory = {}
             batch = []
             batch_memory = 0
+
+            # (total_memory, (rank_id, cycle_id))
+            buckets = [(0, (i, j)) for i in range(num_ranks) for j in range(cycles)]
+            heapq.heapify(buckets)
 
             for cell_id, memory in generate_cells(metype_gids):
                 batch.append(cell_id)
                 batch_memory += memory
                 if len(batch) == batch_size:
-                    assign_cells_to_bucket(bucket_allocation, bucket_memory, batch, batch_memory)
+                    assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory)
                     batch = []
                     batch_memory = 0
 
             if batch:
-                assign_cells_to_bucket(bucket_allocation, bucket_memory, batch, batch_memory)
+                assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory)
+
+            bucket_allocation[pop] = rank_allocation
+            bucket_memory[pop] = rank_memory
 
         print_allocation_stats(bucket_allocation, bucket_memory)
         export_allocation_stats(bucket_allocation,
