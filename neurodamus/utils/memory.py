@@ -173,7 +173,7 @@ def pretty_printing_memory_mb(memory_mb):
 
 
 @run_only_rank0
-def print_allocation_stats(rank_allocation, rank_memory, cell_memory_usage):
+def print_allocation_stats(rank_allocation, rank_memory):
     """
     Print statistics of the memory allocation across ranks.
 
@@ -182,36 +182,20 @@ def print_allocation_stats(rank_allocation, rank_memory, cell_memory_usage):
                                 values are lists of cell IDs assigned to each rank.
         rank_memory (dict): A dictionary where keys are rank IDs
                             and values are the total memory load on each rank.
-        cell_memory_usage (dict): A dictionary where keys are cell IDs
-                                  and values are the memory load of each cell.
     """
-    logging.debug("Rank allocation: {}".format(rank_allocation))
-    logging.debug("Total memory per rank: {}".format(rank_memory))
-    logging.debug("Cell memory usage: {}".format(cell_memory_usage))
+    logging.debug("Rank/cycle allocation: {}".format(rank_allocation))
+    logging.debug("Total memory per rank/cycle: {}".format(rank_memory))
     import statistics
     for pop, rank_dict in rank_memory.items():
-        cycle_memory = defaultdict(list)
-        for rank, memory in rank_dict.items():
-            values = list(memory.values())
-            logging.info("Rank: {}".format(rank))
-            logging.info("Mean allocation per rank [KB]: {}".format(round(statistics.mean(values))))
-            try:
-                stdev = round(statistics.stdev(values))
-                logging.info("Stdev of allocation per rank [KB]: {}".format(stdev))
-            except statistics.StatisticsError:
-                logging.info("Stdev of allocation per rank [KB]: 0")
-            for cycle, mem in memory.items():
-                cycle_memory[cycle].append(mem)
-        for cycle, mem_list in cycle_memory.items():
-            mean = round(statistics.mean(mem_list))
-            try:
-                stdev = round(statistics.stdev(mem_list))
-            except statistics.StatisticsError:
-                stdev = 0
-            logging.info("Population: {}".format(pop))
-            logging.info("Cycle: {}".format(cycle))
-            logging.info("Mean allocation per cycle [KB]: {}".format(mean))
-            logging.info("Stdev of allocation per cycle [KB]: {}".format(stdev))
+        import pdb; pdb.set_trace()
+        values = list(rank_dict.values())
+        logging.info("Population: {}".format(pop))
+        logging.info("Mean allocation per rank [KB]: {}".format(round(statistics.mean(values))))
+        try:
+            stdev = round(statistics.stdev(values))
+        except statistics.StatisticsError:
+            stdev = 0
+        logging.info("Stdev of allocation per rank [KB]: {}".format(stdev))
 
 
 @run_only_rank0
@@ -483,27 +467,31 @@ class DryRunStats:
     @run_only_rank0
     def distribute_cells(self, num_ranks, cycles=None, batch_size=10) -> (dict, dict):
         """
-        Distributes cells across ranks based on their memory load.
+        Distributes cells across ranks and cycles based on their memory load.
 
-        This function uses a greedy algorithm to distribute cells across ranks such that
+        This function uses a greedy algorithm to distribute cells across ranks and cycles such that
         the total memory load is balanced. Cells with higher memory load are distributed first.
 
         Args:
-            dry_run_stats (DryRunStats): A DryRunStats object.
             num_ranks (int): The number of ranks.
-            cycles (int): The number of cycles to distribute cells over (optional).
-            batch_size (int): The number of cells to assign to each rank at a time.
+            cycles (int): The number of cycles to distribute cells over.
+            batch_size (int): The number of cells to assign to each bucket at a time.
 
         Returns:
-            rank_allocation (dict): A dictionary where keys are rank IDs and
-                                    values are lists of cell IDs assigned to each rank.
-            rank_memory (dict): A dictionary where keys are rank IDs
-                                and values are the total memory load on each rank.
+            bucket_allocation (dict): A dictionary where keys are tuples (rank_id, cycle_id)
+                                    and values are lists of cell IDs assigned to each bucket.
+            bucket_memory (dict): A dictionary where keys are tuples (rank_id, cycle_id)
+                                and values are the total memory load on each bucket.
+            metype_memory_usage (dict): A dictionary where keys are METype IDs
+                                        and values are the memory load of each METype.
         """
-        logging.info("Distributing cells across %d ranks", num_ranks)
+        logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
+
+        if cycles is None or cycles <= 1:
+            cycles = 1
 
         self.validate_inputs_distribute(num_ranks, batch_size)
-        cell_memory_usage = {}
+        metype_memory_usage = {}
 
         # Multiply the average number of synapses per cell by 2.0
         # This is done since the biggest memory load for a synapse is 2.0 kB and at this point in
@@ -511,34 +499,34 @@ class DryRunStats:
         # so we just take the biggest value to be safe. (the difference between the two is minimal)
         average_syns_mem_per_cell = {k: v * 2.0 for k, v in self.average_syns_per_cell.items()}
 
+        # Prepare the memory usage for each METype
+        for cell_type in self.metype_memory:
+            metype_memory_usage[cell_type] = (self.metype_memory[cell_type] +
+                                              average_syns_mem_per_cell[cell_type])
+
         # Prepare a list of tuples (cell_id, memory_load)
-        # We sum the memory load of the cell type and the average number of synapses per cell
         def generate_cells(metype_gids):
             for cell_type, gids in metype_gids.items():
-                memory_usage = (self.metype_memory[cell_type] +
-                                average_syns_mem_per_cell[cell_type])
+                memory_usage = metype_memory_usage[cell_type]
                 for gid in gids:
                     yield gid, memory_usage
 
-                    cell_memory_usage[gid] = memory_usage
+        # (total_memory, (rank_id, cycle_id))
+        buckets = [(0, (i, j)) for i in range(num_ranks) for j in range(cycles)]
+        heapq.heapify(buckets)
+        bucket_allocation = defaultdict(Vector)
+        bucket_memory = defaultdict(float)
 
-        ranks = [(0, i) for i in range(num_ranks)]  # (total_memory, rank_id)
-        heapq.heapify(ranks)
-        all_allocation = {}
-        all_memory = {}
-
-        def assign_cells_to_rank(rank_allocation, rank_memory, batch, batch_memory):
-            total_memory, rank_id = heapq.heappop(ranks)
-            logging.debug("Assigning batch to rank %d", rank_id)
-            rank_allocation[rank_id].extend(batch)
+        def assign_cells_to_bucket(bucket_allocation, bucket_memory, batch, batch_memory):
+            total_memory, (rank_id, cycle_id) = heapq.heappop(buckets)
+            logging.debug("Assigning batch to bucket (%d, %d)", rank_id, cycle_id)
+            bucket_allocation[(rank_id, cycle_id)].extend(batch)
             total_memory += batch_memory
-            rank_memory[rank_id] = total_memory
-            heapq.heappush(ranks, (total_memory, rank_id))
+            bucket_memory[(rank_id, cycle_id)] = total_memory
+            heapq.heappush(buckets, (total_memory, (rank_id, cycle_id)))
 
         for pop, metype_gids in self.metype_gids.items():
             logging.info("Distributing cells of population %s", pop)
-            rank_allocation = defaultdict(Vector)
-            rank_memory = {}
             batch = []
             batch_memory = 0
 
@@ -546,45 +534,20 @@ class DryRunStats:
                 batch.append(cell_id)
                 batch_memory += memory
                 if len(batch) == batch_size:
-                    assign_cells_to_rank(rank_allocation, rank_memory, batch, batch_memory)
+                    assign_cells_to_bucket(bucket_allocation, bucket_memory, batch, batch_memory)
                     batch = []
                     batch_memory = 0
 
             if batch:
-                assign_cells_to_rank(rank_allocation, rank_memory, batch, batch_memory)
+                assign_cells_to_bucket(bucket_allocation, bucket_memory, batch, batch_memory)
 
-            all_allocation[pop] = rank_allocation
-            all_memory[pop] = rank_memory
-
-        if cycles is None or cycles <= 1:
-            cycles = 1
-
-        for pop in all_allocation:
-            for rank_id in all_allocation[pop]:
-                cells = all_allocation[pop][rank_id]
-                cycle_allocation = defaultdict(list)
-                cycle_memory = [(0, i) for i in range(cycles)]
-                cycle_memory_dict = defaultdict(int)
-                heapq.heapify(cycle_memory)
-
-                for cell_id in cells:
-                    memory = cell_memory_usage[cell_id]
-                    total_memory, cycle_id = heapq.heappop(cycle_memory)
-                    cycle_allocation[cycle_id].append(cell_id)
-                    total_memory += memory
-                    heapq.heappush(cycle_memory, (total_memory, cycle_id))
-                    cycle_memory_dict[cycle_id] = total_memory
-
-                all_allocation[pop][rank_id] = cycle_allocation
-                all_memory[pop][rank_id] = cycle_memory_dict
-
-        print_allocation_stats(all_allocation, all_memory, cell_memory_usage)
-        export_allocation_stats(all_allocation,
+        print_allocation_stats(bucket_allocation, bucket_memory)
+        export_allocation_stats(bucket_allocation,
                                 self._ALLOCATION_FILENAME,
-                                cell_memory_usage,
+                                metype_memory_usage,
                                 self._MEMORY_USAGE_PER_CELL_FILENAME)
 
-        return all_allocation, rank_memory, cell_memory_usage
+        return bucket_allocation, bucket_memory, metype_memory_usage
 
     def validate_inputs_distribute(self, num_ranks, batch_size):
         assert isinstance(num_ranks, int), "num_ranks must be an integer"
