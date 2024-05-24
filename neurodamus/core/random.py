@@ -11,7 +11,7 @@ from . import Neuron
 
 class RNG(object):
     def __new__(cls, **kw):
-        """Creates a default RNG, currently based on ACG"""
+        """Creates a default RNG (Random123 with ids of 0,1,2)"""
         seed = kw.get("seed", 0)
         return Random123(0, 1, 2, seed)
 
