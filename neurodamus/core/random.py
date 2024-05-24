@@ -10,9 +10,10 @@ from . import Neuron
 
 
 class RNG(object):
-    def __new__(cls):
-        """Creates a default RNG (Random123)"""
-        return Random123(0, 1, 2, 0)
+    def __new__(cls, **kw):
+        """Creates a default RNG, currently based on ACG"""
+        seed = kw.get("seed", 0)
+        return Random123(0, 1, 2, seed)
 
     @classmethod
     def create(cls, ids, seed=None):
