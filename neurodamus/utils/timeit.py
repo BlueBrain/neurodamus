@@ -132,7 +132,7 @@ def human_readable(num):
         else str(int(num))
 
 
-delim = u'\u255a'
+delim = '+'
 
 
 class _Timer(object):
