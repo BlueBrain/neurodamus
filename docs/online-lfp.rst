@@ -130,6 +130,12 @@ Subsequently, an ERROR will be encountered when instantiating the LFP report:
 
 To ensure accurate and valid LFP reports, make sure that the electrodes file corresponds to the circuit being used in your simulation.
 
+- **Stimulus Electrode Compatibility**: A common use case is that current will be injected into a population to account for synaptic inputs from neural populations that are not modeled. In this case,the injected current should be considered a membrane current rather than an electrode current, and it is neccessary that total current over the neuron sums to zero in order to produce valid extracellular recording results. The Neuron SEClamp class does not fulfill these criteria due to numerical issues. We have created a new point process, `ConductanceSource`, available in `neurodamus-neocortex`, which does fulfill the criteria. If an conductance source stimulus is present in the simulation config file, `ConductanceSource` will be used by default instead of the SEClamp mechanism. The injected current will be reported as part of the `i_membrane` variable, rather than as an electrode current. 
+
+However, it may be the case that the user wishes to model a physical electrode, rather than missing synaptic input, using the conductance source mechanism. In this case, the total current over the neuron is nonzero, and the injected current should not be considered a membrane current. For this reason, we have added the key `represents_phsyical_electrode` to the stimulus block. With the key-value pair `represents_physical_electrode:true`, SEClamp will be used rather than ConductanceSource.
+
+Similarly, current sources may also be used to model the effects of missing synaptic inputs. We have created a new point process, `MembraneCurrentSource`, which is used instead of IClamp if the key `represents_phsyical_electrode` is set to false or is not set. `MembraneCurrentSource` behaves identically to IClamp, but is considered a membrane current, and is therefore accounted for in the calculation of the extracellular signal. It is not reported on as an electrode current. Setting `represents_physical_electrode:true` will result in using IClamp instead of `MembraneCurrentSource` 
+
 By keeping these considerations in mind, you can ensure a smooth and successful usage of the online LFP calculation feature.
 
 Conclusion
