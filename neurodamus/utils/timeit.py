@@ -117,8 +117,6 @@ from math import log, floor
 from .logging import log_verbose
 from ..core import NeurodamusCore as Nd, MPI, run_only_rank0
 
-logging.basicConfig(encoding='utf-8')  # override locale encoding; even if UTF-8 is not supported for output, it's OK
-
 def human_readable(num):
     """ Get a human readable version of a number.
     For example: 5200000 -> 5.20M
