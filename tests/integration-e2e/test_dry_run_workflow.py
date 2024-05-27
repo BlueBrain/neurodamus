@@ -8,7 +8,8 @@ SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
 
 def convert_to_standard_types(obj):
-    """Converts an object containing defaultdicts or dictionaries with NumPy arrays to standard Python types."""
+    """Converts an object containing defaultdicts or dictionaries with NumPy arrays to standard
+    Python types."""
     result = {}
     for node, vectors in obj.items():
         result[node] = {}
@@ -16,7 +17,9 @@ def convert_to_standard_types(obj):
             if isinstance(vector, np.ndarray):
                 result[node][key] = vector.tolist()
             elif isinstance(vector, dict):
-                result[node][key] = {k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in vector.items()}
+                result[node][key] = {
+                    k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in vector.items()
+                }
             else:
                 result[node][key] = vector
     return result
@@ -26,6 +29,9 @@ def test_dry_run_workflow(USECASE3):
     """
     Test that the dry run mode works
     """
+
+    # Make sure no old cell_memory_usage is used
+    Path(("cell_memory_usage.json")).unlink(missing_ok=True)
 
     from neurodamus import Neurodamus
     GlobalConfig.verbosity = LogLevel.DEBUG
@@ -58,8 +64,8 @@ def test_dry_run_workflow(USECASE3):
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
     expected_items = {
-        'NodeA': {(0, 0): [1, 2, 3]},
-        'NodeB': {(0, 0): [1, 2]}
+        'NodeA': {(0, 0): [1], (1, 0): [2, 3]},
+        'NodeB': {(0, 0): [1], (1, 0): [2]}
     }
 
     assert rank_allocation_standard == expected_items
@@ -110,20 +116,16 @@ def test_dry_run_workflow_multi():
                             SIM_DIR / "memory_per_cell_multi.pkl.gz")
     rank_allocation = import_allocation_stats(SIM_DIR / "allocation_multi.pkl.gz")
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
-    expected_items = expected_items = {
+
+    expected_items = {
         'default': {
-            0: {
-                0: [
-                    62798, 62946, 63257, 63699, 64164, 64862, 65916, 65952, 66069,
-                    66106, 69840, 63623, 64234, 64666, 64788, 64936, 69878, 65821,
-                    67078, 68856
-                ]
-            },
-            1: {
-                0: [
-                    66141, 66497, 66872, 67667, 68224, 68354, 68533, 68581, 68942, 69531
-                ]
-            }
+            (0, 0): [
+                62798, 62946, 63257, 63699, 64164, 64862, 65916, 65952, 66069, 66106,
+                69840, 63623, 64234, 64666, 64788, 64936, 69878, 65821, 67078, 68856
+            ],
+            (1, 0): [
+                66141, 66497, 66872, 67667, 68224, 68354, 68533, 68581, 68942, 69531
+            ]
         }
     }
     assert rank_allocation_standard == expected_items

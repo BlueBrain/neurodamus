@@ -491,10 +491,10 @@ class DryRunStats:
             metype_memory_usage (dict): A dictionary where keys are METype IDs
                                         and values are the memory load of each METype.
         """
-        logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
-
         if cycles is None or cycles <= 1:
             cycles = 1
+
+        logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
 
         self.validate_inputs_distribute(num_ranks, batch_size)
         metype_memory_usage = {}
