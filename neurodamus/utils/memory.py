@@ -198,17 +198,18 @@ def print_allocation_stats(rank_allocation, rank_memory):
 
 
 @run_only_rank0
-def export_allocation_stats(rank_allocation, filename, cell_memory_usage, memory_per_cell_filename):
+def export_allocation_stats(rank_allocation, filename, metype_memory_usage, memory_per_metype_file):
     """
-    Export allocation dictionary to serialized pickle file.
+    Export allocation dictionary to a serialized pickle file and metype memory usage to a JSON file.
     """
+    # Export rank_allocation to a compressed pickle file
     compressed_data = gzip.compress(pickle.dumps(rank_allocation))
     with open(filename, 'wb') as f:
         f.write(compressed_data)
 
-    compressed_data = gzip.compress(pickle.dumps(cell_memory_usage))
-    with open(memory_per_cell_filename, 'wb') as f:
-        f.write(compressed_data)
+    # Export metype_memory_usage to a JSON file
+    with open(memory_per_metype_file, 'w') as f:
+        json.dump(metype_memory_usage, f, indent=4)
 
 
 @run_only_rank0
@@ -256,7 +257,7 @@ class SynapseMemoryUsage:
 class DryRunStats:
     _MEMORY_USAGE_FILENAME = "cell_memory_usage.json"
     _ALLOCATION_FILENAME = "allocation.pkl.gz"
-    _MEMORY_USAGE_PER_CELL_FILENAME = "memory_per_cell.pkl.gz"
+    _MEMORY_USAGE_PER_METYPE_FILENAME = "memory_per_metype.json"
 
     @staticmethod
     def defaultdict_vector():
@@ -557,7 +558,7 @@ class DryRunStats:
         export_allocation_stats(bucket_allocation,
                                 self._ALLOCATION_FILENAME,
                                 metype_memory_usage,
-                                self._MEMORY_USAGE_PER_CELL_FILENAME)
+                                self._MEMORY_USAGE_PER_METYPE_FILENAME)
 
         return bucket_allocation, bucket_memory, metype_memory_usage
 
