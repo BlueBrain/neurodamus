@@ -15,4 +15,4 @@ def test_base_h():
 def neurodamus():
     from neurodamus.core import NeurodamusCore as Nd
     rng_conf = Nd.RNGSettings()
-    assert rng_conf.RANDOM123 == 1
+    assert rng_conf.getGlobalSeed() == 0
