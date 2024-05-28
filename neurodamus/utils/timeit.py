@@ -117,6 +117,7 @@ from math import log, floor
 from .logging import log_verbose
 from ..core import NeurodamusCore as Nd, MPI, run_only_rank0
 
+
 def human_readable(num):
     """ Get a human readable version of a number.
     For example: 5200000 -> 5.20M
