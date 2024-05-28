@@ -59,7 +59,7 @@ def test_dry_run_workflow(USECASE3):
     export_allocation_stats(rank_allocation,
                             USECASE3 / "allocation.pkl.gz",
                             cell_memory_usage,
-                            USECASE3 / "memory_per_cell.pkl.gz")
+                            USECASE3 / "memory_per_metype.json")
     rank_allocation = import_allocation_stats(USECASE3 / "allocation.pkl.gz")
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
@@ -76,7 +76,7 @@ def test_dry_run_workflow(USECASE3):
     export_allocation_stats(rank_allocation,
                             USECASE3 / "allocation.pkl.gz",
                             cell_memory_usage,
-                            USECASE3 / "memory_per_cell.pkl.gz")
+                            USECASE3 / "memory_per_metype.json")
     rank_allocation = import_allocation_stats(USECASE3 / "allocation.pkl.gz")
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
@@ -113,7 +113,7 @@ def test_dry_run_workflow_multi():
     export_allocation_stats(rank_allocation,
                             SIM_DIR / "allocation_multi.pkl.gz",
                             cell_memory_usage,
-                            SIM_DIR / "memory_per_cell_multi.pkl.gz")
+                            SIM_DIR / "memory_per_metype.json")
     rank_allocation = import_allocation_stats(SIM_DIR / "allocation_multi.pkl.gz")
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
