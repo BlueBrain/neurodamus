@@ -279,7 +279,8 @@ class ConnectionManagerBase(object):
         self._load_offsets = kw.get("load_offsets", False)
         # An internal var to enable collection of synapse statistics to a Counter
         self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
-        self._dry_run_conns = set()
+        # For each tgid track "connected" sgids (dry-run)
+        self._dry_run_conns = defaultdict(set)
 
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
@@ -733,6 +734,7 @@ class ConnectionManagerBase(object):
         if not len(raw_gids):  # Target is empty in this rank
             return 0
 
+        log_verbose("Estimating synapses %s -> %s", src_target.name, dst_target.name)
         total_estimate = 0
         dst_pop_name = self._cell_manager.population_name
 
@@ -746,7 +748,7 @@ class ConnectionManagerBase(object):
             if not me_gids_count:
                 continue
 
-            logging.debug("Estimating synapses for metype %s", metype)
+            logging.debug(" * metype %s", metype)
             me_gids = numpy.fromiter(me_gids, dtype="uint32")
 
             # NOTE:
@@ -772,22 +774,20 @@ class ConnectionManagerBase(object):
                     continue
 
                 # Let's count those which were not "created" before
-                logging.debug("Counting new synapses")
                 new_syns_count = 0
 
                 for tgid, tgid_conn_counts in sample_counts.items():
                     if src_target:
                         conn_sgids = numpy.fromiter(tgid_conn_counts.keys(), dtype="uint32")
-                        conn_sgids.sort()
                         sgids_in_target = conn_sgids[src_target.contains(conn_sgids)]
                     else:
                         sgids_in_target = tgid_conn_counts.keys()
 
+                    connected_sgids = self._dry_run_conns[tgid]
                     for sgid in sgids_in_target:
-                        conn_key = (tgid, sgid)
-                        if conn_key not in self._dry_run_conns:
+                        if sgid not in connected_sgids:
                             new_syns_count += tgid_conn_counts[sgid]
-                            self._dry_run_conns.update(conn_key)
+                            connected_sgids.add(int(sgid))
 
                 # Useful for debugging, but slow
                 # logging.debug("Sample Gids: %s... Count: %d", sample[:10], new_syns_count)
@@ -798,8 +798,10 @@ class ConnectionManagerBase(object):
 
             # Info on the whole metype
             average_syns_per_cell = metype_estimate / me_gids_count
-            self._dry_run_stats.average_syns_per_cell[metype] = average_syns_per_cell
-            log_all(VERBOSE_LOGLEVEL, "%s: Average syns/cell: %.1f, Estimated total: %d ",
+            # Due to the fact that the same metype might be target of several projections
+            #   we have to sum the averages
+            self._dry_run_stats.average_syns_per_cell[metype] += average_syns_per_cell
+            log_all(logging.DEBUG, "%s: Average syns/cell: %.1f, Estimated total: %d ",
                     metype, average_syns_per_cell, metype_estimate)
             total_estimate += metype_estimate
 

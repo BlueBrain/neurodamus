@@ -173,17 +173,14 @@ def pretty_printing_memory_mb(memory_mb):
 
 
 @run_only_rank0
-def print_allocation_stats(rank_allocation, rank_memory):
+def print_allocation_stats(rank_memory):
     """
     Print statistics of the memory allocation across ranks.
 
     Args:
-        rank_allocation (dict): A dictionary where keys are rank IDs and
-                                values are lists of cell IDs assigned to each rank.
         rank_memory (dict): A dictionary where keys are rank IDs
                             and values are the total memory load on each rank.
     """
-    logging.debug("Rank allocation: {}".format(rank_allocation))
     logging.debug("Total memory per rank: {}".format(rank_memory))
     import statistics
     for pop, rank_dict in rank_memory.items():
@@ -254,7 +251,7 @@ class DryRunStats:
 
     def __init__(self) -> None:
         self.metype_memory = {}
-        self.average_syns_per_cell = {}
+        self.average_syns_per_cell = defaultdict(int)
         self.metype_gids = {}
         self.metype_counts = Counter()
         self.synapse_counts = defaultdict(int)  # [syn_type -> count]
@@ -289,8 +286,7 @@ class DryRunStats:
         # We combine memory dict via update(). That means if a previous circuit computed
         # cells for the same METype (hopefully unlikely!) the last estimate prevails.
         self.metype_memory = MPI.py_reduce(self.metype_memory, {}, lambda x, y: x.update(y))
-        self.average_syns_per_cell = MPI.py_reduce(self.average_syns_per_cell, {},
-                                                   lambda x, y: x.update(y))
+        self.average_syns_per_cell = MPI.py_sum(self.average_syns_per_cell, Counter())
         self.metype_counts = self.metype_counts  # Cell counts is complete in every rank
 
     @run_only_rank0
@@ -473,7 +469,6 @@ class DryRunStats:
 
         def assign_cells_to_rank(rank_allocation, rank_memory, batch, batch_memory):
             total_memory, rank_id = heapq.heappop(ranks)
-            logging.debug("Assigning batch to rank %d", rank_id)
             rank_allocation[rank_id].extend(batch)
             total_memory += batch_memory
             rank_memory[rank_id] = total_memory
@@ -500,7 +495,7 @@ class DryRunStats:
             all_allocation[pop] = rank_allocation
             all_memory[pop] = rank_memory
 
-        print_allocation_stats(all_allocation, all_memory)
+        print_allocation_stats(all_memory)
         export_allocation_stats(all_allocation, self._ALLOCATION_FILENAME)
 
         return all_allocation, rank_memory
