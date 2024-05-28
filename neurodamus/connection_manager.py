@@ -731,7 +731,7 @@ class ConnectionManagerBase(object):
         # Get the raw gids for the destination target
         raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
         if not len(raw_gids):  # Target is empty in this rank
-            return {}
+            return 0
 
         total_estimate = 0
         dst_pop_name = self._cell_manager.population_name
