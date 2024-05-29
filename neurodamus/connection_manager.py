@@ -729,8 +729,9 @@ class ConnectionManagerBase(object):
         SAMPLED_CELLS_PER_BLOCK = 100
 
         # Get the raw gids for the destination target (in this rank)
-        raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
-        if not len(raw_gids):  # Target is empty in this rank
+        local_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
+        if not len(local_gids):  # Target is empty in this rank
+            logging.debug("Skipping group: no cells!")
             return 0
 
         log_verbose("Estimating synapses %s -> %s", src_target.name, dst_target.name)
@@ -741,10 +742,11 @@ class ConnectionManagerBase(object):
         #  - Estimation (and extrapolation) is performed per metype since properties can vary
         #  - Consider only the cells for the current target
 
-        for metype, me_gids in self._dry_run_stats.metype_gids[dst_pop_name].items():
-            me_gids = set(me_gids).intersection(set(raw_gids))
+        for metype, all_me_gids in self._dry_run_stats.pop_metype_gids[dst_pop_name].items():
+            me_gids = set(all_me_gids).intersection(local_gids)
             me_gids_count = len(me_gids)
             if not me_gids_count:
+                logging.debug("Skipping metype '%s': no cells!", metype)
                 continue
 
             logging.debug("Metype %s", metype)
@@ -800,7 +802,7 @@ class ConnectionManagerBase(object):
             # Due to the fact that the same metype might be target of several projections
             #   we have to sum the averages
             average_syns_per_cell = metype_estimate / me_gids_count
-            self._dry_run_stats.average_syns_per_cell[metype] += average_syns_per_cell
+            self._dry_run_stats.metype_cell_syn_count[metype] += average_syns_per_cell
             log_all(logging.DEBUG, "%s: Average syns/cell: %.1f, Estimated total: %d ",
                     metype, average_syns_per_cell, metype_estimate)
             total_estimate += metype_estimate

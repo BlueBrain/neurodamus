@@ -241,7 +241,7 @@ class SynapseMemoryUsage:
     }
 
     @classmethod
-    def get_memory_usage(cls, count, synapse_type):
+    def get_memory_usage(cls, count, synapse_type=ConnectionTypes.Synaptic):
         return count * cls._synapse_memory_usage[synapse_type]
 
 
@@ -251,8 +251,8 @@ class DryRunStats:
 
     def __init__(self) -> None:
         self.metype_memory = {}
-        self.average_syns_per_cell = defaultdict(int)
-        self.metype_gids = {}
+        self.metype_cell_syn_count = Counter()
+        self.pop_metype_gids = {}
         self.metype_counts = Counter()
         self.synapse_counts = defaultdict(int)  # [syn_type -> count]
         self.suggested_nodes = 0
@@ -286,7 +286,7 @@ class DryRunStats:
         # We combine memory dict via update(). That means if a previous circuit computed
         # cells for the same METype (hopefully unlikely!) the last estimate prevails.
         self.metype_memory = MPI.py_reduce(self.metype_memory, {}, lambda x, y: x.update(y))
-        self.average_syns_per_cell = MPI.py_sum(self.average_syns_per_cell, Counter())
+        self.average_syns_per_cell = MPI.py_sum(self.metype_cell_syn_count, Counter())
         self.metype_counts = self.metype_counts  # Cell counts is complete in every rank
 
     @run_only_rank0
@@ -447,21 +447,6 @@ class DryRunStats:
 
         self.validate_inputs_distribute(num_ranks, batch_size)
 
-        # Multiply the average number of synapses per cell by 2.0
-        # This is done since the biggest memory load for a synapse is 2.0 kB and at this point in
-        # the code we have lost the information on whether they are excitatory or inhibitory
-        # so we just take the biggest value to be safe. (the difference between the two is minimal)
-        average_syns_mem_per_cell = {k: v * 2.0 for k, v in self.average_syns_per_cell.items()}
-
-        # Prepare a list of tuples (cell_id, memory_load)
-        # We sum the memory load of the cell type and the average number of synapses per cell
-        def generate_cells(metype_gids):
-            for cell_type, gids in metype_gids.items():
-                memory_usage = (self.metype_memory[cell_type] +
-                                average_syns_mem_per_cell[cell_type])
-                for gid in gids:
-                    yield gid, memory_usage
-
         ranks = [(0, i) for i in range(num_ranks)]  # (total_memory, rank_id)
         heapq.heapify(ranks)
         all_allocation = {}
@@ -474,20 +459,26 @@ class DryRunStats:
             rank_memory[rank_id] = total_memory
             heapq.heappush(ranks, (total_memory, rank_id))
 
-        for pop, metype_gids in self.metype_gids.items():
+        # Loop over ALL the gids which would be instantiated, per metype
+        for pop, metype_gids in self.pop_metype_gids.items():
             logging.info("Distributing cells of population %s", pop)
             rank_allocation = defaultdict(Vector)
             rank_memory = {}
             batch = []
             batch_memory = 0
 
-            for cell_id, memory in generate_cells(metype_gids):
-                batch.append(cell_id)
-                batch_memory += memory
-                if len(batch) == batch_size:
-                    assign_cells_to_rank(rank_allocation, rank_memory, batch, batch_memory)
-                    batch = []
-                    batch_memory = 0
+            for metype, gids in metype_gids.items():
+                cell_mem = self.metype_memory[metype]
+                syns_mem = SynapseMemoryUsage.get_memory_usage(self.metype_cell_syn_count[metype])
+                total_mem_per_cell = cell_mem + syns_mem
+
+                for cell_id in gids:
+                    batch.append(cell_id)
+                    batch_memory += total_mem_per_cell
+                    if len(batch) == batch_size:
+                        assign_cells_to_rank(rank_allocation, rank_memory, batch, batch_memory)
+                        batch = []
+                        batch_memory = 0
 
             if batch:
                 assign_cells_to_rank(rank_allocation, rank_memory, batch, batch_memory)
@@ -505,10 +496,17 @@ class DryRunStats:
         assert num_ranks > 0, "num_ranks must be a positive integer"
         assert isinstance(batch_size, int), "batch_size must be an integer"
         assert batch_size > 0, "batch_size must be a positive integer"
-        set_metype_gids = set()
-        for values in self.metype_gids.values():
-            set_metype_gids.update(values.keys())
-        assert set_metype_gids == set(self.metype_memory.keys())
-        average_syns_keys = set(self.average_syns_per_cell.keys())
-        metype_memory_keys = set(self.metype_memory.keys())
-        assert average_syns_keys == metype_memory_keys
+
+        all_metypes = set()
+        for values in self.pop_metype_gids.values():
+            all_metypes.update(values.keys())
+
+        # Assert our simulated metypes are a subset of the (pre-) computed ones
+        cell_memory_metypes = set(self.metype_memory.keys())
+        assert all_metypes <= cell_memory_metypes, all_metypes - cell_memory_metypes
+
+        # NOTE: We shall not assume that we have synapses counts for all metypes
+        #       According to override blocks, some cells may be disconnected.
+        #       Also Counter() will discard 0-count entries
+        # syn_count_metypes = set(self.metype_cell_syn_count)
+        # assert all_metypes <= syn_count_metypes, all_metypes - syn_count_metypes

@@ -98,7 +98,7 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         # Get global METype counts (computed in rank0, broadcasted)
         metype_gids, counts = _retrieve_unique_metypes(node_pop, all_gids)
         dry_run_stats.metype_counts += counts
-        dry_run_stats.metype_gids[node_population] = metype_gids
+        dry_run_stats.pop_metype_gids[node_population] = metype_gids
         gid_metype_bundle = list(metype_gids.values())
         gidvec = dry_run_distribution(gid_metype_bundle, stride, stride_offset, total_cells)
 
