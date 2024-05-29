@@ -1081,8 +1081,7 @@ class ConnectionManagerBase(object):
         n_created_conns = 0
 
         for popid, pop in self._populations.items():
-            attach_src = (pop.src_id == 0 or not pop.virtual_source  # real populations
-                          or pop.virtual_source and bool(sim_corenrn))  # Req'd for replay
+            attach_src = pop.src_id == 0 or not pop.virtual_source  # real populations
             conn_params["attach_src_cell"] = attach_src
             logging.info(" * Connections among %s -> %s, attach src: %s",
                          pop.src_name or "(base)", pop.dst_name or "(base)", attach_src)
