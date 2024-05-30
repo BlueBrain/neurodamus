@@ -213,19 +213,20 @@ def export_allocation_stats(rank_allocation, filename, metype_memory_usage, memo
 
 
 @run_only_rank0
-def import_allocation_stats(filename) -> dict:
+def import_allocation_stats(filename, cycle_i=0) -> dict:
     """
     Import allocation dictionary from serialized pickle file.
     """
     def convert_to_standard_types(obj):
         """Converts an object containing defaultdicts of Vectors to standard Python types."""
         result = {}
-        for node, vectors in obj.items():
-            result[node] = {key: np.array(vector) for key, vector in vectors.items()}
+        for population, vectors in obj.items():
+            result[population] = {key[0]: np.array(vector) for key, vector in vectors.items() if key[1] == cycle_i}
         return result
 
     with open(filename, 'rb') as f:
         compressed_data = f.read()
+
     return convert_to_standard_types(pickle.loads(gzip.decompress(compressed_data)))
 
 

@@ -253,7 +253,7 @@ class CellManagerBase(_CellManager):
         targetspec: TargetSpec = self._target_spec
 
         population = targetspec.population
-        all_gids = load_balancer[population][MPI.rank, 0]
+        all_gids = load_balancer[population][MPI.rank]
         logging.debug("Loading %d cells in rank %d", len(all_gids), MPI.rank)
         total_cells = len(all_gids)
         gidvec, me_infos, full_size = loader_f(self._circuit_conf, all_gids)

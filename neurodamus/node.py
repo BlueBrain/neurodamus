@@ -375,14 +375,14 @@ class Node:
             return None
         elif lb_mode == LoadBalanceMode.Memory:
             logging.info("Load Balancing ENABLED. Mode: Memory")
-            alloc = import_allocation_stats("allocation.pkl.gz")
+            alloc = import_allocation_stats("allocation.pkl.gz", self._cycle_i)
             for pop, ranks in alloc.items():
                 for rank, gids in ranks.items():
                     logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
             if MPI.rank == 0:
-                unique_ranks = set(rank[0] for pop in alloc.values() for rank in pop.keys())
+                unique_ranks = set(rank for pop in alloc.values() for rank in pop.keys())
                 logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))
-                if MPI.size != len(unique_ranks):
+                if MPI.size < len(unique_ranks):
                     raise ConfigurationError(
                         "The number of ranks in the allocation file is different from the number "
                         "of ranks in the current run. The allocation file was created with a "
@@ -1734,9 +1734,11 @@ class Neurodamus(Node):
         TimerManager.archive(archive_name="Before Cycle Loop")
 
         PopulationNodes.freeze_offsets()
-        sub_targets = target.generate_subtargets(n_cycles)
+        # Check for loadbalancemode = Memory and skip
+        if SimConfig.loadbal_mode != LoadBalanceMode.Memory:
+            sub_targets = target.generate_subtargets(n_cycles)
 
-        for cycle_i, cur_targets in enumerate(sub_targets):
+        for cycle_i in range(n_cycles):
             logging.info("")
             logging.info("-" * 60)
             log_stage("==> CYCLE {} (OUT OF {})".format(cycle_i + 1, n_cycles))
@@ -1744,15 +1746,16 @@ class Neurodamus(Node):
 
             self.clear_model()
 
-            for cur_target in cur_targets:
-                self._target_manager.register_target(cur_target)
-                pop = list(cur_target.population_names)[0]
-                for circuit in itertools.chain([self._base_circuit],
-                                                self._extra_circuits.values()):
-                    tmp_target_spec = TargetSpec(circuit.CircuitTarget)
-                    if tmp_target_spec.population == pop:
-                        tmp_target_spec.name = cur_target.name
-                        circuit.CircuitTarget = str(tmp_target_spec)
+            if SimConfig.loadbal_mode != LoadBalanceMode.Memory:
+                for cur_target in sub_targets[cycle_i]:
+                    self._target_manager.register_target(cur_target)
+                    pop = list(cur_target.population_names)[0]
+                    for circuit in itertools.chain([self._base_circuit],
+                                                    self._extra_circuits.values()):
+                        tmp_target_spec = TargetSpec(circuit.CircuitTarget)
+                        if tmp_target_spec.population == pop:
+                            tmp_target_spec.name = cur_target.name
+                            circuit.CircuitTarget = str(tmp_target_spec)
 
             self._cycle_i = cycle_i
             self._build_model()
