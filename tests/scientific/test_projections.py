@@ -85,8 +85,10 @@ def _read_sonata_soma_report(report_name):
     [
         {'enable_synapse_delay': False, 'simulator': 'NEURON'},
         {'enable_synapse_delay': True, 'simulator': 'NEURON'},
-        {'enable_synapse_delay': False, 'simulator': 'CORENEURON'},
-        {'enable_synapse_delay': True, 'simulator': 'CORENEURON'}
+        pytest.param({'enable_synapse_delay': False, 'simulator': 'CORENEURON'},
+                     marks=pytest.mark.skip(reason="Until new CoreNEURON syn replay is deployed")),
+        pytest.param({'enable_synapse_delay': True, 'simulator': 'CORENEURON'},
+                     marks=pytest.mark.skip(reason="Until new CoreNEURON syn replay is deployed"))
     ],
     indirect=True
 )
