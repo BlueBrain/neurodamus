@@ -734,7 +734,6 @@ class ConnectionManagerBase(object):
             logging.debug("Skipping group: no cells!")
             return 0
 
-        log_verbose("Estimating synapses %s -> %s", src_target.name, dst_target.name)
         total_estimate = 0
         dst_pop_name = self._cell_manager.population_name
 
@@ -802,7 +801,7 @@ class ConnectionManagerBase(object):
             # Due to the fact that the same metype might be target of several projections
             #   we have to sum the averages
             average_syns_per_cell = metype_estimate / me_gids_count
-            self._dry_run_stats.metype_cell_syn_count[metype] += average_syns_per_cell
+            self._dry_run_stats.metype_cell_syn_average[metype] += average_syns_per_cell
             log_all(logging.DEBUG, "%s: Average syns/cell: %.1f, Estimated total: %d ",
                     metype, average_syns_per_cell, metype_estimate)
             total_estimate += metype_estimate

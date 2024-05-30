@@ -50,30 +50,28 @@ def test_syn_read_counts():
 def test_conn_manager_syn_stats():
     """Test _get_conn_stats in isolation using a mocked instance of SynapseRuleManager
     """
-    from neurodamus.connection_manager import SynapseRuleManager
+    from neurodamus.cell_distributor import CellDistributor
+    from neurodamus.connection_manager import ConnectionManagerBase
     from neurodamus.core.nodeset import NodeSet
     from neurodamus.io.synapse_reader import SonataReader
     from neurodamus.target_manager import NodesetTarget
+    from neurodamus.utils.memory import DryRunStats
 
     sonata_file = str(SIM_DIR / "usecase3/local_edges_A.h5")
-    reader = SonataReader(sonata_file, "NodeA__NodeA__chemical")
-
-    manager_mock = Mock(SynapseRuleManager)
-    manager_mock._synapse_reader = reader
-    manager_mock._cell_manager = Mock()
-    manager_mock._cell_manager.population_name = "pop-A"
-    manager_mock._dry_run_stats = Mock()
-    manager_mock._dry_run_stats.metype_gids = {"pop-A": {"metype-x": [0, 1], "metype-y": [2]}}
-    manager_mock._dry_run_conns = set()  # cache obj
-    manager_mock._dry_run_stats.average_syns_per_cell = {}  # for output
+    cell_manager = Mock(CellDistributor)
+    cell_manager.population_name = "pop-A"
+    stats = DryRunStats()
+    stats.pop_metype_gids = {"pop-A": {"metype-x": [0, 1], "metype-y": [2]}}
+    conn_manager = ConnectionManagerBase(None, None, cell_manager, None, dry_run_stats=stats)
+    conn_manager._synapse_reader = SonataReader(sonata_file, "NodeA__NodeA__chemical")
 
     target_ns = NodesetTarget("nodeset1", [NodeSet([0, 1, 2, 3])], [NodeSet([0, 1])])
-    total_synapses = SynapseRuleManager._get_conn_stats(manager_mock, target_ns)
+    total_synapses = conn_manager._get_conn_stats(target_ns)
     assert total_synapses == 2
-    assert manager_mock._dry_run_stats.average_syns_per_cell["metype-x"] == 1
+    assert stats.metype_cell_syn_average["metype-x"] == 1
 
     target_ns = NodesetTarget("nodeset1", [NodeSet([0, 1, 2, 3])], [NodeSet([0, 1, 2, 3])])
-    total_synapses = SynapseRuleManager._get_conn_stats(manager_mock, target_ns)
-    assert total_synapses == 4
-    assert manager_mock._dry_run_stats.average_syns_per_cell["metype-x"] == 1
-    assert manager_mock._dry_run_stats.average_syns_per_cell["metype-y"] == 2
+    total_synapses = conn_manager._get_conn_stats(target_ns)
+    assert total_synapses == 2
+    assert stats.metype_cell_syn_average["metype-x"] == 1
+    assert stats.metype_cell_syn_average["metype-y"] == 2

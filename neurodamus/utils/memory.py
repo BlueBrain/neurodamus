@@ -251,7 +251,7 @@ class DryRunStats:
 
     def __init__(self) -> None:
         self.metype_memory = {}
-        self.metype_cell_syn_count = Counter()
+        self.metype_cell_syn_average = Counter()
         self.pop_metype_gids = {}
         self.metype_counts = Counter()
         self.synapse_counts = defaultdict(int)  # [syn_type -> count]
@@ -286,7 +286,7 @@ class DryRunStats:
         # We combine memory dict via update(). That means if a previous circuit computed
         # cells for the same METype (hopefully unlikely!) the last estimate prevails.
         self.metype_memory = MPI.py_reduce(self.metype_memory, {}, lambda x, y: x.update(y))
-        self.average_syns_per_cell = MPI.py_sum(self.metype_cell_syn_count, Counter())
+        self.metype_cell_syn_average = MPI.py_sum(self.metype_cell_syn_average, Counter())
         self.metype_counts = self.metype_counts  # Cell counts is complete in every rank
 
     @run_only_rank0
@@ -469,7 +469,7 @@ class DryRunStats:
 
             for metype, gids in metype_gids.items():
                 cell_mem = self.metype_memory[metype]
-                syns_mem = SynapseMemoryUsage.get_memory_usage(self.metype_cell_syn_count[metype])
+                syns_mem = SynapseMemoryUsage.get_memory_usage(self.metype_cell_syn_average[metype])
                 total_mem_per_cell = cell_mem + syns_mem
 
                 for cell_id in gids:
@@ -508,5 +508,5 @@ class DryRunStats:
         # NOTE: We shall not assume that we have synapses counts for all metypes
         #       According to override blocks, some cells may be disconnected.
         #       Also Counter() will discard 0-count entries
-        # syn_count_metypes = set(self.metype_cell_syn_count)
+        # syn_count_metypes = set(self.metype_cell_syn_average)
         # assert all_metypes <= syn_count_metypes, all_metypes - syn_count_metypes
