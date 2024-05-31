@@ -221,7 +221,8 @@ def import_allocation_stats(filename, cycle_i=0) -> dict:
         """Converts an object containing defaultdicts of Vectors to standard Python types."""
         result = {}
         for population, vectors in obj.items():
-            result[population] = {key[0]: np.array(vector) for key, vector in vectors.items() if key[1] == cycle_i}
+            result[population] = {key[0]: np.array(vector) for key,
+                                  vector in vectors.items() if key[1] == cycle_i}
         return result
 
     with open(filename, 'rb') as f:

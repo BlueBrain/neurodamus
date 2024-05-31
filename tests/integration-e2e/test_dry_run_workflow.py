@@ -1,5 +1,4 @@
 from pathlib import Path
-import numpy as np
 from neurodamus.utils.memory import import_allocation_stats, export_allocation_stats
 from test_multicycle_runs import _create_tmpconfig_coreneuron
 from neurodamus.core.configuration import GlobalConfig, LogLevel
