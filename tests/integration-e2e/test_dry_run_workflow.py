@@ -96,6 +96,9 @@ def test_dry_run_workflow_multi():
     Test that the dry run mode works in multicycle mode
     """
 
+    # Make sure no old cell_memory_usage is used
+    Path(("cell_memory_usage.json")).unlink(missing_ok=True)
+
     from neurodamus import Neurodamus
 
     config_file = str(SIM_DIR / "v5_sonata" / "simulation_config.json")
