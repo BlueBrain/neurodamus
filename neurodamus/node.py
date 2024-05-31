@@ -1734,7 +1734,7 @@ class Neurodamus(Node):
         TimerManager.archive(archive_name="Before Cycle Loop")
 
         PopulationNodes.freeze_offsets()
-        # Check for loadbalancemode = Memory and skip
+
         if SimConfig.loadbal_mode != LoadBalanceMode.Memory:
             sub_targets = target.generate_subtargets(n_cycles)
 
