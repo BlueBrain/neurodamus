@@ -76,8 +76,19 @@ def test_dry_run_workflow(USECASE3):
 
     assert rank_allocation_standard == expected_items
 
-    # Clean up
-    Path(("cell_memory_usage.json")).unlink(missing_ok=True)
+
+def test_memory_load_balance_workflow(USECASE3):
+    """
+    Test that the memory load balance works
+    """
+
+    from neurodamus import Neurodamus
+    nd = Neurodamus(
+        str(USECASE3 / "simulation_sonata.json"),
+        lb_mode="Memory",
+    )
+
+    nd.run()
 
 
 def test_dry_run_workflow_multi():
@@ -118,20 +129,3 @@ def test_dry_run_workflow_multi():
         }
     }
     assert rank_allocation_standard == expected_items
-
-# Temporarily disabled since it requires a rework of the
-# memory load balance workflow to be compatible with the new
-# memory allocation stats
-
-# def test_memory_load_balance_workflow(USECASE3):
-#     """
-#     Test that the memory load balance works
-#     """
-
-#     from neurodamus import Neurodamus
-#     nd = Neurodamus(
-#         str(USECASE3 / "simulation_sonata.json"),
-#         lb_mode="Memory",
-#     )
-
-#     nd.run()
