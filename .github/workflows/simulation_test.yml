@@ -168,16 +168,15 @@ jobs:
         . ./venv/bin/activate
         pip install .
 
-    - name: Build models
+    - name: Build neocortex models
       run: |
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
         export PATH=$(pwd)/nrn/build/install/bin:$PATH
-        # copy mod files from the Zenodo link
-        wget --output-document="O1_mods.xz" --quiet "https://zenodo.org/record/8026353/files/O1_mods.xz?download=1"
-        tar -xf O1_mods.xz
-        cp -r mod tests/share/
-        cp neurodamus/data/mod/*.mod tests/share/mod/
-        ./docker/build_neurodamus.sh tests/share/mod
+        git clone https://github.com/blueBrain/neurodamus-models --depth 1
+        cp -L -r neurodamus-models/neocortex/hoc hoc_full
+        cp -L -r neurodamus-models/neocortex/mod/v6 mod_full
+        cp neurodamus/data/mod/*.mod mod_full
+        ./docker/build_neurodamus.sh mod_full
 
     - name: Example run
       run: |
@@ -186,8 +185,8 @@ jobs:
           export RDMAV_FORK_SAFE=1
         fi;
         export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
-        cp neurodamus/data/hoc/* tests/share/hoc/
-        export HOC_LIBRARY_PATH=$(pwd)/tests/share/hoc
+        cp neurodamus/data/hoc/* hoc_full/
+        export HOC_LIBRARY_PATH=$(pwd)/hoc_full
         export NEURODAMUS_PYTHON=$(pwd)/neurodamus/data
         export CORENEURONLIB=$(pwd)/x86_64/libcorenrnmech.so
         export PATH=$(pwd)/x86_64:$PATH
@@ -201,6 +200,6 @@ jobs:
         mpirun -np 2 special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=simulation_sonata_coreneuron.json
         ls reporting_coreneuron/*.h5
 
-    # - name: live debug session, comment out
-    #   if: failure()
-    #   uses: mxschmitt/action-tmate@v3
+    - name: live debug session, comment out
+      if: failure()
+      uses: mxschmitt/action-tmate@v3
