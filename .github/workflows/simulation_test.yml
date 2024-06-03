@@ -166,7 +166,7 @@ jobs:
     - name: Install neurodamus
       run: |
         . ./venv/bin/activate
-        pip install .
+        pip install .[full]
 
     - name: Build neocortex models
       run: |
