@@ -200,6 +200,19 @@ jobs:
         mpirun -np 2 special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=simulation_sonata_coreneuron.json
         ls reporting_coreneuron/*.h5
 
+    - name: test-integration
+      run: |
+        . ./venv/bin/activate
+        pip install -r tests/requirements.txt
+        export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
+        export HOC_LIBRARY_PATH=$(pwd)/hoc_full
+        export NEURODAMUS_PYTHON=$(pwd)/neurodamus/data
+        export CORENEURONLIB=$(pwd)/x86_64/libcorenrnmech.so
+        export NRNMECH_LIB_PATH=$(pwd)/x86_64/libnrnmech.so
+        export PATH=$(pwd)/x86_64:$PATH
+
+        pytest -x --forked tests/integration
+
     - name: live debug session, comment out
       if: failure()
       uses: mxschmitt/action-tmate@v3
