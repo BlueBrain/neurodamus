@@ -90,25 +90,60 @@ for SONATA circuits.
 This mode will partially instantiate cells and synapses to get a statistical overview
 of the memory used but won't run the actual simulation.
 The user can then check the estimated memory usage of the simulation as it's printed on
-the terminal at the end of the execution. In a future update we will also integrate
-indications and suggestions on the number of tasks and nodes to use for that circuit
+the terminal at the end of the execution. The dry run mode also provides
+indications and suggestions on the number of ranks and nodes to use for that circuit
 based on the amount of memory used during the dry run.
 
 The mode also provides detailed information on the memory usage of each cell metype,
 synapse type and the total estimated memory usage of the simulation, including the
 memory overhead dictated by loading of libraries and data structures.
 
-The information on the cell memory usage is also automatically saved in a file called
-``memory_usage.json`` in the working directory. This json file contains a
+The information on the cell memory usage is automatically saved in a file called
+``cell_memory_usage.json`` in the working directory. This json file contains a
 dictionary with the memory usage of each cell metype in the circuit and is automatically
 loaded in any further execution of Neurodamus in dry run mode, in order to speed up the execution.
-In future we plan to also use this file to improve the load balance of actual simulations.
+Also the dry run mode generates two other files, one called ``metype_memory_usage.json`` that
+contains the memory usage of each metype in the circuit and another called ``allocation.pkl.gz``.
+The allocation file, which is a compressed pickle file, contains the information on the memory
+load balancing of the last dry run execution. This file in particular is used to distribute
+the cells in nodes and ranks when used with the ``--lb-mode=Memory`` flag.
+
+Now let's see how a typical dry run based workflow works.
 
 To run Neurodamus in dry run mode, the user can use the ``--dry-run`` flag when launching
 Neurodamus. For example:
 
 ``neurodamus --configFile=BlueConfig --dry-run``
 
+This will run Neurodamus in dry run mode, print the memory usage of the simulation and generate
+the aforementioned files in the working directory. By the default neurodamus will distribute
+the cells on the amount of ranks suggested by the workflow but the user can also use
+the ``--num-target-ranks=XX`` to specify the amount of ranks it wants to target for the memory
+balance distribution.
+
+After the ``allocation.pkl.gz`` file is generated, the user can run Neurodamus with the
+``--lb-mode=Memory`` flag to use the memory load balancing distribution generated in the dry run:
+
+``neurodamus --configFile=BlueConfig --lb-mode=Memory``
+
+This will distribute the cells in the ranks and nodes according to the memory load balancing
+in order to optimize the memory usage of the simulation and avoid OOM errors.
+
+Dry run mode and multi-cycle simulations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Dry run mode can also be used in conjunction with multi-cycle simulations. In this case, the user
+should specify the amount of steps (or cycles) of the simulation using the ``--modelbuilding-steps=XX``
+flag. This will allow Neurodamus to distribute the cells not only in different ranks but also on different
+cycles. For example:
+
+``neurodamus --configFile=BlueConfig --dry-run --modelbuilding-steps=10``
+
+This will generate the same files as the previous example, just distributed along ranks and cycles.
+These files can then be used by running the simulation with the following flags:
+
+``neurodamus --configFile=BlueConfig --lb-mode=Memory --modelbuilding-steps=10``
+
+This can further improve optimize the memory usage of the simulation and avoid OOM errors.
 
 Neurodamus for Developers
 -------------------------
