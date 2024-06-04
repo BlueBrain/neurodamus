@@ -389,7 +389,7 @@ process before any of the actual instantiation is done. This value, since it's a
 part in the execution, is then multiplied by the number of ranks used in the execution.
 
 The final estimated memory usage for each METype is also saved as a file in the working directory
-called `metype_memory_usage.json`. This file is currently not used in the dry run mode but it's
+called `memory_per_metype.json`. This file is currently not used in the dry run mode but it's
 saved for future reference and to speed up the distribution of cells in future versions of Neurodamus.
 
 On top of this we also need to consider the memory usage of the simulation itself. Unfortunately

@@ -202,12 +202,10 @@ def export_allocation_stats(rank_allocation, filename, metype_memory_usage, memo
     """
     Export allocation dictionary to a serialized pickle file and metype memory usage to a JSON file.
     """
-    # Export rank_allocation to a compressed pickle file
     compressed_data = gzip.compress(pickle.dumps(rank_allocation))
     with open(filename, 'wb') as f:
         f.write(compressed_data)
 
-    # Export metype_memory_usage to a JSON file
     with open(memory_per_metype_file, 'w') as f:
         json.dump(metype_memory_usage, f, indent=4)
 
@@ -494,7 +492,7 @@ class DryRunStats:
             metype_memory_usage (dict): A dictionary where keys are METype IDs
                                         and values are the memory load of each METype.
         """
-        if cycles is None or cycles <= 1:
+        if not cycles:
             cycles = 1
 
         logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)

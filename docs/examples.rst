@@ -14,7 +14,7 @@ Once installed, you should be able to find `neurodamus` in your path:
 
   $ neurodamus
     Usage:
-        neurodamus <BlueConfig> [options]
+        neurodamus <simulation_config.json> [options]
         neurodamus --help
 
 Among the options you will find flags to tune run behavior, which was not possible in HOC.
@@ -102,7 +102,7 @@ The information on the cell memory usage is automatically saved in a file called
 ``cell_memory_usage.json`` in the working directory. This json file contains a
 dictionary with the memory usage of each cell metype in the circuit and is automatically
 loaded in any further execution of Neurodamus in dry run mode, in order to speed up the execution.
-Also the dry run mode generates two other files, one called ``metype_memory_usage.json`` that
+Also the dry run mode generates two other files, one called ``memory_per_metype.json`` that
 contains the memory usage of each metype in the circuit and another called ``allocation.pkl.gz``.
 The allocation file, which is a compressed pickle file, contains the information on the memory
 load balancing of the last dry run execution. This file in particular is used to distribute
@@ -113,7 +113,7 @@ Now let's see how a typical dry run based workflow works.
 To run Neurodamus in dry run mode, the user can use the ``--dry-run`` flag when launching
 Neurodamus. For example:
 
-``neurodamus --configFile=BlueConfig --dry-run``
+``neurodamus --configFile=simulation_config.json --dry-run``
 
 This will run Neurodamus in dry run mode, print the memory usage of the simulation and generate
 the aforementioned files in the working directory. By the default neurodamus will distribute
@@ -124,7 +124,7 @@ balance distribution.
 After the ``allocation.pkl.gz`` file is generated, the user can run Neurodamus with the
 ``--lb-mode=Memory`` flag to use the memory load balancing distribution generated in the dry run:
 
-``neurodamus --configFile=BlueConfig --lb-mode=Memory``
+``neurodamus --configFile=simulation_config.json --lb-mode=Memory``
 
 This will distribute the cells in the ranks and nodes according to the memory load balancing
 in order to optimize the memory usage of the simulation and avoid OOM errors.
@@ -136,12 +136,12 @@ should specify the amount of steps (or cycles) of the simulation using the ``--m
 flag. This will allow Neurodamus to distribute the cells not only in different ranks but also on different
 cycles. For example:
 
-``neurodamus --configFile=BlueConfig --dry-run --modelbuilding-steps=10``
+``neurodamus --configFile=simulation_config.json --dry-run --modelbuilding-steps=10``
 
 This will generate the same files as the previous example, just distributed along ranks and cycles.
 These files can then be used by running the simulation with the following flags:
 
-``neurodamus --configFile=BlueConfig --lb-mode=Memory --modelbuilding-steps=10``
+``neurodamus --configFile=simulation_config.json --lb-mode=Memory --modelbuilding-steps=10``
 
 This can further improve optimize the memory usage of the simulation and avoid OOM errors.
 
@@ -163,7 +163,7 @@ cannot be changed interactively).
  from neurodamus import Neurodamus
  from neurodamus.utils.logging import log_stage, log_verbose
 
- nd = Neurodamus('BlueConfig')
+ nd = Neurodamus('simulation_config.json')
 
  log_stage('Run simulation!')
  nd.solve(50)  # Until 50ms
@@ -182,7 +182,7 @@ avoid them from being instantiated in the simulator (compatible with CoreNeuron)
  from neurodamus import Neurodamus
  from neurodamus.utils.logging import log_stage, log_verbose
 
- nd = Neurodamus('BlueConfig_for_remove', auto_init=False)
+ nd = Neurodamus('simulation_config_for_remove', auto_init=False)
 
  log_stage('Starting edge removal')
  nd.synapse_manager.delete_group(62977, 62698)
