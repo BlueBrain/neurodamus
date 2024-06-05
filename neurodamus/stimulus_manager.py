@@ -561,15 +561,11 @@ class Noise(BaseStim):
         self.parse_check_all_parameters(stim_info)
 
         sim_dt = float(SimConfig.run_conf["Dt"])  # simulation time-step [ms]
-        rng_mode = SimConfig.rng_info.getRNGMode()  # simulation RNGMode
 
         # setup RNG
-        if rng_mode == SimConfig.rng_info.RANDOM123:
-            rand = lambda gid: random.Random123(Noise.stimCount + 100,
-                                                SimConfig.rng_info.getStimulusSeed() + 500,
-                                                gid + 300)
-        else:
-            raise Exception("rng_mod is not RANDOM123")
+        rand = lambda gid: random.Random123(Noise.stimCount + 100,
+                                            SimConfig.rng_info.getStimulusSeed() + 500,
+                                            gid + 300)
 
         # apply stim to each point in target
         tpoints = target.getPointList(cell_manager)

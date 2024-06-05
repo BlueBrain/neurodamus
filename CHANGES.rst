@@ -2,7 +2,29 @@
 Change Log
 ==========
 
+Version 3.3.0
+=============
+**28 May 2024**
+
+*New Features*
+  * [BBPBGLIB-1137] Account for nonzero total current when using SEClamp; allow nonzero total
+
+*Bug Fixes*
+  * Fix record_spikes for load balancing (#167)
+  * [BBPBGLIB-739] Override UTF-8 for logging (#147)
+
+*Improvements*
+  * Removing legacy RNGs, leaving only Random123 (#136)
+  * [BBPBGLIB-1158] Add empirical mechanism to estimate simulation memory usage (#165)
+  * Tests with subprocess should capture streams (#164)
+  * Trigger workflow when pushing to main (#172)
+  * Avoid calling cleanup from destructor (#168)
+  * Add tests for python 3.9 to 3.12 (#124)
+  * Cache dependent packages in GH actions workflow (#166)
+
+
 Version 3.2.1
+=============
 **30 April 2024**
 
 *New Features*

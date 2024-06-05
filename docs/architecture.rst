@@ -320,8 +320,8 @@ Dry Run
 -------
 
 A dry run mode was introduced to help users in understanding how many nodes and tasks are
-necessary to run a specific circuit. In the future this mode will also be used to improve
-load balancing.
+necessary to run a specific circuit. This mode can also be used to improve load balancing,
+as it generates an `allocation.pkl.gz` file which can be used to load balance the simulation.
 
 By running a dry run, using the `--dry-run` flag, the user will NOT run an actual simulation but
 will get a summary of the estimated memory used for cells and synapses, including also the overhead
@@ -387,6 +387,16 @@ Apart from both cells and synapses, we also need to take into account the memory
 itself, e.g. data structures, loaded libraries and so on. This is done by measuring the RSS of the neurodamus
 process before any of the actual instantiation is done. This value, since it's averaged over all ranks that take
 part in the execution, is then multiplied by the number of ranks used in the execution.
+
+On top of this we also need to consider the memory usage of the simulation itself. Unfortunately
+at the moment there are no easy ways to estimate this value, so we have opted for a simple heuristic
+approach. We assume that the memory usage of the simulation is proportional to the memory usage of
+the cells and synapses. From tests on a wide variety of circuits we've seen that the simulation memory 
+usage is typically between 1.5 and 2.5 times the memory usage of the cells and synapses. We've opted for
+the more conservative value of 2.5 times the memory usage of the cells and synapses.
+The simulation estimate is not considered for the load balancing part of the dry run since we assume that
+it's proportional to the memory usage of the cells and synapses and it's just used for the suggestions
+of nodes to use in the simulation and the relative target ranks (more on this later).
 
 The final result is then printed to the user in a human readable format together with an estimate
 of the number of nodes needed to run the simulation on the same machine used to run the dry run.
