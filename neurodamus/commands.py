@@ -51,7 +51,8 @@ def neurodamus(args=None):
                                 - MultiSplit: Allows splitting cells into pieces for distribution.
                                     WARNING: This mode is incompatible with CoreNeuron
                                 - Memory: Load balance based on memory usage. By default, it uses
-                                    the "allocation.pkl.gz" file to load a pre-computed load balance
+                                    the "allocation_r#_c#.pkl.gz" file to load a pre-computed load
+                                    balance
         --save=<PATH>           Path to create a save point to enable resume.
         --save-time=<TIME>      The simulation time [ms] to save the state. (Default: At the end)
         --restore=<PATH>        Restore and resume simulation from a save point on disk

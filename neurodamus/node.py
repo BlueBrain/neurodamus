@@ -375,7 +375,8 @@ class Node:
             return None
         elif lb_mode == LoadBalanceMode.Memory:
             logging.info("Load Balancing ENABLED. Mode: Memory")
-            alloc = import_allocation_stats("allocation.pkl.gz", self._cycle_i)
+            filename = f"allocation_r{MPI.size}_c{SimConfig.modelbuilding_steps}.pkl.gz"
+            alloc = import_allocation_stats(filename, self._cycle_i)
             for pop, ranks in alloc.items():
                 for rank, gids in ranks.items():
                     logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")

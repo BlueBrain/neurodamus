@@ -321,7 +321,8 @@ Dry Run
 
 A dry run mode was introduced to help users in understanding how many nodes and tasks are
 necessary to run a specific circuit. This mode can also be used to improve load balancing,
-as it generates an `allocation.pkl.gz` file which can be used to load balance the simulation.
+as it generates an `allocation_r#_c#.pkl.gz` (where r and c are the ranks and cycles respectively)
+file which can be used to load balance the simulation.
 
 By running a dry run, using the `--dry-run` flag, the user will NOT run an actual simulation but
 will get a summary of the estimated memory used for cells and synapses, including also the overhead
@@ -425,9 +426,9 @@ and fast. The algorithm is as follows:
 
 The user can specify the number of ranks to target using the `--num-target-ranks` flag in the CLI of neurodamus.
 The default value is 40. The allocation dictionary, containing the assignment of gids to ranks per each population,
-is then saved to the `allocation.pkl.gz` file in a pickled gzipped format.
+is then saved to the `allocation_r#_c#.pkl.gz` file in a pickled gzipped format.
 
-Now that the `allocation.pkl.gz` has been generated, the user can load it in the main simulation and use it to load balance the
+Now that the `allocation_r#_c#.pkl.gz` has been generated, the user can load it in the main simulation and use it to load balance the
 simulation. The user can do this by using the `--lb-mode=Memory` flag in the CLI of neurodamus. During the execution
 Neurodamus will check if the amount of ranks used in the simulation is the same as the amount of ranks used in the
 dry run. If the amount of ranks is different, the user will be prompted to run a new dry run with the new amount of
@@ -447,7 +448,7 @@ along the `--dry-run` flag.
 In this case the distribution of cells happens not only along the ranks but also along the cycles. Cycles and ranks
 are treated as equally important "buckets" and the greedy algorithm is the same as before.
 
-Similarly to the ranks-only distribution, the allocation dictionary is saved to the `allocation.pkl.gz` file and can be
+Similarly to the ranks-only distribution, the allocation dictionary is saved to the `allocation_r#_c#.pkl.gz` file and can be
 used in the main simulation to load balance the simulation using both the `--lb-mode=Memory` and `--modelbuilding-steps`
 flags in the CLI of Neurodamus.
 

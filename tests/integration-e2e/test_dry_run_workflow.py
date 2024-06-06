@@ -47,10 +47,10 @@ def test_dry_run_workflow(USECASE3):
     # Test that the allocation works and can be saved and loaded
     rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2, 1, 1)
     export_allocation_stats(rank_allocation,
-                            USECASE3 / "allocation.pkl.gz")
+                            USECASE3 / "allocation", 2, 1)
     export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
 
-    rank_allocation = import_allocation_stats(USECASE3 / "allocation.pkl.gz", 0)
+    rank_allocation = import_allocation_stats(USECASE3 / "allocation_r2_c1.pkl.gz", 0)
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
     expected_items = {
@@ -61,12 +61,12 @@ def test_dry_run_workflow(USECASE3):
     assert rank_allocation_standard == expected_items
 
     # Test that the allocation works and can be saved and loaded
-    # and generate allocation.pkl.gz for 1 rank
+    # and generate allocation file for 1 rank
     rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(1, 1, 1)
     export_allocation_stats(rank_allocation,
-                            USECASE3 / "allocation.pkl.gz")
+                            USECASE3 / "allocation", 1, 1)
     export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
-    rank_allocation = import_allocation_stats(USECASE3 / "allocation.pkl.gz")
+    rank_allocation = import_allocation_stats(USECASE3 / "allocation_r1_c1.pkl.gz")
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
     expected_items = {
@@ -114,9 +114,9 @@ def test_dry_run_workflow_multi():
 
     rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2)
     export_allocation_stats(rank_allocation,
-                            SIM_DIR / "allocation_multi.pkl.gz")
+                            SIM_DIR / "allocation", 2, 1)
     export_metype_memory_usage(cell_memory_usage, SIM_DIR / "memory_per_metype.json")
-    rank_allocation = import_allocation_stats(SIM_DIR / "allocation_multi.pkl.gz")
+    rank_allocation = import_allocation_stats(SIM_DIR / "allocation_r2_c1.pkl.gz")
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
     expected_items = {
