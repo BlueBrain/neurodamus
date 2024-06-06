@@ -198,7 +198,7 @@ def print_allocation_stats(rank_allocation, rank_memory):
 
 
 @run_only_rank0
-def export_allocation_stats(rank_allocation, filename, metype_memory_usage, memory_per_metype_file):
+def export_allocation_stats(rank_allocation, filename):
     """
     Export allocation dictionary to a serialized pickle file and metype memory usage to a JSON file.
     """
@@ -206,8 +206,12 @@ def export_allocation_stats(rank_allocation, filename, metype_memory_usage, memo
     with open(filename, 'wb') as f:
         f.write(compressed_data)
 
+
+@run_only_rank0
+def export_metype_memory_usage(memory_per_metype, memory_per_metype_file):
+
     with open(memory_per_metype_file, 'w') as f:
-        json.dump(metype_memory_usage, f, indent=4)
+        json.dump(memory_per_metype, f, indent=4)
 
 
 @run_only_rank0
@@ -556,9 +560,9 @@ class DryRunStats:
 
         print_allocation_stats(bucket_allocation, bucket_memory)
         export_allocation_stats(bucket_allocation,
-                                self._ALLOCATION_FILENAME,
-                                metype_memory_usage,
-                                self._MEMORY_USAGE_PER_METYPE_FILENAME)
+                                self._ALLOCATION_FILENAME)
+        export_metype_memory_usage(metype_memory_usage,
+                                   self._MEMORY_USAGE_PER_METYPE_FILENAME)
 
         return bucket_allocation, bucket_memory, metype_memory_usage
 

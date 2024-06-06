@@ -382,7 +382,7 @@ class Node:
             if MPI.rank == 0:
                 unique_ranks = set(rank for pop in alloc.values() for rank in pop.keys())
                 logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))
-                if MPI.size < len(unique_ranks):
+                if MPI.size != len(unique_ranks):
                     raise ConfigurationError(
                         "The number of ranks in the allocation file is different from the number "
                         "of ranks in the current run. The allocation file was created with a "

@@ -1,5 +1,6 @@
 from pathlib import Path
 from neurodamus.utils.memory import import_allocation_stats, export_allocation_stats
+from neurodamus.utils.memory import export_metype_memory_usage
 from test_multicycle_runs import _create_tmpconfig_coreneuron
 from neurodamus.core.configuration import GlobalConfig, LogLevel
 
@@ -46,9 +47,9 @@ def test_dry_run_workflow(USECASE3):
     # Test that the allocation works and can be saved and loaded
     rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2, 1, 1)
     export_allocation_stats(rank_allocation,
-                            USECASE3 / "allocation.pkl.gz",
-                            cell_memory_usage,
-                            USECASE3 / "memory_per_metype.json")
+                            USECASE3 / "allocation.pkl.gz")
+    export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
+
     rank_allocation = import_allocation_stats(USECASE3 / "allocation.pkl.gz", 0)
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
@@ -63,9 +64,8 @@ def test_dry_run_workflow(USECASE3):
     # and generate allocation.pkl.gz for 1 rank
     rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(1, 1, 1)
     export_allocation_stats(rank_allocation,
-                            USECASE3 / "allocation.pkl.gz",
-                            cell_memory_usage,
-                            USECASE3 / "memory_per_metype.json")
+                            USECASE3 / "allocation.pkl.gz")
+    export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
     rank_allocation = import_allocation_stats(USECASE3 / "allocation.pkl.gz")
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
@@ -114,9 +114,8 @@ def test_dry_run_workflow_multi():
 
     rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2)
     export_allocation_stats(rank_allocation,
-                            SIM_DIR / "allocation_multi.pkl.gz",
-                            cell_memory_usage,
-                            SIM_DIR / "memory_per_metype.json")
+                            SIM_DIR / "allocation_multi.pkl.gz")
+    export_metype_memory_usage(cell_memory_usage, SIM_DIR / "memory_per_metype.json")
     rank_allocation = import_allocation_stats(SIM_DIR / "allocation_multi.pkl.gz")
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
