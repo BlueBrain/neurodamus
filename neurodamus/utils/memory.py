@@ -523,7 +523,10 @@ class DryRunStats:
             bucket_memory[pop] = rank_memory
 
         print_allocation_stats(bucket_memory)
-        export_allocation_stats(bucket_allocation, self._ALLOCATION_FILENAME)
+        export_allocation_stats(bucket_allocation,
+                                self._ALLOCATION_FILENAME,
+                                num_ranks,
+                                cycles)
 
         return bucket_allocation, bucket_memory, metype_memory_usage
 
