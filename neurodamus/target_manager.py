@@ -419,12 +419,8 @@ class _TargetInterface(metaclass=ABCMeta):
             return ([False] * len(items)) if hasattr(items, "__len__") else False
 
         gids = self.get_raw_gids() if raw_gids else self.get_gids()
-        pos = numpy.searchsorted(gids, items)
-        if pos.ndim == 0:
-            return pos < gids.size and gids[pos] == items
-        else:
-            pos[pos == len(gids)] = 0  # arbitrarily change to valid pos
-            return gids[pos] == items
+        contained = numpy.isin(items, gids, kind="table")
+        return bool(contained) if contained.ndim == 0 else contained
 
     def intersects(self, other):
         """ Check if two targets intersect. At least one common population has to intersect

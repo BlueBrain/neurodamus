@@ -10,4 +10,6 @@ repos:
   rev: 4.0.1
   hooks:
   - id: flake8
+    entry: flake8p
+    additional_dependencies: [flake8-pyproject]
     exclude: ^docs/

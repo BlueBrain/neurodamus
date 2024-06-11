@@ -1,7 +1,6 @@
 """
 Collection of utility functions related to clearing the used memory in neurodamus-py or NEURON
 """
-from collections import Counter
 import ctypes
 import ctypes.util
 import logging
@@ -13,11 +12,12 @@ import multiprocessing
 import heapq
 import pickle
 import gzip
+from collections import Counter
+from typing import Tuple
 
 from ..core import MPI, NeurodamusCore as Nd, run_only_rank0
 from .compat import Vector
 from collections import defaultdict
-from enum import Enum
 from ..io.sonata_config import ConnectionTypes
 
 import numpy as np
@@ -173,17 +173,14 @@ def pretty_printing_memory_mb(memory_mb):
 
 
 @run_only_rank0
-def print_allocation_stats(rank_allocation, rank_memory):
+def print_allocation_stats(rank_memory):
     """
     Print statistics of the memory allocation across ranks.
 
     Args:
-        rank_allocation (dict): A dictionary where keys are rank IDs and
-                                values are lists of cell IDs assigned to each rank.
         rank_memory (dict): A dictionary where keys are rank IDs
                             and values are the total memory load on each rank.
     """
-    logging.debug("Rank/cycle allocation: {}".format(rank_allocation))
     logging.debug("Total memory per rank/cycle: {}".format(rank_memory))
     import statistics
     for pop, rank_dict in rank_memory.items():
@@ -252,14 +249,12 @@ class SynapseMemoryUsage:
     The values are in KB. The values cannot be set by the user.
     '''
     _synapse_memory_usage = {
-        "ProbAMPANMDA": 1.7,
-        "ProbGABAAB": 2.0,
-        "Gap": 2.0,
-        "Glue": 0.5
+        ConnectionTypes.Synaptic: 1.9,  # Average between 1.7 (AMPA) and 2.0 (GABAAB)
+        ConnectionTypes.GapJunction: 2.0,
     }
 
     @classmethod
-    def get_memory_usage(cls, count, synapse_type):
+    def get_memory_usage(cls, count, synapse_type=ConnectionTypes.Synaptic):
         return count * cls._synapse_memory_usage[synapse_type]
 
 
@@ -278,11 +273,12 @@ class DryRunStats:
 
     def __init__(self) -> None:
         self.metype_memory = {}
-        self.average_syns_per_cell = {}
-        self.metype_gids = {}
+        self.metype_cell_syn_average = Counter()
+        self.pop_metype_gids = {}
         self.metype_counts = Counter()
-        self.synapse_counts = Counter()
+        self.synapse_counts = defaultdict(int)  # [syn_type -> count]
         self.suggested_nodes = 0
+        self.synapse_memory_total = 0
         _, _, self.base_memory, _ = get_task_level_mem_usage()
 
     @run_only_rank0
@@ -312,8 +308,7 @@ class DryRunStats:
         # We combine memory dict via update(). That means if a previous circuit computed
         # cells for the same METype (hopefully unlikely!) the last estimate prevails.
         self.metype_memory = MPI.py_reduce(self.metype_memory, {}, lambda x, y: x.update(y))
-        self.average_syns_per_cell = MPI.py_reduce(self.average_syns_per_cell, {},
-                                                   lambda x, y: x.update(y))
+        self.metype_cell_syn_average = MPI.py_sum(self.metype_cell_syn_average, Counter())
         self.metype_counts = self.metype_counts  # Cell counts is complete in every rank
 
     @run_only_rank0
@@ -329,6 +324,7 @@ class DryRunStats:
             self.metype_memory = json.load(fp)
 
     def collect_display_syn_counts(self):
+        from .logging import log_verbose
         master_counter = MPI.py_sum(self.synapse_counts, Counter())
 
         # Done with MPI. Use rank0 to display
@@ -336,47 +332,18 @@ class DryRunStats:
             return
 
         logging.info(" - Estimated synapse memory usage (MB):")
-        from .logging import log_verbose
-        inh_count = exc_count = 0
-        gap_count = other_count = 0
         log_verbose("+{:=^68}+".format(" Synapse Count "))
-        log_verbose("| {:^40s} | {:^10s} | {:^10s} |".format("Synapse Type", "Family", "Count"))
+        log_verbose("| {:^40s} | {:^10s} | {:^10s} |".format("Synapse Type", "Count", "Memory"))
         log_verbose("+{:-^68}+".format(""))
 
         # Some synapse types are numeric, others are strings, so we need to handle both
-        numeric_items = [(syn_type, count)
-                         for syn_type, count in master_counter.items()
-                         if isinstance(syn_type, (int, np.integer))]
-        for syn_type, count in sorted(numeric_items):
-            is_inh = syn_type < 100
-            type_str = "INH" if is_inh else "EXC"
-            log_verbose("| {:40.0f} | {:<10s} | {:10.0f} |".format(syn_type, type_str, count))
-            if is_inh:
-                inh_count += count
-            else:
-                exc_count += count
+        for syn_type, count in master_counter.items():
+            mem_mb = SynapseMemoryUsage.get_memory_usage(count, syn_type) / 1024
+            self.synapse_memory_total += mem_mb
+            mem_str = pretty_printing_memory_mb(mem_mb)
+            log_verbose("| {:<40s} | {:10.0f} | {:>10s} |".format(str(syn_type), count, mem_str))
 
-        string_items = [(syn_type, count)
-                        for syn_type, count in master_counter.items()
-                        if isinstance(syn_type, (Enum))]
-        for syn_type, count in string_items:
-            is_gap = syn_type == ConnectionTypes.GapJunction
-            type_str = "Gap" if is_gap else "Other"
-            log_verbose("| {:>40s} | {:<10s} | {:10.0f} |".format(str(syn_type), type_str, count))
-            if is_gap:
-                gap_count += count
-            else:
-                other_count += count
-
-        log_verbose("+{:-^68}+".format(""))
-
-        in_mem = SynapseMemoryUsage.get_memory_usage(inh_count, "ProbGABAAB") / 1024
-        ex_mem = SynapseMemoryUsage.get_memory_usage(exc_count, "ProbAMPANMDA") / 1024
-        gap_mem = SynapseMemoryUsage.get_memory_usage(gap_count, "Gap") / 1024
-        self.synapse_memory_total = in_mem + ex_mem + gap_mem
-        logging.info("   - Inhibitory: %s", pretty_printing_memory_mb(in_mem))
-        logging.info("   - Excitatory: %s", pretty_printing_memory_mb(ex_mem))
-        logging.info("   - Gap: %s", pretty_printing_memory_mb(gap_mem))
+        log_verbose("+{:-^68}+".format(""))  # Close table
         logging.info(" - TOTAL : %s", pretty_printing_memory_mb(self.synapse_memory_total))
 
     @run_only_rank0
@@ -481,7 +448,7 @@ class DryRunStats:
             return int(num_ranks)
 
     @run_only_rank0
-    def distribute_cells(self, num_ranks, cycles=None, batch_size=10) -> (dict, dict, dict):
+    def distribute_cells(self, num_ranks, cycles=None, batch_size=10) -> Tuple[dict, dict, dict]:
         """
         Distributes cells across ranks and cycles based on their memory load.
 
@@ -507,28 +474,16 @@ class DryRunStats:
         logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
 
         self.validate_inputs_distribute(num_ranks, batch_size)
-        metype_memory_usage = {}
-
-        # Multiply the average number of synapses per cell by 2.0
-        # This is done since the biggest memory load for a synapse is 2.0 kB and at this point in
-        # the code we have lost the information on whether they are excitatory or inhibitory
-        # so we just take the biggest value to be safe. (the difference between the two is minimal)
-        average_syns_mem_per_cell = {k: v * 2.0 for k, v in self.average_syns_per_cell.items()}
-
-        # Prepare the memory usage for each METype
-        for cell_type in self.metype_memory:
-            metype_memory_usage[cell_type] = (self.metype_memory[cell_type] +
-                                              average_syns_mem_per_cell[cell_type])
-
-        # Prepare a list of tuples (cell_id, memory_load)
-        def generate_cells(metype_gids):
-            for cell_type, gids in metype_gids.items():
-                memory_usage = metype_memory_usage[cell_type]
-                for gid in gids:
-                    yield gid, memory_usage
-
+        metype_memory_usage = {}  # total mem for metype (cell+syns)
         bucket_allocation = defaultdict(DryRunStats.defaultdict_vector)
         bucket_memory = defaultdict(DryRunStats.defaultdict_float)
+
+        # Prepare the memory usage for each METype
+        for metype, metype_mem in self.metype_memory.items():
+            syns_mem = SynapseMemoryUsage.get_memory_usage(self.metype_cell_syn_average[metype])
+            metype_memory_usage[metype] = metype_mem + syns_mem
+
+        export_metype_memory_usage(metype_memory_usage, self._MEMORY_USAGE_PER_METYPE_FILENAME)
 
         def assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory):
             total_memory, (rank_id, cycle_id) = heapq.heappop(buckets)
@@ -538,7 +493,8 @@ class DryRunStats:
             rank_memory[(rank_id, cycle_id)] = total_memory
             heapq.heappush(buckets, (total_memory, (rank_id, cycle_id)))
 
-        for pop, metype_gids in self.metype_gids.items():
+        # Loop over ALL the gids which would be instantiated, per metype
+        for pop, metype_gids in self.pop_metype_gids.items():
             logging.info("Distributing cells of population %s", pop)
             rank_allocation = defaultdict(Vector)
             rank_memory = {}
@@ -549,13 +505,16 @@ class DryRunStats:
             buckets = [(0, (i, j)) for i in range(num_ranks) for j in range(cycles)]
             heapq.heapify(buckets)
 
-            for cell_id, memory in generate_cells(metype_gids):
-                batch.append(cell_id)
-                batch_memory += memory
-                if len(batch) == batch_size:
-                    assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory)
-                    batch = []
-                    batch_memory = 0
+            for metype, gids in metype_gids.items():
+                total_mem_per_cell = metype_memory_usage[metype]
+
+                for cell_id in gids:
+                    batch.append(cell_id)
+                    batch_memory += total_mem_per_cell
+                    if len(batch) == batch_size:
+                        assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory)
+                        batch = []
+                        batch_memory = 0
 
             if batch:
                 assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory)
@@ -563,13 +522,11 @@ class DryRunStats:
             bucket_allocation[pop] = rank_allocation
             bucket_memory[pop] = rank_memory
 
-        print_allocation_stats(bucket_allocation, bucket_memory)
+        print_allocation_stats(bucket_memory)
         export_allocation_stats(bucket_allocation,
                                 self._ALLOCATION_FILENAME,
                                 num_ranks,
                                 cycles)
-        export_metype_memory_usage(metype_memory_usage,
-                                   self._MEMORY_USAGE_PER_METYPE_FILENAME)
 
         return bucket_allocation, bucket_memory, metype_memory_usage
 
@@ -578,10 +535,17 @@ class DryRunStats:
         assert num_ranks > 0, "num_ranks must be a positive integer"
         assert isinstance(batch_size, int), "batch_size must be an integer"
         assert batch_size > 0, "batch_size must be a positive integer"
-        set_metype_gids = set()
-        for values in self.metype_gids.values():
-            set_metype_gids.update(values.keys())
-        assert set_metype_gids == set(self.metype_memory.keys())
-        average_syns_keys = set(self.average_syns_per_cell.keys())
-        metype_memory_keys = set(self.metype_memory.keys())
-        assert average_syns_keys == metype_memory_keys
+
+        all_metypes = set()
+        for values in self.pop_metype_gids.values():
+            all_metypes.update(values.keys())
+
+        # Assert our simulated metypes are a subset of the (pre-) computed ones
+        cell_memory_metypes = set(self.metype_memory.keys())
+        assert all_metypes <= cell_memory_metypes, all_metypes - cell_memory_metypes
+
+        # NOTE: We shall not assume that we have synapses counts for all metypes
+        #       According to override blocks, some cells may be disconnected.
+        #       Also Counter() will discard 0-count entries
+        # syn_count_metypes = set(self.metype_cell_syn_average)
+        # assert all_metypes <= syn_count_metypes, all_metypes - syn_count_metypes

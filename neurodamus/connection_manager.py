@@ -5,11 +5,10 @@ from __future__ import absolute_import
 import hashlib
 import logging
 import numpy
-from collections import defaultdict, Counter
+from collections import defaultdict
 from itertools import chain
 from os import path as ospath
 from typing import List, Optional
-from libsonata import SonataError
 
 from .core import NeurodamusCore as Nd
 from .core import ProgressBarRank0 as ProgressBar, MPI
@@ -279,7 +278,8 @@ class ConnectionManagerBase(object):
         self._load_offsets = kw.get("load_offsets", False)
         # An internal var to enable collection of synapse statistics to a Counter
         self._dry_run_stats: DryRunStats = kw.get("dry_run_stats")
-        self._dry_run_counted_cells = set()
+        # For each tgid track "connected" sgids (dry-run)
+        self._dry_run_conns = defaultdict(set)
 
     def __str__(self):
         return "<{:s} | {:s} -> {:s}>".format(
@@ -531,9 +531,9 @@ class ConnectionManagerBase(object):
             only_gids: Create connections only for these tgids (default: Off)
         """
         if SimConfig.dry_run:
-            counts = self._get_conn_stats(None)
-            log_all(VERBOSE_LOGLEVEL, "[Rank %d] Synapse count: %d", MPI.rank, sum(counts.values()))
-            self._dry_run_stats.synapse_counts += counts
+            syn_count = self._get_conn_stats(None)
+            log_all(VERBOSE_LOGLEVEL, "[Rank %d] Synapse count: %d", MPI.rank, syn_count)
+            self._dry_run_stats.synapse_counts[self.CONNECTIONS_TYPE] += syn_count
             return
 
         conn_options = {'weight_factor': weight_factor}
@@ -572,10 +572,9 @@ class ConnectionManagerBase(object):
             return
 
         if SimConfig.dry_run:
-            counts = self._get_conn_stats(dst_target)
-            count_sum = sum(counts.values())
-            log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", pop.src_name, conn_destination, count_sum)
-            self._dry_run_stats.synapse_counts += counts
+            syn_count = self._get_conn_stats(dst_target, src_target)
+            log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", pop.src_name, conn_destination, syn_count)
+            self._dry_run_stats.synapse_counts[self.CONNECTIONS_TYPE] += syn_count
             return
 
         for sgid, tgid, syns_params, extra_params, offset in \
@@ -715,50 +714,41 @@ class ConnectionManagerBase(object):
                 pathway_repr = "Pathway {} -> {}".format(src_target.name, dst_target.name)
             logging.info(" * %s. Created %d connections", pathway_repr, all_created)
 
-    def _get_conn_stats(self, dst_target):
-        """Estimates the number of synapses per type for the given destination target
-        Note: measurement is done without any restriction on the source target.
-        As so it can avoid counting the same synapse twice by keeping track of
-        target cells alone.
+    def _get_conn_stats(self, dst_target, src_target=None):
+        """Estimates the number of synapses for the given destination and source nodesets
 
         Args:
-            dst_target: The target to estimate synapses for
+            dst_nodeset: The target to estimate synapses for
+            src_nodeset: The source nodes allowed for the given synapses
 
         Returns:
-            A Counter object with the estimated synapses per type
+            The estimated number of synapses which would be created
 
-        Note:
-          - _src target is not considered so we count all inbound synapses
-          -  We will only consider gids which have not been accounted for yet.
         """
         BLOCK_BASE_SIZE = 5000
-        SAMPLES_PER_BLOCK = 100
+        SAMPLED_CELLS_PER_BLOCK = 100
 
-        # Get the raw gids for the destination target
-        raw_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
+        # Get the raw gids for the destination target (in this rank)
+        local_gids = dst_target.get_local_gids(raw_gids=True) if dst_target else self._raw_gids
+        if not len(local_gids):  # Target is empty in this rank
+            logging.debug("Skipping group: no cells!")
+            return 0
 
-        # Filter out the gids which have been already considered
-        # Use sets since they are much faster than numpy
-        new_gids = set(raw_gids) - self._dry_run_counted_cells
-        if not new_gids:
-            # Either target is empty or all the cells were considered before
-            return {}
-
-        local_counter = Counter()
+        total_estimate = 0
         dst_pop_name = self._cell_manager.population_name
 
         # NOTE:
         #  - Estimation (and extrapolation) is performed per metype since properties can vary
         #  - Consider only the cells for the current target
 
-        for metype, me_gids in self._dry_run_stats.metype_gids[dst_pop_name].items():
-            me_gids = set(me_gids).intersection(new_gids)
+        for metype, all_me_gids in self._dry_run_stats.pop_metype_gids[dst_pop_name].items():
+            me_gids = set(all_me_gids).intersection(local_gids)
             me_gids_count = len(me_gids)
             if not me_gids_count:
+                logging.debug("Skipping metype '%s': no cells!", metype)
                 continue
 
-            logging.debug("Estimating synapses for metype %s", metype)
-            self._dry_run_counted_cells.update(me_gids)  # track as seen
+            logging.debug("Metype %s", metype)
             me_gids = numpy.fromiter(me_gids, dtype="uint32")
 
             # NOTE:
@@ -766,46 +756,57 @@ class ConnectionManagerBase(object):
             #  - Takes advantage of data locality
             #  - Blocks increase as a geometric progression for handling very large sets
 
-            metype_estimate = Counter()
+            metype_estimate = 0
             sampled_gids_count = 0
 
             for start, stop, in gen_ranges(me_gids_count, BLOCK_BASE_SIZE, block_increase_rate=1.1):
-                logging.debug("Processing range %d:%d", start, stop)
+                logging.debug(" - Processing range %d:%d", start, stop)
                 block_len = stop - start
-                sample = me_gids[start:(start + SAMPLES_PER_BLOCK)]
+                sample = me_gids[start:(start + SAMPLED_CELLS_PER_BLOCK)]
                 sample_len = len(sample)
                 if not sample_len:
                     continue
-                try:
-                    if self.CONNECTIONS_TYPE == ConnectionTypes.Synaptic:
-                        sample_counts = self._synapse_reader.get_counts(
-                            sample, group_by="syn_type_id")
+
+                sample_counts = self._synapse_reader.get_conn_counts(sample)
+                total_connections = 0
+                selected_conn_count = 0
+                new_conn_count = 0  # Let's count those which were not "created" before
+                new_syns_count = 0
+
+                for tgid, tgid_conn_counts in sample_counts.items():
+                    total_connections += len(tgid_conn_counts)
+                    if src_target:
+                        conn_sgids = numpy.fromiter(tgid_conn_counts.keys(), dtype="uint32")
+                        sgids_in_target = conn_sgids[src_target.contains(conn_sgids, raw_gids=True)]
                     else:
-                        sample_counts = self._synapse_reader.get_counts(sample)
-                        sample_counts = {self.CONNECTIONS_TYPE: sample_counts}
-                except SonataError as e:
-                    logging.warning("Error while getting synapse counts: %s", e)
-                    logging.warning("Skipping range %d:%d", start, stop)
-                    continue
-                logging.debug("Gids: %s... Types: %s", sample[:10], sample_counts)
-                logging.debug("Average syn/cell: %.2f", sum(sample_counts.values()) / sample_len)
+                        sgids_in_target = tgid_conn_counts.keys()
+
+                    selected_conn_count += len(sgids_in_target)
+                    tgid_connected_sgids = self._dry_run_conns[tgid]
+
+                    for sgid in sgids_in_target:
+                        if sgid not in tgid_connected_sgids:
+                            new_conn_count += 1
+                            new_syns_count += tgid_conn_counts[sgid]
+                            tgid_connected_sgids.add(int(sgid))
+
+                logging.debug(" - Connections (new/selected/total): %d / %d / %d ",
+                              new_conn_count, selected_conn_count, total_connections)
+                block_syns_per_cell = new_syns_count / sample_len
+                logging.debug(" - Synapses: %d (Avg: %.2f)", new_syns_count, block_syns_per_cell)
                 sampled_gids_count += sample_len
-                ratio = block_len / sample_len
-                metype_estimate.update({
-                    syn_t: int(n * ratio)
-                    for syn_t, n in sample_counts.items()}
-                )
+                metype_estimate += block_syns_per_cell * block_len
 
-            # Extrapolation
-            logging.debug("Cells samples / total: %d / %s", sampled_gids_count, me_gids_count)
-            me_estimated_sum = sum(metype_estimate.values())
-            average_syns_per_cell = me_estimated_sum / me_gids_count
-            self._dry_run_stats.average_syns_per_cell[metype] = average_syns_per_cell
-            log_all(VERBOSE_LOGLEVEL, "%s: Average syns/cell: %.1f, Estimated total: %d ",
-                    metype, average_syns_per_cell, me_estimated_sum)
-            local_counter.update(metype_estimate)
+            # Info on the whole metype (subject to selected target)
+            # Due to the fact that the same metype might be target of several projections
+            #   we have to sum the averages
+            average_syns_per_cell = metype_estimate / me_gids_count
+            self._dry_run_stats.metype_cell_syn_average[metype] += average_syns_per_cell
+            log_all(logging.DEBUG, "%s: Average syns/cell: %.1f, Estimated total: %d ",
+                    metype, average_syns_per_cell, metype_estimate)
+            total_estimate += metype_estimate
 
-        return local_counter
+        return int(total_estimate)
 
     # -
     def get_target_connections(self, src_target_name,
