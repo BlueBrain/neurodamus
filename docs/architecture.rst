@@ -321,7 +321,8 @@ Dry Run
 
 A dry run mode was introduced to help users in understanding how many nodes and tasks are
 necessary to run a specific circuit. This mode can also be used to improve load balancing,
-as it generates an `allocation.pkl.gz` file which can be used to load balance the simulation.
+as it generates an `allocation_r#_c#.pkl.gz` (where r and c are the ranks and cycles respectively)
+file which can be used to load balance the simulation.
 
 By running a dry run, using the `--dry-run` flag, the user will NOT run an actual simulation but
 will get a summary of the estimated memory used for cells and synapses, including also the overhead
@@ -346,16 +347,16 @@ Below you can see the workflow of the dry run mode:
 
 First of all, since memory usage of cells is strongly connected to their metypes, we create a dictionary
 of all the gids corresponding to a certain metype combination. This dictionary is then crosschecked
-with the one imported from the external `memory_usage.json` file, which contains the memory usage
+with the one imported from the external `cell_memory_usage.json` file, which contains the memory usage
 of metype combinations coming from a previous execution of dry run on this or any other circuits.
-As long as the `memory_usage.json` file is present in the working directory, it will be loaded.
+As long as the `cell_memory_usage.json` file is present in the working directory, it will be loaded.
 
 If the metype combination is not present in the external file, we compute the memory usage of the
 metype combination by instantiating a group of (maximum) 50 cells per metype combination and then
 measuring memory usage before and after the instantiation. The memory usage is then averaged over
 the number of cells instantiated and the result are saved internally and added to the external
-`memory_usage.json` file. Any combination already present in the external file is simply imported
-and is not instantiated again in order to speed up the execution. One can simply delete the `memory_usage.json`
+`cell_memory_usage.json` file. Any combination already present in the external file is simply imported
+and is not instantiated again in order to speed up the execution. One can simply delete the `cell_memory_usage.json`
 file (or any relevant lines) in order to force the re-evaluation of all (or some) metype
 combinations.
 
@@ -374,7 +375,7 @@ Then we sample synapse counts of the circuit in progressively bigger blocks. Thi
 exhausting memory and scales well, enabling sampling over very large circuits in a short time,
 typically a few minutes for millions of cells.
 
-The paramenters of the sampling are as follows:
+The parameters of the sampling are as follows:
 
 - Block start length: 5000, increasing at a rate of 10% at each iteration
 - Count synapses for each block: 100 cells of the block (taking advantage of data locality)
@@ -387,6 +388,10 @@ Apart from both cells and synapses, we also need to take into account the memory
 itself, e.g. data structures, loaded libraries and so on. This is done by measuring the RSS of the neurodamus
 process before any of the actual instantiation is done. This value, since it's averaged over all ranks that take
 part in the execution, is then multiplied by the number of ranks used in the execution.
+
+The final estimated memory usage for each METype is also saved as a file in the working directory
+called `memory_per_metype.json`. This file is currently not used in the dry run mode but it's
+saved for future reference and to speed up the distribution of cells in future versions of Neurodamus.
 
 On top of this we also need to consider the memory usage of the simulation itself. Unfortunately
 at the moment there are no easy ways to estimate this value, so we have opted for a simple heuristic
@@ -421,9 +426,9 @@ and fast. The algorithm is as follows:
 
 The user can specify the number of ranks to target using the `--num-target-ranks` flag in the CLI of neurodamus.
 The default value is 40. The allocation dictionary, containing the assignment of gids to ranks per each population,
-is then saved to the `allocation.pkl.gz` file in a pickled gzipped format.
+is then saved to the `allocation_r#_c#.pkl.gz` file in a pickled gzipped format.
 
-Now that the `allocation.pkl.gz` has been generated, the user can load it in the main simulation and use it to load balance the
+Now that the `allocation_r#_c#.pkl.gz` has been generated, the user can load it in the main simulation and use it to load balance the
 simulation. The user can do this by using the `--lb-mode=Memory` flag in the CLI of neurodamus. During the execution
 Neurodamus will check if the amount of ranks used in the simulation is the same as the amount of ranks used in the
 dry run. If the amount of ranks is different, the user will be prompted to run a new dry run with the new amount of
@@ -432,6 +437,20 @@ simulation.
 
 This way the exact gids that were assigned to each rank in the dry run will be assigned to the actual simulation,
 possibly avoiding out-of-memory errors.
+
+Dry run and multicycle simulations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The dry run mode can also be used in conjunction with multicycle simulations. In this case the user can
+specify the number of cycles to run in the dry run using the `--modelbuilding-steps` flag in the CLI of Neurodamus
+along the `--dry-run` flag.
+
+In this case the distribution of cells happens not only along the ranks but also along the cycles. Cycles and ranks
+are treated as equally important "buckets" and the greedy algorithm is the same as before.
+
+Similarly to the ranks-only distribution, the allocation dictionary is saved to the `allocation_r#_c#.pkl.gz` file and can be
+used in the main simulation to load balance the simulation using both the `--lb-mode=Memory` and `--modelbuilding-steps`
+flags in the CLI of Neurodamus.
 
 Development
 ------------

@@ -95,10 +95,10 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         CELL_NODE_INFO_LIMIT = 100
         log_verbose("Sonata dry run mode: looking for unique metype instances")
         meinfos = METypeManager()
-        # skip_metypes = set(dry_run_stats.metype_memory.keys())
+        # Get global METype counts (computed in rank0, broadcasted)
         metype_gids, counts = _retrieve_unique_metypes(node_pop, all_gids)
         dry_run_stats.metype_counts += counts
-        dry_run_stats.metype_gids[node_population] = metype_gids
+        dry_run_stats.pop_metype_gids[node_population] = metype_gids
         gid_metype_bundle = list(metype_gids.values())
         gidvec = dry_run_distribution(gid_metype_bundle, stride, stride_offset, total_cells)
 
@@ -114,6 +114,7 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
             _model_templates = node_pop.get_attribute("model_template", node_sel)
             emodel_templates = [emodel.removeprefix("hoc:") for emodel in _model_templates]
             meinfos.load_infoNP(gids, morpho_names, emodel_templates, mtypes, etypes)
+
         return gidvec, meinfos, total_cells
 
     def load_nodes_base_info():
@@ -183,7 +184,12 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
 
     # All good. Lets start reading!
     gidvec, meinfos, fullsize = load_nodes_base_info()
-    node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
+
+    if SimConfig.dry_run:
+        load_nodes = np.fromiter(meinfos.keys(), dtype="uint32") - 1
+        node_sel = libsonata.Selection(load_nodes)
+    else:
+        node_sel = libsonata.Selection(gidvec - 1)  # 0-based node indices
 
     for prop_name in load_dynamic_props:
         log_verbose("Loading extra property: %s ", prop_name)

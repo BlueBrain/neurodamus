@@ -43,11 +43,10 @@ RUN source $USR_VENV/bin/activate \
 RUN mkdir -p $WORKDIR \
  && cd $WORKDIR \
  && git clone https://github.com/BlueBrain/libsonatareport.git --recursive --depth 1 -b $LIBSONATAREPORT_TAG \
- && cd libsonatareport \
- && mkdir build && cd build \
- && cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON -DSONATA_REPORT_ENABLE_MPI=ON .. \
- && cmake --build . --parallel \
- && cmake --build . --target install
+ && cmake -B rep_build -S libsonatareport -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DCMAKE_BUILD_TYPE=Release -DSONATA_REPORT_ENABLE_SUBMODULES=ON -DSONATA_REPORT_ENABLE_MPI=ON .. \
+ && cmake --build rep_build --parallel \
+ && cmake --install rep_build \
+ && rm -rf libsonatareport rep_build
 ENV SONATAREPORT_DIR "$INSTALL_DIR"
 
 # Install neuron
@@ -60,11 +59,11 @@ RUN source $USR_VENV/bin/activate \
     cd .. ; \
     else git clone https://github.com/neuronsimulator/nrn.git --depth 1 -b $NEURON_TAG ; \
     fi \
- && cd nrn && mkdir build && cd build \
- && cmake -DPYTHON_EXECUTABLE=$(which python) -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DNRN_ENABLE_MPI=ON -DNRN_ENABLE_INTERVIEWS=OFF -DNRN_ENABLE_RX3D=OFF \
- -DNRN_ENABLE_CORENEURON=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCORENRN_ENABLE_REPORTING=ON -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR .. \
- && cmake --build . -- -j 2 \
- && cmake --build . --target install
+ && cmake -B nrn_build -S nrn -DPYTHON_EXECUTABLE=$(which python) -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DNRN_ENABLE_MPI=ON -DNRN_ENABLE_INTERVIEWS=OFF -DNRN_ENABLE_RX3D=OFF \
+ -DNRN_ENABLE_CORENEURON=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCORENRN_ENABLE_REPORTING=ON -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR \
+ && cmake --build nrn_build -- -j 2 \
+ && cmake --install nrn_build \
+ && rm -rf nrn nrn_build
 
 # Build h5py with the local hdf5
 RUN source $USR_VENV/bin/activate \

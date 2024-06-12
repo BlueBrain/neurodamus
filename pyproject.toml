@@ -51,6 +51,6 @@ addopts = "--verbose"
 markers = ["slow: marks tests as slow"]
 
 [tool.flake8]
-exclude = [".*", "__pycache__", ".eggs", "*.egg", "build", "dist", "docs", "venv", "*.egg-info", "_benchmarks", "core"]
+exclude = [".*", "__pycache__", ".eggs", "*.egg", "build", "dist", "docs", "venv", "*.egg-info", "_benchmarks", "core", ".tox"]
 extend-ignore = ["E127", "E221", "E226", "E701", "W503", "W504", "E731", "PT001", "PT023"]
 max-line-length = 100
