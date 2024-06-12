@@ -841,7 +841,7 @@ class Node:
 
             # In coreneuron direct (in-memory) mode, i_membrane data is copied
             # between neuron and coreneuron
-            if SimConfig.coreneuron_direct_mode and "i_membrane" in rep_params.report_on:
+            if SimConfig.coreneuron_direct_mode:
                 Nd.cvode.use_fast_imem(1)
 
             if not SimConfig.use_coreneuron or rep_params.rep_type == "Synapse":
