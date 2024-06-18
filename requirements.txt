@@ -1,4 +1,0 @@
-numpy < 2
-h5py
-docopt
-libsonata
