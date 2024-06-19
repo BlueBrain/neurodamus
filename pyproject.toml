@@ -18,6 +18,7 @@ dependencies = [
     "h5py",
     "docopt",
     "libsonata",
+    "numpy<2",
     "psutil"
 ]
 requires-python=">=3.9"
