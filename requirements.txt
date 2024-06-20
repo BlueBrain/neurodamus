@@ -1,0 +1,4 @@
+numpy
+h5py
+docopt
+libsonata>=v0.1.27
