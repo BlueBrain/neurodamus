@@ -45,7 +45,7 @@ def test_dry_run_workflow(USECASE3):
     assert nd._dry_run_stats.suggest_nodes(0.3) > 0
 
     # Test that the allocation works and can be saved and loaded
-    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2, 1, 1)
+    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2, 1, None, 1)
     export_allocation_stats(rank_allocation,
                             USECASE3 / "allocation", 2, 1)
     export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
@@ -62,7 +62,7 @@ def test_dry_run_workflow(USECASE3):
 
     # Test that the allocation works and can be saved and loaded
     # and generate allocation file for 1 rank
-    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(1, 1, 1)
+    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(1, 1, None, 1)
     export_allocation_stats(rank_allocation,
                             USECASE3 / "allocation", 1, 1)
     export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
