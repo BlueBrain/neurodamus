@@ -376,7 +376,21 @@ class Node:
         elif lb_mode == LoadBalanceMode.Memory:
             logging.info("Load Balancing ENABLED. Mode: Memory")
             filename = f"allocation_r{MPI.size}_c{SimConfig.modelbuilding_steps}.pkl.gz"
-            alloc = import_allocation_stats(filename, self._cycle_i)
+
+            if ospath.exists(filename):
+                alloc = import_allocation_stats(filename, self._cycle_i)
+            else:
+                logging.warning("Allocation file not found. Generating on-the-fly.")
+                dry_run_stats = DryRunStats()
+                dry_run_stats.try_import_cell_memory_usage()
+                cell_distributor = CellDistributor(circuit, self._target_manager, self._run_conf)
+                cell_distributor.load_nodes(None, loader_opts={"load_mode": "load_nodes_metype",
+                                                               "dry_run_stats": dry_run_stats})
+                alloc, _, _ = dry_run_stats.distribute_cells(
+                    MPI.size,
+                    SimConfig.modelbuilding_steps,
+                    DryRunStats._MEMORY_USAGE_PER_METYPE_FILENAME
+                )
             for pop, ranks in alloc.items():
                 for rank, gids in ranks.items():
                     logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
