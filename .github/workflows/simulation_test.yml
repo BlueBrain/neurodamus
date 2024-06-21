@@ -25,7 +25,7 @@ env:
   NEURON_COMMIT_ID: '13654b3'
   NEURON_BRANCH: ${{ inputs.NEURON_BRANCH || 'master' }}
   LIBSONATA_REPORT_BRANCH: ${{ inputs.LIBSONATA_REPORT_BRANCH || '1.2.3' }}
-  LIBSONATA_BRANCH: ${{ inputs.LIBSONATA_BRANCH || 'v0.1.26' }}
+  LIBSONATA_BRANCH: ${{ inputs.LIBSONATA_BRANCH || 'v0.1.27' }}
 
 jobs:
   simulation:
