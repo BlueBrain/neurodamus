@@ -2,6 +2,20 @@
 Change Log
 ==========
 
+Version 3.4.0
+=============
+**21 June 2024**
+
+*New Features*
+  * [BBPBGLIB-1152] Multi-cycle support for dry run estimate and instantiation (#171)
+
+*Improvements*
+  * Remove VecStim to use the version in neurodamus-models (#177)
+  * Accurate synapse counts in dry-run (respect src target) (#169)
+  * Optimize Dockerfile a bit (#176)
+  * [BBPBGLIB-1141] Remove HDF5reader.mod which is already replaced by libsonata (#162)
+
+
 Version 3.3.0
 =============
 **28 May 2024**
