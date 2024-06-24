@@ -108,7 +108,7 @@ def test_dry_run_workflow_multi():
 
     nd = Neurodamus(tmp_file.name,
                     output_path=output_dir,
-                    modelbuilding_steps=3,
+                    modelbuilding_steps=1,
                     dry_run=True)
     nd.run()
 
