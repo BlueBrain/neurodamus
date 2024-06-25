@@ -1,7 +1,6 @@
 import numpy as np
 import numpy.testing as npt
 import os
-import pytest
 from pathlib import Path
 
 SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "neuromodulation"
@@ -25,8 +24,6 @@ def test_neuromodulation_sims_neuron():
     npt.assert_allclose(timestamps, obtained_timestamps)
 
 
-@pytest.mark.skip(
-    reason="Disable until new CoreNEURON synapse replay is deployed in the neurodamus-neocortex")
 def test_neuromodulation_sims_coreneuron():
     from neurodamus import Neurodamus
     from neurodamus.replay import SpikeManager
