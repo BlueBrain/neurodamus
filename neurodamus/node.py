@@ -395,7 +395,11 @@ class Node:
                 for rank, gids in ranks.items():
                     logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
             if MPI.rank == 0:
-                unique_ranks = set(rank for pop in alloc.values() for rank in pop.keys())
+                unique_ranks = set(
+                    rank[0] if isinstance(rank, tuple) else rank
+                    for pop in alloc.values()
+                    for rank in pop.keys()
+                )
                 logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))
                 if MPI.size != len(unique_ranks):
                     raise ConfigurationError(
@@ -453,7 +457,6 @@ class Node:
         config = SimConfig.cli_options
         if not load_balance:
             logging.info("Load-balance object not present. Continuing Round-Robin...")
-
         # Always create a cell_distributor even if engine is disabled.
         # Fake CoreNeuron cells are created in it
         cell_distributor = CellDistributor(self._base_circuit, self._target_manager, self._run_conf)
