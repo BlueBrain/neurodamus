@@ -431,9 +431,9 @@ is then saved to the `allocation_r#_c#.pkl.gz` file in a pickled gzipped format.
 Now that the `allocation_r#_c#.pkl.gz` has been generated, the user can load it in the main simulation and use it to load balance the
 simulation. The user can do this by using the `--lb-mode=Memory` flag in the CLI of neurodamus. During the execution
 Neurodamus will check if the amount of ranks used in the simulation is the same as the amount of ranks used in the
-dry run. If the amount of ranks is different, the user will be prompted to run a new dry run with the new amount of
-ranks. If the amount of ranks is the same, the allocation dictionary will be loaded and used to load balance the
-simulation.
+dry run. If the amount of ranks is the same, the allocation dictionary will be loaded and used to load balance the
+simulation. If the amount of ranks is different, neurodamus will redistribute the gids on-the-fly using the same greedy
+algorithm used in the dry run.
 
 This way the exact gids that were assigned to each rank in the dry run will be assigned to the actual simulation,
 possibly avoiding out-of-memory errors.

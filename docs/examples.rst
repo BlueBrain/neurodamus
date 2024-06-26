@@ -129,6 +129,12 @@ After the ``allocation.pkl.gz`` file is generated, the user can run Neurodamus w
 This will distribute the cells in the ranks and nodes according to the memory load balancing
 in order to optimize the memory usage of the simulation and avoid OOM errors.
 
+By default when running in ``--lb-mode=Memory`` neurodamus will try to load a file whose name corresponds
+to the amount of ranks and cycle requested by the user e.g. ``allocation_r36_c1.pkl.gz`` if the
+simulation is running on 36 ranks and 1 cycle. If the file is not found, neurodamus will run the
+distribution again on-the-fly before the simulation to distribute the cells correctly in the ranks,
+nodes and cycles.
+
 Dry run mode and multi-cycle simulations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Dry run mode can also be used in conjunction with multi-cycle simulations. In this case, the user

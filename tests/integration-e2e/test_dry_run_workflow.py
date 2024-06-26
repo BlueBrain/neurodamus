@@ -45,7 +45,7 @@ def test_dry_run_workflow(USECASE3):
     assert nd._dry_run_stats.suggest_nodes(0.3) > 0
 
     # Test that the allocation works and can be saved and loaded
-    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2, 1, 1)
+    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2, 1, None, 1)
     export_allocation_stats(rank_allocation,
                             USECASE3 / "allocation", 2, 1)
     export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
@@ -62,7 +62,7 @@ def test_dry_run_workflow(USECASE3):
 
     # Test that the allocation works and can be saved and loaded
     # and generate allocation file for 1 rank
-    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(1, 1, 1)
+    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(1, 1, None, 1)
     export_allocation_stats(rank_allocation,
                             USECASE3 / "allocation", 1, 1)
     export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
@@ -131,3 +131,24 @@ def test_dry_run_workflow_multi():
         }
     }
     assert rank_allocation_standard == expected_items
+
+
+def test_dynamic_distribute():
+    """
+    Test that the dynamic distribute works
+    """
+
+    Path(("allocation_r1_c2.pkl.gz")).unlink(missing_ok=True)
+
+    from neurodamus import Neurodamus
+    config_file = str(SIM_DIR / "v5_sonata" / "simulation_config.json")
+    output_dir = str(SIM_DIR / "v5_sonata" / "output_coreneuron")
+    tmp_file = _create_tmpconfig_coreneuron(config_file)
+    GlobalConfig.verbosity = LogLevel.DEBUG
+
+    nd = Neurodamus(tmp_file.name,
+                    output_path=output_dir,
+                    num_target_ranks=1,
+                    modelbuilding_steps=2,
+                    lb_mode="Memory")
+    nd.run()

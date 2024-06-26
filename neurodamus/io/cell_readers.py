@@ -79,7 +79,8 @@ def dry_run_distribution(gid_metype_bundle, stride=1, stride_offset=0, total_cel
 
 
 def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
-                node_population, load_dynamic_props=(), has_extra_data=False, dry_run_stats=None):
+                node_population, load_dynamic_props=(), has_extra_data=False, dry_run_stats=None,
+                load_mode=None):
     """
     A reader supporting additional dynamic properties from Sonata files.
     """
@@ -118,7 +119,7 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         return gidvec, meinfos, total_cells
 
     def load_nodes_base_info():
-        if SimConfig.dry_run:
+        if SimConfig.dry_run or load_mode == "load_nodes_metype":
             return load_base_info_dry_run()
 
         meinfos = METypeManager()

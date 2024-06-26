@@ -210,7 +210,10 @@ class CellManagerBase(_CellManager):
         if not load_balancer or SimConfig.dry_run:
             gidvec, me_infos, *cell_counts = self._load_nodes(loader_f)
         elif load_balancer and SimConfig.loadbal_mode == LoadBalanceMode.Memory:
-            gidvec, me_infos, *cell_counts = self._load_nodes_balance_mem(loader_f, load_balancer)
+            cycle = loader_opts.get("cycle_i", 0)
+            gidvec, me_infos, *cell_counts = self._load_nodes_balance_mem(loader_f,
+                                                                          load_balancer,
+                                                                          cycle)
         else:
             gidvec, me_infos, *cell_counts = self._load_nodes_balance(loader_f, load_balancer)
         self._local_nodes.add_gids(gidvec, me_infos)
@@ -249,11 +252,12 @@ class CellManagerBase(_CellManager):
         gidvec, me_infos, full_size = loader_f(self._circuit_conf, all_gids)
         return gidvec, me_infos, total_cells, full_size
 
-    def _load_nodes_balance_mem(self, loader_f, load_balancer):
+    def _load_nodes_balance_mem(self, loader_f, load_balancer, cycle_i):
         targetspec: TargetSpec = self._target_spec
 
         population = targetspec.population
-        all_gids = load_balancer.get(population, {}).get(MPI.rank, [])
+        all_gids = load_balancer.get(population, {}).get((MPI.rank, cycle_i), [])
+        all_gids = numpy.array(all_gids, dtype="uint32")
         logging.debug("Loading %d cells in rank %d", len(all_gids), MPI.rank)
         total_cells = len(all_gids)
         if total_cells == 0:
