@@ -4,4 +4,3 @@ HDF5reader.mod
 netstim_inhpoisson.mod
 SonataReportHelper.mod
 SonataReports.mod
-VecStim.mod

@@ -1081,8 +1081,7 @@ class ConnectionManagerBase(object):
         n_created_conns = 0
 
         for popid, pop in self._populations.items():
-            attach_src = (pop.src_id == 0 or not pop.virtual_source  # real populations
-                          or pop.virtual_source and bool(sim_corenrn))  # Req'd for replay
+            attach_src = pop.src_id == 0 or not pop.virtual_source  # real populations
             conn_params["attach_src_cell"] = attach_src
             logging.info(" * Connections among %s -> %s, attach src: %s",
                          pop.src_name or "(base)", pop.dst_name or "(base)", attach_src)
@@ -1234,8 +1233,7 @@ class SynapseRuleManager(ConnectionManagerBase):
     def finalize(self, base_seed=0, sim_corenrn=False, **kwargs):
         """Create the actual synapses and netcons. See super() docstring
         """
-        # CoreNeuron will handle replays automatically with its own PatternStim
-        kwargs.setdefault("replay_mode", ReplayMode.NONE if sim_corenrn else ReplayMode.AS_REQUIRED)
+        kwargs.setdefault("replay_mode", ReplayMode.AS_REQUIRED)
         super().finalize(base_seed, sim_corenrn, **kwargs)
 
     def _finalize_conns(self, tgid, conns, base_seed, sim_corenrn, **kw):
