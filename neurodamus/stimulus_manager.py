@@ -330,9 +330,9 @@ class ShotNoise(BaseStim):
         # nothing to do
         pass
 
-    def params_from_mean_var(self, mean, var):
+    def params_from_mean_sd(self, mean, sd):
         """
-        Compute bi-exponential shot noise parameters from desired mean and variance of signal.
+        Compute bi-exponential shot noise parameters from desired mean and std. dev. of signal.
 
         Analytical result derived from a generalization of Campbell's theorem present in
         Rice, S.O., "Mathematical Analysis of Random Noise", BSTJ 23, 3 Jul 1944.
@@ -342,12 +342,30 @@ class ShotNoise(BaseStim):
         # bi-exponential time to peak [ms]
         t_peak = log(self.tau_D / self.tau_R) / (1 / self.tau_R - 1 / self.tau_D)
         # bi-exponential peak height [1]
-        x_peak = exp(-t_peak / self.tau_D) - exp(-t_peak / self.tau_R)
+        F_peak = exp(-t_peak / self.tau_D) - exp(-t_peak / self.tau_R)
 
-        rate_ms = (1 + self.cv_square) / 2 * (mean ** 2 / var) / (self.tau_D + self.tau_R)
-        self.rate = rate_ms * 1000  # rate in 1 / s [Hz]
-        self.amp_mean = mean * x_peak / rate_ms / (self.tau_D - self.tau_R)
-        self.amp_var = self.cv_square * self.amp_mean ** 2
+        # utility constants
+        Xi = (self.tau_D - self.tau_R) / F_peak
+        A = 1 / (self.tau_D + self.tau_R)
+        B = 1 / ((self.tau_D + 2 * self.tau_R) * (2 * self.tau_D + self.tau_R))
+
+        # skewness
+        skew_bnd_min = (8 / 3) * (B / A ** 2) * (sd / mean)
+        skew = (1 + self.rel_skew) * skew_bnd_min
+        if skew < skew_bnd_min or skew > 2 * skew_bnd_min:
+            raise Exception("%s skewness out of bounds" % self.__class__.__name__)
+
+        # cumulants
+        lambda2_1 = sd ** 2 / mean                     # lambda2 over lambda1
+        lambda3_2 = sd * skew                          # lambda3 over lambda2
+        theta1pk = 2 / (A * Xi) * lambda2_1            # = (1 + k) * theta
+        theta2pk = (3 * A) / (4 * B * Xi) * lambda3_2  # = (2 + k) * theta
+
+        # derived parameters
+        self.amp_mean = 2 * theta1pk - theta2pk               # mean amplitude [nA or uS]
+        self.amp_var = self.amp_mean * (theta2pk - theta1pk)  # variance of amplitude [nA^2 or uS^2]
+        rate_ms = mean / (self.amp_mean * Xi)                 # event rate in 1 / ms
+        self.rate = rate_ms * 1000                            # event rate in 1 / s [Hz]
 
 
 @StimulusManager.register_type
@@ -377,11 +395,10 @@ class RelativeShotNoise(ShotNoise):
             logging.warning("%s stdev percent too small gives a very high event rate"
                             % self.__class__.__name__)
 
-        # coefficient of variation of shot amplitudes [1]
-        cv = float(stim_info["AmpCV"])
-        if cv <= 0:
-            raise Exception("%s amplitude CV must be positive" % self.__class__.__name__)
-        self.cv_square = cv * cv
+        # relative skewness of signal as a [0,1] fraction [1]
+        self.rel_skew = float(stim_info.get("RelativeSkew", 0.5))
+        if self.rel_skew < 0.0 or self.rel_skew > 1.0:
+            raise Exception("%s relative skewness must be in [0,1]" % self.__class__.__name__)
 
         if stim_info["Mode"] == "Current":
             self.get_relative = lambda x: x.getThreshold()
@@ -393,10 +410,9 @@ class RelativeShotNoise(ShotNoise):
     def compute_parameters(self, cell):
         # threshold current [nA] or inverse input resistance [uS]
         rel_prop = self.get_relative(cell)
-        mean = self.mean_perc / 100 * rel_prop  # desired mean [nA or uS]
-        sd = self.sd_perc / 100 * rel_prop      # desired standard deviation [nA or uS]
-        var = sd * sd                           # variance [nA^2 or uS^2]
-        super().params_from_mean_var(mean, var)
+        mean = (self.mean_perc / 100) * rel_prop  # desired mean [nA or uS]
+        sd = (self.sd_perc / 100) * rel_prop      # desired standard deviation [nA or uS]
+        super().params_from_mean_sd(mean, sd)
 
 
 @StimulusManager.register_type
@@ -422,16 +438,15 @@ class AbsoluteShotNoise(ShotNoise):
         if self.sd <= 0:
             raise Exception("%s stdev must be positive" % self.__class__.__name__)
 
-        # coefficient of variation of shot amplitudes [1]
-        cv = float(stim_info["AmpCV"])
-        if cv <= 0:
-            raise Exception("%s amplitude CV must be positive" % self.__class__.__name__)
-        self.cv_square = cv * cv
+        # relative skewness of signal as a [0,1] fraction [1]
+        self.rel_skew = float(stim_info.get("RelativeSkew", 0.5))
+        if self.rel_skew < 0.0 or self.rel_skew > 1.0:
+            raise Exception("%s relative skewness must be in [0,1]" % self.__class__.__name__)
 
         return True
 
     def compute_parameters(self, cell):
-        super().params_from_mean_var(self.mean, self.sd * self.sd)
+        super().params_from_mean_sd(self.mean, self.sd)
 
 
 @StimulusManager.register_type
