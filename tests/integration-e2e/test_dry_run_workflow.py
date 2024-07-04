@@ -152,3 +152,21 @@ def test_dynamic_distribute():
                     modelbuilding_steps=2,
                     lb_mode="Memory")
     nd.run()
+
+    rank_allocation, _, _ = nd._dry_run_stats.distribute_cells(1, 2)
+    rank_allocation_standard = convert_to_standard_types(rank_allocation)
+
+    expected_items = {
+        'default': {
+            (0, 0): [
+                62798, 62946, 63257, 63699, 64164, 64862, 65916, 65952, 66069, 66106
+            ],
+            (0, 1): [
+                66141, 66497, 66872, 67667, 68224, 68354, 68533, 68581, 68942, 69531,
+                69840, 63623, 64234, 64666, 64788, 64936, 69878, 65821, 67078, 68856
+            ]
+        }
+    }
+
+    for key, sub_value in rank_allocation_standard['default'].items():
+        assert set(sub_value) == set(expected_items['default'][key])

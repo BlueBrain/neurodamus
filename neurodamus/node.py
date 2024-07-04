@@ -381,12 +381,13 @@ class Node:
                 alloc = import_allocation_stats(filename, self._cycle_i)
             else:
                 logging.warning("Allocation file not found. Generating on-the-fly.")
-                dry_run_stats = DryRunStats()
-                dry_run_stats.try_import_cell_memory_usage()
+                self._dry_run_stats = DryRunStats()
+                self._dry_run_stats.try_import_cell_memory_usage()
                 cell_distributor = CellDistributor(circuit, self._target_manager, self._run_conf)
                 cell_distributor.load_nodes(None, loader_opts={"load_mode": "load_nodes_metype",
-                                                               "dry_run_stats": dry_run_stats})
-                alloc, _, _ = dry_run_stats.distribute_cells(
+                                                               "dry_run_stats": self._dry_run_stats}
+                                            )
+                alloc, _, _ = self._dry_run_stats.distribute_cells(
                     MPI.size,
                     SimConfig.modelbuilding_steps,
                     DryRunStats._MEMORY_USAGE_PER_METYPE_FILENAME
