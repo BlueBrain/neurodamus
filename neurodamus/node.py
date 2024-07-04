@@ -820,6 +820,7 @@ class Node:
             CoreConfig.write_report_count(len(reports_conf))
 
         for rep_name, rep_conf in reports_conf.items():
+            logging.info(" * [REPORT] %s: %s", rep_name, rep_conf["Target"])
             target_spec = TargetSpec(rep_conf["Target"])
             target = self._target_manager.get_target(target_spec)
 
@@ -842,7 +843,8 @@ class Node:
 
             # With coreneuron direct mode, enable fast membrane current calculation for i_membrane
             if SimConfig.coreneuron_direct_mode and \
-                    "i_membrane" in rep_params.report_on or rep_params.rep_type == "lfp":
+                    ("i_membrane" in rep_params.report_on or rep_params.rep_type == "lfp"):
+                logging.info("->>>>>>>>>> Enabling fast membrane current calculation for i_membrane in CORENEURON DIRECT MODE!!!")
                 Nd.cvode.use_fast_imem(1)
 
             if not SimConfig.use_coreneuron or rep_params.rep_type == "Synapse":

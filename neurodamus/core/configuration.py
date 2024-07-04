@@ -1023,10 +1023,10 @@ def _coreneuron_direct_mode(config: _SimConfig, run_conf):
             logging.warning("--coreneuron-direct-mode not valid for save/restore, "
                             "continue with file mode")
             direct_mode = False
-        if run_conf.get("LFPWeightsPath"):
-            logging.warning("--coreneuron-direct-mode not valid for LFP, "
-                            "continue with file mode")
-            direct_mode = False
+        # if run_conf.get("LFPWeightsPath"):
+        #     logging.warning("--coreneuron-direct-mode not valid for LFP, "
+        #                     "continue with file mode")
+        #     direct_mode = False
 
     if direct_mode:
         logging.info("Run CORENEURON direct mode without writing model data to disk")
