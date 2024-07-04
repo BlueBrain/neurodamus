@@ -135,7 +135,10 @@ def test_dry_run_workflow_multi():
 
 def test_dynamic_distribute():
     """
-    Test that the dynamic distribute works
+    Test that the dynamic distribution of cells works properly.
+    The test deletes any old allocation file before running and uses
+    the memory_per_metype.json generated in the previous test to
+    redistribute the cells. Then checks if the new allocation is correct.
     """
 
     Path(("allocation_r1_c2.pkl.gz")).unlink(missing_ok=True)
