@@ -376,12 +376,31 @@ class Node:
         elif lb_mode == LoadBalanceMode.Memory:
             logging.info("Load Balancing ENABLED. Mode: Memory")
             filename = f"allocation_r{MPI.size}_c{SimConfig.modelbuilding_steps}.pkl.gz"
-            alloc = import_allocation_stats(filename, self._cycle_i)
+
+            if ospath.exists(filename):
+                alloc = import_allocation_stats(filename, self._cycle_i)
+            else:
+                logging.warning("Allocation file not found. Generating on-the-fly.")
+                self._dry_run_stats = DryRunStats()
+                self._dry_run_stats.try_import_cell_memory_usage()
+                cell_distributor = CellDistributor(circuit, self._target_manager, self._run_conf)
+                cell_distributor.load_nodes(None, loader_opts={"load_mode": "load_nodes_metype",
+                                                               "dry_run_stats": self._dry_run_stats}
+                                            )
+                alloc, _, _ = self._dry_run_stats.distribute_cells(
+                    MPI.size,
+                    SimConfig.modelbuilding_steps,
+                    DryRunStats._MEMORY_USAGE_PER_METYPE_FILENAME
+                )
             for pop, ranks in alloc.items():
                 for rank, gids in ranks.items():
                     logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
             if MPI.rank == 0:
-                unique_ranks = set(rank for pop in alloc.values() for rank in pop.keys())
+                unique_ranks = set(
+                    rank[0] if isinstance(rank, tuple) else rank
+                    for pop in alloc.values()
+                    for rank in pop.keys()
+                )
                 logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))
                 if MPI.size != len(unique_ranks):
                     raise ConfigurationError(
@@ -439,7 +458,6 @@ class Node:
         config = SimConfig.cli_options
         if not load_balance:
             logging.info("Load-balance object not present. Continuing Round-Robin...")
-
         # Always create a cell_distributor even if engine is disabled.
         # Fake CoreNeuron cells are created in it
         cell_distributor = CellDistributor(self._base_circuit, self._target_manager, self._run_conf)
