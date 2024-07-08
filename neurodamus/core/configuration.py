@@ -1013,18 +1013,13 @@ def _coreneuron_direct_mode(config: _SimConfig, run_conf):
     direct_mode = user_config.coreneuron_direct_mode
     if direct_mode:
         if config.use_neuron:
-            logging.warning("--coreneuron-direct-mode not valid for NEURON, will do nothing")
-            direct_mode = False
+            raise ConfigurationError("--coreneuron-direct-mode is not valid for NEURON")
         if config.modelbuilding_steps > 1:
             logging.warning("--coreneuron-direct-mode not valid for multi-cyle model building, "
                             "continue with file mode")
             direct_mode = False
         if config.save or config.restore:
             logging.warning("--coreneuron-direct-mode not valid for save/restore, "
-                            "continue with file mode")
-            direct_mode = False
-        if run_conf.get("LFPWeightsPath"):
-            logging.warning("--coreneuron-direct-mode not valid for LFP, "
                             "continue with file mode")
             direct_mode = False
 
