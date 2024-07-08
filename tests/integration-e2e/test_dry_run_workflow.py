@@ -45,7 +45,7 @@ def test_dry_run_workflow(USECASE3):
     assert nd._dry_run_stats.suggest_nodes(0.3) > 0
 
     # Test that the allocation works and can be saved and loaded
-    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2, 1, 1)
+    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2, 1, None, 1)
     export_allocation_stats(rank_allocation,
                             USECASE3 / "allocation", 2, 1)
     export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
@@ -62,7 +62,7 @@ def test_dry_run_workflow(USECASE3):
 
     # Test that the allocation works and can be saved and loaded
     # and generate allocation file for 1 rank
-    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(1, 1, 1)
+    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(1, 1, None, 1)
     export_allocation_stats(rank_allocation,
                             USECASE3 / "allocation", 1, 1)
     export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
@@ -131,3 +131,45 @@ def test_dry_run_workflow_multi():
         }
     }
     assert rank_allocation_standard == expected_items
+
+
+def test_dynamic_distribute():
+    """
+    Test that the dynamic distribution of cells works properly.
+    The test deletes any old allocation file before running and uses
+    the memory_per_metype.json generated in the previous test to
+    redistribute the cells. Then checks if the new allocation is correct.
+    """
+
+    Path(("allocation_r1_c2.pkl.gz")).unlink(missing_ok=True)
+
+    from neurodamus import Neurodamus
+    config_file = str(SIM_DIR / "v5_sonata" / "simulation_config.json")
+    output_dir = str(SIM_DIR / "v5_sonata" / "output_coreneuron")
+    tmp_file = _create_tmpconfig_coreneuron(config_file)
+    GlobalConfig.verbosity = LogLevel.DEBUG
+
+    nd = Neurodamus(tmp_file.name,
+                    output_path=output_dir,
+                    num_target_ranks=1,
+                    modelbuilding_steps=2,
+                    lb_mode="Memory")
+    nd.run()
+
+    rank_allocation, _, _ = nd._dry_run_stats.distribute_cells(1, 2)
+    rank_allocation_standard = convert_to_standard_types(rank_allocation)
+
+    expected_items = {
+        'default': {
+            (0, 0): [
+                62798, 62946, 63257, 63699, 64164, 64862, 65916, 65952, 66069, 66106
+            ],
+            (0, 1): [
+                66141, 66497, 66872, 67667, 68224, 68354, 68533, 68581, 68942, 69531,
+                69840, 63623, 64234, 64666, 64788, 64936, 69878, 65821, 67078, 68856
+            ]
+        }
+    }
+
+    for key, sub_value in rank_allocation_standard['default'].items():
+        assert set(sub_value) == set(expected_items['default'][key])

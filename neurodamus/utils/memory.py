@@ -217,6 +217,18 @@ def export_metype_memory_usage(memory_per_metype, memory_per_metype_file):
 
 
 @run_only_rank0
+def import_metype_memory_usage(memory_per_metype_file):
+    """
+    Import memory per METype dictionary from a JSON file.
+    """
+
+    with open(memory_per_metype_file, 'r') as f:
+        memory_per_metype = json.load(f)
+
+    return memory_per_metype
+
+
+@run_only_rank0
 def import_allocation_stats(filename, cycle_i=0) -> dict:
     """
     Import allocation dictionary from serialized pickle file.
@@ -448,7 +460,13 @@ class DryRunStats:
             return int(num_ranks)
 
     @run_only_rank0
-    def distribute_cells(self, num_ranks, cycles=None, batch_size=10) -> Tuple[dict, dict, dict]:
+    def distribute_cells(
+        self,
+        num_ranks,
+        cycles=None,
+        metype_file=None,
+        batch_size=10
+    ) -> Tuple[dict, dict, dict]:
         """
         Distributes cells across ranks and cycles based on their memory load.
 
@@ -459,6 +477,7 @@ class DryRunStats:
             num_ranks (int): The number of ranks.
             cycles (int): The number of cycles to distribute cells over.
             batch_size (int): The number of cells to assign to each bucket at a time.
+            metype_file (str): The path to a JSON file containing memory usage for each METype.
 
         Returns:
             bucket_allocation (dict): A dictionary where keys are tuples (pop, rank_id, cycle_id)
@@ -474,16 +493,18 @@ class DryRunStats:
         logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
 
         self.validate_inputs_distribute(num_ranks, batch_size)
-        metype_memory_usage = {}  # total mem for metype (cell+syns)
         bucket_allocation = defaultdict(DryRunStats.defaultdict_vector)
         bucket_memory = defaultdict(DryRunStats.defaultdict_float)
 
         # Prepare the memory usage for each METype
-        for metype, metype_mem in self.metype_memory.items():
-            syns_mem = SynapseMemoryUsage.get_memory_usage(self.metype_cell_syn_average[metype])
-            metype_memory_usage[metype] = metype_mem + syns_mem
-
-        export_metype_memory_usage(metype_memory_usage, self._MEMORY_USAGE_PER_METYPE_FILENAME)
+        if metype_file:
+            metype_memory_usage = import_metype_memory_usage(metype_file)
+        else:
+            metype_memory_usage = {}
+            for metype, metype_mem in self.metype_memory.items():
+                syns_mem = SynapseMemoryUsage.get_memory_usage(self.metype_cell_syn_average[metype])
+                metype_memory_usage[metype] = metype_mem + syns_mem
+            export_metype_memory_usage(metype_memory_usage, self._MEMORY_USAGE_PER_METYPE_FILENAME)
 
         def assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory):
             total_memory, (rank_id, cycle_id) = heapq.heappop(buckets)
