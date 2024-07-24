@@ -2,6 +2,22 @@
 Change Log
 ==========
 
+Version 3.5.0
+=============
+**24 July 2024**
+
+*New Features*
+  * [BBPBGLIB-854] Implement a CLI option to run coreneuron in direct mode without writing model data to disk (#100)
+
+*Bug Fixes*
+  * [BBPBGLIB-1175] Handle deleted sections correctly (#182)
+
+*Improvements*
+  * Update ngv test to use V10 emodels (#183)
+  * [BBPBGLIB-1167] Automatic balance loading and on-the-fly rebalance (#178)
+  * Replay with NetCons in CoreNEURON as in NEURON (#173)
+
+
 Version 3.4.0
 =============
 **21 June 2024**
