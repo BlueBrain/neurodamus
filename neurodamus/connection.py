@@ -271,7 +271,7 @@ class Connection(ConnectionBase):
             syn_params['location'] = syn_point.x[0]
             section = syn_point.sclst[0]
 
-            if not section.exists():
+            if section is None or not section.exists():
                 target_point_str = "({0.isec:.0f} {0.ipt:.0f} {0.offset:.4f})".format(syn_params)
                 logging.warning("SKIPPED Synapse %s on gid %d. Src gid: %d. Deleted TPoint %s",
                                 base_id + i, self.tgid, self.sgid, target_point_str)

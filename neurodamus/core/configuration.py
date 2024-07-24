@@ -77,6 +77,7 @@ class CliOptions(ConfigT):
     dry_run = False
     num_target_ranks = None
     keep_axon = False
+    coreneuron_direct_mode = False
 
     # Restricted Functionality support, mostly for testing
 
@@ -236,6 +237,7 @@ class _SimConfig(object):
     spike_threshold = -30
     dry_run = False
     num_target_ranks = None
+    coreneuron_direct_mode = False
 
     _validators = []
     _requisitors = []
@@ -1009,6 +1011,27 @@ def _spikes_sort_order(config: _SimConfig, run_conf):
     if order not in ["none", "by_time"]:
         raise ConfigurationError("Unsupported spikes sort order %s, " % order +
                                  "BBP supports 'none' and 'by_time'")
+
+
+@SimConfig.validator
+def _coreneuron_direct_mode(config: _SimConfig, run_conf):
+    user_config = config.cli_options
+    direct_mode = user_config.coreneuron_direct_mode
+    if direct_mode:
+        if config.use_neuron:
+            raise ConfigurationError("--coreneuron-direct-mode is not valid for NEURON")
+        if config.modelbuilding_steps > 1:
+            logging.warning("--coreneuron-direct-mode not valid for multi-cyle model building, "
+                            "continue with file mode")
+            direct_mode = False
+        if config.save or config.restore:
+            logging.warning("--coreneuron-direct-mode not valid for save/restore, "
+                            "continue with file mode")
+            direct_mode = False
+
+    if direct_mode:
+        logging.info("Run CORENEURON direct mode without writing model data to disk")
+    config.coreneuron_direct_mode = direct_mode
 
 
 def get_debug_cell_gid(cli_options):
