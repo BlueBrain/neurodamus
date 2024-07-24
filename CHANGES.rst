@@ -13,6 +13,7 @@ Version 3.5.0
   * [BBPBGLIB-1175] Handle deleted sections correctly (#182)
 
 *Improvements*
+  * Allow API configuration to preserve the axons during setup (#155)
   * Update ngv test to use V10 emodels (#183)
   * [BBPBGLIB-1167] Automatic balance loading and on-the-fly rebalance (#178)
   * Replay with NetCons in CoreNEURON as in NEURON (#173)
