@@ -568,3 +568,63 @@ class DryRunStats:
         #       Also Counter() will discard 0-count entries
         # syn_count_metypes = set(self.metype_cell_syn_average)
         # assert all_metypes <= syn_count_metypes, all_metypes - syn_count_metypes
+
+    def check_all_buckets_have_gids(self, bucket_allocation, num_ranks, cycles):
+        """
+        Checks if all possible buckets determined by num_ranks and cycles have at least one GID
+        assigned.
+
+        Args:
+            bucket_allocation (dict): The allocation dictionary containing the assignment of GIDs
+                                      to ranks and cycles.
+            num_ranks (int): The number of ranks.
+            cycles (int): The number of cycles.
+
+        Returns:
+            bool: True if all buckets have at least one GID assigned, False otherwise.
+        """
+        for pop, rank_allocation in bucket_allocation.items():
+            for rank_id in range(num_ranks):
+                for cycle_id in range(cycles):
+                    if not rank_allocation.get((rank_id, cycle_id)):
+                        logging.warning(f"Bucket ({rank_id}, {cycle_id}) in population '{pop}' "
+                                        f"has no GIDs assigned.")
+                        return False
+        return True
+
+    @run_only_rank0
+    def distribute_cells_with_validation(self,
+                                         num_ranks,
+                                         cycles=None,
+                                         metype_file=None,
+                                         initial_batch_size=10):
+        """
+        Wrapper function to distribute cells with ever smaller assignment batches until
+        all buckets have at least one GID assigned (or fail if no valid distribution is found).
+
+        Args:
+            num_ranks (int): The number of ranks.
+            cycles (int): The number of cycles to distribute cells over.
+            metype_file (str): The path to a JSON file containing memory usage for each METype.
+            initial_batch_size (int): The initial batch size for cell assignment.
+
+        Returns:
+            Tuple[dict, dict, dict]: Returns the same as distribute_cells once a valid distribution
+                                     is found.
+        """
+        batch_size = initial_batch_size
+        valid_distribution = False
+        while not valid_distribution and batch_size > 0:
+            bucket_allocation, bucket_memory, metype_memory_usage = self.distribute_cells(
+                num_ranks, cycles, metype_file, batch_size=batch_size
+            )
+            valid_distribution = self.check_all_buckets_have_gids(bucket_allocation,
+                                                                  num_ranks,
+                                                                  cycles)
+            if not valid_distribution:
+                batch_size -= 1  # Decrease batch size for the next iteration
+
+        if batch_size == 0:
+            raise ValueError("Unable to find a valid distribution with the given parameters.")
+
+        return bucket_allocation, bucket_memory, metype_memory_usage

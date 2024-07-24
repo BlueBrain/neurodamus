@@ -387,7 +387,7 @@ class Node:
                 cell_distributor.load_nodes(None, loader_opts={"load_mode": "load_nodes_metype",
                                                                "dry_run_stats": self._dry_run_stats}
                                             )
-                alloc, _, _ = self._dry_run_stats.distribute_cells(
+                alloc, _, _ = self._dry_run_stats.distribute_cells_with_validation(
                     MPI.size,
                     SimConfig.modelbuilding_steps,
                     DryRunStats._MEMORY_USAGE_PER_METYPE_FILENAME
@@ -1804,7 +1804,8 @@ class Neurodamus(Node):
             self._dry_run_stats.display_node_suggestions()
             ranks = self._dry_run_stats.get_num_target_ranks(SimConfig.num_target_ranks)
             self._dry_run_stats.collect_all_mpi()
-            self._dry_run_stats.distribute_cells(ranks, SimConfig.modelbuilding_steps)
+            self._dry_run_stats.distribute_cells_with_validation(ranks,
+                                                                 SimConfig.modelbuilding_steps)
             return
         if not SimConfig.simulate_model:
             self.sim_init()
