@@ -1804,8 +1804,11 @@ class Neurodamus(Node):
             self._dry_run_stats.display_node_suggestions()
             ranks = self._dry_run_stats.get_num_target_ranks(SimConfig.num_target_ranks)
             self._dry_run_stats.collect_all_mpi()
-            self._dry_run_stats.distribute_cells_with_validation(ranks,
-                                                                 SimConfig.modelbuilding_steps)
+            try:
+                self._dry_run_stats.distribute_cells_with_validation(ranks,
+                                                                     SimConfig.modelbuilding_steps)
+            except RuntimeError as e:
+                logging.error("Dry run failed: %s", e)
             return
         if not SimConfig.simulate_model:
             self.sim_init()

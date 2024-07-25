@@ -27,7 +27,8 @@ def test_dry_run_workflow(USECASE3):
     GlobalConfig.verbosity = LogLevel.DEBUG
     nd = Neurodamus(
         str(USECASE3 / "simulation_sonata.json"),
-        dry_run=True
+        dry_run=True,
+        num_target_ranks=2
     )
 
     nd.run()
@@ -45,13 +46,13 @@ def test_dry_run_workflow(USECASE3):
     assert nd._dry_run_stats.suggest_nodes(0.3) > 0
 
     # Test that the allocation works and can be saved and loaded
-    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2, 1, None, 1)
-    export_allocation_stats(rank_allocation,
+    rank_alloc, _, cell_mem_use = nd._dry_run_stats.distribute_cells_with_validation(2, 1, None, 1)
+    export_allocation_stats(rank_alloc,
                             USECASE3 / "allocation", 2, 1)
-    export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
+    export_metype_memory_usage(cell_mem_use, USECASE3 / "memory_per_metype.json")
 
-    rank_allocation = import_allocation_stats(USECASE3 / "allocation_r2_c1.pkl.gz", 0)
-    rank_allocation_standard = convert_to_standard_types(rank_allocation)
+    rank_alloc = import_allocation_stats(USECASE3 / "allocation_r2_c1.pkl.gz", 0)
+    rank_allocation_standard = convert_to_standard_types(rank_alloc)
 
     expected_items = {
         'NodeA': {0: [1], 1: [2, 3]},
@@ -62,12 +63,12 @@ def test_dry_run_workflow(USECASE3):
 
     # Test that the allocation works and can be saved and loaded
     # and generate allocation file for 1 rank
-    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(1, 1, None, 1)
-    export_allocation_stats(rank_allocation,
+    rank_alloc, _, cell_mem_use = nd._dry_run_stats.distribute_cells_with_validation(1, 1, None, 1)
+    export_allocation_stats(rank_alloc,
                             USECASE3 / "allocation", 1, 1)
-    export_metype_memory_usage(cell_memory_usage, USECASE3 / "memory_per_metype.json")
-    rank_allocation = import_allocation_stats(USECASE3 / "allocation_r1_c1.pkl.gz")
-    rank_allocation_standard = convert_to_standard_types(rank_allocation)
+    export_metype_memory_usage(cell_mem_use, USECASE3 / "memory_per_metype.json")
+    rank_alloc = import_allocation_stats(USECASE3 / "allocation_r1_c1.pkl.gz")
+    rank_allocation_standard = convert_to_standard_types(rank_alloc)
 
     expected_items = {
         'NodeA': {0: [1, 2, 3]},
@@ -112,7 +113,7 @@ def test_dry_run_workflow_multi():
                     dry_run=True)
     nd.run()
 
-    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells(2)
+    rank_allocation, _, cell_memory_usage = nd._dry_run_stats.distribute_cells_with_validation(2)
     export_allocation_stats(rank_allocation,
                             SIM_DIR / "allocation", 2, 1)
     export_metype_memory_usage(cell_memory_usage, SIM_DIR / "memory_per_metype.json")
@@ -156,7 +157,7 @@ def test_dynamic_distribute():
                     lb_mode="Memory")
     nd.run()
 
-    rank_allocation, _, _ = nd._dry_run_stats.distribute_cells(1, 2)
+    rank_allocation, _, _ = nd._dry_run_stats.distribute_cells_with_validation(1, 2)
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
     expected_items = {
