@@ -590,7 +590,7 @@ class DryRunStats:
                                          num_ranks,
                                          cycles=None,
                                          metype_file=None,
-                                         initial_batch_size=10):
+                                         initial_batch_size=10) -> Tuple[dict, dict, dict]:
         """
         Wrapper function to distribute cells with ever smaller assignment batches until
         all buckets have at least one GID assigned (or fail if no valid distribution is found).
