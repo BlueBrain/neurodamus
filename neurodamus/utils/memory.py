@@ -487,7 +487,6 @@ class DryRunStats:
             metype_memory_usage (dict): A dictionary where keys are METype IDs
                                         and values are the memory load of each METype.
         """
-
         logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
 
         self.validate_inputs_distribute(num_ranks, batch_size)
@@ -540,12 +539,6 @@ class DryRunStats:
 
             bucket_allocation[pop] = rank_allocation
             bucket_memory[pop] = rank_memory
-
-        print_allocation_stats(bucket_memory)
-        export_allocation_stats(bucket_allocation,
-                                self._ALLOCATION_FILENAME,
-                                num_ranks,
-                                cycles)
 
         return bucket_allocation, bucket_memory, metype_memory_usage
 
@@ -612,6 +605,9 @@ class DryRunStats:
             Tuple[dict, dict, dict]: Returns the same as distribute_cells once a valid distribution
                                      is found.
         """
+        if not cycles:
+            cycles = 1
+
         batch_size = initial_batch_size
         valid_distribution = False
         while not valid_distribution and batch_size > 0:
@@ -625,6 +621,14 @@ class DryRunStats:
                 batch_size -= 1  # Decrease batch size for the next iteration
 
         if batch_size == 0:
-            raise ValueError("Unable to find a valid distribution with the given parameters.")
+            raise RuntimeError("Unable to find a valid distribution with the given parameters. "
+                               "Please try again with a smaller number of ranks or cycles. "
+                               "No allocation file was created.")
+
+        print_allocation_stats(bucket_memory)
+        export_allocation_stats(bucket_allocation,
+                                self._ALLOCATION_FILENAME,
+                                num_ranks,
+                                cycles)
 
         return bucket_allocation, bucket_memory, metype_memory_usage
