@@ -237,14 +237,14 @@ def import_allocation_stats(filename, cycle_i=0) -> dict:
         """Converts an object containing defaultdicts of Vectors to standard Python types."""
         result = {}
         for population, vectors in obj.items():
-            result[population] = {key[0]: np.array(vector) for key,
+            result[population] = {key: np.array(vector) for key,
                                   vector in vectors.items() if key[1] == cycle_i}
         return result
 
-    with open(filename, 'rb') as f:
-        compressed_data = f.read()
+    with gzip.open(filename, 'rb') as f:
+        data = pickle.load(f)
 
-    return convert_to_standard_types(pickle.loads(gzip.decompress(compressed_data)))
+    return convert_to_standard_types(data)
 
 
 @run_only_rank0
