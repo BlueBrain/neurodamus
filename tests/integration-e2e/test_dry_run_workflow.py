@@ -46,7 +46,7 @@ def test_dry_run_workflow(USECASE3):
     assert nd._dry_run_stats.suggest_nodes(0.3) > 0
 
     # Test that the allocation works and can be saved and loaded
-    rank_alloc, _, cell_mem_use = nd._dry_run_stats.distribute_cells_with_validation(2, 1, None, 1)
+    rank_alloc, _, cell_mem_use = nd._dry_run_stats.distribute_cells_with_validation(2, 1, None)
     export_allocation_stats(rank_alloc,
                             USECASE3 / "allocation", 2, 1)
     export_metype_memory_usage(cell_mem_use, USECASE3 / "memory_per_metype.json")
@@ -55,15 +55,15 @@ def test_dry_run_workflow(USECASE3):
     rank_allocation_standard = convert_to_standard_types(rank_alloc)
 
     expected_items = {
-        'NodeA': {0: [1], 1: [2, 3]},
-        'NodeB': {0: [1], 1: [2]}
+        'NodeA': {(0, 0): [1], (1, 0): [2, 3]},
+        'NodeB': {(0, 0): [1], (1, 0): [2]}
     }
 
     assert rank_allocation_standard == expected_items
 
     # Test that the allocation works and can be saved and loaded
     # and generate allocation file for 1 rank
-    rank_alloc, _, cell_mem_use = nd._dry_run_stats.distribute_cells_with_validation(1, 1, None, 1)
+    rank_alloc, _, cell_mem_use = nd._dry_run_stats.distribute_cells_with_validation(1, 1, None)
     export_allocation_stats(rank_alloc,
                             USECASE3 / "allocation", 1, 1)
     export_metype_memory_usage(cell_mem_use, USECASE3 / "memory_per_metype.json")
@@ -71,8 +71,8 @@ def test_dry_run_workflow(USECASE3):
     rank_allocation_standard = convert_to_standard_types(rank_alloc)
 
     expected_items = {
-        'NodeA': {0: [1, 2, 3]},
-        'NodeB': {0: [1, 2]}
+        'NodeA': {(0, 0): [1, 2, 3]},
+        'NodeB': {(0, 0): [1, 2]}
     }
 
     assert rank_allocation_standard == expected_items
@@ -122,12 +122,13 @@ def test_dry_run_workflow_multi():
 
     expected_items = {
         'default': {
-            0: [
-                62798, 62946, 63257, 63699, 64164, 64862, 65916, 65952, 66069, 66106,
-                69840, 63623, 64234, 64666, 64788, 64936, 69878, 65821, 67078, 68856
+            (0, 0): [
+                62798, 63257, 64164, 65916, 66069, 66141, 66872, 68224, 68533, 68942, 69840, 64234,
+                64936, 65821, 68856
             ],
-            1: [
-                66141, 66497, 66872, 67667, 68224, 68354, 68533, 68581, 68942, 69531
+            (1, 0): [
+                62946, 63699, 64862, 65952, 66106, 66497, 67667, 68354, 68581, 69531, 63623, 64666,
+                64788, 69878, 67078
             ]
         }
     }

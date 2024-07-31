@@ -529,7 +529,7 @@ class DryRunStats:
                 for cell_id in gids:
                     batch.append(cell_id)
                     batch_memory += total_mem_per_cell
-                    if len(batch) == batch_size:
+                    if len(batch) == batch_size[pop]:
                         assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory)
                         batch = []
                         batch_memory = 0
@@ -539,14 +539,13 @@ class DryRunStats:
 
             bucket_allocation[pop] = rank_allocation
             bucket_memory[pop] = rank_memory
-
         return bucket_allocation, bucket_memory, metype_memory_usage
 
     def validate_inputs_distribute(self, num_ranks, batch_size):
         assert isinstance(num_ranks, int), "num_ranks must be an integer"
         assert num_ranks > 0, "num_ranks must be a positive integer"
-        assert isinstance(batch_size, int), "batch_size must be an integer"
-        assert batch_size > 0, "batch_size must be a positive integer"
+        assert isinstance(batch_size, dict), "batch_size must be a dict"
+        assert all(size > 0 for size in batch_size.values()), "batch_size must be positive"
 
         all_metypes = set()
         for values in self.pop_metype_gids.values():
@@ -589,8 +588,8 @@ class DryRunStats:
     def distribute_cells_with_validation(self,
                                          num_ranks,
                                          cycles=None,
-                                         metype_file=None,
-                                         initial_batch_size=10) -> Tuple[dict, dict, dict]:
+                                         metype_file=None
+                                         ) -> Tuple[dict, dict, dict]:
         """
         Wrapper function to distribute cells with ever smaller assignment batches until
         all buckets have at least one GID assigned (or fail if no valid distribution is found).
@@ -599,7 +598,6 @@ class DryRunStats:
             num_ranks (int): The number of ranks.
             cycles (int): The number of cycles to distribute cells over.
             metype_file (str): The path to a JSON file containing memory usage for each METype.
-            initial_batch_size (int): The initial batch size for cell assignment.
 
         Returns:
             Tuple[dict, dict, dict]: Returns the same as distribute_cells once a valid distribution
@@ -608,9 +606,25 @@ class DryRunStats:
         if not cycles:
             cycles = 1
 
-        batch_size = initial_batch_size
         valid_distribution = False
-        while not valid_distribution and batch_size > 0:
+
+        def calculate_total_elements_per_population(self):
+            total_elements_per_population = {}
+            for population, metypes in self.pop_metype_gids.items():
+                total_elements = sum(len(gids) for gids in metypes.values())
+                total_elements_per_population[population] = total_elements
+            return total_elements_per_population
+
+        total_cells_per_population = calculate_total_elements_per_population(self)
+        average_cells_per_population = {
+            population: total / (num_ranks * cycles)
+            for population, total in total_cells_per_population.items()}
+
+        batch_size = {
+            population: max(1, int(average / 10))
+            for population, average in average_cells_per_population.items()}
+
+        while not valid_distribution and any(size > 0 for size in batch_size.values()):
             bucket_allocation, bucket_memory, metype_memory_usage = self.distribute_cells(
                 num_ranks, cycles, metype_file, batch_size=batch_size
             )
@@ -618,9 +632,10 @@ class DryRunStats:
                                                                   num_ranks,
                                                                   cycles)
             if not valid_distribution:
-                batch_size -= 1  # Decrease batch size for the next iteration
+                batch_size = {population: max(0, size - 1)
+                              for population, size in batch_size.items()}
 
-        if batch_size == 0:
+        if all(size == 0 for size in batch_size.values()):
             raise RuntimeError("Unable to find a valid distribution with the given parameters. "
                                "Please try again with a smaller number of ranks or cycles. "
                                "No allocation file was created.")
