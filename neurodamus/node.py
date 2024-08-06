@@ -451,6 +451,8 @@ class Node:
         else:
             loader_opts = {}
 
+        loader_opts["cycle_i"] = self._cycle_i
+
         # Check dynamic attributes required before loading cells
         SimConfig.check_cell_requirements(self.target_manager)
 
