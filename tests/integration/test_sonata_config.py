@@ -87,17 +87,19 @@ contents = """
     },
     "conditions": {
         "spike_location": "AIS",
-        "modifications": {
-            "applyTTX": {
+        "modifications": [
+            {
+                "name": "applyTTX",
                 "node_set": "single",
                 "type": "TTX"
             },
-            "no_SK_E2": {
+            {
+                "name": "no_SK_E2",
                 "node_set": "single",
                 "type": "ConfigureAllSections",
                 "section_configure": "%%s.gSK_E2bar_SK_E2 = 0"
             }
-        }
+        ]
     },
     "connection_overrides": [
         {
