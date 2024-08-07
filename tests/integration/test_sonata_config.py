@@ -122,7 +122,7 @@ contents = """
             "duration": 1000.0,
             "decay_time": 4.0,
             "rise_time": 0.4,
-            "amp_cv": 0.63,
+            "relative_skew": 0.63,
             "mean_percent": 70.0,
             "sd_percent": 40.0
         },
