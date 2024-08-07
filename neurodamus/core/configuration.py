@@ -489,7 +489,7 @@ def _projection_params(config: _SimConfig, run_conf):
 def _stimulus_params(config: _SimConfig, run_conf):
     required_fields = ("Mode", "Pattern", "Duration", "Delay",)
     numeric_fields = ("Dt", "RiseTime", "DecayTime", "AmpMean", "AmpVar", "MeanPercent",
-                      "SDPercent", "AmpCV", "AmpStart", "AmpEnd", "PercentStart",
+                      "SDPercent", "RelativeSkew", "AmpStart", "AmpEnd", "PercentStart",
                       "PercentEnd", "PercentLess", "Mean", "Variance", "Voltage", "RS",)
     non_negatives = ("Duration", "Delay", "Rate", "Frequency", "Width", "Lambda", "Weight",
                      "NumOfSynapses", "Seed",)

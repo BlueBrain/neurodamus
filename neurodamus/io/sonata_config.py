@@ -146,8 +146,7 @@ class SonataConfig:
             "node_set": "Target",  # for StimulusInject
             "source": "Source",  # for StimulusInject
             "sd_percent": "SDPercent",
-            "amp_cv": "AmpCV"
-
+            "relative_skew": "RelativeSkew"
         },
         "reports": {
             "type": "Type",
