@@ -199,6 +199,7 @@ class CellManagerBase(_CellManager):
             return
         conf = self._circuit_conf
         _loader = _loader or self._node_loader
+        cycle = loader_opts.pop("cycle_i", None)
         loader_f = (lambda *args: _loader(*args, **loader_opts)) if loader_opts else _loader
 
         logging.info("Reading Nodes (METype) info from '%s'", conf.CellLibraryFile)
@@ -210,7 +211,6 @@ class CellManagerBase(_CellManager):
         if not load_balancer or SimConfig.dry_run:
             gidvec, me_infos, *cell_counts = self._load_nodes(loader_f)
         elif load_balancer and SimConfig.loadbal_mode == LoadBalanceMode.Memory:
-            cycle = loader_opts.get("cycle_i", 0)
             gidvec, me_infos, *cell_counts = self._load_nodes_balance_mem(loader_f,
                                                                           load_balancer,
                                                                           cycle)

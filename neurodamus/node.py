@@ -387,7 +387,7 @@ class Node:
                 cell_distributor.load_nodes(None, loader_opts={"load_mode": "load_nodes_metype",
                                                                "dry_run_stats": self._dry_run_stats}
                                             )
-                alloc, _, _ = self._dry_run_stats.distribute_cells(
+                alloc, _, _ = self._dry_run_stats.distribute_cells_with_validation(
                     MPI.size,
                     SimConfig.modelbuilding_steps,
                     DryRunStats._MEMORY_USAGE_PER_METYPE_FILENAME
@@ -450,6 +450,8 @@ class Node:
             loader_opts = {"dry_run_stats": self._dry_run_stats}
         else:
             loader_opts = {}
+
+        loader_opts["cycle_i"] = self._cycle_i
 
         # Check dynamic attributes required before loading cells
         SimConfig.check_cell_requirements(self.target_manager)
@@ -1801,7 +1803,11 @@ class Neurodamus(Node):
             self._dry_run_stats.display_node_suggestions()
             ranks = self._dry_run_stats.get_num_target_ranks(SimConfig.num_target_ranks)
             self._dry_run_stats.collect_all_mpi()
-            self._dry_run_stats.distribute_cells(ranks, SimConfig.modelbuilding_steps)
+            try:
+                self._dry_run_stats.distribute_cells_with_validation(ranks,
+                                                                     SimConfig.modelbuilding_steps)
+            except RuntimeError as e:
+                logging.error("Dry run failed: %s", e)
             return
         if not SimConfig.simulate_model:
             self.sim_init()
