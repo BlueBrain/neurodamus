@@ -378,7 +378,7 @@ class RelativeShotNoise(ShotNoise):
                             % self.__class__.__name__)
 
         # coefficient of variation of shot amplitudes [1]
-        cv = float(stim_info["AmpCV"])
+        cv = float(stim_info["RelativeSkew"])
         if cv <= 0:
             raise Exception("%s amplitude CV must be positive" % self.__class__.__name__)
         self.cv_square = cv * cv
@@ -423,7 +423,7 @@ class AbsoluteShotNoise(ShotNoise):
             raise Exception("%s stdev must be positive" % self.__class__.__name__)
 
         # coefficient of variation of shot amplitudes [1]
-        cv = float(stim_info["AmpCV"])
+        cv = float(stim_info["RelativeSkew"])
         if cv <= 0:
             raise Exception("%s amplitude CV must be positive" % self.__class__.__name__)
         self.cv_square = cv * cv
