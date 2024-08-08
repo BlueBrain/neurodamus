@@ -283,7 +283,7 @@ class Node:
             self._run_conf = SimConfig.run_conf
             self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
-            if SimConfig.use_neuron:
+            if SimConfig.use_neuron or SimConfig.coreneuron_direct_mode:
                 self._sonatareport_helper = Nd.SonataReportHelper(Nd.dt, True)
             self._base_circuit: CircuitConfig = SimConfig.base_circuit
             self._extra_circuits = SimConfig.extra_circuits
@@ -376,12 +376,31 @@ class Node:
         elif lb_mode == LoadBalanceMode.Memory:
             logging.info("Load Balancing ENABLED. Mode: Memory")
             filename = f"allocation_r{MPI.size}_c{SimConfig.modelbuilding_steps}.pkl.gz"
-            alloc = import_allocation_stats(filename, self._cycle_i)
+
+            if ospath.exists(filename):
+                alloc = import_allocation_stats(filename, self._cycle_i)
+            else:
+                logging.warning("Allocation file not found. Generating on-the-fly.")
+                self._dry_run_stats = DryRunStats()
+                self._dry_run_stats.try_import_cell_memory_usage()
+                cell_distributor = CellDistributor(circuit, self._target_manager, self._run_conf)
+                cell_distributor.load_nodes(None, loader_opts={"load_mode": "load_nodes_metype",
+                                                               "dry_run_stats": self._dry_run_stats}
+                                            )
+                alloc, _, _ = self._dry_run_stats.distribute_cells(
+                    MPI.size,
+                    SimConfig.modelbuilding_steps,
+                    DryRunStats._MEMORY_USAGE_PER_METYPE_FILENAME
+                )
             for pop, ranks in alloc.items():
                 for rank, gids in ranks.items():
                     logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
             if MPI.rank == 0:
-                unique_ranks = set(rank for pop in alloc.values() for rank in pop.keys())
+                unique_ranks = set(
+                    rank[0] if isinstance(rank, tuple) else rank
+                    for pop in alloc.values()
+                    for rank in pop.keys()
+                )
                 logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))
                 if MPI.size != len(unique_ranks):
                     raise ConfigurationError(
@@ -439,7 +458,6 @@ class Node:
         config = SimConfig.cli_options
         if not load_balance:
             logging.info("Load-balance object not present. Continuing Round-Robin...")
-
         # Always create a cell_distributor even if engine is disabled.
         # Fake CoreNeuron cells are created in it
         cell_distributor = CellDistributor(self._base_circuit, self._target_manager, self._run_conf)
@@ -840,6 +858,11 @@ class Node:
             has_gids = len(self._circuits.global_manager.get_final_gids()) > 0
             report = Report(*rep_params, SimConfig.use_coreneuron) if has_gids else None
 
+            # With coreneuron direct mode, enable fast membrane current calculation for i_membrane
+            if SimConfig.coreneuron_direct_mode and \
+                    "i_membrane" in rep_params.report_on or rep_params.rep_type == "lfp":
+                Nd.cvode.use_fast_imem(1)
+
             if not SimConfig.use_coreneuron or rep_params.rep_type == "Synapse":
                 try:
                     self._report_setup(report, rep_conf, target, rep_params.rep_type)
@@ -1076,7 +1099,7 @@ class Node:
         if corenrn_gen:
             self._sim_corenrn_write_config()
 
-        if SimConfig.use_neuron:
+        if SimConfig.use_neuron or SimConfig.coreneuron_direct_mode:
             self._sim_init_neuron()
 
         if ospath.isfile("debug_gids.txt"):
@@ -1194,9 +1217,11 @@ class Node:
                 dummyfile.write("%s\n0\n" % coredata_version)
 
     # -
-    def _sim_corenrn_configure_datadir(self, corenrn_restore):
+    def _sim_corenrn_configure_datadir(self, corenrn_restore, coreneuron_direct_mode):
         corenrn_datadir = SimConfig.coreneuron_datadir
         os.makedirs(corenrn_datadir, exist_ok=True)
+        if coreneuron_direct_mode:
+            return corenrn_datadir
         corenrn_datadir_shm = SHMUtil.get_datadir_shm(corenrn_datadir)
 
         # Clean-up any previous simulations in the same output directory
@@ -1255,14 +1280,16 @@ class Node:
     @timeit(name="corewrite")
     def _sim_corenrn_write_config(self, corenrn_restore=False):
         log_stage("Dataset generation for CoreNEURON")
-        CoreConfig.datadir = self._sim_corenrn_configure_datadir(corenrn_restore)
+        CoreConfig.datadir = self._sim_corenrn_configure_datadir(corenrn_restore,
+                                                                 SimConfig.coreneuron_direct_mode)
         fwd_skip = self._run_conf.get("ForwardSkip", 0) if not corenrn_restore else 0
 
         if not corenrn_restore:
             CompartmentMapping(self._circuits.global_manager).register_mapping()
-            with self._coreneuron_ensure_all_ranks_have_gids(CoreConfig.datadir):
-                self._pc.nrnbbcore_write(CoreConfig.datadir)
-                MPI.barrier()  # wait for all ranks to finish corenrn data generation
+            if not SimConfig.coreneuron_direct_mode:
+                with self._coreneuron_ensure_all_ranks_have_gids(CoreConfig.datadir):
+                    self._pc.nrnbbcore_write(CoreConfig.datadir)
+                    MPI.barrier()  # wait for all ranks to finish corenrn data generation
 
         CoreConfig.write_sim_config(
             Nd.tstop,
@@ -1294,8 +1321,11 @@ class Node:
             self.sonata_spikes()
         if SimConfig.use_coreneuron:
             print_mem_usage()
-            self.clear_model(avoid_clearing_queues=False)
+            if not SimConfig.coreneuron_direct_mode:
+                self.clear_model(avoid_clearing_queues=False)
             self._run_coreneuron()
+            if SimConfig.coreneuron_direct_mode:
+                self.sonata_spikes()
         return timings
 
     # -
@@ -1311,7 +1341,8 @@ class Node:
         logging.info("Launching simulation with CoreNEURON")
         CoreConfig.psolve_core(
             getattr(SimConfig, "save", None),
-            getattr(SimConfig, "restore", None)
+            getattr(SimConfig, "restore", None),
+            SimConfig.coreneuron_direct_mode
         )
 
     #

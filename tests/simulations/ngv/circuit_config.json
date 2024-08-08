@@ -11,7 +11,7 @@
                 "populations": {
                     "All": {
                         "type": "biophysical",
-                        "biophysical_neuron_models_dir": "$BASE_DIR/base_circuit/emodels_atp_scan/emodels_atp_1p4",
+                        "biophysical_neuron_models_dir": "$BASE_DIR/base_circuit/emodels_atp_scan/emodels_atp_1p4_v10",
                         "alternate_morphologies": {
                             "neurolucida-asc": "$BASE_DIR/base_circuit/morphologies/fixed_ais_L23PC_20201210/ascii"
                         }
