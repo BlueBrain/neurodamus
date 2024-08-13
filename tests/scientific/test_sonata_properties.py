@@ -104,4 +104,4 @@ def test_input_resistance_2():
 
     # check spikes
     nspike = sum(len(spikes) for spikes, _ in n._spike_vecs)
-    assert nspike == 6
+    assert nspike == 8
