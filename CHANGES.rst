@@ -2,6 +2,17 @@
 Change Log
 ==========
 
+Version 3.6.0
+=============
+**13 August 2024**
+
+*New Features*
+  * [BBPBGLIB-975] Improved "signal" shot noise parameterization (#187)
+
+*Improvements*
+  * Read modifications list from libsonata API (#181)
+
+
 Version 3.5.0
 =============
 **24 July 2024**
