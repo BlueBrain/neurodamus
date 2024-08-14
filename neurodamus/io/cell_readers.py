@@ -97,6 +97,7 @@ def load_sonata(circuit_conf, all_gids, stride=1, stride_offset=0, *,
         log_verbose("Sonata dry run mode: looking for unique metype instances")
         meinfos = METypeManager()
         # Get global METype counts (computed in rank0, broadcasted)
+        logging.warning("calling _retrieve_unique_metypes from load_base_info_dry_run")
         metype_gids, counts = _retrieve_unique_metypes(node_pop, all_gids)
         dry_run_stats.metype_counts += counts
         dry_run_stats.pop_metype_gids[node_population] = metype_gids
