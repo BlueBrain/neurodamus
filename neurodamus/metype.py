@@ -208,6 +208,32 @@ class EmptyCell(BaseCell):
         self.gid = gid
 
 
+class PointCell:
+    """Class representing a minimal, single section cell for dry-runs"""
+
+    def __init__(self, gid, cell_info, _circuit_conf):
+        self.gid = gid
+        self.raw_gid = None
+        self.soma = [Nd.Section(name="soma[0]", cell=self)]
+        self.exc_mini_frequency = float(cell_info.exc_mini_frequency)
+        self.inh_mini_frequency = float(cell_info.inh_mini_frequency)
+        self.synHelperList = []
+        self.synlist = []
+
+    CellRef = property(lambda self: self)
+    CCell = property(lambda self: self)
+    nSecAll = property(lambda _self: 1)
+    all = property(lambda self: [self.soma])
+    input_resistance = property(lambda _self: 1)
+
+    def connect2target(self, target_pp=None):
+        soma_sec = self.soma[0]
+        return Nd.NetCon(soma_sec(1)._ref_v, target_pp, sec=soma_sec)
+
+    def re_init_rng(self, ion_seed):
+        pass
+
+
 # Metadata
 # --------
 

@@ -323,6 +323,17 @@ class Connection(ConnectionBase):
             syn_id = len(self._synapse_sections)
         self._synapse_ids.append(syn_id)
 
+    def add_single(self, cell_manager, syn_params, syn_id):
+        """Add synapse config in target cell"""
+        soma = Nd.SectionRef(sec=cell_manager.get_cell(self.tgid).soma[0])
+        self._synapse_ids.append(syn_id)
+        self._synapse_sections.append(soma)
+        self._synapse_points_x.append(0.5)
+        if self._synapse_params is None:
+            self._synapse_params = [syn_params]
+        else:
+            self._synapse_params.append(syn_params)
+
     # -
     def replay(self, tvec, start_delay=.0):
         """ The synapses connecting these gids are to be activated using

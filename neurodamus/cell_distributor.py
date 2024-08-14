@@ -23,7 +23,7 @@ from .core.configuration import GlobalConfig, LoadBalanceMode, LogLevel, find_in
 from .core.nodeset import NodeSet
 from .io import cell_readers
 from .lfp_manager import LFPManager
-from .metype import Cell_V6, EmptyCell
+from .metype import Cell_V6, EmptyCell, PointCell
 from .target_manager import TargetSpec
 from .utils import compat
 from .utils.logging import log_verbose, log_all
@@ -282,8 +282,8 @@ class CellManagerBase(_CellManager):
 
     @mpi_no_errors
     def _instantiate_cells(self, _CellType=None, **_opts):
-        if SimConfig.cli_options.checks_only:
-            CellType = lambda gid, *_: EmptyCell(gid, None)
+        if SimConfig.cli_options.crash_test:
+            CellType = PointCell
         else:
             CellType = _CellType or self.CellType
         assert CellType is not None, "Undefined CellType in Manager"

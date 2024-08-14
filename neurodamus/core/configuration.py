@@ -78,7 +78,7 @@ class CliOptions(ConfigT):
     num_target_ranks = None
     keep_axon = False
     coreneuron_direct_mode = False
-    checks_only = False
+    crash_test = False
 
     # Restricted Functionality support, mostly for testing
 
