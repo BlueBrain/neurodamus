@@ -1121,6 +1121,9 @@ class Node:
             spike_compress: The spike_compress() parameters (tuple or int)
         """
         logging.info("Preparing to run simulation...")
+        for mgr in self._circuits.all_node_managers():
+            mgr.pre_stdinit()
+
         is_save_state = SimConfig.save or SimConfig.restore
         self._pc.setup_transfer()
 

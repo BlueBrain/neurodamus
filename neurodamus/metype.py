@@ -186,7 +186,6 @@ class Cell_V6(METype):
         return vector_rotate_translate(points, self.local_to_global_matrix)
 
     def delete_axon(self):
-        logging.info("Now deleting the axon! 🤩")
         self._cellref.replace_axon()
 
     def __getattr__(self, item):
