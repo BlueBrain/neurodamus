@@ -60,6 +60,7 @@ def neurodamus(args=None):
         --enable-shm=[ON, OFF]  Enables the use of /dev/shm for coreneuron_input [default: ON]
         --model-stats           Show model stats in CoreNEURON simulations [default: False]
         --dry-run               Dry-run simulation to estimate memory usage [default: False]
+        --checks-only           Skip instantiating cells and synapses, only verify distribution
         --num-target-ranks=<number>  Number of ranks to target for dry-run load balancing
         --coreneuron-direct-mode     Run CoreNeuron in direct memory mode transfered from Neuron,
                                      without writing model data to disk.
