@@ -439,11 +439,16 @@ class CellManagerBase(_CellManager):
         else:
             self._conn_managers_per_src_pop[src_population] = conn_manager
 
-    def post_stdinit(self):
+    def pre_stdinit(self):
         """Post stdinit actions"""
         if self._circuit_conf.DetailedAxon:
+            log_verbose("Now deleting the axon! 🤩")
             for c in self.cells:
                 c.delete_axon()
+
+    def post_stdinit(self):
+        """Post stdinit actions"""
+        pass
 
 
 class GlobalCellManager(_CellManager):
