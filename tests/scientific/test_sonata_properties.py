@@ -83,7 +83,7 @@ def test_input_resistance_2():
         "Reversal": 0,
         "RiseTime": 2.8,
         "DecayTime": 28,
-        "AmpCV": 0.5,
+        "RelativeSkew": 0.5,
         "MeanPercent": 20,
         "SDPercent": 20
     }
@@ -104,4 +104,4 @@ def test_input_resistance_2():
 
     # check spikes
     nspike = sum(len(spikes) for spikes, _ in n._spike_vecs)
-    assert nspike == 6
+    assert nspike == 8

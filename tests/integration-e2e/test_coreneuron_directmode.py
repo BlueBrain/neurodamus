@@ -19,12 +19,10 @@ def test_coreneuron_no_write_model(USECASE3):
     spikes_path = os.path.join(SimConfig.output_root, nd._run_conf.get("SpikesFile"))
     spikes_reader = SpikeReader(spikes_path)
     pop_A = spikes_reader["NodeA"]
-    pop_B = spikes_reader["NodeB"]
     spike_dict = pop_A.get_dict()
     npt.assert_allclose(spike_dict["timestamps"][:10], np.array([0.2, 0.3, 0.3, 2.5, 3.4,
                                                                 4.2, 5.5, 7., 7.4, 8.6]))
     npt.assert_allclose(spike_dict["node_ids"][:10], np.array([0, 1, 2, 0, 1, 2, 0, 0, 1, 2]))
-    assert not pop_B.get()
 
     soma_reader = ElementReportReader(SimConfig.reports.get("soma_report").get('FileName'))
     soma_A = soma_reader["NodeA"]

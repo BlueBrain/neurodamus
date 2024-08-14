@@ -87,17 +87,19 @@ contents = """
     },
     "conditions": {
         "spike_location": "AIS",
-        "modifications": {
-            "applyTTX": {
+        "modifications": [
+            {
+                "name": "applyTTX",
                 "node_set": "single",
                 "type": "TTX"
             },
-            "no_SK_E2": {
+            {
+                "name": "no_SK_E2",
                 "node_set": "single",
                 "type": "ConfigureAllSections",
                 "section_configure": "%%s.gSK_E2bar_SK_E2 = 0"
             }
-        }
+        ]
     },
     "connection_overrides": [
         {
@@ -120,7 +122,7 @@ contents = """
             "duration": 1000.0,
             "decay_time": 4.0,
             "rise_time": 0.4,
-            "amp_cv": 0.63,
+            "relative_skew": 0.63,
             "mean_percent": 70.0,
             "sd_percent": 40.0
         },
@@ -214,7 +216,7 @@ def test_parse_inputs(sonataconfig):
     assert input_RSN["Delay"] == 0.
     assert input_RSN["Duration"] == 1000.
     assert input_RSN["MeanPercent"] == 70.
-    assert input_RSN["AmpCV"] == 0.63
+    assert input_RSN["RelativeSkew"] == 0.63
     assert input_RSN["SDPercent"] == 40.
     assert input_RSN["Dt"] == 0.25
     assert input_RSN.get("Seed") is None
