@@ -26,6 +26,7 @@ import numpy as np
 # This is an heuristic estimate based on tests on multiple circuits.
 # More info in docs/architecture.rst.
 SIM_ESTIMATE_FACTOR = 2.5
+_alloc_cache = None
 
 
 def trim_memory():
@@ -233,6 +234,8 @@ def import_allocation_stats(filename, cycle_i=0) -> dict:
     """
     Import allocation dictionary from serialized pickle file.
     """
+    global _alloc_cache
+
     def convert_to_standard_types(obj):
         """Converts an object containing defaultdicts of Vectors to standard Python types."""
         result = {}
@@ -241,10 +244,15 @@ def import_allocation_stats(filename, cycle_i=0) -> dict:
                                   vector in vectors.items() if key[1] == cycle_i}
         return result
 
-    with gzip.open(filename, 'rb') as f:
-        data = pickle.load(f)
+    if _alloc_cache is None:
+        logging.warning("Loading allocation stats from %s...", filename)
+        with gzip.open(filename, 'rb') as f:
+            data = pickle.load(f)
+        _alloc_cache = data
+    else:
+        logging.warning("Using cached allocation stats.")
 
-    return convert_to_standard_types(data)
+    return convert_to_standard_types(_alloc_cache)
 
 
 @run_only_rank0
