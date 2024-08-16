@@ -256,6 +256,8 @@ class CellManagerBase(_CellManager):
         targetspec: TargetSpec = self._target_spec
 
         population = targetspec.population
+        # TODO: Remove slicing?
+        logging.warning("SLICING: Loading cells for cycle %d and rank %d", cycle_i, MPI.rank)
         all_gids = load_balancer.get(population, {}).get((MPI.rank, cycle_i), [])
         all_gids = numpy.array(all_gids, dtype="uint32")
         logging.debug("Loading %d cells in rank %d", len(all_gids), MPI.rank)
