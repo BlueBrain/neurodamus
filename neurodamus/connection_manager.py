@@ -596,7 +596,7 @@ class ConnectionManagerBase(object):
             syns_params = syns_params[syns_params['synType'] != syn_type_restrict]
         if len(syns_params) == 0:
             return
-        if SimConfig.cli_options.crash_test:
+        if SimConfig.crash_test_mode:
             cur_conn.add_single(self._cell_manager, syns_params[0], base_id)
         else:
             cur_conn.add_synapses(self._target_manager, syns_params, base_id)
