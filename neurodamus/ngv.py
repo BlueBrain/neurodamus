@@ -1,6 +1,6 @@
 """
 Module which defines and handles Glia Cells and connectivity
-"""
+""" 
 import libsonata
 import logging
 import numpy as np
