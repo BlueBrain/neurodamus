@@ -11,6 +11,7 @@ from .io.sonata_config import ConnectionTypes
 from .io.synapse_reader import SonataReader, SynapseParameters
 from .utils import compat
 from .utils.logging import log_verbose
+from .gj_user_corrections import load_user_modification
 
 
 class GapJunctionConnParameters(SynapseParameters):
@@ -91,6 +92,7 @@ class GapJunctionManager(ConnectionManagerBase):
     def create_connections(self, *_, **_kw):
         """Gap Junctions dont use connection blocks, connect all belonging to target"""
         self.connect_all()
+        load_user_modification(self)
 
     def configure_connections(self, conn_conf):
         """Gap Junctions dont configure_connections"""
