@@ -19,7 +19,7 @@ from .utils.logging import log_verbose
 from .utils.pyutils import append_recarray
 from .morphio_wrapper import MorphIOWrapper
 
-
+ 
 class Astrocyte(BaseCell):
     __slots__ = ('_glut_list', '_secidx2names', '_nseg_warning')
 
