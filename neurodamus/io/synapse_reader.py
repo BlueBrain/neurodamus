@@ -8,7 +8,9 @@ import libsonata
 import numpy as np
 
 from ..core import NeurodamusCore as Nd, MPI
+from ..core import ProgressBarRank0 as ProgressBar
 from ..utils.logging import log_verbose
+from ..utils.pyutils import gen_ranges
 
 
 def _constrained_hill(K_half, y):
@@ -206,7 +208,7 @@ class SonataReader(SynapseReader):
     SYNAPSE_INDEX_NAMES = ("synapse_index",)
     LOOKUP_BY_TARGET_IDS = True  # False to lookup by Source Ids
     Parameters = SynapseParameters  # By default we load synapses
-    EMPTY_COUNT = {}
+    EMPTY_DATA = {}
 
     custom_parameters = {"isec", "ipt", "offset"}
     """Custom parameters are skipped from direct loading and trigger _load_params_custom()"""
@@ -253,10 +255,20 @@ class SonataReader(SynapseReader):
         """
         return self._data[gid][field_name]
 
-    def preload_data(self, ids):
-        """Preload SONATA fields for the specified IDs"""
+    def preload_data(self, gids, minimal_mode=False):
+        """
+        Preload SONATA fields for the specified IDs.
+        Set minimal_mode to True to read a single synapse per connection
+        """
+        # Ensure we dont ask synapses for more than 50 target cells at once
+        CHUNK_SIZE = 50
+        ranges = list(gen_ranges(len(gids), CHUNK_SIZE))
+        for start, end in ProgressBar.iter(ranges, name="Prefetching"):
+            self._preload_data_chunk(gids[start:end], minimal_mode)
+
+    def _preload_data_chunk(self, gids, minimal_mode=False):
         compute_fields = set(("sgid", "tgid") + self.SYNAPSE_INDEX_NAMES)
-        needed_ids = sorted(set(ids) - set(self._data.keys()))
+        needed_ids = sorted(set(gids) - set(self._data.keys()))
 
         def get_edge_and_lookup_gids(needed_ids):
             gids_0based = np.array(needed_ids, dtype="int64") - 1
@@ -311,7 +323,7 @@ class SonataReader(SynapseReader):
         # We nevertheless can skip any base fields
         extra_fields = set(self._extra_fields) - (self.Parameters.all_fields | compute_fields)
         for field in sorted(extra_fields):
-            now_needed_ids = sorted(set(gid for gid in ids if field not in self._data[gid]))
+            now_needed_ids = sorted(set(gid for gid in gids if field not in self._data[gid]))
             if needed_ids != now_needed_ids:
                 needed_ids = now_needed_ids
                 needed_edge_ids, lookup_gids = get_edge_and_lookup_gids(needed_ids)
@@ -417,7 +429,7 @@ class SonataReader(SynapseReader):
                 tgid_counts = {tgt_src_pairs["f1"][j]: counts[j] for j in range(start_i, end_i)}
                 self._counts[tgid] = tgid_counts
 
-        return {tgid: self._counts.get(tgid, self.EMPTY_COUNT) for tgid in tgids}
+        return {tgid: self._counts.get(tgid, self.EMPTY_DATA) for tgid in tgids}
 
 
 class FormatNotSupported(Exception):
