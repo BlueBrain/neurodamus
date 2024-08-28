@@ -19,7 +19,7 @@ from .utils.logging import log_verbose
 from .utils.pyutils import append_recarray
 from .morphio_wrapper import MorphIOWrapper
 
- 
+
 class Astrocyte(BaseCell):
     __slots__ = ('_glut_list', '_secidx2names', '_nseg_warning')
 
@@ -131,16 +131,16 @@ class Astrocyte(BaseCell):
         glut_list = []
         c.geom_nseg_fixed()
         c.geom_nsec()  # To recount all sections
-        
+
         # Insert mechanisms and populate holder lists
         logging.debug("Instantiating NGV cell gid=%d", gid)
-        #print("Instantiating NGV cell gid=%d"% (gid))
-        
+        # print("Instantiating NGV cell gid=%d"% (gid))
+
         nseg_reduce_instance = 0  # temporary field until proper handling of nseg > 1 implemented
 
         for sec in c.all:
-           # print("CCCCCCC")
-#            exit()
+            # print("CCCCCCC")
+            # exit()
             if sec.nseg > 1:
                 nseg_reduce_instance = 1
                 sec.nseg = 1
@@ -148,7 +148,7 @@ class Astrocyte(BaseCell):
             glut = Nd.GlutReceive(sec(0.5), sec=sec)
             Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).cadifus)
             glut_list.append(glut)
-            #print("Appending to glut list")
+            # print("Appending to glut list")
 
         # Endoplasmic reticulum
         c.execute_commands(Astrocyte._er_as_hoc(m))
@@ -276,10 +276,8 @@ class NeuroGlialConnection(Connection):
         n_bindings = 0
         pc = Nd.pc
 
-
         def ustate_event_handler2(syn_gid):
-            return lambda: print("GOOD netcon event 2. Spiking via v-gid: "+str( syn_gid))
-
+            return lambda: print("GOOD netcon event 2. Spiking via v-gid: "+str(syn_gid))
 
         if GlobalConfig.debug_conn:
             if GlobalConfig.debug_conn == [self.tgid]:
@@ -301,11 +299,11 @@ class NeuroGlialConnection(Connection):
             netcon.delay = 0.05
 
             netcon.record(ustate_event_handler2(syn_gid))
-            
+
             self._netcons.append(netcon)
 
             # Soma netcon (last glut_list)
-            #print("[NGV] Conn %s linking synapse id %d to Astrocyte"% (self, syn_gid))
+            # print("[NGV] Conn %s linking synapse id %d to Astrocyte"% (self, syn_gid))
             netcon = pc.gid_connect(syn_gid, glut_list[-1])
             netcon.record(ustate_event_handler2(666))
             netcon.delay = 0.05
@@ -410,7 +408,6 @@ class NeuroGliaConnManager(ConnectionManagerBase):
 
         def ustate_event_handler(tgid, syn_gid):
             return lambda: print(f"[gid={tgid}] Ustate netcon event. Spiking via v-gid:", syn_gid)
-
 
         for conn in base_manager.all_connections():
             syn_objs = conn.synapses
@@ -535,12 +532,12 @@ class GlioVascularManager(ConnectionManagerBase):
                 sec.L = l
                 sec.diam = d
                 # here we just insert the mechanism. Population comes after
-                #print('INSERTING vascouplingB')
-                #logging.info("ADDING vascouplingB")
-           
+                # print('INSERTING vascouplingB')
+                # logging.info("ADDING vascouplingB")
+
                 sec.insert('vascouplingB')
                 sec.insert('cadifus')
-                #sec(0.5).mcd.perimeter = p
+                # sec(0.5).mcd.perimeter = p
                 glut = Nd.GlutReceive(sec(0.5), sec=sec)
                 Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).cadifus)
                 # because soma glut must be the last
