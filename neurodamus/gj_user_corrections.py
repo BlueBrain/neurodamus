@@ -44,8 +44,9 @@ def load_user_modification(gj_manager):
         Mechanisims = sotchastic_mechs
     if remove_channels == 'only_non_stoch':
         Mechanisims = non_sotchastic_mechs
-    logging.info("Removing channels type = " + remove_channels)
-    _perform_remove_channels(node_manager, Mechanisims)
+    if remove_channels:
+        logging.info("Removing channels type = " + remove_channels)
+        _perform_remove_channels(node_manager, Mechanisims)
 
     if 'special_tag' in settings:
         gjc = 0.1
@@ -83,8 +84,7 @@ def load_user_modification(gj_manager):
 
         gjc = settings.get('gjc')
         # all_gids = list(node_manager.getGidListForProcessor())
-        _, SEClamp_current_per_gid = _find_holding_current(node_manager,
-                                                                         settings.get('vc_amp'))
+        SEClamp_current_per_gid = _find_holding_current(node_manager, settings.get('vc_amp'))
         _save_seclamps(SEClamp_current_per_gid, output_dir=SimConfig.output_root)
 
     return holding_ic_per_gid, SEClamp_current_per_gid
@@ -145,8 +145,6 @@ def _load_holding_ic(node_manager, filename, gjc):
             holding_ic_per_gid[gid] = Nd.h.IClamp(0.5, sec=node_manager.getCell(gid+offset).soma[0])
             holding_ic_per_gid[gid].dur = 9e9  # this will continue also after the BlueConfig holding stopes
             holding_ic_per_gid[gid].amp = holding_per_gid['holding_per_gid'][str(gjc)][agid][()]
-
-    logging.info("Finish manual_MEComboInfoFile")
     return holding_ic_per_gid
 
 
@@ -168,7 +166,7 @@ def _find_holding_current(node_manager, filename):
             SEClamp_current_per_gid[gid].record(SEClmap_per_gid[gid]._ref_i)
     v_per_gid.close()
     logging.info("Finish find_holding_current")
-    return SEClmap_per_gid, SEClamp_current_per_gid
+    return SEClamp_current_per_gid
 
 def _save_seclamps(SEClamp_current_per_gid, output_dir):
     logging.info('Saving SEClamp Data')
