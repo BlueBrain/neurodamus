@@ -223,7 +223,7 @@ class PointCell:
     CellRef = property(lambda self: self)
     CCell = property(lambda self: self)
     nSecAll = property(lambda _self: 1)
-    all = property(lambda self: [self.soma])
+    all = property(lambda self: self.soma)
     input_resistance = property(lambda _self: 1)
 
     def connect2target(self, target_pp=None):

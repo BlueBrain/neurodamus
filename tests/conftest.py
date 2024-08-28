@@ -1,12 +1,18 @@
 import pytest
 from pathlib import Path
 
-USECASE3 = Path(__file__).parent.absolute() / "simulations" / "usecase3"
+SIM_DIR = Path(__file__).parent.absolute() / "simulations"
+USECASE3 = SIM_DIR / "usecase3"
 
 
 @pytest.fixture(scope="session")
 def rootdir(request):
     return request.config.rootdir
+
+
+@pytest.fixture(scope="session", name="SIM_DIR")
+def sim_data_path():
+    return SIM_DIR
 
 
 @pytest.fixture(scope="session", name="USECASE3")
