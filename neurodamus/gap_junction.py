@@ -67,6 +67,8 @@ class GapJunctionManager(ConnectionManagerBase):
         super().__init__(gj_conf, target_manager, cell_manager, src_cell_manager, **kw)
         self._src_target_filter = target_manager.get_target(cell_manager.circuit_target,
                                                             src_cell_manager.population_name)
+        self.holding_ic_per_gid = None
+        self.SEClamp_current_per_gid = None
 
     def open_synapse_file(self, synapse_file, *args, **kw):
         super().open_synapse_file(synapse_file, *args, **kw)
@@ -92,7 +94,7 @@ class GapJunctionManager(ConnectionManagerBase):
     def create_connections(self, *_, **_kw):
         """Gap Junctions dont use connection blocks, connect all belonging to target"""
         self.connect_all()
-        load_user_modification(self)
+        self.holding_ic_per_gid, self.SEClamp_current_per_gid = load_user_modification(self)
 
     def configure_connections(self, conn_conf):
         """Gap Junctions dont configure_connections"""
