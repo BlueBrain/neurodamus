@@ -303,7 +303,7 @@ class NeuroGlialConnection(Connection):
             self._netcons.append(netcon)
 
             # Soma netcon (last glut_list)
-            print("[NGV] Conn %s linking synapse id %d to Astrocyte" % (self, syn_gid))
+            logging.debug("[NGV] Conn %s linking synapse id %d to Astrocyte" % (self, syn_gid))
             netcon = pc.gid_connect(syn_gid, glut_list[-1])
             netcon.record(ustate_event_handler2(666))
             netcon.delay = 0.05
