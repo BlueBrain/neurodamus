@@ -137,7 +137,6 @@ class Astrocyte(BaseCell):
 
         # Insert mechanisms and populate holder lists
         logging.debug("Instantiating NGV cell gid=%d", gid)
-        print("Instantiating NGV cell gid=%d" % (gid))
 
         nseg_reduce_instance = 0  # temporary field until proper handling of nseg > 1 implemented
 
@@ -285,7 +284,7 @@ class NeuroGlialConnection(Connection):
                 logging.debug("Finalizing conn %s. N params: %d", self, len(self._synapse_params))
             elif GlobalConfig.debug_conn == [self.sgid, self.tgid]:
                 logging.debug("Finalizing conn %s. Params:\n%s", self, self._synapse_params)
-        print("Finalizing conn %s. " % (self))
+
         for syn_params in self._synapse_params:
             if USE_COMPAT_SYNAPSE_ID:
                 syn_gid = 1_000_000 + syn_params.synapse_id
