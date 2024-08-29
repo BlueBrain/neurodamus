@@ -469,7 +469,7 @@ class NeuroGliaConnManager(ConnectionManagerBase):
 
 
 class GlioVascularManager(ConnectionManagerBase):
-    CONNECTIONS_TYPE = ConnectionTypes.NeuroGlial
+    CONNECTIONS_TYPE = ConnectionTypes.GlioVascular
     InnerConnectivityCls = None  # No synapses
 
     def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
