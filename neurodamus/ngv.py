@@ -62,6 +62,7 @@ class Astrocyte(BaseCell):
                 dend[3] { er_area_mcd = 0.98 er_vol_mcd = 1.1 }
         '''
         cmds = []
+#these parameters will be used in the near future by the model but temporarily disabled        
 #        cmds.extend(("{} {{ er_area_mcd = {:g} er_volume_mcd = {:g} }}".format(
 #            morph_wrap.section_index2name_dict[sec_index],
 #            er_area,
@@ -114,6 +115,7 @@ class Astrocyte(BaseCell):
                 dend[0] { perimeter_mcd = 32 cross_sectional_area_mcd = 33}
         """
         cmds = []
+#these parameters will be used in the near future by the model but temporarily disabled
 #        cmds.extend(("{} {{ perimeter_mcd = {:g} cross_sectional_area_mcd = {:g} }}".format(
 #            morph_wrap.section_index2name_dict[morph_sec_index + 1],
 #            sec_perimeter,
@@ -134,13 +136,12 @@ class Astrocyte(BaseCell):
 
         # Insert mechanisms and populate holder lists
         logging.debug("Instantiating NGV cell gid=%d", gid)
-        # print("Instantiating NGV cell gid=%d"% (gid))
+        print("Instantiating NGV cell gid=%d"% (gid))
 
         nseg_reduce_instance = 0  # temporary field until proper handling of nseg > 1 implemented
 
         for sec in c.all:
-            # print("CCCCCCC")
-            # exit()
+   
             if sec.nseg > 1:
                 nseg_reduce_instance = 1
                 sec.nseg = 1
@@ -148,7 +149,6 @@ class Astrocyte(BaseCell):
             glut = Nd.GlutReceive(sec(0.5), sec=sec)
             Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).cadifus)
             glut_list.append(glut)
-            # print("Appending to glut list")
 
         # Endoplasmic reticulum
         c.execute_commands(Astrocyte._er_as_hoc(m))
@@ -172,6 +172,7 @@ class Astrocyte(BaseCell):
         if not hasattr(sec(0.5), 'cadfifus'):
             logging.info("No cadifus mechanism found")
             return
+#the following lines are useful for debugging 
 #        logging.info("{}: \tP={:.4g}\tX-Area={:.4g}\tER[area={:.4g}\tvol={:.4g}]".format(
 #            sec,
 #            sec(0.5).mcd.perimeter,
@@ -303,7 +304,7 @@ class NeuroGlialConnection(Connection):
             self._netcons.append(netcon)
 
             # Soma netcon (last glut_list)
-            # print("[NGV] Conn %s linking synapse id %d to Astrocyte"% (self, syn_gid))
+            print("[NGV] Conn %s linking synapse id %d to Astrocyte"% (self, syn_gid))
             netcon = pc.gid_connect(syn_gid, glut_list[-1])
             netcon.record(ustate_event_handler2(666))
             netcon.delay = 0.05
@@ -532,8 +533,8 @@ class GlioVascularManager(ConnectionManagerBase):
                 sec.L = l
                 sec.diam = d
                 # here we just insert the mechanism. Population comes after
-                # print('INSERTING vascouplingB')
-                # logging.info("ADDING vascouplingB")
+
+                logging.info("ADDING vascouplingB")
 
                 sec.insert('vascouplingB')
                 sec.insert('cadifus')
