@@ -94,7 +94,6 @@ class GapJunctionManager(ConnectionManagerBase):
     def create_connections(self, *_, **_kw):
         """Gap Junctions dont use connection blocks, connect all belonging to target"""
         self.connect_all()
-        self.holding_ic_per_gid, self.SEClamp_current_per_gid = load_user_modification(self)
 
     def configure_connections(self, conn_conf):
         """Gap Junctions dont configure_connections"""
@@ -102,6 +101,8 @@ class GapJunctionManager(ConnectionManagerBase):
 
     def finalize(self, *_, **_kw):
         super().finalize(conn_type="Gap-Junctions")
+        self.holding_ic_per_gid, self.SEClamp_current_per_gid = load_user_modification(self)
+
 
     def _finalize_conns(self, final_tgid, conns, *_, **_kw):
         metype = self._cell_manager.get_cell(final_tgid)
