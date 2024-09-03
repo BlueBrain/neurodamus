@@ -3,6 +3,7 @@ Main module for handling and instantiating synaptical connections
 """
 from __future__ import absolute_import
 import numpy as np
+import logging
 from os import path as ospath
 
 from .connection_manager import ConnectionManagerBase
@@ -11,7 +12,8 @@ from .io.sonata_config import ConnectionTypes
 from .io.synapse_reader import SonataReader, SynapseParameters
 from .utils import compat
 from .utils.logging import log_verbose
-from .gj_user_corrections import load_user_modification
+from .gj_user_corrections import load_user_modifications
+from .core.configuration import SimConfig
 
 
 class GapJunctionConnParameters(SynapseParameters):
@@ -101,8 +103,10 @@ class GapJunctionManager(ConnectionManagerBase):
 
     def finalize(self, *_, **_kw):
         super().finalize(conn_type="Gap-Junctions")
-        self.holding_ic_per_gid, self.SEClamp_current_per_gid = load_user_modification(self)
-
+        if self.cell_manager.population_name == \
+                SimConfig.beta_features.get("gapjunction_target_population"):
+            logging.info("Load user modification on %s", self)
+            self.holding_ic_per_gid, self.SEClamp_current_per_gid = load_user_modifications(self)
 
     def _finalize_conns(self, final_tgid, conns, *_, **_kw):
         metype = self._cell_manager.get_cell(final_tgid)
