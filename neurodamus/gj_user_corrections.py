@@ -21,6 +21,7 @@ stochastic_mechs = ['StochKv', 'StochKv2', 'StochKv3']
 def load_user_modifications(gj_manager):
     node_manager = gj_manager.cell_manager
     settings = SimConfig.beta_features
+    gjc = settings.get('gjc')
 
     # deterministic_StochKv
     if settings.get('determanisitc_stoch'):
@@ -29,7 +30,6 @@ def load_user_modifications(gj_manager):
 
     # update gap conductance
     if settings.get('procedure_type') in ['validation_sim', 'find_holding_current']:
-        gjc = settings.get('gjc')
         process_gap_conns = _update_conductance(gjc, gj_manager)
         all_ranks_total = MPI.allreduce(process_gap_conns, MPI.SUM)
         logging.info(f"Set GJc = {gjc} for {int(all_ranks_total)} gap synapses")
@@ -73,11 +73,9 @@ def load_user_modifications(gj_manager):
     SEClamp_current_per_gid = {}
     if settings.get('procedure_type') == 'find_holding_current' \
             and isinstance(settings.get('vc_amp'), str):
-        logging.info("Find_holding_current")
-        logging.info(f"-voltage file - {settings['vc_amp']}")
-
-        if settings.get('disable_holding') is False:
-            logging.info("Doing V_clamp and not disable holding! A bit strange, think about it")
+        logging.info("Find_holding_current - voltage file - {settings['vc_amp']}")
+        if not settings.get('disable_holding'):
+            logging.warning("Doing V_clamp and not disable holding!")
 
         SEClamp_current_per_gid = _find_holding_current(node_manager, settings.get('vc_amp'))
         _save_seclamps(SEClamp_current_per_gid, output_dir=SimConfig.output_root)
@@ -166,7 +164,5 @@ def _save_seclamps(SEClamp_current_per_gid, output_dir):
     SEClamp_current_per_gid_a = {}
     for gid in SEClamp_current_per_gid:
         SEClamp_current_per_gid_a[gid] = np.array(SEClamp_current_per_gid[gid])
-    logging.info('to array finished')
     pickle.dump(SEClamp_current_per_gid_a,
                 open(f'{output_dir}/data_for_host_{MPI.rank}.p', 'wb'))
-    logging.info('Finish Saving Data')
