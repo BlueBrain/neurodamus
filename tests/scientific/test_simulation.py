@@ -3,6 +3,7 @@ import numpy.testing as npt
 import os
 import pytest
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 
@@ -117,3 +118,41 @@ def test_v5_gap_junction():
     assert spikes[1].size() == 2
     assert spikes[1][0] == 1
     assert spikes[0][0] == pytest.approx(21.025)
+
+
+def test_v5_gap_junction_corrections(capsys):
+    import json
+    from neurodamus import Neurodamus
+    from neurodamus.core.configuration import SimConfig
+
+    # Add beta_features section for gj user corrections
+    config_file = str(SIM_DIR / "v5_gapjunctions" / "simulation_config.json")
+    with open(config_file) as f:
+        sim_config_data = json.load(f)
+    sim_config_data["output"]["output_dir"] = "$CURRENT_DIR/output_gj_corrections"
+    sim_config_data["beta_features"] = {
+        "gapjunction_target_population": "default",
+        "determanisitc_stoch": True,
+        "procedure_type": "validation_sim",
+        "gjc": 0.2,
+        "load_g_pas_file": "/gpfs/bbp.cscs.ch/project/proj55/amsalem/gap_junctions/circ19_11_2019_gjs_19_20_20/rm_correction/Circ_mc2_Rt_Remove_ch_all_Det_stoch_True_Dis_holding_False_Correc_type_impedance_tool_Cm0p01_Num_iter_10/num_0/g_pas_passive.hdf5", # noqa
+        "manual_MEComboInfo_file": "/gpfs/bbp.cscs.ch/project/proj55/amsalem/gap_junctions/circ19_11_2019_gjs_19_20_20_new_holding/find_holding_current/vc_ampFile/Circ_mc2_Rt_Remove_ch_none_Det_stoch_True_Dis_holding_False_gjc0p2_Change_mecomb_False_manual_MEComboInfoFile_False_Load_g_pas_True_Correc_iter_loadlast/num_0/holding_per_gid.hdf5" # noqa
+    }
+    with NamedTemporaryFile("w", dir=str(SIM_DIR / "v5_gapjunctions"),
+                            suffix='.json', delete=False) as tmp_config:
+        json.dump(sim_config_data, tmp_config, indent=2)
+
+    Neurodamus(tmp_config.name, disable_reports=True)
+    captured = capsys.readouterr()
+    assert SimConfig.beta_features.get("gapjunction_target_population") == "default"
+    assert "Load user modification" in captured.out
+    assert SimConfig.beta_features.get("determanisitc_stoch")
+    assert "Set deterministic = 1 for StochKv" in captured.out
+    assert SimConfig.beta_features.get("gjc") == 0.2
+    assert "Set GJc = 0.2 for 2 gap synapses" in captured.out
+    assert SimConfig.beta_features.get("load_g_pas_file")
+    assert "Update g_pas to fit 0.2 - file" in captured.out
+    assert SimConfig.beta_features.get("manual_MEComboInfo_file")
+    assert "Load holding_ic from manual_MEComboInfoFile" in captured.out
+
+    os.unlink(tmp_config.name)
