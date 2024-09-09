@@ -1,4 +1,8 @@
-# this script will either set the stage for current injection or load the g_pas_conduction_search.py
+# @file gj_user_corrections.py
+# @brief Script for loading user corrections on gap junction connectivity
+# @author Oren Amsalem, Weina Ji
+# @date 2024-09-09
+
 
 import logging
 import numpy as np
