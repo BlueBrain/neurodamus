@@ -223,7 +223,7 @@ jobs:
       run: |
         . ./venv/bin/activate
         pip install -r tests/requirements.txt
-        pip install sphinx<5.1.0 sphinx-bluebrain-theme
+        pip install "sphinx<5.1.0" sphinx-bluebrain-theme
 
     - name: test-unit
       run: |
