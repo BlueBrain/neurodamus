@@ -156,7 +156,7 @@ jobs:
           -DCMAKE_C_COMPILER=gcc \
           -DCMAKE_CXX_COMPILER=g++ \
           -DCORENRN_ENABLE_REPORTING=ON \
-          -DCMAKE_PREFIX_PATH=${{ env.SONATAREPORT_DIR }}
+          -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR
         cmake --build nrn/build --parallel
         cmake --build nrn/build --target install
 
