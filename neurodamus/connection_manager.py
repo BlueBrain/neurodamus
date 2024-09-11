@@ -638,7 +638,6 @@ class ConnectionManagerBase(object):
             gids: Use given gids, instead of the circuit target cells. Default: None
             show_progress: Display a progress bar as tgids are processed
         """
-        CRASH_TEST_MODE_MAX_CONNS_CELL = 3
         crash_test_mode = SimConfig.cli_options.crash_test
         if src_target and src_target.is_void() or dst_target and dst_target.is_void():
             return
@@ -664,17 +663,12 @@ class ConnectionManagerBase(object):
         # it might lose some readability.
         # For each tgid we obtain the synapse parameters as a record array. We then split it,
         # without copying, yielding ranges (views) of it.
-
         gids = ProgressBar.iter(gids, name="Loading") if show_progress else gids
 
         for base_tgid in gids:
             tgid = base_tgid + tgid_offset
             syns_params = self._synapse_reader.get_synapse_parameters(base_tgid)
             logging.debug("GID %d Syn count: %d", tgid, len(syns_params))
-
-            if crash_test_mode:
-                # In large simulations some cells may have thousands of connections. Limit it!
-                syns_params = syns_params[:CRASH_TEST_MODE_MAX_CONNS_CELL]
 
             if self._load_offsets:
                 syn_index = self._synapse_reader.get_property(base_tgid, "synapse_index")

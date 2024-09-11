@@ -27,6 +27,7 @@ def test_crash_test_cell_loading(SIM_DIR, tmp_path):
     n = Node(str(new_config_path), {"crash_test": True})
     n.load_targets()
     n.create_cells()
+    n.create_synapses()
 
     cell_manager: CellDistributor = n.circuits.get_node_manager("default")
     assert len(cell_manager.cells) == 18750
