@@ -591,11 +591,15 @@ class ConnectionManagerBase(object):
             cur_conn.locked = True
 
     # -
-    def _add_synapses(self, cur_conn, syns_params, syn_type_restrict=None, base_id=0):
+    def _add_synapses(self, cur_conn: Connection, syns_params, syn_type_restrict=None, base_id=0):
         if syn_type_restrict:
             syns_params = syns_params[syns_params['synType'] != syn_type_restrict]
-
-        cur_conn.add_synapses(self._target_manager, syns_params, base_id)
+        if len(syns_params) == 0:
+            return
+        if SimConfig.crash_test_mode:
+            cur_conn.add_single(self._cell_manager, syns_params[0], base_id)
+        else:
+            cur_conn.add_synapses(self._target_manager, syns_params, base_id)
 
     # -
     def get_population_offsets(self):

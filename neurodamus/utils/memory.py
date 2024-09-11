@@ -462,8 +462,8 @@ class DryRunStats:
     @run_only_rank0
     def distribute_cells(
         self,
-        num_ranks,
-        cycles=None,
+        num_ranks: int,
+        cycles: int = 1,
         metype_file=None,
         batch_size=10
     ) -> Tuple[dict, dict, dict]:
@@ -487,8 +487,6 @@ class DryRunStats:
             metype_memory_usage (dict): A dictionary where keys are METype IDs
                                         and values are the memory load of each METype.
         """
-        if not cycles:
-            cycles = 1
 
         logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
 

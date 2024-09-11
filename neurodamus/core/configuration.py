@@ -78,6 +78,7 @@ class CliOptions(ConfigT):
     num_target_ranks = None
     keep_axon = False
     coreneuron_direct_mode = False
+    crash_test = False
 
     # Restricted Functionality support, mostly for testing
 
@@ -238,6 +239,7 @@ class _SimConfig(object):
     dry_run = False
     num_target_ranks = None
     coreneuron_direct_mode = False
+    crash_test_mode = False
 
     _validators = []
     _requisitors = []
@@ -273,6 +275,7 @@ class _SimConfig(object):
         cls.modifications = compat.Map(cls._config_parser.parsedModifications or {})
         cls.cli_options = CliOptions(**(cli_options or {}))
         cls.dry_run = cls.cli_options.dry_run
+        cls.crash_test_mode = cls.cli_options.crash_test
         cls.num_target_ranks = cls.cli_options.num_target_ranks
         # change simulator by request before validator and init hoc config
         if cls.cli_options.simulator:
