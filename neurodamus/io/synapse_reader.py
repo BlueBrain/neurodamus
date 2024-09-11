@@ -272,8 +272,6 @@ class SonataReader(SynapseReader):
     def _preload_data_chunk(self, gids, minimal_mode=False):
         """Preload all synapses for a number of gids, respecting Parameters and _extra_fields"""
         # NOTE: to disambiguate, gids are 1-based cell ids, while node_ids are 0-based sonata ids
-        if not len(gids):
-            return
         compute_fields = set(("sgid", "tgid") + self.SYNAPSE_INDEX_NAMES)
         orig_needed_gids_set = set(gids) - set(self._data.keys())
         needed_gids = sorted(orig_needed_gids_set)
