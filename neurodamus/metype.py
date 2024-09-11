@@ -217,6 +217,8 @@ class PointCell:
         self.soma = [Nd.Section(name="soma[0]", cell=self)]
         self.exc_mini_frequency = float(cell_info.exc_mini_frequency)
         self.inh_mini_frequency = float(cell_info.inh_mini_frequency)
+        self._threshold_current = float(cell_info.threshold_current)
+        self._hypAmp_current = float(cell_info.holding_current)
         self.synHelperList = []
         self.synlist = []
 
@@ -225,6 +227,8 @@ class PointCell:
     nSecAll = property(lambda _self: 1)
     all = property(lambda self: self.soma)
     input_resistance = property(lambda _self: 1)
+    getThreshold = lambda self: self._threshold_current
+    getHypAmp = lambda self: self._hypAmp_current
 
     def connect2target(self, target_pp=None):
         soma_sec = self.soma[0]
