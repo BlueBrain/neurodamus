@@ -63,14 +63,15 @@ class Astrocyte(BaseCell):
                 dend[3] { er_area_mcd = 0.98 er_vol_mcd = 1.1 }
         '''
         cmds = []
-        cmds.extend(("{} {{ er_area_mcd = {:g} er_volume_mcd = {:g} }}".format(
-            morph_wrap.section_index2name_dict[sec_index],
-            er_area,
-            er_vol)
-            for sec_index, er_area, er_vol in zip(
-            morph_wrap.morph.endoplasmic_reticulum.section_indices,
-            morph_wrap.morph.endoplasmic_reticulum.surface_areas,
-            morph_wrap.morph.endoplasmic_reticulum.volumes)))
+# these parameters will be used in the near future by the model but temporarily disabled
+#        cmds.extend(("{} {{ er_area_mcd = {:g} er_volume_mcd = {:g} }}".format(
+#            morph_wrap.section_index2name_dict[sec_index],
+#            er_area,
+#            er_vol)
+#            for sec_index, er_area, er_vol in zip(
+#            morph_wrap.morph.endoplasmic_reticulum.section_indices,
+#            morph_wrap.morph.endoplasmic_reticulum.surface_areas,
+#            morph_wrap.morph.endoplasmic_reticulum.volumes)))
         return cmds
 
     @staticmethod
@@ -115,12 +116,13 @@ class Astrocyte(BaseCell):
                 dend[0] { perimeter_mcd = 32 cross_sectional_area_mcd = 33}
         """
         cmds = []
-        cmds.extend(("{} {{ perimeter_mcd = {:g} cross_sectional_area_mcd = {:g} }}".format(
-            morph_wrap.section_index2name_dict[morph_sec_index + 1],
-            sec_perimeter,
-            sec_xsect_area)
-            for morph_sec_index, sec_perimeter, sec_xsect_area in
-            (Astrocyte._mcd_section_parameters(sec) for sec in morph_wrap.morph.sections)))
+# these parameters will be used in the near future by the model but temporarily disabled
+#        cmds.extend(("{} {{ perimeter_mcd = {:g} cross_sectional_area_mcd = {:g} }}".format(
+#            morph_wrap.section_index2name_dict[morph_sec_index + 1],
+#            sec_perimeter,
+#            sec_xsect_area)
+#            for morph_sec_index, sec_perimeter, sec_xsect_area in
+#            (Astrocyte._mcd_section_parameters(sec) for sec in morph_wrap.morph.sections)))
         return cmds
 
     @staticmethod
@@ -135,15 +137,16 @@ class Astrocyte(BaseCell):
 
         # Insert mechanisms and populate holder lists
         logging.debug("Instantiating NGV cell gid=%d", gid)
+
         nseg_reduce_instance = 0  # temporary field until proper handling of nseg > 1 implemented
 
         for sec in c.all:
             if sec.nseg > 1:
                 nseg_reduce_instance = 1
                 sec.nseg = 1
-            sec.insert("mcd")
+            sec.insert("cadifus")
             glut = Nd.GlutReceive(sec(0.5), sec=sec)
-            Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).mcd)
+            Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).cadifus)
             glut_list.append(glut)
 
         # Endoplasmic reticulum
@@ -158,23 +161,24 @@ class Astrocyte(BaseCell):
 
         # Soma receiver must be last element in the glut_list
         soma = c.soma[0]
-        soma.insert("mcd")
+        soma.insert("cadifus")
         glut = Nd.GlutReceiveSoma(soma(0.5), sec=soma)
-        Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).mcd)
+        Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).cadifus)
         glut_list.append(glut)
         return c, glut_list, m.section_index2name_dict, nseg_reduce_instance
 
     def _show_mcd(sec):
-        if not hasattr(sec(0.5), 'mcd'):
-            logging.info("No mcd mechanism found")
+        if not hasattr(sec(0.5), 'cadfifus'):
+            logging.info("No cadifus mechanism found")
             return
-        logging.info("{}: \tP={:.4g}\tX-Area={:.4g}\tER[area={:.4g}\tvol={:.4g}]".format(
-            sec,
-            sec(0.5).mcd.perimeter,
-            sec(0.5).mcd.cross_sectional_area,
-            sec(0.5).mcd.er_area,
-            sec(0.5).mcd.er_volume)
-        )
+# the following lines are useful for debugging
+#        logging.info("{}: \tP={:.4g}\tX-Area={:.4g}\tER[area={:.4g}\tvol={:.4g}]".format(
+#            sec,
+#            sec(0.5).mcd.perimeter,
+#            sec(0.5).mcd.cross_sectional_area,
+#            sec(0.5).mcd.er_area,
+#            sec(0.5).mcd.er_volume)
+#        )
 
     def set_pointers(self):
         glut_list = self._glut_list
@@ -184,10 +188,10 @@ class Astrocyte(BaseCell):
         for sec in c.all:
             glut = glut_list[index]
             index += 1
-            Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).mcd)
+            Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).cadifus)
         soma = c.soma[0]
         glut = glut_list[index]
-        Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).mcd)
+        Nd.setpointer(glut._ref_glut, 'glu2', soma(0.5).cadifus)
 
     @property
     def glut_list(self) -> list:
@@ -272,6 +276,9 @@ class NeuroGlialConnection(Connection):
         n_bindings = 0
         pc = Nd.pc
 
+        def ustate_event_handler2(syn_gid):
+            return lambda: print("GOOD netcon event 2. Spiking via v-gid: "+str(syn_gid))
+
         if GlobalConfig.debug_conn:
             if GlobalConfig.debug_conn == [self.tgid]:
                 logging.debug("Finalizing conn %s. N params: %d", self, len(self._synapse_params))
@@ -290,11 +297,15 @@ class NeuroGlialConnection(Connection):
             glut_obj = glut_list[int(syn_params.astrocyte_section_id)]
             netcon = pc.gid_connect(syn_gid, glut_obj)
             netcon.delay = 0.05
+
+            netcon.record(ustate_event_handler2(syn_gid))
+
             self._netcons.append(netcon)
 
             # Soma netcon (last glut_list)
             logging.debug("[NGV] Conn %s linking synapse id %d to Astrocyte", self, syn_gid)
             netcon = pc.gid_connect(syn_gid, glut_list[-1])
+            netcon.record(ustate_event_handler2(666))
             netcon.delay = 0.05
             self._netcons.append(netcon)
 
@@ -521,11 +532,14 @@ class GlioVascularManager(ConnectionManagerBase):
                 sec.L = l
                 sec.diam = d
                 # here we just insert the mechanism. Population comes after
+
+                logging.info("ADDING vascouplingB")
+
                 sec.insert('vascouplingB')
-                sec.insert('mcd')
-                sec(0.5).mcd.perimeter = p
+                sec.insert('cadifus')
+                # sec(0.5).mcd.perimeter = p
                 glut = Nd.GlutReceive(sec(0.5), sec=sec)
-                Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).mcd)
+                Nd.setpointer(glut._ref_glut, 'glu2', sec(0.5).cadifus)
                 # because soma glut must be the last
                 astrocyte._glut_list.insert(len(astrocyte._glut_list)-1, glut)
                 exec('parent_sec = astrocyte.CellRef.{}; sec.connect(parent_sec)'.format(
