@@ -221,6 +221,7 @@ jobs:
         echo "HOC_LIBRARY_PATH=$HOC_LIBRARY_PATH" >> $GITHUB_ENV;
         echo "CORENEURONLIB=$CORENEURONLIB" >> $GITHUB_ENV;
         echo "NRNMECH_LIB_PATH=$NRNMECH_LIB_PATH" >> $GITHUB_ENV;
+        echo "NEURODAMUS_PYTHON=$NEURODAMUS_PYTHON" >> $GITHUB_ENV;
 
         which special
 
