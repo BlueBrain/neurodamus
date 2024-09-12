@@ -180,6 +180,7 @@ jobs:
 
     - name: Build neocortex models
       run: |
+        . ./venv/bin/activate
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
         export PATH=$(pwd)/nrn/build/install/bin:$PATH
         # Clone neurodamus-models repository
