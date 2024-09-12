@@ -135,8 +135,8 @@ def test_v5_gap_junction_corrections(capsys):
         "determanisitc_stoch": True,
         "procedure_type": "validation_sim",
         "gjc": 0.2,
-        "load_g_pas_file": "/gpfs/bbp.cscs.ch/project/proj55/amsalem/gap_junctions/circ19_11_2019_gjs_19_20_20/rm_correction/Circ_mc2_Rt_Remove_ch_all_Det_stoch_True_Dis_holding_False_Correc_type_impedance_tool_Cm0p01_Num_iter_10/num_0/g_pas_passive.hdf5", # noqa
-        "manual_MEComboInfo_file": "/gpfs/bbp.cscs.ch/project/proj55/amsalem/gap_junctions/circ19_11_2019_gjs_19_20_20_new_holding/find_holding_current/vc_ampFile/Circ_mc2_Rt_Remove_ch_none_Det_stoch_True_Dis_holding_False_gjc0p2_Change_mecomb_False_manual_MEComboInfoFile_False_Load_g_pas_True_Correc_iter_loadlast/num_0/holding_per_gid.hdf5" # noqa
+        "load_g_pas_file": "$CURRENT_DIR/test_g_pas_passive.hdf5",
+        "manual_MEComboInfo_file": "$CURRENT_DIR/test_holding_per_gid.hdf5"
     }
     with NamedTemporaryFile("w", dir=str(SIM_DIR / "v5_gapjunctions"),
                             suffix='.json', delete=False) as tmp_config:
