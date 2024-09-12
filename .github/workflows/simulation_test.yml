@@ -190,6 +190,18 @@ jobs:
         cp neurodamus/data/mod/*.mod tests/share/mod/
         ./docker/build_neurodamus.sh tests/share/mod
 
+        # Build models
+        DATADIR=$(python -c "import neurodamus; from pathlib import Path; print(Path(neurodamus.__file__).parent / 'data')")
+        cmake -B neurodamus-models/build -S neurodamus-models/ \
+          -DCMAKE_INSTALL_PREFIX=$PWD/neurodamus-models/install \
+          -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
+          -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR \
+          -DNEURODAMUS_CORE_DIR=${DATADIR} \
+          -DNEURODAMUS_MECHANISMS=neocortex
+        cmake --build neurodamus-models/build
+        cmake --install neurodamus-models/build
+        echo "NEURODAMUS_NEOCORTEX_ROOT=$(pwd)/neurodamus-models/install" >> $GITHUB_ENV;
+
     - name: Example run
       run: |
         . ./venv/bin/activate
