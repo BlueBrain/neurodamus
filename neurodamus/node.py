@@ -381,7 +381,6 @@ class Node:
             MPI.barrier()
 
             if file_exists:
-                logging.warning("calling import_allocation_stats from compute_load_balance")
                 alloc = import_allocation_stats(filename, self._cycle_i)
             else:
                 logging.warning("Allocation file not found. Generating on-the-fly.")
@@ -391,7 +390,6 @@ class Node:
                 cell_distributor.load_nodes(None, loader_opts={"load_mode": "load_nodes_metype",
                                                                "dry_run_stats": self._dry_run_stats}
                                             )
-                logging.warning("calling distribute_cells_with_validation from compute_load_balance")
                 alloc, _, _ = self._dry_run_stats.distribute_cells_with_validation(
                     MPI.size,
                     SimConfig.modelbuilding_steps,
@@ -510,7 +508,6 @@ class Node:
         if SimConfig.dry_run:
             self._dry_run_stats.collect_all_mpi()
             self._dry_run_stats.export_cell_memory_usage()
-            logging.warning("calling estimate_cell_memory from create_cells")
             self._dry_run_stats.estimate_cell_memory()
 
         # Final bits after we have all cell managers
@@ -1813,7 +1810,6 @@ class Neurodamus(Node):
             ranks = self._dry_run_stats.get_num_target_ranks(SimConfig.num_target_ranks)
             self._dry_run_stats.collect_all_mpi()
             try:
-                logging.warning("Calling distribute_cells_with_validation from .run")
                 self._dry_run_stats.distribute_cells_with_validation(ranks,
                                                                      SimConfig.modelbuilding_steps)
             except RuntimeError as e:
