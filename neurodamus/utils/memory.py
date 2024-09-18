@@ -233,7 +233,6 @@ def import_allocation_stats(filename, cycle_i=0) -> dict:
     """
     Import allocation dictionary from serialized pickle file.
     """
-    global _alloc_cache
 
     def convert_to_standard_types(obj):
         """Converts an object containing defaultdicts of Vectors to standard Python types."""
@@ -242,9 +241,10 @@ def import_allocation_stats(filename, cycle_i=0) -> dict:
             result[population] = {
                 key: np.array(vector)
                 for key, vector in vectors.items()
-                if key[1] == cycle_i and key[0] == MPI.rank}
+                if key[0] == MPI.rank}
         return result
 
+    global _alloc_cache
     if _alloc_cache is None:
         logging.warning("Loading allocation stats from %s...", filename)
         with gzip.open(filename, 'rb') as f:
@@ -253,7 +253,16 @@ def import_allocation_stats(filename, cycle_i=0) -> dict:
     else:
         logging.warning("Using cached allocation stats.")
 
-    return _alloc_cache
+    # Filter the cached data based on the cycle index
+    filtered_alloc = {}
+    for population, vectors in _alloc_cache.items():
+        filtered_alloc[population] = {
+            key: vector
+            for key, vector in vectors.items()
+            if key[1] == cycle_i
+        }
+
+    return filtered_alloc
 
 
 @run_only_rank0
