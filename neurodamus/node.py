@@ -398,19 +398,6 @@ class Node:
             for pop, ranks in alloc.items():
                 for rank, gids in ranks.items():
                     logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
-            if MPI.rank == 0:
-                unique_ranks = set(
-                    rank[0] if isinstance(rank, tuple) else rank
-                    for pop in alloc.values()
-                    for rank in pop.keys()
-                )
-                logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))
-                if MPI.size != len(unique_ranks):
-                    raise ConfigurationError(
-                        "The number of ranks in the allocation file is different from the number "
-                        "of ranks in the current run. The allocation file was created with a "
-                        "different number of ranks."
-                    )
             return alloc
 
         # Build load balancer as per requested options
