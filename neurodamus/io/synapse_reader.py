@@ -260,8 +260,8 @@ class SonataReader(SynapseReader):
         Preload SONATA fields for the specified IDs.
         Set minimal_mode to True to read a single synapse per connection
         """
-        # Ensure we dont ask synapses for more than 50 target cells at once
-        CHUNK_SIZE = 50
+        # Ensure we dont ask synapses for more than 1000 target cells at once
+        CHUNK_SIZE = 1000
         if len(gids) <= CHUNK_SIZE:
             return self._preload_data_chunk(gids, minimal_mode)
 
