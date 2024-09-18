@@ -229,7 +229,7 @@ def import_metype_memory_usage(memory_per_metype_file):
     return memory_per_metype
 
 
-def import_allocation_stats(filename, cycle_i=0) -> dict:
+def import_allocation_stats(filename, cycle_i=0, ignore_cache=False) -> dict:
     """
     Import allocation dictionary from serialized pickle file.
     """
@@ -245,7 +245,7 @@ def import_allocation_stats(filename, cycle_i=0) -> dict:
         return result
 
     global _alloc_cache
-    if _alloc_cache is None:
+    if _alloc_cache is None or ignore_cache:
         logging.warning("Loading allocation stats from %s...", filename)
         with gzip.open(filename, 'rb') as f:
             data = pickle.load(f)
