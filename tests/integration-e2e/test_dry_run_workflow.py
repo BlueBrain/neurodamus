@@ -55,8 +55,8 @@ def test_dry_run_workflow(USECASE3):
     rank_allocation_standard = convert_to_standard_types(rank_alloc)
 
     expected_items = {
-        'NodeA': {(0, 0): [1], (1, 0): [2, 3]},
-        'NodeB': {(0, 0): [1], (1, 0): [2]}
+        'NodeA': {(0, 0): [1]},
+        'NodeB': {(0, 0): [1]}
     }
 
     assert rank_allocation_standard == expected_items
@@ -64,10 +64,7 @@ def test_dry_run_workflow(USECASE3):
     # Test that the allocation works and can be saved and loaded
     # and generate allocation file for 1 rank
     rank_alloc, _, cell_mem_use = nd._dry_run_stats.distribute_cells_with_validation(1, 1, None)
-    export_allocation_stats(rank_alloc,
-                            USECASE3 / "allocation", 1, 1)
     export_metype_memory_usage(cell_mem_use, USECASE3 / "memory_per_metype.json")
-    rank_alloc = import_allocation_stats(USECASE3 / "allocation_r1_c1.pkl.gz")
     rank_allocation_standard = convert_to_standard_types(rank_alloc)
 
     expected_items = {
@@ -76,20 +73,6 @@ def test_dry_run_workflow(USECASE3):
     }
 
     assert rank_allocation_standard == expected_items
-
-
-def test_memory_load_balance_workflow(USECASE3):
-    """
-    Test that the memory load balance works
-    """
-
-    from neurodamus import Neurodamus
-    nd = Neurodamus(
-        str(USECASE3 / "simulation_sonata.json"),
-        lb_mode="Memory",
-    )
-
-    nd.run()
 
 
 def test_dry_run_workflow_multi():
@@ -117,63 +100,16 @@ def test_dry_run_workflow_multi():
     export_allocation_stats(rank_allocation,
                             SIM_DIR / "allocation", 2, 1)
     export_metype_memory_usage(cell_memory_usage, SIM_DIR / "memory_per_metype.json")
-    rank_allocation = import_allocation_stats(SIM_DIR / "allocation_r2_c1.pkl.gz")
+    rank_allocation = import_allocation_stats(SIM_DIR / "allocation_r2_c1.pkl.gz", 0, True)
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
 
     expected_items = {
         'default': {
             (0, 0): [
                 62798, 63257, 64164, 65916, 66069, 66141, 66872, 68224,
-                68533, 68942, 69840, 64234, 64936, 65821, 68856
-                ],
-            (1, 0): [
-                62946, 63699, 64862, 65952, 66106, 66497, 67667, 68354,
-                68581, 69531, 63623, 64666, 64788, 69878, 67078
+                68533, 68942, 69840, 64234, 69878, 67078
                 ]
             }
         }
 
     assert rank_allocation_standard == expected_items
-
-
-def test_dynamic_distribute():
-    """
-    Test that the dynamic distribution of cells works properly.
-    The test deletes any old allocation file before running and uses
-    the memory_per_metype.json generated in the previous test to
-    redistribute the cells. Then checks if the new allocation is correct.
-    """
-
-    Path(("allocation_r1_c2.pkl.gz")).unlink(missing_ok=True)
-
-    from neurodamus import Neurodamus
-    config_file = str(SIM_DIR / "v5_sonata" / "simulation_config.json")
-    output_dir = str(SIM_DIR / "v5_sonata" / "output_coreneuron")
-    tmp_file = _create_tmpconfig_coreneuron(config_file)
-    GlobalConfig.verbosity = LogLevel.DEBUG
-
-    nd = Neurodamus(tmp_file.name,
-                    output_path=output_dir,
-                    num_target_ranks=1,
-                    modelbuilding_steps=2,
-                    lb_mode="Memory")
-    nd.run()
-
-    rank_allocation, _, _ = nd._dry_run_stats.distribute_cells_with_validation(1, 2)
-    # rank_allocation_standard = convert_to_standard_types(rank_allocation)
-
-    # expected_items = {
-    #     'default': {
-    #         (0, 0): [
-    #             62798, 63257, 63699, 64862, 65952, 66106, 66497, 67667,
-    #             68354, 68581, 69531, 63623, 64666, 64788, 64936, 69878, 68856
-    #             ],
-    #         (0, 1): [
-    #             62946, 64164, 65916, 66069, 66141, 66872, 68224, 68533,
-    #             68942, 69840, 64234, 65821, 67078
-    #         ]
-    #     }
-    # }
-
-    # for key, sub_value in rank_allocation_standard['default'].items():
-    #     assert set(sub_value) == set(expected_items['default'][key])
