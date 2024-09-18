@@ -182,7 +182,7 @@ jobs:
     - name: Example run
       run: |
         . ./venv/bin/activate
-        if [ ${{ matrix.python-version }} == 3.9 ]; then
+        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
           export RDMAV_FORK_SAFE=1
         fi;
         export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
