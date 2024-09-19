@@ -27,6 +27,7 @@ import numpy as np
 # More info in docs/architecture.rst.
 SIM_ESTIMATE_FACTOR = 2.5
 _alloc_cache = None
+MAX_ALLOCATION_STEPS = 10
 
 
 def trim_memory():
@@ -505,7 +506,6 @@ class DryRunStats:
             metype_memory_usage (dict): A dictionary where keys are METype IDs
                                         and values are the memory load of each METype.
         """
-        logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
 
         self.validate_inputs_distribute(num_ranks, batch_size)
         bucket_allocation = defaultdict(DryRunStats.defaultdict_vector)
@@ -623,23 +623,24 @@ class DryRunStats:
         """
         if not cycles:
             cycles = 1
+        logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
 
         valid_distribution = False
 
-        def calculate_total_elements_per_population(self):
+        def _calculate_total_elements_per_population(self):
             total_elements_per_population = {}
             for population, metypes in self.pop_metype_gids.items():
                 total_elements = sum(len(gids) for gids in metypes.values())
                 total_elements_per_population[population] = total_elements
             return total_elements_per_population
 
-        total_cells_per_population = calculate_total_elements_per_population(self)
+        total_cells_per_population = _calculate_total_elements_per_population(self)
         average_cells_per_population = {
             population: total / (num_ranks * cycles)
             for population, total in total_cells_per_population.items()}
 
         batch_size = {
-            population: max(1, int(average / 10))
+            population: max(1, int(average / MAX_ALLOCATION_STEPS))
             for population, average in average_cells_per_population.items()}
 
         while not valid_distribution and any(size > 0 for size in batch_size.values()):
