@@ -1,0 +1,6 @@
+This subcircuit is extracted from the v5_sonata circuit for the node_set "Mini5" using brainbuilder:
+    brainbuilder sonata split-subcircuit --circuit circuit_config.json --nodeset Mini5 --output sub_mini5 --create-external
+The source population in the external edges file "external_default.h5" is modified manually from "default" to "external" in order to offset the external node ids.
+
+The "morphologies" folder is extracted from "/gpfs/bbp.cscs.ch/release/l2/data/morphologies/31.05.12/ascii/".
+The "biophysical_model_templates" folder is extracted from "/gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1-sonata/sonata/components/biophysical_model_templates".
