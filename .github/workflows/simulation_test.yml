@@ -242,7 +242,7 @@ jobs:
     - name: test-unit
       run: |
         . ./venv/bin/activate
-        if [ ${{ matrix.python-version }} == 3.9 ]; then
+        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
           export RDMAV_FORK_SAFE=1
         fi;
         pytest tests/unit
@@ -250,7 +250,7 @@ jobs:
     - name: test-integration
       run: |
         . ./venv/bin/activate
-        if [ ${{ matrix.python-version }} == 3.9 ]; then
+        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
           export RDMAV_FORK_SAFE=1
         fi;
         pytest -x --forked tests/integration
@@ -258,7 +258,7 @@ jobs:
     # - name: test-integration-e2e
     #   run: |
     #     . ./venv/bin/activate
-    #     if [ ${{ matrix.python-version }} == 3.9 ]; then
+    #     if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
     #       export RDMAV_FORK_SAFE=1
     #     fi;
     #     pytest -s -x --forked --durations=5 --durations-min=15 tests/integration-e2e
@@ -266,7 +266,7 @@ jobs:
     - name: test-scientific
       run: |
         . ./venv/bin/activate
-        if [ ${{ matrix.python-version }} == 3.9 ]; then
+        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
           export RDMAV_FORK_SAFE=1
         fi;
         pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific
@@ -274,7 +274,7 @@ jobs:
     - name: test-scientific-ngv
       run: |
         . ./venv/bin/activate
-        if [ ${{ matrix.python-version }} == 3.9 ]; then
+        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
           export RDMAV_FORK_SAFE=1
         fi;
         pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific-ngv
