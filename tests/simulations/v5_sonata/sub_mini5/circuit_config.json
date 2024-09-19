@@ -1,0 +1,53 @@
+{
+  "components": {
+    "biophysical_neuron_models_dir": "$BASE_DIR/biophysical_model_templates",
+    "morphologies_dir": "$BASE_DIR/morphologies"
+  },
+  "networks": {
+    "edges": [
+      {
+        "edge_types_file": null,
+        "edges_file": "$BASE_DIR/default/edges.h5",
+        "populations": {
+          "default": {
+            "type": "chemical"
+          }
+        }
+      },
+      {
+        "edges_file": "$BASE_DIR/external_default.h5",
+        "populations": {
+          "external_default": {
+            "type": "chemical"
+            }
+        }
+       }
+    ],
+    "nodes": [
+      {
+        "node_types_file": null,
+        "nodes_file": "$BASE_DIR/default/nodes.h5",
+        "populations": {
+          "default": {
+            "alternate_morphologies": {
+              "neurolucida-asc": "$BASE_DIR/morphologies"
+            },
+            "type": "biophysical"
+          }
+        }
+      },
+      {
+        "nodes_file": "$BASE_DIR/nodes_external_default.h5",
+        "populations": {
+            "external_default": {
+                "type": "virtual"
+            }
+        }
+      }
+    ]
+  },
+  "node_sets_file": "$BASE_DIR/node_sets.json",
+  "manifest": {
+    "$BASE_DIR": "./"
+  }
+}
