@@ -24,3 +24,12 @@ SONATA circuit
 Based on the official /gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1-sonata/sonata/circuit_config.json
 and a few patches from /gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-scx-v5-gapjunctions/sonata_circuit,
 see (/gpfs/bbp.cscs.ch/project/proj12/jenkins/cellular/circuit-scx-v5-gapjunctions/sonata_circuit/READ)
+
+SONATA sub_mini2 circuit
+------------------------
+This local subcircuit is extracted from the v5_sonata SONATA circuit for the node_set "mini2" using brainbuilder:
+    brainbuilder sonata split-subcircuit --circuit circuit_config.json --nodeset mini5 --output sub_mini2 --include-virtual --create-external
+The source population in the external edges file "external_default.h5" is modified manually from "default" to "external_default" in order to offset the external node ids.
+
+The "morphologies" folder is extracted from "/gpfs/bbp.cscs.ch/release/l2/data/morphologies/31.05.12/ascii/".
+The "biophysical_model_templates" folder is extracted from "/gpfs/bbp.cscs.ch/project/proj1/circuits/SomatosensoryCxS1-v5.r0/O1-sonata/sonata/components/biophysical_model_templates".
