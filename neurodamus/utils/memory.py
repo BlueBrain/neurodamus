@@ -26,8 +26,7 @@ import numpy as np
 # This is an heuristic estimate based on tests on multiple circuits.
 # More info in docs/architecture.rst.
 SIM_ESTIMATE_FACTOR = 2.5
-_alloc_cache = None
-MAX_ALLOCATION_STEPS = 10
+MAX_ALLOCATION_STEPS = 10  # Maximum number of steps to reduce the batch size in distribute_cells
 
 
 def trim_memory():
@@ -230,42 +229,6 @@ def import_metype_memory_usage(memory_per_metype_file):
     return memory_per_metype
 
 
-def import_allocation_stats(filename, cycle_i=0, ignore_cache=False) -> dict:
-    """
-    Import allocation dictionary from serialized pickle file.
-    """
-
-    def convert_to_standard_types(obj):
-        """Converts an object containing defaultdicts of Vectors to standard Python types."""
-        result = {}
-        for population, vectors in obj.items():
-            result[population] = {
-                key: np.array(vector)
-                for key, vector in vectors.items()
-                if key[0] == MPI.rank}
-        return result
-
-    global _alloc_cache
-    if _alloc_cache is None or ignore_cache:
-        logging.warning("Loading allocation stats from %s...", filename)
-        with gzip.open(filename, 'rb') as f:
-            data = pickle.load(f)
-        _alloc_cache = convert_to_standard_types(data)
-    else:
-        logging.warning("Using cached allocation stats.")
-
-    # Filter the cached data based on the cycle index
-    filtered_alloc = {}
-    for population, vectors in _alloc_cache.items():
-        filtered_alloc[population] = {
-            key: vector
-            for key, vector in vectors.items()
-            if key[1] == cycle_i
-        }
-
-    return filtered_alloc
-
-
 @run_only_rank0
 def allocation_stats_exists(filename):
     """
@@ -310,7 +273,42 @@ class DryRunStats:
         self.synapse_counts = defaultdict(int)  # [syn_type -> count]
         self.suggested_nodes = 0
         self.synapse_memory_total = 0
+        self._alloc_cache = None
         _, _, self.base_memory, _ = get_task_level_mem_usage()
+
+    def import_allocation_stats(self, filename, cycle_i=0, ignore_cache=False) -> dict:
+        """
+        Import allocation dictionary from serialized pickle file.
+        """
+
+        def convert_to_standard_types(obj):
+            """Converts an object containing defaultdicts of Vectors to standard Python types."""
+            result = {}
+            for population, vectors in obj.items():
+                result[population] = {
+                    key: np.array(vector)
+                    for key, vector in vectors.items()
+                    if key[0] == MPI.rank}
+            return result
+
+        if self._alloc_cache is None or ignore_cache:
+            logging.warning("Loading allocation stats from %s...", filename)
+            with gzip.open(filename, 'rb') as f:
+                data = pickle.load(f)
+            self._alloc_cache = convert_to_standard_types(data)
+        else:
+            logging.warning("Using cached allocation stats.")
+
+        # Filter the cached data based on the cycle index
+        filtered_alloc = {}
+        for population, vectors in self._alloc_cache.items():
+            filtered_alloc[population] = {
+                key: vector
+                for key, vector in vectors.items()
+                if key[1] == cycle_i
+            }
+
+        return filtered_alloc
 
     @run_only_rank0
     def estimate_cell_memory(self) -> float:
@@ -524,6 +522,8 @@ class DryRunStats:
         def assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory):
             total_memory, (rank_id, cycle_id) = heapq.heappop(buckets)
             logging.debug("Assigning batch to bucket (%d, %d)", rank_id, cycle_id)
+            logging.debug("Batch GIDs: %s", batch)
+            logging.debug("Batch memory: %s", batch_memory)
             rank_allocation[(rank_id, cycle_id)].extend(batch)
             total_memory += batch_memory
             rank_memory[(rank_id, cycle_id)] = total_memory
