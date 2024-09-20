@@ -1,0 +1,67 @@
+{
+  "components": {
+    "biophysical_neuron_models_dir": "$BASE_DIR/biophysical_model_templates",
+    "morphologies_dir": "$BASE_DIR/morphologies"
+  },
+  "networks": {
+    "edges": [
+      {
+        "edges_file": "$BASE_DIR/external_default.h5",
+        "populations": {
+          "external_default": {
+            "type": "chemical"
+            }
+        }
+      },
+      {
+        "edges_file": "$BASE_DIR/default__default__electrical/gj_edges.h5",
+        "populations": {
+          "default__default__electrical": {
+            "type": "electrical"
+          }
+        }
+      },
+      {
+        "edges_file": "$BASE_DIR/thalamus-proj32-blob_projections__default__chemical/edges.h5",
+        "populations": {
+          "thalamus-proj32-blob_projections__default__chemical": {
+            "type": "chemical"
+          }
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "nodes_file": "$BASE_DIR/default/nodes.h5",
+        "populations": {
+          "default": {
+            "alternate_morphologies": {
+              "neurolucida-asc": "/gpfs/bbp.cscs.ch/release/l2/data/morphologies/31.05.12/ascii"
+            },
+            "type": "biophysical"
+          }
+        }
+      },
+      {
+        "nodes_file": "$BASE_DIR/nodes_external_default.h5",
+        "populations": {
+            "external_default": {
+                "type": "virtual"
+            }
+        }
+      },
+      {
+        "nodes_file": "$BASE_DIR/thalamus-proj32-blob_projections/nodes.h5",
+        "populations": {
+          "thalamus-proj32-blob_projections": {
+            "type": "virtual"
+          }
+        }
+      }
+    ]
+  },
+  "node_sets_file": "$BASE_DIR/node_sets.json",
+  "manifest": {
+    "$BASE_DIR": "./"
+  }
+}
