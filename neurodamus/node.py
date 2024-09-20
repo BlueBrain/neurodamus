@@ -33,7 +33,6 @@ from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import DryRunStats, trim_memory, pool_shrink, free_event_queues, print_mem_usage
-from .utils.memory import import_allocation_stats
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig, CompartmentMapping
 from .io.sonata_config import ConnectionTypes
@@ -380,11 +379,11 @@ class Node:
             file_exists = ospath.exists(filename)
             MPI.barrier()
 
+            self._dry_run_stats = DryRunStats()
             if file_exists:
-                alloc = import_allocation_stats(filename, self._cycle_i)
+                alloc = self._dry_run_stats.import_allocation_stats(filename, self._cycle_i)
             else:
                 logging.warning("Allocation file not found. Generating on-the-fly.")
-                self._dry_run_stats = DryRunStats()
                 self._dry_run_stats.try_import_cell_memory_usage()
                 cell_distributor = CellDistributor(circuit, self._target_manager, self._run_conf)
                 cell_distributor.load_nodes(None, loader_opts={"load_mode": "load_nodes_metype",
@@ -398,6 +397,7 @@ class Node:
             for pop, ranks in alloc.items():
                 for rank, gids in ranks.items():
                     logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
+                    logging.debug(f"First 5 GIDs: {gids[:5]}")
             return alloc
 
         # Build load balancer as per requested options
@@ -432,6 +432,7 @@ class Node:
         """Instantiate and distributes the cells of the network.
         Any targets will be updated to know which cells are local to the cpu.
         """
+        logging.warning("Load Balance: %s", load_balance)
         if SimConfig.dry_run:
             logging.info("Memory usage after inizialization:")
             print_mem_usage()
@@ -1627,6 +1628,7 @@ class Neurodamus(Node):
     def _build_model(self):
         log_stage("================ CALCULATING LOAD BALANCE ================")
         load_bal = self.compute_load_balance()
+        logging.debug("Load balance: %s", load_bal)
         print_mem_usage()
 
         log_stage("==================== BUILDING CIRCUIT ====================")
