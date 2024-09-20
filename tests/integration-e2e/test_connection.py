@@ -40,7 +40,7 @@ def test_add_synapses():
     n.load_targets()
     n.create_cells()
     n.create_synapses()
-    syn_manager = n.circuits.get_edge_manager("external", "default")
+    syn_manager = n.circuits.get_edge_manager("external_default", "default")
     conn = list(syn_manager.get_connections(1))[0]
     new_params = SynapseParameters.create_array(1)
     n_syns = len(conn._synapse_params)
