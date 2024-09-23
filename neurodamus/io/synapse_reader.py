@@ -300,7 +300,6 @@ class SonataReader(SynapseReader):
         if minimal_mode:
             needed_edge_ids = libsonata.Selection(needed_edge_ids.flatten()[different_gids_edge_i])
             lookup_gids = lookup_gids[different_gids_edge_i]
-            needed_gids = sorted(lookup_gids)
 
         def _populate(field, data):
             # Populate cache. Unavailable entries are stored as a plain -1
@@ -396,8 +395,8 @@ class SonataReader(SynapseReader):
                 _populate("offset", _read("morpho_offset_segment_post"))
 
     def _load_synapse_parameters(self, gid):
-        data = self._data.get(gid, False)
-        if data is False:  # strictly compare to False (not in _data)
+        data = self._data.get(gid)
+        if data is None:  # not in _data
             self._preload_data_chunk([gid])
             data = self._data[gid]
 
