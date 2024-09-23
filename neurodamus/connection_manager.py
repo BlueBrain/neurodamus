@@ -628,7 +628,7 @@ class ConnectionManagerBase(object):
                 log_all(logging.DEBUG, "Source GIDs for debug cell: %s", self.yielded_src_gids)
 
     # -
-    def _iterate_conn_params(self, src_target, dst_target, gids=None, show_progress=False,
+    def _iterate_conn_params(self, src_target, dst_target, gids=None, show_progress=None,
                              mod_override=None):
         """A generator which loads synapse data and yields tuples(sgid, tgid, synapses)
 
@@ -638,6 +638,7 @@ class ConnectionManagerBase(object):
             gids: Use given gids, instead of the circuit target cells. Default: None
             show_progress: Display a progress bar as tgids are processed
         """
+        AUTO_PROGRESS_THRESHOLD = 50
         if src_target and src_target.is_void() or dst_target and dst_target.is_void():
             return
 
@@ -654,7 +655,7 @@ class ConnectionManagerBase(object):
         sgid_offset, tgid_offset = self.get_population_offsets()
 
         self._synapse_reader.configure_override(mod_override)
-        self._synapse_reader.preload_data(gids)
+        self._synapse_reader.preload_data(gids, minimal_mode=SimConfig.cli_options.crash_test)
         extra_fields = {}  # Without extra fields, reuse this object
 
         # NOTE: This routine is quite critical, sitting at the core of synapse processing
@@ -663,7 +664,10 @@ class ConnectionManagerBase(object):
         # For each tgid we obtain the synapse parameters as a record array. We then split it,
         # without copying, yielding ranges (views) of it.
 
-        gids = ProgressBar.iter(gids) if show_progress else gids
+        if show_progress is None:
+            show_progress = len(gids) >= AUTO_PROGRESS_THRESHOLD
+
+        gids = ProgressBar.iter(gids, name="Loading") if show_progress else gids
 
         for base_tgid in gids:
             tgid = base_tgid + tgid_offset
