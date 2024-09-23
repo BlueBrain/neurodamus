@@ -397,7 +397,6 @@ class Node:
             for pop, ranks in alloc.items():
                 for rank, gids in ranks.items():
                     logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
-                    logging.debug(f"First 5 GIDs: {gids[:5]}")
             return alloc
 
         # Build load balancer as per requested options
@@ -432,7 +431,6 @@ class Node:
         """Instantiate and distributes the cells of the network.
         Any targets will be updated to know which cells are local to the cpu.
         """
-        logging.warning("Load Balance: %s", load_balance)
         if SimConfig.dry_run:
             logging.info("Memory usage after inizialization:")
             print_mem_usage()
@@ -1628,7 +1626,6 @@ class Neurodamus(Node):
     def _build_model(self):
         log_stage("================ CALCULATING LOAD BALANCE ================")
         load_bal = self.compute_load_balance()
-        logging.debug("Load balance: %s", load_bal)
         print_mem_usage()
 
         log_stage("==================== BUILDING CIRCUIT ====================")

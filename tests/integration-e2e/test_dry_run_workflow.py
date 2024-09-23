@@ -20,14 +20,6 @@ def neurodamus_instance(request: pytest.FixtureRequest, USECASE3: Path):
     path_to_config = params.get('path_to_config', USECASE3)
     lb_mode = params.get('lb_mode', "")
 
-    # print all request parameters
-    print(f"request.dry_run: {dry_run}")
-    print(f"request.num_target_ranks: {num_target_ranks}")
-    print(f"request.modelbuilding_steps: {modelbuilding_steps}")
-    print(f"request.config_file: {config_file}")
-    print(f"request.path_to_config: {path_to_config}")
-    print(f"request.lb_mode: {lb_mode}")
-
     GlobalConfig.verbosity = LogLevel.DEBUG
     nd = Neurodamus(
         str(path_to_config / config_file),
@@ -136,7 +128,6 @@ def test_dynamic_distribute(neurodamus_instance):
 
     rank_allocation, _, _ = nd._dry_run_stats.distribute_cells_with_validation(2, 1)
     rank_allocation_standard = convert_to_standard_types(rank_allocation)
-    print(rank_allocation_standard)
 
     expected_items = {
         'NodeA': {
@@ -197,8 +188,6 @@ def test_distribute_cells_multi_pop_multi_cycle(fixed_memory_measurements):
         cycles=2
     )
     rank_allocation_standard = convert_to_standard_types(bucket_allocation)
-    print(rank_allocation_standard)
-    print(bucket_memory)
 
     expected_allocation = {
         'NodeA': {

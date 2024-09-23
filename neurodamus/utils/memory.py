@@ -522,8 +522,6 @@ class DryRunStats:
         def assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory):
             total_memory, (rank_id, cycle_id) = heapq.heappop(buckets)
             logging.debug("Assigning batch to bucket (%d, %d)", rank_id, cycle_id)
-            logging.debug("Batch GIDs: %s", batch)
-            logging.debug("Batch memory: %s", batch_memory)
             rank_allocation[(rank_id, cycle_id)].extend(batch)
             total_memory += batch_memory
             rank_memory[(rank_id, cycle_id)] = total_memory
