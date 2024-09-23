@@ -7,9 +7,9 @@
 import logging
 import numpy as np
 import pickle
-from neurodamus.core import MPI
+from .core import MPI
 from .core import NeurodamusCore as Nd
-from .core.configuration import SimConfig
+from .core.configuration import ConfigurationError, SimConfig
 
 non_stochastic_mechs = ['NaTs2_t', 'SKv3_1', 'Nap_Et2', 'Ih', 'Im', 'KdShu2007',
                         'K_Pst', 'K_Tst', 'Ca', 'SK_E2', 'Ca_LVAst', 'CaDynamics_E2',
@@ -68,7 +68,7 @@ def load_user_modifications(gj_manager):
         # Oren's note: If I manually injecting different holding current for each cell,
         # I will inject the current - the holding the emMEComboInfoFile
         if settings.get('procedure_type') == 'find_holding_current':
-            raise Exception("not make any sense")
+            raise ConfigurationError("not make any sense")
         holding_ic_per_gid = _load_holding_ic(node_manager, filename, gjc=gjc)
         all_ranks_total = int(MPI.allreduce(len(holding_ic_per_gid), MPI.SUM))
         logging.info(f"Load holding_ic from manual_MEComboInfoFile {filename} "
@@ -113,7 +113,10 @@ def _perform_remove_channels(node_manager, Mechanisms: list):
 def _update_gpas(node_manager, filename, gjc, correction_iteration_load):
     import h5py
     processed_cells = 0
-    g_pas_file = h5py.File(filename, 'r')
+    try:
+        g_pas_file = h5py.File(filename, 'r')
+    except IOError:
+        raise ConfigurationError(f"Error opening g_pas file {filename}")
     raw_cell_gids = node_manager.local_nodes.raw_gids()
     offset = node_manager.local_nodes.offset
     for agid in g_pas_file[f'g_pas/{gjc}/']:
@@ -131,7 +134,10 @@ def _update_gpas(node_manager, filename, gjc, correction_iteration_load):
 def _load_holding_ic(node_manager, filename, gjc):
     import h5py
     holding_ic_per_gid = {}
-    holding_per_gid = h5py.File(filename, 'r')
+    try:
+        holding_per_gid = h5py.File(filename, 'r')
+    except IOError:
+        raise ConfigurationError(f"Error opening MEComboInfo file {filename}")
     raw_cell_gids = node_manager.local_nodes.raw_gids()
     offset = node_manager.local_nodes.offset
     for agid in holding_per_gid['holding_per_gid'][str(gjc)]:
@@ -145,7 +151,10 @@ def _load_holding_ic(node_manager, filename, gjc):
 
 def _find_holding_current(node_manager, filename):
     import h5py
-    v_per_gid = h5py.File(filename, 'r')  # load v_per_gid
+    try:
+        v_per_gid = h5py.File(filename, 'r')
+    except IOError:
+        raise ConfigurationError(f"Error opening voltage file {filename}")
     SEClmap_per_gid = {}
     SEClamp_current_per_gid = {}
     raw_cell_gids = node_manager.local_nodes.raw_gids()
