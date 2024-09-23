@@ -1,5 +1,6 @@
 import json
 import os
+import pytest
 
 
 def test_crash_test_loading(SIM_DIR, tmp_path):
