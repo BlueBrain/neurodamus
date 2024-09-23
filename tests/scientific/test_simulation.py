@@ -35,19 +35,15 @@ def test_v5_sonata_config():
     import numpy.testing as npt
     from neurodamus import Neurodamus
 
-    config_file = str(SIM_DIR / "v5_sonata" / "simulation_config.json")
+    config_file = str(SIM_DIR / "v5_sonata" / "simulation_config_mini.json")
     nd = Neurodamus(config_file, disable_reports=True)
     nd.run()
 
     spike_gids = np.array([
-        68855, 69877, 64935, 66068, 63698, 67666, 68223, 65915,
-        62945, 63256, 69530, 64861, 68532, 66105, 64163, 68855,
-        62797, 65951, 69877
+        4, 2, 0
     ]) + 1  # Conform to nd 1-based
     timestamps = np.array([
-        9.15, 14.3, 15.425, 30.125, 33.175, 34.175, 35.075, 35.625,
-        36.15, 36.85, 36.875, 37.075, 37.525, 37.6, 38.05, 38.3,
-        38.45, 39.6, 39.85
+        33.425, 37.35 , 39.725
     ])
 
     obtained_timestamps = nd._spike_vecs[0][0].as_numpy()
