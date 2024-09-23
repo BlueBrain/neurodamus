@@ -53,10 +53,10 @@ def test_cli_prcellgid():
     shutil.copytree(SIM_DIR / CIRCUIT_DIR, test_folder_path / CIRCUIT_DIR)
 
     os.chdir(test_folder_path)
-    nd = Neurodamus(CONFIG_FILE_MINI, dump_cell_state=0)
+    nd = Neurodamus(CONFIG_FILE_MINI, dump_cell_state=1)
     nd.run()
-    assert (test_folder_path / "1_py_Neuron_t0.0.nrndat").is_file()
-    assert (test_folder_path / "1_py_Neuron_t100.0.nrndat").is_file()
+    assert (test_folder_path / "2_py_Neuron_t0.0.nrndat").is_file()
+    assert (test_folder_path / "2_py_Neuron_t100.0.nrndat").is_file()
 
 
 def test_cli_disable_reports():

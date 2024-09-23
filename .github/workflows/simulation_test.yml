@@ -255,13 +255,13 @@ jobs:
         fi;
         pytest -x --forked tests/integration
 
-    # - name: test-integration-e2e
-    #   run: |
-    #     . ./venv/bin/activate
-    #     if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
-    #       export RDMAV_FORK_SAFE=1
-    #     fi;
-    #     pytest -s -x --forked --durations=5 --durations-min=15 tests/integration-e2e
+    - name: test-integration-e2e
+      run: |
+        . ./venv/bin/activate
+        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
+          export RDMAV_FORK_SAFE=1
+        fi;
+        pytest -s -x --forked --durations=5 --durations-min=15 tests/integration-e2e
 
     - name: test-scientific
       run: |
