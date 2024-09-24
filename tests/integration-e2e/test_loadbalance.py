@@ -16,9 +16,9 @@ SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations"
 def target_manager():
     from neurodamus.target_manager import NodesetTarget
     from neurodamus.core.nodeset import NodeSet
-    nodes_t1 = NodeSet([1, 11, 21, 31, 41, 51, 61, 71, 81, 91, 101, 111]).register_global("All")
-    nodes_t2 = NodeSet([1, 11, 21, 31, 41, 51]).register_global("All")
-    t1 = NodesetTarget("Small", [nodes_t1], [nodes_t1])
+    nodes_t1 = NodeSet([1, 2, 3, 4, 5]).register_global("default")
+    nodes_t2 = NodeSet([1, 3, 5]).register_global("default")
+    t1 = NodesetTarget("Mini5", [nodes_t1], [nodes_t1])
     t2 = NodesetTarget("VerySmall", [nodes_t2], [nodes_t2])
     return MockedTargetManager(t1, t2)
 
@@ -41,37 +41,36 @@ def test_loadbal_subtarget(target_manager, caplog):
     os.chdir(tmp_path.name)
     nodes_file = "/gpfs/fake_node_path"
     lbdir, _ = LoadBalance._get_circuit_loadbal_dir(nodes_file, "pop")
-    shutil.copyfile(SIM_DIR / "1k_v5_balance" / "cx_Small.dat", lbdir / "cx_Small#.dat")
+    shutil.copyfile(SIM_DIR / "v5_sonata" / "sub_mini5" / "cx_Mini5.dat", lbdir / "cx_Mini5#.dat")
 
     lbal = LoadBalance(1, nodes_file, "pop", target_manager, 4)
-    assert "Small" in lbal._cx_targets
+    assert "Mini5" in lbal._cx_targets
     assert not lbal._valid_loadbalance
     with caplog.at_level(logging.INFO):
         assert not lbal._cx_valid(TargetSpec("random_target"))
         assert " => No Cx files available for requested target" in caplog.records[-1].message
-    assert lbal._cx_valid(TargetSpec("Small"))  # yes!
+    assert lbal._cx_valid(TargetSpec("Mini5"))  # yes!
     assert not lbal._cx_valid(TargetSpec("VerySmall"))  # not yet, need to derive subtarget
 
     with caplog.at_level(logging.INFO):
         assert lbal._reuse_cell_complexity(TargetSpec("VerySmall"))
         assert len(caplog.records) >= 2
         assert "Attempt reusing cx files from other targets..." in caplog.records[-2].message
-        assert "Target VerySmall is a subset of the target Small." in caplog.records[-1].message
+        assert "Target VerySmall is a subset of the target Mini5." in caplog.records[-1].message
 
 
 @pytest.fixture
 def circuit_conf():
     from neurodamus.core.configuration import CircuitConfig
-    PROJ = "/gpfs/bbp.cscs.ch/project"
+    circuit_base = str(SIM_DIR) + "/v5_sonata/sub_mini5"
     return CircuitConfig(
-        CircuitPath=PROJ + "/proj12/jenkins/cellular/circuit-2k",
-        CellLibraryFile=PROJ + "/proj12/jenkins/cellular/circuit-2k/nodes_v2.h5",
-        METypePath=PROJ + "/proj64/entities/emodels/2017.11.03/hoc",
-        MorphologyPath=PROJ + "/proj12/jenkins/cellular/circuit-2k/morphologies/ascii",
+        CircuitPath=circuit_base,
+        CellLibraryFile=circuit_base + "/default/nodes.h5",
+        METypePath=circuit_base + "/biophysical_model_templates",
+        MorphologyPath=circuit_base + "/morphologies",
         nrnPath="<NONE>",  # no connectivity
-        CircuitTarget="All:Small"
+        CircuitTarget="default:Mini5"
     )
-
 
 def test_load_balance_integrated(target_manager, circuit_conf):
     """Comprehensive test using real cells and deriving cx for a sub-target
@@ -82,21 +81,21 @@ def test_load_balance_integrated(target_manager, circuit_conf):
     cell_manager = CellDistributor(circuit_conf, target_manager)
     cell_manager.load_nodes()
 
-    lbal = LoadBalance(1, circuit_conf.CircuitPath, "All", target_manager, 4)
-    t1 = TargetSpec("All:Small")
+    lbal = LoadBalance(1, circuit_conf.CircuitPath, "default", target_manager, 4)
+    t1 = TargetSpec("default:Mini5")
     assert not lbal._cx_valid(t1)
 
     with lbal.generate_load_balance(t1, cell_manager):
         cell_manager.finalize()
 
-    assert "All_Small" in lbal._cx_targets
-    assert "All_Small" in lbal._valid_loadbalance
+    assert "default_Mini5" in lbal._cx_targets
+    assert "default_Mini5" in lbal._valid_loadbalance
     assert lbal._cx_valid(t1)
 
     # Check subtarget
-    assert "All_VerySmall" not in lbal._cx_targets
-    assert "All_VerySmall" not in lbal._valid_loadbalance
-    assert lbal._reuse_cell_complexity(TargetSpec("All:VerySmall"))
+    assert "default_VerySmall" not in lbal._cx_targets
+    assert "default_VerySmall" not in lbal._valid_loadbalance
+    assert lbal._reuse_cell_complexity(TargetSpec("default:VerySmall"))
 
     # Check not super-targets
     assert not lbal._reuse_cell_complexity(TargetSpec(None))
@@ -112,34 +111,34 @@ def test_multisplit(target_manager, circuit_conf, capsys):
 
     cell_manager = CellDistributor(circuit_conf, target_manager)
     cell_manager.load_nodes()
-    lbal = LoadBalance(MULTI_SPLIT, circuit_conf.CircuitPath, "All", target_manager, 4)
-    t1 = TargetSpec("All:Small")
+    lbal = LoadBalance(MULTI_SPLIT, circuit_conf.CircuitPath, "default", target_manager, 4)
+    t1 = TargetSpec("default:Mini5")
     assert not lbal._cx_valid(t1)
 
     with lbal.generate_load_balance(t1, cell_manager):
         cell_manager.finalize()
 
     captured = capsys.readouterr()
-    assert "13 pieces" in captured.out
-    assert "at least one cell is broken into 2 pieces" in captured.out
-    assert "All_Small" in lbal._cx_targets
-    assert "All_Small" in lbal._valid_loadbalance
+    assert "8 pieces" in captured.out
+    assert "at least one cell is broken into 3 pieces" in captured.out
+    assert "default_Mini5" in lbal._cx_targets
+    assert "default_Mini5" in lbal._valid_loadbalance
     assert lbal._cx_valid(t1)
 
     # Convert balance for 1 CPU so we can import
     lbal.target_cpu_count = 1
-    lbal._cpu_assign("All_Small")
+    lbal._cpu_assign("default_Mini5")
     binfo = lbal.load_balance_info(t1)
-    assert binfo.npiece() == 13
+    assert binfo.npiece() == 8
 
     # Ensure load-bal is reused for smaller targets in multisplit too
-    assert "All_VerySmall" not in lbal._cx_targets
-    assert "All_VerySmall" not in lbal._valid_loadbalance
-    assert lbal.valid_load_distribution(TargetSpec("All:VerySmall"))
-    assert "All_VerySmall" in lbal._cx_targets
-    assert "All_VerySmall" in lbal._valid_loadbalance
+    assert "default_VerySmall" not in lbal._cx_targets
+    assert "default_VerySmall" not in lbal._valid_loadbalance
+    assert lbal.valid_load_distribution(TargetSpec("default:VerySmall"))
+    assert "default_VerySmall" in lbal._cx_targets
+    assert "default_VerySmall" in lbal._valid_loadbalance
     captured = capsys.readouterr()
-    assert "Target VerySmall is a subset of the target All_Small" in captured.out
+    assert "Target VerySmall is a subset of the target default_Mini5" in captured.out
 
 
 def _create_tmpconfig_lbal(config_file):

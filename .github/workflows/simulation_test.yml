@@ -41,6 +41,12 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    - name: Set RDMAV_FORK_SAFE if Python 3.9
+      run: |
+        if [[ "${{ matrix.python-version }}" == 3.9.* ]]; then
+          echo "RDMAV_FORK_SAFE=1" >> $GITHUB_ENV
+        fi
+
     - name: Checkout neurodamus repository
       uses: actions/checkout@v4
       with:
@@ -206,9 +212,6 @@ jobs:
     - name: Example run
       run: |
         . ./venv/bin/activate
-        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
-          export RDMAV_FORK_SAFE=1
-        fi;
         export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
         cp neurodamus-models/neocortex/hoc/* neurodamus/data/hoc/
         export HOC_LIBRARY_PATH=$(pwd)/neurodamus/data/hoc
@@ -242,41 +245,26 @@ jobs:
     - name: test-unit
       run: |
         . ./venv/bin/activate
-        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
-          export RDMAV_FORK_SAFE=1
-        fi;
         pytest tests/unit
 
     - name: test-integration
       run: |
         . ./venv/bin/activate
-        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
-          export RDMAV_FORK_SAFE=1
-        fi;
         pytest -x --forked tests/integration
 
     - name: test-integration-e2e
       run: |
         . ./venv/bin/activate
-        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
-          export RDMAV_FORK_SAFE=1
-        fi;
         pytest -s -x --forked --durations=5 --durations-min=15 tests/integration-e2e
 
     - name: test-scientific
       run: |
         . ./venv/bin/activate
-        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
-          export RDMAV_FORK_SAFE=1
-        fi;
         pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific
 
     - name: test-scientific-ngv
       run: |
         . ./venv/bin/activate
-        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
-          export RDMAV_FORK_SAFE=1
-        fi;
         pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific-ngv
 
     - name: Build docs
