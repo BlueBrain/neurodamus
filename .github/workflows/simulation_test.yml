@@ -26,6 +26,7 @@ on:
 
 env:
   NEURON_COMMIT_ID: 'c48d7d5'
+  RDMAV_FORK_SAFE: '1'
 
 jobs:
   simulation:
@@ -40,12 +41,6 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-
-    - name: Set RDMAV_FORK_SAFE if Python 3.9
-      run: |
-        if [[ "${{ matrix.python-version }}" == 3.9.* ]]; then
-          echo "RDMAV_FORK_SAFE=1" >> $GITHUB_ENV
-        fi
 
     - name: Checkout neurodamus repository
       uses: actions/checkout@v4
