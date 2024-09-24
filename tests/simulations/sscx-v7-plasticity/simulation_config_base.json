@@ -28,8 +28,7 @@
             }
         }
     },
-    "network": "circuit_config.json",
-    "node_sets_file": "user_node_sets.json",
+    "network": "sub_L5_5cells/circuit_config.json",
     "node_set": "L5_5cells",
     "target_simulator": "NEURON",
     "output": {
