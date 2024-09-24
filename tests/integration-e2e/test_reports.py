@@ -79,6 +79,7 @@ def _read_sonata_report(report_file):
     data = report[pop_name].get()
     return node_ids, data
 
+
 def _create_tmpconfig_lfp(config_file):
 
     import json
