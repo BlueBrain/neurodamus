@@ -124,7 +124,7 @@ def test_v5_sonata_reports():
     from neurodamus import Neurodamus
 
     config_file = str(SIM_DIR / "simulation_config_mini.json")
-    output_dir = str(SIM_DIR / "output")
+    output_dir = str(SIM_DIR / "output_reports")
 
     tmp_file = _create_tmpconfig_lfp(config_file)
     nd = Neurodamus(tmp_file.name, output_path=output_dir)
