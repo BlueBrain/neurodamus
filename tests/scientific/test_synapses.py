@@ -5,14 +5,12 @@ import pytest
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+
 USECASE3 = Path(__file__).parent.parent.absolute() / "simulations" / "usecase3"
 SSCX_V7 = Path(__file__).parent.parent.absolute() / "simulations" / "sscx-v7-plasticity"
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(
-    "bluepysnap" not in os.environ.get("PYTHONPATH"),
-    reason="Test requires bluepysnap run")
 def test_synapses_params():
     """
     A test of the impact of eager caching of synaptic parameters. BBPBGLIB-813
@@ -22,6 +20,7 @@ def test_synapses_params():
     from neurodamus.core.configuration import GlobalConfig, SimConfig, LogLevel
     from neurodamus.io.synapse_reader import SynapseReader
     from neurodamus.utils.logging import log_verbose
+    from libsonata import EdgeStorage
 
     # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
@@ -56,30 +55,29 @@ def test_synapses_params():
         syn_manager.finalize(base_seed, False)
     n.sim_init()
 
-    # 1) get values from bluepy
-    from bluepysnap import Simulation
-    import pandas as pd
-
-    sim = Simulation(config_file)
-    c = sim.circuit
+    # 1) get synapse parameters from libsonata
     target_manager = n.target_manager
-    pre_L5_BC = get_target_raw_gids(target_manager, "pre_L5_BC")[0]
-    post_L5_PC = get_target_raw_gids(target_manager, "post_L5_PC")[0]
-    pre_L5_PC = get_target_raw_gids(target_manager, "pre_L5_PC")[0]
+    pop1, pre_L5_BC = get_target_raw_gids(target_manager, "pre_L5_BC")[0]
+    pop2, post_L5_PC = get_target_raw_gids(target_manager, "post_L5_PC")[0]
+    pop3, pre_L5_PC = get_target_raw_gids(target_manager, "pre_L5_PC")[0]
+    assert pop1 == pop2
     dfs = {}
     properties = ["conductance", "u_syn", "decay_time", "depression_time", "facilitation_time",
-                  "n_rrp_vesicles", "conductance_scale_factor", "u_hill_coefficient"]
+                  "n_rrp_vesicles", "conductance_scale_factor", "u_hill_coefficient", "weight"]
     plast_params = ["volume_CR", "rho0_GB", "Use_d_TM", "Use_p_TM",
-                    "gmax_d_AMPA", "gmax_p_AMPA", "theta_d", "theta_p"]
+                    "gmax_d_AMPA", "gmax_p_AMPA", "theta_d", "theta_p", "gmax_NMDA"]
 
-    df = pd.concat(edge for _, edge in c.edges.pair_edges(pre_L5_BC, post_L5_PC, properties))
-    df["weight"] = df["conductance"] * conn_weight  # add weight column
+    edges_file, edge_pop = n._extra_circuits[pop1].nrnPath.split(":")
+    storage = EdgeStorage(edges_file)
+    edge_pop = storage.open_population(edge_pop)
+    sel1 = edge_pop.connecting_edges(pre_L5_BC, post_L5_PC)
+    sel2 = edge_pop.connecting_edges(pre_L5_PC, post_L5_PC)
+    df = get_edge_properties(edge_pop, sel1, properties)
+    df["weight"] = df["conductance"] * conn_weight  # compute weight column
     dfs['ProbGABAAB_EMS'] = df
-
-    df = pd.concat(edge for _, edge in
-                   c.edges.pair_edges(pre_L5_PC, post_L5_PC, properties + plast_params))
-    df["gmax_NMDA"] = df["conductance"] * df["conductance_scale_factor"]  # add gmax_NMDA column
-    df["weight"] = 1.0  # add weight column (not set in Connection block for GluSynapse)
+    df = get_edge_properties(edge_pop, sel2, properties+plast_params)
+    df["gmax_NMDA"] = df["conductance"] * df["conductance_scale_factor"]  # compute gmax_NMDA column
+    df["weight"] = 1.0  # compute weight column (not set in Connection block for GluSynapse)
     dfs['GluSynapse'] = df
 
     # scale Use with calcium
@@ -123,8 +121,8 @@ def test_synapses_params():
     for _, x in synlist.items():
         x.sort(key=lambda d: d['synapseID'])
 
-    # 3) compare values: Neurodamus vs bluepy
-    # mapping between Nd and bluepy properties
+    # 3) compare values: Neurodamus vs libsonata
+    # mapping between Nd and libsonata properties
     properties = {
         'ProbAMPANMDA_EMS':
         {
@@ -169,12 +167,27 @@ def test_synapses_params():
 
     for stype, syns in synlist.items():
         for i, info in enumerate(syns):
-            log_verbose("%s[%d] (ID %d) (INDEX %d)" % (stype, i, info['synapseID'],
-                                                       dfs[stype].index[i][1]))
+            log_verbose("%s[%d] (ID %d)" % (stype, i, info['synapseID']))
             for prop, dfcol in properties[stype].items():
                 log_verbose("    %12s %12.6f ~= %-12.6f %s" %
-                            (prop, info[prop], dfs[stype][dfcol].iloc[i], dfcol))
-                assert (info[prop] == pytest.approx(dfs[stype][dfcol].iloc[i]))
+                            (prop, info[prop], dfs[stype][dfcol][i], dfcol))
+                assert (info[prop] == pytest.approx(dfs[stype][dfcol][i]))
+
+
+def get_edge_properties(edge_pop, selection, properties=[]):
+    """Get an array of edge IDs or DataFrame with edge properties."""
+    edge_ids = selection.flatten()
+    if not properties:
+        return edge_ids
+    dtype = np.dtype({"names": properties, "formats": ["f8"] * len(properties)})
+    if len(edge_ids) == 0:
+        result = np.recarray(0, dtype)
+    else:
+        result = np.recarray(len(edge_ids), dtype)
+        for p in properties:
+            if p in edge_pop.attribute_names:
+                result[p] = edge_pop.get_attribute(p, selection)
+    return result
 
 
 def test__constrained_hill():
@@ -202,7 +215,7 @@ def test__constrained_hill():
 
 def get_target_raw_gids(target_manager, target_name):
     tgt = target_manager.get_target(target_name)
-    return tgt.get_raw_gids() - 1  # 0-based
+    return tuple(zip(tgt.population_names, tgt.get_raw_gids() - 1))  # 0-based
 
 
 def test_no_edge_creation(capsys):
