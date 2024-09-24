@@ -43,7 +43,7 @@ def test_v5_sonata_config():
         4, 2, 0
     ]) + 1  # Conform to nd 1-based
     timestamps = np.array([
-        33.425, 37.35 , 39.725
+        33.425, 37.35, 39.725
     ])
 
     obtained_timestamps = nd._spike_vecs[0][0].as_numpy()

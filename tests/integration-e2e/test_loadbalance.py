@@ -72,6 +72,7 @@ def circuit_conf():
         CircuitTarget="default:Mini5"
     )
 
+
 def test_load_balance_integrated(target_manager, circuit_conf):
     """Comprehensive test using real cells and deriving cx for a sub-target
     """
