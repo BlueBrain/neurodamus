@@ -93,7 +93,7 @@ def _create_tmpconfig_lfp(config_file):
         "type": "summation",
         "cells": "Mosaic",
         "variable_name": "i_membrane,IClamp",
-        "sections": "soma",
+        "sections": "all",
         "dt": 0.1,
         "start_time": 0.0,
         "end_time": 40.0
@@ -135,7 +135,7 @@ def test_v5_sonata_reports():
         "soma_report.h5":
             [(10, 3, -64.92565), (128, 1, -60.309418), (333, 4, -39.864296)],
         "summation_report.h5":
-            [(20, 2, 1.512462e-17), (60, 0, -2.9273459e-18), (283, 3, 3.2526065e-19)]
+            [(20, 153, 1.19864846e-4), (60, 42, 1.1587787e-4), (283, 121, 3.3678625e-5)]
     }
     node_id_refs = [0, 1, 2, 3, 4]
 
