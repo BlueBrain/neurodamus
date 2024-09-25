@@ -274,6 +274,6 @@ jobs:
         name: docs-py${{ matrix.python-version }}
         path: docs/_build
 
-    # - name: live debug session, comment out
-    #   if: failure()
-    #   uses: mxschmitt/action-tmate@v3
+    - name: live debug session, comment out
+      if: failure()
+      uses: mxschmitt/action-tmate@v3
