@@ -36,7 +36,7 @@
         "populations": {
           "default": {
             "alternate_morphologies": {
-              "neurolucida-asc": "/gpfs/bbp.cscs.ch/release/l2/data/morphologies/31.05.12/ascii"
+              "neurolucida-asc": "$BASE_DIR/morphologies"
             },
             "type": "biophysical"
           }

@@ -9,7 +9,6 @@
     },
     "network": "sub_mini2/circuit_config.json",
     "target_simulator": "NEURON",
-    "node_sets_file": "node_sets.json",
     "node_set": "mini2",
     "output": {
         "output_dir": "$CURRENT_DIR/output"
