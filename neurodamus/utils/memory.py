@@ -257,6 +257,8 @@ class DryRunStats:
     _ALLOCATION_FILENAME = "allocation"
     _MEMORY_USAGE_PER_METYPE_FILENAME = "memory_per_metype.json"
 
+    _alloc_cache = None
+
     @staticmethod
     def defaultdict_vector():
         return defaultdict(Vector)
@@ -273,7 +275,6 @@ class DryRunStats:
         self.synapse_counts = defaultdict(int)  # [syn_type -> count]
         self.suggested_nodes = 0
         self.synapse_memory_total = 0
-        self._alloc_cache = None
         _, _, self.base_memory, _ = get_task_level_mem_usage()
 
     def import_allocation_stats(self, filename, cycle_i=0, ignore_cache=False) -> dict:
@@ -295,7 +296,7 @@ class DryRunStats:
             logging.warning("Loading allocation stats from %s...", filename)
             with gzip.open(filename, 'rb') as f:
                 data = pickle.load(f)
-            self._alloc_cache = convert_to_standard_types(data)
+            DryRunStats._alloc_cache = convert_to_standard_types(data)
         else:
             logging.warning("Using cached allocation stats.")
 
