@@ -3,6 +3,11 @@
     "testNGVSSCX",
     "AstroMini"
    ],
+   "sub_circuit": [
+    "testNGVSSCX",
+    "AstroMini",
+    "VascMini"
+   ],
   "testNGVSSCX": {
     "population": "All",
     "node_id": [
@@ -30,6 +35,23 @@
       8,
       11,
       13
+    ]
+  },
+  "VascMini": {
+    "population": "vasculature",
+    "node_id": [
+      208089,
+      356727,
+      451420,
+      482325,
+      482345,
+      558197,
+      567845,
+      567854,
+      1099985,
+      1099989,
+      1099994,
+      1274464
     ]
   },
   "src_cells": {

@@ -1,0 +1,52 @@
+{
+  "testNGVSSCX_AstroMini": [
+    "testNGVSSCX",
+    "AstroMini"
+  ],
+  "testNGVSSCX": {
+    "population": "All",
+    "node_id": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ]
+  },
+  "AstroMini": {
+    "population": "astrocytes",
+    "node_id": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  "VascMini": {
+    "population": "vasculature",
+    "node_id": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ]
+  }
+}
