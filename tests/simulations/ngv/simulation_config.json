@@ -4,15 +4,14 @@
         "tstop": 10,
         "dt": 0.025
     },
-    "network": "circuit_config.json",
-    "node_sets_file": "node_sets.json",
+    "network": "sub_circuit/circuit_config.json",
     "node_set": "testNGVSSCX_AstroMini",
     "output": {
         "output_dir": "output_sonata"
     },
     "inputs": {
         "ThresholdIntoExc": {
-            "node_set": "src_cells",
+            "node_set": "testNGVSSCX",
             "input_type": "current_clamp",
             "module": "noise",
             "mean_percent": 200.0,

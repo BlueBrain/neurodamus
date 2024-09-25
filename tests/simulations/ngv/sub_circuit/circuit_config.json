@@ -1,0 +1,54 @@
+{
+  "networks": {
+    "edges": [
+      {
+        "edges_file": "$BASE_DIR/gliovascular/edges.h5",
+        "populations": {
+          "gliovascular": {
+            "endfeet_meshes_file": "PLACEHOLDER",
+            "type": "endfoot"
+          }
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "nodes_file": "$BASE_DIR/All/nodes.h5",
+        "populations": {
+          "All": {
+            "alternate_morphologies": {
+              "neurolucida-asc": "$BASE_DIR/morphologies/All"
+            },
+            "biophysical_neuron_models_dir": "$BASE_DIR/biophysical_model_templates",
+            "type": "biophysical"
+          }
+        }
+      },
+      {
+        "nodes_file": "$BASE_DIR/astrocytes/nodes.h5",
+        "populations": {
+          "astrocytes": {
+            "microdomains_file": "PLACEHOLDER",
+            "morphologies_dir": "$BASE_DIR/morphologies/astrocytes",
+            "type": "astrocyte"
+          }
+        }
+      },
+      {
+        "nodes_file": "$BASE_DIR/vasculature/nodes.h5",
+        "populations": {
+          "vasculature": {
+            "type": "vasculature",
+            "vasculature_file": "PLACEHOLDER",
+            "vasculature_mesh": "PLACEHOLDER"
+          }
+        }
+      }
+    ]
+  },
+  "node_sets_file": "$BASE_DIR/node_sets.json",
+  "version": 1,
+  "manifest": {
+    "$BASE_DIR": "./"
+  }
+}
