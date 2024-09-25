@@ -46,6 +46,7 @@ def test_add_synapses():
     n_syns = len(conn._synapse_params)
     assert n_syns > 1
     new_params[0].sgid = conn.sgid
+    new_params[0].isec = 0
     conn.add_synapses(n._target_manager, new_params)
     assert len(conn._synapse_params) == n_syns + 1
     for syn_manager in n._circuits.all_synapse_managers():
