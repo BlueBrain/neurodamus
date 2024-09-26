@@ -192,7 +192,7 @@ jobs:
         cp neurodamus/data/mod/*.mod tests/share/mod/
         ./docker/build_neurodamus.sh tests/share/mod
 
-        # Build models
+        # Build nocortex model
         DATADIR=$(python -c "import neurodamus; from pathlib import Path; print(Path(neurodamus.__file__).parent / 'data')")
         cmake -B neurodamus-models/build -S neurodamus-models/ \
           -DCMAKE_INSTALL_PREFIX=$PWD/neurodamus-models/install \
@@ -204,18 +204,20 @@ jobs:
         cmake --install neurodamus-models/build
         echo "NEURODAMUS_NEOCORTEX_ROOT=$(pwd)/neurodamus-models/install" >> $GITHUB_ENV;
 
-        # Build ngv model
-        cmake -B neurodamus-models/build_ngv -S neurodamus-models/ \
-          -DCMAKE_INSTALL_PREFIX=$PWD/neurodamus-models/install_ngv \
+        # Build neocortex-multiscale model
+        echo "build neurodamus-neocortex-multiscale model"
+        cmake -B neurodamus-models/build_multiscale -S neurodamus-models/ \
+          -DCMAKE_INSTALL_PREFIX=$PWD/neurodamus-models/install_multiscale \
           -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
           -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR \
           -DNEURODAMUS_CORE_DIR=${DATADIR} \
           -DNEURODAMUS_MECHANISMS=neocortex \
           -DNEURODAMUS_NCX_METABOLISM=ON \
-          -DNEURODAMUS_NCX_NGV=ON
-        cmake --build neurodamus-models/build_ngv
-        cmake --install neurodamus-models/build_ngv
-        echo "NEURODAMUS_NEOCORTEX_NGV_ROOT=$(pwd)/neurodamus-models/install_ngv" >> $GITHUB_ENV;
+          -DNEURODAMUS_NCX_NGV=ON \
+          -DNEURODAMUS_ENABLE_CORENEURON=OFF
+        cmake --build neurodamus-models/build_multiscale
+        cmake --install neurodamus-models/build_multiscale
+        echo "NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT=$(pwd)/neurodamus-models/install_multiscale" >> $GITHUB_ENV;
 
     - name: Example run
       run: |
@@ -273,7 +275,7 @@ jobs:
     - name: test-scientific-ngv
       run: |
         . ./venv/bin/activate
-        export NEURODAMUS_NEOCORTEX_ROOT=$NEURODAMUS_NEOCORTEX_NGV_ROOT
+        export NEURODAMUS_NEOCORTEX_ROOT=$NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT
         pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific-ngv
 
     - name: Build docs
