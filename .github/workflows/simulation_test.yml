@@ -204,6 +204,19 @@ jobs:
         cmake --install neurodamus-models/build
         echo "NEURODAMUS_NEOCORTEX_ROOT=$(pwd)/neurodamus-models/install" >> $GITHUB_ENV;
 
+        # Build ngv model
+        cmake -B neurodamus-models/build -S neurodamus-models/ \
+          -DCMAKE_INSTALL_PREFIX=$PWD/neurodamus-models/install_ngv \
+          -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
+          -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR \
+          -DNEURODAMUS_CORE_DIR=${DATADIR} \
+          -DNEURODAMUS_MECHANISMS=neocortex \
+          -DNEURODAMUS_NCX_METABOLISM=ON \
+          -DNEURODAMUS_NCX_NGV=ON
+        cmake --build neurodamus-models/build_ngv
+        cmake --install neurodamus-models/build_ngv
+        echo "NEURODAMUS_NEOCORTEX_NGV_ROOT=$(pwd)/neurodamus-models/install_ngv" >> $GITHUB_ENV;
+
     - name: Example run
       run: |
         . ./venv/bin/activate
@@ -260,6 +273,7 @@ jobs:
     - name: test-scientific-ngv
       run: |
         . ./venv/bin/activate
+        export NEURODAMUS_NEOCORTEX_ROOT=$NEURODAMUS_NEOCORTEX_NGV_ROOT
         pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific-ngv
 
     - name: Build docs
