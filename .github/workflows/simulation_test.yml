@@ -216,11 +216,14 @@ jobs:
     - name: load neocortex model
       run: |
         . ./venv/bin/activate
+        export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
         export HOC_LIBRARY_PATH=$NEURODAMUS_NEOCORTEX_ROOT/share/neurodamus_neocortex/hoc
         export NEURODAMUS_PYTHON=$(pwd)/neurodamus/data
         export CORENEURONLIB=$NEURODAMUS_NEOCORTEX_ROOT/lib/libcorenrnmech.so
         export NRNMECH_LIB_PATH=$NEURODAMUS_NEOCORTEX_ROOT/lib/libnrnmech.so
+        export PATH=$NEURODAMUS_NEOCORTEX_ROOT/bin:$PATH
 
+        echo "PYTHONPATH=$PYTHONPATH" >> $GITHUB_ENV;
         echo "HOC_LIBRARY_PATH=$HOC_LIBRARY_PATH" >> $GITHUB_ENV;
         echo "CORENEURONLIB=$CORENEURONLIB" >> $GITHUB_ENV;
         echo "NRNMECH_LIB_PATH=$NRNMECH_LIB_PATH" >> $GITHUB_ENV;
