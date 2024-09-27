@@ -275,7 +275,7 @@ jobs:
     - name: test-scientific-ngv
       run: |
         . ./venv/bin/activate
-        export NEURODAMUS_NEOCORTEX_ROOT=$NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT
+        export NEURODAMUS_NEOCORTEX_ROOT=${{ env.NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT}}
         pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific-ngv
 
     - name: Build docs
@@ -290,8 +290,8 @@ jobs:
         name: docs-py${{ matrix.python-version }}
         path: docs/_build
 
-    # - name: live debug session, comment out
-    #   if: failure()
-    #   uses: mxschmitt/action-tmate@v3
-    #   with:
-    #    timeout-minutes: 60  # or any other value you need
+    - name: live debug session, comment out
+      if: failure()
+      uses: mxschmitt/action-tmate@v3
+      with:
+       timeout-minutes: 60  # or any other value you need
