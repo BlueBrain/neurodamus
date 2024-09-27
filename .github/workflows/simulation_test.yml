@@ -186,13 +186,7 @@ jobs:
         export PATH=$(pwd)/nrn/build/install/bin:$PATH
         # Clone neurodamus-models repository
         git clone --branch=${{ env.NEURODAMUS_MODELS_BRANCH }} https://github.com/BlueBrain/neurodamus-models.git
-        mkdir -p tests/share/mod
-        cp -L -r neurodamus-models/neocortex/mod/v5/* tests/share/mod
-        cp -L -r neurodamus-models/neocortex/mod/v6/* tests/share/mod
-        cp neurodamus/data/mod/*.mod tests/share/mod/
-        ./docker/build_neurodamus.sh tests/share/mod
-
-        # Build nocortex model
+        # Build neocortex model
         DATADIR=$(python -c "import neurodamus; from pathlib import Path; print(Path(neurodamus.__file__).parent / 'data')")
         cmake -B neurodamus-models/build -S neurodamus-models/ \
           -DCMAKE_INSTALL_PREFIX=$PWD/neurodamus-models/install \
@@ -219,18 +213,14 @@ jobs:
         cmake --install neurodamus-models/build_multiscale
         echo "NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT=$(pwd)/neurodamus-models/install_multiscale" >> $GITHUB_ENV;
 
-    - name: Example run
+    - name: load neocortex model
       run: |
         . ./venv/bin/activate
-        export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
-        cp neurodamus-models/neocortex/hoc/* neurodamus/data/hoc/
-        export HOC_LIBRARY_PATH=$(pwd)/neurodamus/data/hoc
+        export HOC_LIBRARY_PATH=$NEURODAMUS_NEOCORTEX_ROOT/share/neurodamus_neocortex/hoc
         export NEURODAMUS_PYTHON=$(pwd)/neurodamus/data
-        export CORENEURONLIB=$(pwd)/x86_64/libcorenrnmech.so
-        export NRNMECH_LIB_PATH=$(pwd)/x86_64/libnrnmech.so
-        export PATH=$(pwd)/x86_64:$PATH
+        export CORENEURONLIB=$NEURODAMUS_NEOCORTEX_ROOT/lib/libcorenrnmech.so
+        export NRNMECH_LIB_PATH=$NEURODAMUS_NEOCORTEX_ROOT/lib/libnrnmech.so
 
-        echo "PYTHONPATH=$PYTHONPATH" >> $GITHUB_ENV;
         echo "HOC_LIBRARY_PATH=$HOC_LIBRARY_PATH" >> $GITHUB_ENV;
         echo "CORENEURONLIB=$CORENEURONLIB" >> $GITHUB_ENV;
         echo "NRNMECH_LIB_PATH=$NRNMECH_LIB_PATH" >> $GITHUB_ENV;
@@ -275,7 +265,9 @@ jobs:
     - name: test-scientific-ngv
       run: |
         . ./venv/bin/activate
-        export NEURODAMUS_NEOCORTEX_ROOT=${{ env.NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT}}
+        export HOC_LIBRARY_PATH=$NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT/share/neurodamus_neocortex/hoc
+        export NRNMECH_LIB_PATH=$NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT/lib/libnrnmech.so
+        unset CORENEURONLIB
         pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific-ngv
 
     - name: Build docs
