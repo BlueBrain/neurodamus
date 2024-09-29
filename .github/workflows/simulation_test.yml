@@ -191,7 +191,8 @@ jobs:
           -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
           -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR \
           -DNEURODAMUS_CORE_DIR=${DATADIR} \
-          -DNEURODAMUS_MECHANISMS=neocortex
+          -DNEURODAMUS_MECHANISMS=neocortex \
+          -DNEURODAMUS_NCX_V5=ON
         cmake --build neurodamus-models/build
         cmake --install neurodamus-models/build
         echo "NEURODAMUS_NEOCORTEX_ROOT=$(pwd)/neurodamus-models/install" >> $GITHUB_ENV;
@@ -226,7 +227,6 @@ jobs:
         echo "CORENEURONLIB=$CORENEURONLIB" >> $GITHUB_ENV;
         echo "NRNMECH_LIB_PATH=$NRNMECH_LIB_PATH" >> $GITHUB_ENV;
         echo "NEURODAMUS_PYTHON=$NEURODAMUS_PYTHON" >> $GITHUB_ENV;
-        echo "PATH=$PATH" >> $GITHUB_ENV;
 
         which special
 
