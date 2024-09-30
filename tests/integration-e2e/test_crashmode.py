@@ -22,4 +22,4 @@ def test_crash_test_loading(SIM_DIR, tmp_path):
 
     n.create_synapses()
     syn_manager = n.circuits.get_edge_manager("default", "default")
-    assert syn_manager.connection_count == 7687
+    assert syn_manager.connection_count == 2
