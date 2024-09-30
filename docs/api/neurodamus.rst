@@ -10,7 +10,7 @@ Package-Level Classes
 
 .. autosummary::
    Neurodamus
-   neurodamus.Node
+   Node
 
 
 Sub-Modules
@@ -35,7 +35,7 @@ Module API
 neurodamus
 ----------
 
-.. autoclass:: Neurodamus
+.. autoclass:: neurodamus.Neurodamus
    :members:
    :undoc-members:
 
