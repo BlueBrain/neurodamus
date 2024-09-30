@@ -96,13 +96,13 @@ jobs:
       run: |
         python -m venv venv
         . ./venv/bin/activate
+        echo "${{ github.workspace }}/venv/bin" >> $GITHUB_PATH
         python -m pip install --upgrade pip setuptools
         pip install cython numpy wheel pkgconfig
 
     - name: Install libsonata
       if: steps.cache-venv.outputs.cache-hit != 'true'
       run: |
-        . ./venv/bin/activate
         CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata
 
     - name: Cache libsonatareport
@@ -145,7 +145,6 @@ jobs:
         else
           git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git --depth=1
         fi
-        . ./venv/bin/activate
         python -m pip install --upgrade pip -r nrn/nrn_requirements.txt
         cmake -B nrn/build -S nrn -G Ninja \
           -DPYTHON_EXECUTABLE=$(which python) \
@@ -163,23 +162,19 @@ jobs:
     - name: Install mpi4py
       if: steps.cache-venv.outputs.cache-hit != 'true'
       run: |
-        . ./venv/bin/activate
         pip install mpi4py
 
     - name: Build h5py with the local hdf5
       run: |
-        . ./venv/bin/activate
         CC="mpicc" HDF5_MPI="ON" HDF5_INCLUDEDIR=/usr/include/hdf5/mpich HDF5_LIBDIR=/usr/lib/x86_64-linux-gnu/hdf5/mpich \
           pip install --no-cache-dir --no-binary=h5py h5py --no-build-isolation
 
     - name: Install neurodamus
       run: |
-        . ./venv/bin/activate
         pip install .[full]
 
     - name: Build neocortex models
       run: |
-        . ./venv/bin/activate
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
         export PATH=$(pwd)/nrn/build/install/bin:$PATH
         # Clone neurodamus-models repository
@@ -214,7 +209,6 @@ jobs:
 
     - name: load neocortex model
       run: |
-        . ./venv/bin/activate
         export PYTHONPATH=$(pwd)/nrn/build/install/lib/python:$PYTHONPATH
         export HOC_LIBRARY_PATH=$NEURODAMUS_NEOCORTEX_ROOT/share/neurodamus_neocortex/hoc
         export NEURODAMUS_PYTHON=$(pwd)/neurodamus/data
@@ -240,33 +234,27 @@ jobs:
 
     - name: Install test and doc dependencies
       run: |
-        . ./venv/bin/activate
         pip install -r tests/requirements.txt
         pip install "sphinx<5.1.0" sphinx-bluebrain-theme
 
     - name: test-unit
       run: |
-        . ./venv/bin/activate
         pytest tests/unit
 
     - name: test-integration
       run: |
-        . ./venv/bin/activate
         pytest -x --forked tests/integration
 
     - name: test-integration-e2e
       run: |
-        . ./venv/bin/activate
         pytest -s -x --forked --durations=5 --durations-min=15 tests/integration-e2e
 
     - name: test-scientific
       run: |
-        . ./venv/bin/activate
         pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific
 
     - name: test-scientific-ngv
       run: |
-        . ./venv/bin/activate
         export HOC_LIBRARY_PATH=$NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT/share/neurodamus_neocortex/hoc
         export NRNMECH_LIB_PATH=$NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT/lib/libnrnmech.so
         unset CORENEURONLIB
@@ -274,7 +262,6 @@ jobs:
 
     - name: Build docs
       run: |
-        . ./venv/bin/activate
         export PIP_INDEX_URL=https://bbpteam.epfl.ch/repository/devpi/simple
         sphinx-build -T -W docs docs/_build
 
