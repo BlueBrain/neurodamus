@@ -35,7 +35,7 @@ Module API
 neurodamus
 ----------
 
-.. autoclass:: Neurodamus
+.. autoclass:: neurodamus.Neurodamus
    :members:
    :undoc-members:
 
