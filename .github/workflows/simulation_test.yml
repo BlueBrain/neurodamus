@@ -234,10 +234,9 @@ jobs:
         mpirun -np 2 special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=simulation_sonata_coreneuron.json
         ls reporting_coreneuron/*.h5
 
-    - name: Install test and doc dependencies
+    - name: Install test dependencies
       run: |
         pip install -r tests/requirements.txt
-        pip install "sphinx<5.1.0" sphinx-bluebrain-theme
 
     - name: test-unit
       run: |
@@ -261,17 +260,6 @@ jobs:
         export NRNMECH_LIB_PATH=$NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT/lib/libnrnmech.so
         unset CORENEURONLIB
         pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific-ngv
-
-    - name: Build docs
-      run: |
-        export PIP_INDEX_URL=https://bbpteam.epfl.ch/repository/devpi/simple
-        sphinx-build -T -W docs docs/_build
-
-    - name: Upload docs artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: docs-py${{ matrix.python-version }}
-        path: docs/_build
 
     - name: live debug session, comment out
       if: failure()
