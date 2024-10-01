@@ -1121,6 +1121,9 @@ class Node:
         if spike_compress and not is_save_state and not self._is_ngv_run:
             # multisend 13 is combination of multisend(1) + two_phase(8) + two_intervals(4)
             # to activate set spike_compress=(0, 0, 13)
+            if SimConfig.loadbal_mode == LoadBalanceMode.Memory:
+                logging.info("Disabling spike compression for Memory Load Balance")
+                spike_compress = False
             if not isinstance(spike_compress, tuple):
                 spike_compress = (spike_compress, 1, 0)
             self._pc.spike_compress(*spike_compress)
