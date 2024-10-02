@@ -644,8 +644,9 @@ class ConnectionManagerBase(object):
 
         def target_gids(gids):
             if gids is None:
-                return self._raw_gids
-            gids = numpy.intersect1d(gids, self._raw_gids)
+                gids = self._raw_gids
+            else:
+                gids = numpy.intersect1d(gids, self._raw_gids)
             if dst_target:
                 gids = numpy.intersect1d(gids, dst_target.get_raw_gids())
             return gids
