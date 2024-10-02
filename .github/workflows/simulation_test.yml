@@ -105,7 +105,7 @@ jobs:
     - name: Install libsonata
       if: steps.cache-venv.outputs.cache-hit != 'true'
       run: |
-        CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata
+        CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata@${{ env.LIBSONATA_BRANCH }}
 
     - name: Cache libsonatareport
       id: cache-libsonatareport
