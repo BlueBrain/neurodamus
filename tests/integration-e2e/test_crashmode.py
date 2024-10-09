@@ -1,14 +1,28 @@
 
 
 def test_crash_test_loading(SIM_DIR, tmp_path):
+    import json
     from neurodamus import Node
     from neurodamus.cell_distributor import CellDistributor
     from neurodamus.metype import PointCell
     from neuron import nrn
     sim_dir = SIM_DIR / "v5_sonata"
-    sim_config_path = sim_dir / "simulation_config_mini.json"
+    config_file_mini = "simulation_config_mini.json"
 
-    n = Node(str(sim_config_path), {"crash_test": True})
+    # Read the original config file
+    sim_config_path = sim_dir / config_file_mini
+    with open(sim_config_path, "r") as f:
+        sim_config_data = json.load(f)
+
+    # Update the network path in the config
+    sim_config_data["network"] = str(sim_dir / "sub_mini5" / "circuit_config.json")
+
+    # Write the modified config to the temporary directory
+    temp_config_path = tmp_path / config_file_mini
+    with open(temp_config_path, "w") as f:
+        json.dump(sim_config_data, f, indent=2)
+
+    n = Node(str(temp_config_path), {"crash_test": True})
     n.load_targets()
     n.create_cells()
 

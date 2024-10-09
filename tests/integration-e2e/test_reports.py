@@ -80,12 +80,16 @@ def _read_sonata_report(report_file):
     return node_ids, data
 
 
-def _create_tmpconfig_lfp(config_file):
-
-    import json
-    from tempfile import NamedTemporaryFile
-    with open(config_file, 'r') as f:
+def _create_reports_config(original_config_path: Path, tmp_path: Path) -> tuple[Path, Path]:
+    """
+    Create a modified configuration file in a temporary directory.
+    """
+    # Read the original config file
+    with open(original_config_path, 'r') as f:
         config = json.load(f)
+
+    # Update the network path in the config
+    config["network"] = str(SIM_DIR / "sub_mini5" / "circuit_config.json")
 
     # Modify the necessary fields
     config["reports"] = config.get("reports", {})
@@ -108,27 +112,25 @@ def _create_tmpconfig_lfp(config_file):
         "end_time": 40.0
     }
 
-    # Get the directory of the original config file
-    config_dir = Path(config_file).parent
-
     # Write the modified configuration to a temporary file
-    tmp_file = NamedTemporaryFile(suffix=".json", delete=False, dir=config_dir, mode='w')
-    json.dump(config, tmp_file, indent=4)
-    tmp_file.close()
+    temp_config_path = tmp_path / "reports_config.json"
+    with open(temp_config_path, "w") as f:
+        json.dump(config, f, indent=4)
 
-    return tmp_file
+    # Create output directory
+    output_dir = tmp_path / config["output"]["output_dir"]
 
+    return str(temp_config_path), str(output_dir)
 
 @pytest.mark.slow
-def test_v5_sonata_reports():
+def test_v5_sonata_reports(tmp_path):
     import numpy.testing as npt
     from neurodamus import Neurodamus
 
-    config_file = str(SIM_DIR / "simulation_config_mini.json")
-    output_dir = str(SIM_DIR / "output_reports")
+    config_file = SIM_DIR / "simulation_config_mini.json"
+    temp_config_path, output_dir = _create_reports_config(config_file, tmp_path)
 
-    tmp_file = _create_tmpconfig_lfp(config_file)
-    nd = Neurodamus(tmp_file.name, output_path=output_dir)
+    nd = Neurodamus(temp_config_path, output_path=output_dir)
     nd.run()
 
     report_refs = {
