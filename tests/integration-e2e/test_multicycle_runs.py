@@ -1,4 +1,5 @@
 import numpy as np
+import json
 import os
 import pytest
 from pathlib import Path
@@ -69,15 +70,28 @@ def _read_sonata_spike_file(spike_file):
     return timestamps, spike_gids
 
 
-def test_v5_sonata_multisteps(capsys):
+def test_v5_sonata_multisteps(capsys, tmp_path):
     import numpy.testing as npt
     from neurodamus import Neurodamus
 
-    config_file = str(SIM_DIR / "v5_sonata" / "simulation_config_mini.json")
-    output_dir = str(SIM_DIR / "v5_sonata" / "output_coreneuron")
-    tmp_file = _create_tmpconfig_coreneuron(config_file)
+    config_file = SIM_DIR / "v5_sonata" / "simulation_config_mini.json"
+    with open(config_file, "r") as f:
+        config_data = json.load(f)
 
-    nd = Neurodamus(tmp_file.name, output_path=output_dir, modelbuilding_steps=3)
+    # Modify the config for CORENEURON
+    config_data["target_simulator"] = "CORENEURON"
+    # Update the network path in the config
+    config_data["network"] = str(SIM_DIR / "v5_sonata" / "sub_mini5" / "circuit_config.json")
+
+    # Use temporary directory for output
+    output_dir = str(tmp_path / config_data["output"]["output_dir"])
+
+    # Write the modified config to the temporary directory
+    temp_config_path = tmp_path / "simulation_config_mini.json"
+    with open(temp_config_path, "w") as f:
+        json.dump(config_data, f, indent=2)
+
+    nd = Neurodamus(str(temp_config_path), output_path=output_dir, modelbuilding_steps=3)
     nd.run()
 
     # compare spikes with refs

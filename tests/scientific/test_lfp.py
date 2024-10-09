@@ -131,12 +131,26 @@ def test_number_electrodes(test_file):
     assert result == expected_result, f'Expected {expected_result}, but got {result}'
 
 
-def _create_tmpconfig_lfp(config_file, lfp_file):
+def _read_sonata_lfp_file(lfp_file):
+    import libsonata
+    report = libsonata.ElementReportReader(lfp_file)
+    pop_name = report.get_population_names()[0]
+    node_ids = report[pop_name].get_node_ids()
+    data = report[pop_name].get()
+    return node_ids, data
 
+
+def _create_lfp_config(original_config_path: Path, lfp_file: Path, tmp_path: Path) -> tuple[Path, Path]:
+    """
+    Create a modified lfp configuration file in a temporary directory.
+    """
     import json
-    from tempfile import NamedTemporaryFile
-    with open(config_file, 'r') as f:
+    # Read the original config file
+    with open(original_config_path, 'r') as f:
         config = json.load(f)
+
+    # Update the network path in the config
+    config["network"] = str(SIM_DIR / "v5_sonata" / "sub_mini5" / "circuit_config.json")
 
     # Modify the necessary fields
     config["target_simulator"] = "CORENEURON"
@@ -151,37 +165,26 @@ def _create_tmpconfig_lfp(config_file, lfp_file):
         "end_time": 1.0
     }
 
-    # Get the directory of the original config file
-    config_dir = Path(config_file).parent
-
     # Write the modified configuration to a temporary file
-    tmp_file = NamedTemporaryFile(suffix=".json", delete=False, dir=config_dir, mode='w')
-    json.dump(config, tmp_file, indent=4)
-    tmp_file.close()
+    temp_config_path = tmp_path / "lfp_config.json"
+    with open(temp_config_path, "w") as f:
+        json.dump(config, f, indent=4)
 
-    return tmp_file
+    # Create output directory
+    output_dir = tmp_path / config["output"]["output_dir"]
 
-
-def _read_sonata_lfp_file(lfp_file):
-    import libsonata
-    report = libsonata.ElementReportReader(lfp_file)
-    pop_name = report.get_population_names()[0]
-    node_ids = report[pop_name].get_node_ids()
-    data = report[pop_name].get()
-    return node_ids, data
+    return str(temp_config_path), str(output_dir)
 
 
-def test_v5_sonata_lfp(tmpdir, test_file):
+def test_v5_sonata_lfp(tmpdir, test_file, tmp_path):
     import numpy.testing as npt
     from neurodamus import Neurodamus
 
-    config_file = str(SIM_DIR / "v5_sonata" / "simulation_config_mini.json")
-    output_dir = str(SIM_DIR / "v5_sonata" / "output_lfp")
-
+    config_file = SIM_DIR / "v5_sonata" / "simulation_config_mini.json"
     lfp_weights_file = tmpdir.join("test_file.h5")
-    tmp_file = _create_tmpconfig_lfp(config_file, lfp_weights_file)
+    temp_config_path, output_dir = _create_lfp_config(config_file, lfp_weights_file, tmp_path)
 
-    nd = Neurodamus(tmp_file.name, output_path=output_dir)
+    nd = Neurodamus(temp_config_path, output_path=output_dir)
     nd.run()
 
     # compare results with refs
