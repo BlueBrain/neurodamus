@@ -122,6 +122,7 @@ def _create_reports_config(original_config_path: Path, tmp_path: Path) -> tuple[
 
     return str(temp_config_path), str(output_dir)
 
+
 @pytest.mark.slow
 def test_v5_sonata_reports(tmp_path):
     import numpy.testing as npt
