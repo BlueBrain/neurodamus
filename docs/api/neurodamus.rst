@@ -9,24 +9,24 @@ Package-Level Classes
 =====================
 
 .. autosummary::
-   neurodamus.Neurodamus
-   neurodamus.Node
+   Neurodamus
+   Node
 
 
 Sub-Modules
 ===========
 
 .. autosummary::
-   neurodamus.cell_distributor
-   neurodamus.connection_manager
-   neurodamus.connection
-   neurodamus.gap_junction
-   neurodamus.metype
-   neurodamus.modification_manager
-   neurodamus.ngv
-   neurodamus.replay
-   neurodamus.stimulus_manager
-   neurodamus.target_manager
+   cell_distributor
+   connection_manager
+   connection
+   gap_junction
+   metype
+   modification_manager
+   ngv
+   replay
+   stimulus_manager
+   target_manager
 
 
 Module API

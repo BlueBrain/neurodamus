@@ -4,7 +4,7 @@
         "$OUTPUT_DIR": "./",
         "$INPUT_DIR": "./"
     },
-    "node_sets_file": "node_sets.json",
+    "network": "sub_mini5/circuit_config.json",
     "node_set": "Mini5",
     "target_simulator": "NEURON",
     "run": {
@@ -20,14 +20,6 @@
     "connection_overrides": [
     ],
     "inputs": {
-        "spikeReplay": {
-            "module": "synapse_replay",
-            "input_type": "spikes",
-            "spike_file": "input.h5",
-            "delay": 0,
-            "duration": 30000,
-            "node_set": "Mosaic"
-        },
         "ThresholdExc": {
             "module": "noise",
             "input_type": "current_clamp",

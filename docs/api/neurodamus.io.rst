@@ -9,6 +9,6 @@ Sub-Modules
 
 .. autosummary::
 
-   neurodamus.io.cell_readers
-   neurodamus.io.sonata_config
-   neurodamus.io.synapse_reader
+   cell_readers
+   sonata_config
+   synapse_reader

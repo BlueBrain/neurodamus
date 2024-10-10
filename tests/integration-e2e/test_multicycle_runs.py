@@ -1,4 +1,5 @@
 import numpy as np
+import json
 import os
 import pytest
 from pathlib import Path
@@ -69,27 +70,36 @@ def _read_sonata_spike_file(spike_file):
     return timestamps, spike_gids
 
 
-def test_v5_sonata_multisteps(capsys):
+def test_v5_sonata_multisteps(capsys, tmp_path):
     import numpy.testing as npt
     from neurodamus import Neurodamus
 
-    config_file = str(SIM_DIR / "v5_sonata" / "simulation_config.json")
-    output_dir = str(SIM_DIR / "v5_sonata" / "output_coreneuron")
-    tmp_file = _create_tmpconfig_coreneuron(config_file)
+    config_file = SIM_DIR / "v5_sonata" / "simulation_config_mini.json"
+    with open(config_file, "r") as f:
+        config_data = json.load(f)
 
-    nd = Neurodamus(tmp_file.name, output_path=output_dir, modelbuilding_steps=3)
+    # Modify the config for CORENEURON
+    config_data["target_simulator"] = "CORENEURON"
+    # Update the network path in the config
+    config_data["network"] = str(SIM_DIR / "v5_sonata" / "sub_mini5" / "circuit_config.json")
+
+    # Use temporary directory for output
+    output_dir = str(tmp_path / config_data["output"]["output_dir"])
+
+    # Write the modified config to the temporary directory
+    temp_config_path = tmp_path / "simulation_config_mini.json"
+    with open(temp_config_path, "w") as f:
+        json.dump(config_data, f, indent=2)
+
+    nd = Neurodamus(str(temp_config_path), output_path=output_dir, modelbuilding_steps=3)
     nd.run()
 
     # compare spikes with refs
     spike_gids = np.array([
-        68855, 69877, 64935, 66068, 63698, 67666, 68223, 65915, 62945,
-        63256, 69530, 64861, 68532, 66105, 64163, 68855, 62797, 65951,
-        69877
+        4, 2, 0
     ])  # 0-based
     timestamps = np.array([
-        9.15, 14.3, 15.425, 30.125, 33.175, 34.175, 35.075, 35.625,
-        36.15, 36.85, 36.875, 37.075, 37.525, 37.6, 38.05, 38.3,
-        38.45, 39.6, 39.85
+        33.425, 37.35, 39.725
     ])
     obtained_timestamps, obtained_spike_gids = _read_sonata_spike_file(os.path.join(output_dir,
                                                                                     "out.h5"))
