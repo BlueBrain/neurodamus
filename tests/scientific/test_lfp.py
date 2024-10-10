@@ -140,7 +140,7 @@ def _read_sonata_lfp_file(lfp_file):
     return node_ids, data
 
 
-def _create_lfp_config(original_config_path: Path, lfp_file: Path, tmp_path: Path) -> tuple[Path, Path]:
+def _create_lfp_config(original_config_path, lfp_file, tmp_path):
     """
     Create a modified lfp configuration file in a temporary directory.
     """

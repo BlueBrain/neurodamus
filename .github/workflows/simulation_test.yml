@@ -237,6 +237,10 @@ jobs:
     - name: Install test dependencies
       run: |
         pip install -r tests/requirements.txt
+        pip install flake8 flake8-pyproject
+
+    - name: Run flake8
+      run: flake8 .
 
     - name: test-unit
       run: |
