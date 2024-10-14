@@ -4,8 +4,8 @@
         "$OUTPUT_DIR": "./",
         "$INPUT_DIR": "./"
     },
-    "node_sets_file": "node_sets.json",
-    "node_set": "MiniColumn_703",
+    "network": "sub_L4_SP/circuit_config.json",
+    "node_set": "L4_SP",
     "target_simulator": "NEURON",
     "run": {
         "tstart": 0,

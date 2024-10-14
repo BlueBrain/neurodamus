@@ -17,12 +17,9 @@ def test_crash_test_loading(SIM_DIR, tmp_path):
     # Test runs in a single rank and its still fast in crash-test mode
     new_config_path = tmp_path / "simulation_config.json"
     config["node_set"] = "L4_SP"
+    config["network"] = str(SIM_DIR / "v5_sonata"/ "sub_L4_SP" / "circuit_config.json")
     with open(new_config_path, "w") as new_config:
         json.dump(config, new_config)
-
-    # Symlink aux files, searched in the same dir
-    for filename in ("circuit_config.json", "node_sets.json"):
-        os.symlink(sim_dir / filename, tmp_path / filename)
 
     n = Node(str(new_config_path), {"crash_test": True})
     n.load_targets()
@@ -38,4 +35,4 @@ def test_crash_test_loading(SIM_DIR, tmp_path):
 
     n.create_synapses()
     syn_manager = n.circuits.get_edge_manager("default", "default")
-    assert syn_manager.connection_count == 7687
+    assert syn_manager.connection_count == 7681
