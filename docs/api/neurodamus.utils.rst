@@ -9,8 +9,8 @@ Sub-Modules
 
 .. autosummary::
 
-   neurodamus.utils.compat
-   neurodamus.utils.logging
-   neurodamus.utils.multimap
-   neurodamus.utils.progressbar
-   neurodamus.utils.pyutils
+   compat
+   logging
+   multimap
+   progressbar
+   pyutils
