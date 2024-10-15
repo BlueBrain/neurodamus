@@ -1,2 +1,4 @@
 *.asc linguist-detectable=false
 *.mod linguist-detectable=false
+tests/simulations/v5_sonata/sub_L4_SP/default/nodes.h5 filter=lfs diff=lfs merge=lfs -text
+tests/simulations/v5_sonata/sub_L4_SP/default/edges.h5 filter=lfs diff=lfs merge=lfs -text
