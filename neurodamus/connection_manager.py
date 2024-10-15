@@ -559,12 +559,14 @@ class ConnectionManagerBase(object):
             mod_override (str): ModOverride given for this connection group
         """
         conn_kwargs = {}
-        pop = self._cur_population
+        conn_pop = self._cur_population
+        dst_pop_name = self._cell_manager.population_name
+        src_pop_name = self._src_cell_manager.population_name
         logging.debug("Connecting group %s -> %s", conn_source, conn_destination)
         src_tspec = TargetSpec(conn_source)
         dst_tspec = TargetSpec(conn_destination)
-        src_target = src_tspec.name and self._target_manager.get_target(src_tspec)
-        dst_target = dst_tspec.name and self._target_manager.get_target(dst_tspec)
+        src_target = src_tspec.name and self._target_manager.get_target(src_tspec, src_pop_name)
+        dst_target = dst_tspec.name and self._target_manager.get_target(dst_tspec, dst_pop_name)
 
         if src_target and src_target.is_void() or dst_target and dst_target.is_void():
             logging.debug("Skip void connectivity for current connectivity: %s - %s",
@@ -573,7 +575,7 @@ class ConnectionManagerBase(object):
 
         if SimConfig.dry_run:
             syn_count = self._get_conn_stats(dst_target, src_target)
-            log_all(VERBOSE_LOGLEVEL, "%s -> %s: %d", pop.src_name, conn_destination, syn_count)
+            log_all(VERBOSE_LOGLEVEL, "%s-> %s: %d", conn_pop.src_name, conn_destination, syn_count)
             self._dry_run_stats.synapse_counts[self.CONNECTIONS_TYPE] += syn_count
             return
 
@@ -584,7 +586,7 @@ class ConnectionManagerBase(object):
             if self._load_offsets:
                 conn_kwargs["synapses_offset"] = extra_params["synapse_index"][0]
 
-            cur_conn = pop.get_or_create_connection(sgid, tgid, **conn_kwargs)
+            cur_conn = conn_pop.get_or_create_connection(sgid, tgid, **conn_kwargs)
             if cur_conn.locked:
                 continue
             self._add_synapses(cur_conn, syns_params, synapse_type_restrict, offset)
