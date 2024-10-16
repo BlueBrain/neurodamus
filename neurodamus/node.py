@@ -33,7 +33,6 @@ from .target_manager import TargetSpec, TargetManager
 from .utils import compat
 from .utils.logging import log_stage, log_verbose, log_all
 from .utils.memory import DryRunStats, trim_memory, pool_shrink, free_event_queues, print_mem_usage
-from .utils.memory import import_allocation_stats
 from .utils.timeit import TimerManager, timeit
 from .core.coreneuron_configuration import CoreConfig, CompartmentMapping
 from .io.sonata_config import ConnectionTypes
@@ -377,17 +376,20 @@ class Node:
             logging.info("Load Balancing ENABLED. Mode: Memory")
             filename = f"allocation_r{MPI.size}_c{SimConfig.modelbuilding_steps}.pkl.gz"
 
-            if ospath.exists(filename):
-                alloc = import_allocation_stats(filename, self._cycle_i)
+            file_exists = ospath.exists(filename)
+            MPI.barrier()
+
+            self._dry_run_stats = DryRunStats()
+            if file_exists:
+                alloc = self._dry_run_stats.import_allocation_stats(filename, self._cycle_i)
             else:
                 logging.warning("Allocation file not found. Generating on-the-fly.")
-                self._dry_run_stats = DryRunStats()
                 self._dry_run_stats.try_import_cell_memory_usage()
                 cell_distributor = CellDistributor(circuit, self._target_manager, self._run_conf)
                 cell_distributor.load_nodes(None, loader_opts={"load_mode": "load_nodes_metype",
                                                                "dry_run_stats": self._dry_run_stats}
                                             )
-                alloc, _, _ = self._dry_run_stats.distribute_cells(
+                alloc, _, _ = self._dry_run_stats.distribute_cells_with_validation(
                     MPI.size,
                     SimConfig.modelbuilding_steps,
                     DryRunStats._MEMORY_USAGE_PER_METYPE_FILENAME
@@ -395,19 +397,6 @@ class Node:
             for pop, ranks in alloc.items():
                 for rank, gids in ranks.items():
                     logging.debug(f"Population: {pop}, Rank: {rank}, Number of GIDs: {len(gids)}")
-            if MPI.rank == 0:
-                unique_ranks = set(
-                    rank[0] if isinstance(rank, tuple) else rank
-                    for pop in alloc.values()
-                    for rank in pop.keys()
-                )
-                logging.debug("Unique ranks in allocation file: %s", len(unique_ranks))
-                if MPI.size != len(unique_ranks):
-                    raise ConfigurationError(
-                        "The number of ranks in the allocation file is different from the number "
-                        "of ranks in the current run. The allocation file was created with a "
-                        "different number of ranks."
-                    )
             return alloc
 
         # Build load balancer as per requested options
@@ -450,6 +439,8 @@ class Node:
             loader_opts = {"dry_run_stats": self._dry_run_stats}
         else:
             loader_opts = {}
+
+        loader_opts["cycle_i"] = self._cycle_i
 
         # Check dynamic attributes required before loading cells
         SimConfig.check_cell_requirements(self.target_manager)
@@ -1130,6 +1121,9 @@ class Node:
         if spike_compress and not is_save_state and not self._is_ngv_run:
             # multisend 13 is combination of multisend(1) + two_phase(8) + two_intervals(4)
             # to activate set spike_compress=(0, 0, 13)
+            if SimConfig.loadbal_mode == LoadBalanceMode.Memory:
+                logging.info("Disabling spike compression for Memory Load Balance")
+                spike_compress = False
             if not isinstance(spike_compress, tuple):
                 spike_compress = (spike_compress, 1, 0)
             self._pc.spike_compress(*spike_compress)
@@ -1804,7 +1798,11 @@ class Neurodamus(Node):
             self._dry_run_stats.display_node_suggestions()
             ranks = self._dry_run_stats.get_num_target_ranks(SimConfig.num_target_ranks)
             self._dry_run_stats.collect_all_mpi()
-            self._dry_run_stats.distribute_cells(ranks, SimConfig.modelbuilding_steps)
+            try:
+                self._dry_run_stats.distribute_cells_with_validation(ranks,
+                                                                     SimConfig.modelbuilding_steps)
+            except RuntimeError as e:
+                logging.error("Dry run failed: %s", e)
             return
         if not SimConfig.simulate_model:
             self.sim_init()

@@ -26,6 +26,7 @@ import numpy as np
 # This is an heuristic estimate based on tests on multiple circuits.
 # More info in docs/architecture.rst.
 SIM_ESTIMATE_FACTOR = 2.5
+MAX_ALLOCATION_STEPS = 10  # Maximum number of steps to reduce the batch size in distribute_cells
 
 
 def trim_memory():
@@ -229,25 +230,6 @@ def import_metype_memory_usage(memory_per_metype_file):
 
 
 @run_only_rank0
-def import_allocation_stats(filename, cycle_i=0) -> dict:
-    """
-    Import allocation dictionary from serialized pickle file.
-    """
-    def convert_to_standard_types(obj):
-        """Converts an object containing defaultdicts of Vectors to standard Python types."""
-        result = {}
-        for population, vectors in obj.items():
-            result[population] = {key[0]: np.array(vector) for key,
-                                  vector in vectors.items() if key[1] == cycle_i}
-        return result
-
-    with open(filename, 'rb') as f:
-        compressed_data = f.read()
-
-    return convert_to_standard_types(pickle.loads(gzip.decompress(compressed_data)))
-
-
-@run_only_rank0
 def allocation_stats_exists(filename):
     """
     Check if the allocation stats file exists.
@@ -275,6 +257,8 @@ class DryRunStats:
     _ALLOCATION_FILENAME = "allocation"
     _MEMORY_USAGE_PER_METYPE_FILENAME = "memory_per_metype.json"
 
+    _alloc_cache = None
+
     @staticmethod
     def defaultdict_vector():
         return defaultdict(Vector)
@@ -292,6 +276,40 @@ class DryRunStats:
         self.suggested_nodes = 0
         self.synapse_memory_total = 0
         _, _, self.base_memory, _ = get_task_level_mem_usage()
+
+    def import_allocation_stats(self, filename, cycle_i=0, ignore_cache=False) -> dict:
+        """
+        Import allocation dictionary from serialized pickle file.
+        """
+
+        def convert_to_standard_types(obj):
+            """Converts an object containing defaultdicts of Vectors to standard Python types."""
+            result = {}
+            for population, vectors in obj.items():
+                result[population] = {
+                    key: np.array(vector)
+                    for key, vector in vectors.items()
+                    if key[0] == MPI.rank}
+            return result
+
+        if self._alloc_cache is None or ignore_cache:
+            logging.warning("Loading allocation stats from %s...", filename)
+            with gzip.open(filename, 'rb') as f:
+                data = pickle.load(f)
+            DryRunStats._alloc_cache = convert_to_standard_types(data)
+        else:
+            logging.warning("Using cached allocation stats.")
+
+        # Filter the cached data based on the cycle index
+        filtered_alloc = {}
+        for population, vectors in self._alloc_cache.items():
+            filtered_alloc[population] = {
+                key: vector
+                for key, vector in vectors.items()
+                if key[1] == cycle_i
+            }
+
+        return filtered_alloc
 
     @run_only_rank0
     def estimate_cell_memory(self) -> float:
@@ -488,8 +506,6 @@ class DryRunStats:
                                         and values are the memory load of each METype.
         """
 
-        logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
-
         self.validate_inputs_distribute(num_ranks, batch_size)
         bucket_allocation = defaultdict(DryRunStats.defaultdict_vector)
         bucket_memory = defaultdict(DryRunStats.defaultdict_float)
@@ -530,7 +546,7 @@ class DryRunStats:
                 for cell_id in gids:
                     batch.append(cell_id)
                     batch_memory += total_mem_per_cell
-                    if len(batch) == batch_size:
+                    if len(batch) == batch_size[pop]:
                         assign_cells_to_bucket(rank_allocation, rank_memory, batch, batch_memory)
                         batch = []
                         batch_memory = 0
@@ -540,20 +556,13 @@ class DryRunStats:
 
             bucket_allocation[pop] = rank_allocation
             bucket_memory[pop] = rank_memory
-
-        print_allocation_stats(bucket_memory)
-        export_allocation_stats(bucket_allocation,
-                                self._ALLOCATION_FILENAME,
-                                num_ranks,
-                                cycles)
-
         return bucket_allocation, bucket_memory, metype_memory_usage
 
     def validate_inputs_distribute(self, num_ranks, batch_size):
         assert isinstance(num_ranks, int), "num_ranks must be an integer"
         assert num_ranks > 0, "num_ranks must be a positive integer"
-        assert isinstance(batch_size, int), "batch_size must be an integer"
-        assert batch_size > 0, "batch_size must be a positive integer"
+        assert isinstance(batch_size, dict), "batch_size must be a dict"
+        assert all(size > 0 for size in batch_size.values()), "batch_size must be positive"
 
         all_metypes = set()
         for values in self.pop_metype_gids.values():
@@ -568,3 +577,85 @@ class DryRunStats:
         #       Also Counter() will discard 0-count entries
         # syn_count_metypes = set(self.metype_cell_syn_average)
         # assert all_metypes <= syn_count_metypes, all_metypes - syn_count_metypes
+
+    def check_all_buckets_have_gids(self, bucket_allocation, population, num_ranks, cycles):
+        """
+        Checks if all possible buckets determined by num_ranks and cycles have at least one GID
+        assigned.
+
+        Args:
+            bucket_allocation (dict): The allocation dictionary containing the assignment of GIDs
+                                      to ranks and cycles.
+            population (str): The population to check.
+            num_ranks (int): The number of ranks.
+            cycles (int): The number of cycles.
+
+        Returns:
+            bool: True if all buckets have at least one GID assigned, False otherwise.
+        """
+        rank_allocation = bucket_allocation.get(population, {})
+        for rank_id in range(num_ranks):
+            for cycle_id in range(cycles):
+                if not rank_allocation.get((rank_id, cycle_id)):
+                    return False
+        return True
+
+    @run_only_rank0
+    def distribute_cells_with_validation(self,
+                                         num_ranks,
+                                         cycles=None,
+                                         metype_file=None
+                                         ) -> Tuple[dict, dict, dict]:
+        """
+        Wrapper function to distribute cells across the specified number of ranks and cycles,
+        ensuring that each bucket (combination of rank and cycle) has at least one GID assigned.
+        The function attempts to find a valid distribution with the initially calculated batch
+        sizes, raising an error if no distribution is found.
+
+        Args:
+            num_ranks (int): The number of ranks.
+            cycles (int): The number of cycles to distribute cells over.
+            metype_file (str): The path to a JSON file containing memory usage for each METype.
+
+        Returns:
+            Tuple[dict, dict, dict]: Returns the same as distribute_cells once a valid distribution
+                                    is found.
+        """
+        if not cycles:
+            cycles = 1
+        logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
+
+        def _calculate_total_elements_per_population(self):
+            return {
+                population: sum(len(gids) for gids in metypes.values())
+                for population, metypes in self.pop_metype_gids.items()
+            }
+
+        total_cells_per_population = _calculate_total_elements_per_population(self)
+        average_cells_per_population = {
+            population: total / (num_ranks * cycles)
+            for population, total in total_cells_per_population.items()
+        }
+
+        batch_size = {
+            population: max(1, math.ceil(average / MAX_ALLOCATION_STEPS))
+            for population, average in average_cells_per_population.items()
+        }
+
+        bucket_allocation, bucket_memory, metype_memory_usage = self.distribute_cells(
+            num_ranks, cycles, metype_file, batch_size=batch_size
+        )
+
+        valid_distribution = all(
+            self.check_all_buckets_have_gids(bucket_allocation, population, num_ranks, cycles)
+            for population in self.pop_metype_gids.keys()
+        )
+
+        if not valid_distribution:
+            raise RuntimeError("Unable to find a valid distribution with the given parameters. "
+                               "Please try again with a smaller number of ranks or cycles. "
+                               "No allocation file was created.")
+
+        print_allocation_stats(bucket_memory)
+        export_allocation_stats(bucket_allocation, self._ALLOCATION_FILENAME, num_ranks, cycles)
+        return bucket_allocation, bucket_memory, metype_memory_usage
