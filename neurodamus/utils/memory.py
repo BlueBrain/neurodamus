@@ -607,8 +607,10 @@ class DryRunStats:
                                          metype_file=None
                                          ) -> Tuple[dict, dict, dict]:
         """
-        Wrapper function to distribute cells with ever smaller assignment batches until
-        all buckets have at least one GID assigned (or fail if no valid distribution is found).
+        Wrapper function to distribute cells across the specified number of ranks and cycles,
+        ensuring that each bucket (combination of rank and cycle) has at least one GID assigned.
+        The function attempts to find a valid distribution with the initially calculated batch
+        sizes, raising an error if no distribution is found.
 
         Args:
             num_ranks (int): The number of ranks.
@@ -617,55 +619,43 @@ class DryRunStats:
 
         Returns:
             Tuple[dict, dict, dict]: Returns the same as distribute_cells once a valid distribution
-                                     is found.
+                                    is found.
         """
         if not cycles:
             cycles = 1
         logging.info("Distributing cells across %d ranks and %d cycles", num_ranks, cycles)
 
-        valid_distribution = False
-
         def _calculate_total_elements_per_population(self):
-            total_elements_per_population = {}
-            for population, metypes in self.pop_metype_gids.items():
-                total_elements = sum(len(gids) for gids in metypes.values())
-                total_elements_per_population[population] = total_elements
-            return total_elements_per_population
+            return {
+                population: sum(len(gids) for gids in metypes.values())
+                for population, metypes in self.pop_metype_gids.items()
+            }
 
         total_cells_per_population = _calculate_total_elements_per_population(self)
         average_cells_per_population = {
             population: total / (num_ranks * cycles)
-            for population, total in total_cells_per_population.items()}
+            for population, total in total_cells_per_population.items()
+        }
 
         batch_size = {
-            population: max(1, int(average / MAX_ALLOCATION_STEPS))
-            for population, average in average_cells_per_population.items()}
+            population: max(1, math.ceil(average / MAX_ALLOCATION_STEPS))
+            for population, average in average_cells_per_population.items()
+        }
 
-        while not valid_distribution and any(size > 0 for size in batch_size.values()):
-            bucket_allocation, bucket_memory, metype_memory_usage = self.distribute_cells(
-                num_ranks, cycles, metype_file, batch_size=batch_size
-            )
-            valid_distribution = all(
-                self.check_all_buckets_have_gids(bucket_allocation, population, num_ranks, cycles)
-                for population in self.pop_metype_gids.keys()
-            )
-            if not valid_distribution:
-                for population, size in batch_size.items():
-                    if not self.check_population_has_gids_in_all_buckets(bucket_allocation,
-                                                                         population,
-                                                                         num_ranks,
-                                                                         cycles):
-                        batch_size[population] = max(0, size - 1)
+        bucket_allocation, bucket_memory, metype_memory_usage = self.distribute_cells(
+            num_ranks, cycles, metype_file, batch_size=batch_size
+        )
 
-        if all(size == 0 for size in batch_size.values()):
+        valid_distribution = all(
+            self.check_all_buckets_have_gids(bucket_allocation, population, num_ranks, cycles)
+            for population in self.pop_metype_gids.keys()
+        )
+
+        if not valid_distribution:
             raise RuntimeError("Unable to find a valid distribution with the given parameters. "
                                "Please try again with a smaller number of ranks or cycles. "
                                "No allocation file was created.")
 
         print_allocation_stats(bucket_memory)
-        export_allocation_stats(bucket_allocation,
-                                self._ALLOCATION_FILENAME,
-                                num_ranks,
-                                cycles)
-
+        export_allocation_stats(bucket_allocation, self._ALLOCATION_FILENAME, num_ranks, cycles)
         return bucket_allocation, bucket_memory, metype_memory_usage
