@@ -348,7 +348,10 @@ class SonataReader(SynapseReader):
         # We nevertheless can skip any base fields
         extra_fields = set(self._extra_fields) - (self.Parameters.all_fields | compute_fields)
         for field in sorted(extra_fields):
-            now_needed_gids = sorted(set(gid for gid in gids if field not in self._data[gid]))
+            now_needed_gids = sorted(set(
+                gid for gid in gids
+                if (data := self._data[gid]) is not self.EMPTY_DATA and field not in data
+            ))
             if needed_gids != now_needed_gids:
                 needed_gids = now_needed_gids
                 needed_edge_ids, lookup_gids = get_edge_and_lookup_gids(needed_gids)
