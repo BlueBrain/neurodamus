@@ -47,11 +47,10 @@ def test_spont_minis(sonata_config_file):
     )
 
     edges_a: SynapseRuleManager = nd.circuits.get_edge_manager("NodeA", "NodeA")
-    assert len(list(edges_a.all_connections())) == 2
+    # Note: Before #198 we would instantiate a projection conn as being internal
+    assert len(list(edges_a.all_connections())) == 1
     conn_2_1 = next(edges_a.get_connections(1, 2))
-    conn_1_2 = next(edges_a.get_connections(2, 1))
     assert conn_2_1._spont_minis.rate == SPONT_RATE
-    assert conn_1_2._spont_minis is None
 
     c1 = edges_a.cell_manager.get_cellref(1)
     voltage_vec = Nd.Vector()
