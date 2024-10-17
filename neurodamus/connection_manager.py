@@ -230,8 +230,12 @@ class ConnectionManagerBase(object):
     An abstract base class common to Synapse and GapJunction connections
 
     Connection Managers hold and manage connectivity among cell populations.
-    For every src-dst pop pairs a new ConnectionManahger is created. The only case
-    it holds several ConnectionSets is for old-style projections (no population names)
+    For every src-dst pop pairs a new ConnectionManager is created.
+
+    The only case it holds several ConnectionSets is for old-style projections (no population names)
+    and possibily future support for multiple edge groups (e.g. from multiple files) so that
+    additional connectivity for a pathway can be loaded and configured independently.
+    NOTE: self._populations would require a new key format, not (src_pop, dst_pop)
    """
 
     CONNECTIONS_TYPE = None
@@ -247,6 +251,8 @@ class ConnectionManagerBase(object):
     is_file_open = property(lambda self: bool(self._synapse_reader))
     src_pop_offset = property(lambda self: self._src_cell_manager.local_nodes.offset)
     target_pop_offset = property(lambda self: self._cell_manager.local_nodes.offset)
+    src_node_population = property(lambda self: self._src_cell_manager.population_name)
+    dst_node_population = property(lambda self: self._cell_manager.population_name)
 
     # -
     def __init__(self, circuit_conf, target_manager, cell_manager, src_cell_manager=None, **kw):
@@ -328,8 +334,8 @@ class ConnectionManagerBase(object):
 
     def _init_conn_population(self, src_pop_name, pop_id_override):
         if not src_pop_name:
-            src_pop_name = self._src_cell_manager.population_name
-        dst_pop_name = self._cell_manager.population_name
+            src_pop_name = self.src_node_population
+        dst_pop_name = self.dst_node_population
         src_pop_id, dst_pop_id = self._compute_pop_ids(src_pop_name, dst_pop_name, pop_id_override)
 
         if self._cur_population and src_pop_id == 0 and not src_pop_name:
@@ -340,7 +346,7 @@ class ConnectionManagerBase(object):
         cur_pop.src_name = src_pop_name
         cur_pop.dst_name = dst_pop_name
         cur_pop.virtual_source = (self._src_cell_manager.is_virtual
-                                  or src_pop_name != self._src_cell_manager.population_name
+                                  or src_pop_name != self.src_node_population
                                   or bool(pop_id_override) and not src_pop_name)
         logging.info("Loading connections to population: %s", cur_pop)
 
@@ -560,8 +566,8 @@ class ConnectionManagerBase(object):
         """
         conn_kwargs = {}
         conn_pop = self._cur_population
-        dst_pop_name = self._cell_manager.population_name
-        src_pop_name = self._src_cell_manager.population_name
+        dst_pop_name = self.dst_node_population
+        src_pop_name = self.src_node_population
         logging.debug("Connecting group %s -> %s", conn_source, conn_destination)
         src_tspec = TargetSpec(conn_source)
         dst_tspec = TargetSpec(conn_destination)
@@ -833,20 +839,21 @@ class ConnectionManagerBase(object):
         src_target_spec = TargetSpec(src_target_name)
         dst_target_spec = TargetSpec(dst_target_name)
 
-        src_target = self._target_manager.get_target(src_target_spec) \
+        src_target = self._target_manager.get_target(src_target_spec, self.src_node_population) \
             if src_target_spec.name is not None else None
         assert dst_target_spec.name, "No target specified for `get_target_connections`"
-        dst_target = self._target_manager.get_target(dst_target_spec)
+        dst_target = self._target_manager.get_target(dst_target_spec, self.dst_node_population)
         if src_target and src_target.is_void() or dst_target.is_void():
             return
 
-        _, tgid_offset = self.get_population_offsets()
-        populations: List[ConnectionSet] = (conn_population,) if conn_population is not None \
+        tgid_offset = self.target_pop_offset
+        conn_populations: List[ConnectionSet] = (conn_population,) if conn_population is not None \
             else self._populations.values()
 
         # temporary set for faster lookup
         src_gids = src_target and set(src_target.get_gids())
-        for population in populations:
+
+        for population in conn_populations:
             logging.debug("Connections from population %s", population)
             tgids = numpy.fromiter(population.target_gids(), 'uint32')
             tgids = numpy.intersect1d(tgids, dst_target.get_gids())
