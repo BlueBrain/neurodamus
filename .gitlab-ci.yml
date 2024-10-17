@@ -2,6 +2,12 @@ include:
   - project: cs/gitlabci-templates
     file: /build-image-using-buildah.yml
 
+stages:
+  - test
+  - build
+  - publish
+  - release
+
 workflow:
   rules:
     - if: '$CI_EXTERNAL_PULL_REQUEST_IID'
