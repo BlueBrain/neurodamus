@@ -34,7 +34,7 @@ class SonataConfig:
         "network", "target_simulator", "node_sets_file", "node_set"
     )
     _config_sections = (
-        "run", "conditions", "output", "inputs", "reports"
+        "run", "conditions", "output", "inputs", "reports", "beta_features"
     )
     # New defaults in Sonata config
     _defaults = {
