@@ -1,13 +1,4 @@
 include:
-  - project: nse/ci
-    file:
-      - /ci/lib/tox-bb5.yml
-      - /ci/jobs/build-package.yml
-      - /ci/jobs/publish-package.yml
-      - /ci/jobs/docs.yml
-      - /ci/jobs/publish-docs.yml
-  - project: hpc/gitlab-upload-logs
-    file: enable-upload.yml
   - project: cs/gitlabci-templates
     file: /build-image-using-buildah.yml
 
@@ -24,43 +15,6 @@ variables:
     value: $BLUECONFIGS_BRANCH
     description: 'Name of the blueconfigs branch to test against'
   GIT_DEPTH: 100
-
-test-unit:
-  extends: .tox-template
-  variables:
-    TOXENV: flake8, unit
-
-test-integration:
-  extends: .tox-template
-  variables:
-    TOXENV: integration
-
-test-integration-e2e:
-  extends: .tox-template
-  variables:
-    TOXENV: bbp-model
-    TOX_OPTIONS: "-- tests/integration-e2e"
-    # modules need to be loaded in this certain order to avoid mixing of libraries
-    EXTRA_MODULES:
-      unstable:neurodamus-neocortex
-
-test-scientific:
-  extends: .tox-template
-  variables:
-    TOXENV: bbp-model
-    TOX_OPTIONS: "-- tests/scientific"
-    # modules need to be loaded in this certain order to avoid mixing of libraries
-    EXTRA_MODULES:
-      unstable:intel-oneapi-compilers
-      unstable:neurodamus-neocortex
-
-test-scientific-ngv:
-  extends: .tox-template
-  variables:
-    TOXENV: bbp-model
-    TOX_OPTIONS: "-- tests/scientific-ngv"
-    EXTRA_MODULES:
-      unstable:neurodamus-neocortex-multiscale
 
 set_alt_branches:
   script:
@@ -230,32 +184,3 @@ upload-to-docker-hub:
     - if: $CI_COMMIT_TAG
     - if: $CI_PIPELINE_SOURCE == "web"
       when: manual
-
-
-# The following stages are overrides. Don't rename
-# Always add the manual option to create sdist/wheel or upload
-build-package:
-  rules:
-    - when: on_success
-
-publish-package:
-  rules:
-    - when: manual
-      allow_failure: true
-
-docs:
-  variables:
-    TOXENV: docs
-  artifacts:
-    paths:
-      - docs/_build
-
-publish-docs:
-  variables:
-    SYS_PACKAGES: openssh-clients
-    PIP_PACKAGES: docs_internal_upload
-  script:
-    - docs-internal-upload --docs-path docs/_build
-  rules:
-    - when: manual
-      allow_failure: true
