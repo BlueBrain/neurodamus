@@ -14,8 +14,6 @@ def test_input_resistance():
     # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
     n = Node(str(CONFIG_FILE))
-    # use edges file w/o plasticity
-    SimConfig.extra_circuits["All"]["nrnPath"] = EDGES_FILE + ":default"
 
     # append Stimulus and StimulusInject blocks programmatically
     # relativeOU
@@ -48,7 +46,7 @@ def test_input_resistance():
     assert target_small.gid_count() == 5
     assert cell_manager.total_cells == 5
     assert len(cell_manager.local_nodes) == 5
-    for gid in (3424037, 3473955, 3587718, 3644853, 4148946):
+    for gid in (1, 2, 3, 4, 5):
         assert gid in target_small
         assert gid in gids
 
@@ -60,7 +58,7 @@ def test_input_resistance():
 
     # check spikes
     nspike = sum(len(spikes) for spikes, _ in n._spike_vecs)
-    assert nspike == 9
+    assert nspike == 10
 
 
 def test_input_resistance_2():
@@ -70,8 +68,6 @@ def test_input_resistance_2():
     # create Node from config
     GlobalConfig.verbosity = LogLevel.VERBOSE
     n = Node(str(CONFIG_FILE))
-    # use edges file w/o plasticity
-    SimConfig.extra_circuits["All"]["nrnPath"] = EDGES_FILE + ":default"
 
     # append Stimulus and StimulusInject blocks programmatically
     # relativeSN
@@ -104,4 +100,4 @@ def test_input_resistance_2():
 
     # check spikes
     nspike = sum(len(spikes) for spikes, _ in n._spike_vecs)
-    assert nspike == 8
+    assert nspike == 6
