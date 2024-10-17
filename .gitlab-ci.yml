@@ -1,12 +1,9 @@
 include:
+  - project: nse/ci
+    file:
+      - /ci/lib/common.yml
   - project: cs/gitlabci-templates
     file: /build-image-using-buildah.yml
-
-stages:
-  - test
-  - build
-  - publish
-  - release
 
 workflow:
   rules:
