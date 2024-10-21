@@ -40,16 +40,19 @@ def load_user_modifications(gj_manager):
 
     # remove active channels
     remove_channels = settings.get('remove_channels')
-    Mechanisims = []
-    if remove_channels == 'all':
-        Mechanisims = non_stochastic_mechs + stochastic_mechs
-    if remove_channels == 'only_stoch':
-        Mechanisims = stochastic_mechs
-    if remove_channels == 'only_non_stoch':
-        Mechanisims = non_stochastic_mechs
     if remove_channels:
-        logging.info("Removing channels type = " + remove_channels)
-        _perform_remove_channels(node_manager, Mechanisims)
+        if remove_channels == 'all':
+            rm_mechanisims = non_stochastic_mechs + stochastic_mechs
+        elif remove_channels == 'only_stoch':
+            rm_mechanisims = stochastic_mechs
+        elif remove_channels == 'only_non_stoch':
+            rm_mechanisims = non_stochastic_mechs
+        else:
+            logging.warning("Unknown GJ remove_channels setting: %s", remove_channels)
+            rm_mechanisims = []
+        if rm_mechanisims:
+            logging.info("Removing channels type = " + remove_channels)
+            _perform_remove_channels(node_manager, rm_mechanisims)
 
     if 'special_tag' in settings:
         gjc = 0.1
@@ -74,17 +77,17 @@ def load_user_modifications(gj_manager):
         logging.info(f"Load holding_ic from manual_MEComboInfoFile {filename} "
                      f"for {all_ranks_total} cells")
 
-    SEClamp_current_per_gid = {}
+    seclamp_current_per_gid = {}
     if settings.get('procedure_type') == 'find_holding_current' \
             and isinstance(settings.get('vc_amp'), str):
         logging.info("Find_holding_current - voltage file - {settings['vc_amp']}")
         if not settings.get('disable_holding'):
             logging.warning("Doing V_clamp and not disable holding!")
 
-        SEClamp_current_per_gid = _find_holding_current(node_manager, settings.get('vc_amp'))
-        _save_seclamps(SEClamp_current_per_gid, output_dir=SimConfig.output_root)
+        seclamp_current_per_gid = _find_holding_current(node_manager, settings.get('vc_amp'))
+        _save_seclamps(seclamp_current_per_gid, output_dir=SimConfig.output_root)
 
-    return holding_ic_per_gid, SEClamp_current_per_gid
+    return holding_ic_per_gid, seclamp_current_per_gid
 
 
 def _update_conductance(gjc, gj_manager):
@@ -155,27 +158,27 @@ def _find_holding_current(node_manager, filename):
         v_per_gid = h5py.File(filename, 'r')
     except IOError:
         raise ConfigurationError(f"Error opening voltage file {filename}")
-    SEClmap_per_gid = {}
-    SEClamp_current_per_gid = {}
+    seclamp_per_gid = {}
+    seclamp_current_per_gid = {}
     raw_cell_gids = node_manager.local_nodes.raw_gids()
     offset = node_manager.local_nodes.offset
     for agid in v_per_gid['v_per_gid']:
         gid = int(agid[1:])
         if gid in raw_cell_gids:
-            SEClmap_per_gid[gid] = Nd.h.SEClamp(0.5, sec=node_manager.getCell(gid+offset).soma[0])
-            SEClmap_per_gid[gid].dur1 = 9e9
-            SEClmap_per_gid[gid].amp1 = float(v_per_gid['v_per_gid'][agid][()])
-            SEClmap_per_gid[gid].rs  = 0.0000001
-            SEClamp_current_per_gid[gid] = Nd.h.Vector()
-            SEClamp_current_per_gid[gid].record(SEClmap_per_gid[gid]._ref_i)
+            seclamp_per_gid[gid] = Nd.h.SEClamp(0.5, sec=node_manager.getCell(gid+offset).soma[0])
+            seclamp_per_gid[gid].dur1 = 9e9
+            seclamp_per_gid[gid].amp1 = float(v_per_gid['v_per_gid'][agid][()])
+            seclamp_per_gid[gid].rs  = 0.0000001
+            seclamp_current_per_gid[gid] = Nd.h.Vector()
+            seclamp_current_per_gid[gid].record(seclamp_per_gid[gid]._ref_i)
     v_per_gid.close()
-    return SEClamp_current_per_gid
+    return seclamp_current_per_gid
 
 
-def _save_seclamps(SEClamp_current_per_gid, output_dir):
+def _save_seclamps(seclamp_current_per_gid, output_dir):
     logging.info('Saving SEClamp Data')
-    SEClamp_current_per_gid_a = {}
-    for gid in SEClamp_current_per_gid:
-        SEClamp_current_per_gid_a[gid] = np.array(SEClamp_current_per_gid[gid])
-    pickle.dump(SEClamp_current_per_gid_a,
+    seclamp_current_per_gid_a = {}
+    for gid in seclamp_current_per_gid:
+        seclamp_current_per_gid_a[gid] = np.array(seclamp_current_per_gid[gid])
+    pickle.dump(seclamp_current_per_gid_a,
                 open(f'{output_dir}/data_for_host_{MPI.rank}.p', 'wb'))
