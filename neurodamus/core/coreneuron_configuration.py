@@ -4,6 +4,7 @@ from pathlib import Path
 from ._utils import run_only_rank0
 from . import NeurodamusCore as Nd
 from ..report import get_section_index
+from ..utils.logging import log_verbose
 
 
 class CompartmentMapping:
@@ -171,7 +172,7 @@ class _CoreNEURONConfig(object):
             fp.write(filename)
             fp.write("\n")
 
-    def psolve_core(self, save_path=None, restore_path=None, coreneuron_direct_mode=False):
+    def psolve_core(self, save_path=None, restore_path=None, coreneuron_direct_mode=False, tstop=None):
         from neuron import coreneuron
         from . import NeurodamusCore as Nd
 
@@ -186,7 +187,7 @@ class _CoreNEURONConfig(object):
         # Model is already written to disk by calling pc.nrncore_write()
         coreneuron.skip_write_model_to_disk = True
         coreneuron.model_path = f"{self.datadir}"
-        Nd.pc.psolve(Nd.tstop)
+        Nd.pc.psolve(tstop or Nd.tstop)
 
 
 # Singleton

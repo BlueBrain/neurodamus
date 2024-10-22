@@ -788,7 +788,7 @@ class Node:
     # -
     @mpi_no_errors
     @timeit(name="Enable Modifications")
-    def enable_modifications(self):
+    def enable_modifications(self, time=0.0):
         """Iterate over any Modification blocks read from the config file and apply them to the
         network. The steps needed are more complex than NeuronConfigures, so the user should not be
         expected to write the hoc directly, but rather access a library of already available mods.
@@ -798,11 +798,12 @@ class Node:
         log_stage("Enabling modifications...")
 
         mod_manager = ModificationManager(self._target_manager)
-        for name, mod in SimConfig.modifications.items():
-            mod_info = compat.Map(mod)
-            target_spec = TargetSpec(mod_info["Target"])
-            logging.info(" * [MOD] %s: %s -> %s", name, mod_info["Type"], target_spec)
-            mod_manager.interpret(target_spec, mod_info)
+        for name, mod in SimConfig.modifications.copy().items():
+            if mod["Delay"] == time:
+                target_spec = TargetSpec(mod["Target"])
+                logging.info(" * [MOD] %s: %s -> %s", name, mod["Type"], target_spec)
+                mod_manager.interpret(target_spec, mod)
+                del SimConfig.modifications[name]
 
     # Reporting
     ReportParams = namedtuple("ReportParams", "name, rep_type, report_on, unit, format, dt, "
@@ -846,8 +847,11 @@ class Node:
             if SimConfig.restore_coreneuron:
                 continue  # we dont even need to initialize reports
 
-            has_gids = len(self._circuits.global_manager.get_final_gids()) > 0
-            report = Report(*rep_params, SimConfig.use_coreneuron) if has_gids else None
+            # In coreneuron direct (in-memory) mode, i_membrane data is copied
+            # between neuron and coreneuron
+            if SimConfig.coreneuron_direct_mode and "i_membrane" in rep_params.report_on:
+                Nd.cvode.use_fast_imem(1)
+
 
             # With coreneuron direct mode, enable fast membrane current calculation for i_membrane
             if SimConfig.coreneuron_direct_mode and \
@@ -856,6 +860,8 @@ class Node:
 
             if not SimConfig.use_coreneuron or rep_params.rep_type == "Synapse":
                 try:
+                    has_gids = len(self._circuits.global_manager.get_final_gids()) > 0
+                    report = Report(*rep_params, SimConfig.use_coreneuron) if has_gids else None
                     self._report_setup(report, rep_conf, target, rep_params.rep_type)
                 except Exception as e:
                     logging.error("Error setting up report '%s': %s", rep_name, e)
@@ -863,11 +869,12 @@ class Node:
                     continue
 
             # Custom reporting. TODO: Move `_report_setup` to cellManager.enable_report
-            target_population = target_spec.population or self._target_spec.population
-            cell_manager = self._circuits.get_node_manager(target_population)
-            cell_manager.enable_report(report, target, SimConfig.use_coreneuron)
+            # target_population = target_spec.population or self._target_spec.population
+            # cell_manager = self._circuits.get_node_manager(target_population)
+            # cell_manager.enable_report(report, target, SimConfig.use_coreneuron)
 
-            self._report_list.append(report)
+            if report:
+                self._report_list.append(report)
 
         if n_errors > 0:
             raise Exception("%d reporting errors detected. Terminating" % (n_errors,))
@@ -1313,33 +1320,47 @@ class Node:
             self.sim_init()
 
         timings = None
-        if SimConfig.use_neuron:
-            timings = self._run_neuron()
+
+        for t in SimConfig.modification_times:
+            if t >= Nd.tstop:
+                continue
+            timings = self._run_interval(t)
+            Nd.t = t
+            self.enable_modifications(t)
+
+        timings = self._run_interval()
+        if SimConfig.use_neuron or SimConfig.coreneuron_direct_mode:
             self.sonata_spikes()
+
+        return timings
+
+    def _run_interval(self, tstop=None):
+        timings = None
+        if SimConfig.use_neuron:
+            timings = self._run_neuron(tstop)
         if SimConfig.use_coreneuron:
             print_mem_usage()
             if not SimConfig.coreneuron_direct_mode:
                 self.clear_model(avoid_clearing_queues=False)
-            self._run_coreneuron()
-            if SimConfig.coreneuron_direct_mode:
-                self.sonata_spikes()
+            self._run_coreneuron(tstop)
         return timings
 
     # -
     @return_neuron_timings
-    def _run_neuron(self):
+    def _run_neuron(self, tstop=None):
         if MPI.rank == 0:
             _ = SimulationProgress()
-        self.solve()
+        self.solve(tstop)
         logging.info("Simulation finished.")
 
     # -
-    def _run_coreneuron(self):
+    def _run_coreneuron(self, tstop=None):
         logging.info("Launching simulation with CoreNEURON")
         CoreConfig.psolve_core(
             getattr(SimConfig, "save", None),
             getattr(SimConfig, "restore", None),
-            SimConfig.coreneuron_direct_mode
+            SimConfig.coreneuron_direct_mode,
+            tstop
         )
 
     #
@@ -1541,7 +1562,8 @@ class Node:
         print_mem_usage()
 
         # Coreneuron runs clear the model before starting
-        if not SimConfig.use_coreneuron or SimConfig.simulate_model is False:
+        if not SimConfig.use_coreneuron or SimConfig.coreneuron_direct_mode \
+                or SimConfig.simulate_model is False:
             self.clear_model(avoid_creating_objs=True)
 
         if SimConfig.delete_corenrn_data and not SimConfig.dry_run:
@@ -1660,7 +1682,9 @@ class Neurodamus(Node):
 
         self.enable_stimulus()
         print_mem_usage()
-        self.enable_modifications()
+        if SimConfig.modification_times[0] == 0:
+            self.enable_modifications(time=0)
+            SimConfig.modification_times.remove(0)
 
         if self._run_conf["EnableReports"]:
             self.enable_reports()
