@@ -839,10 +839,10 @@ class ConnectionManagerBase(object):
         src_target_spec = TargetSpec(src_target_name)
         dst_target_spec = TargetSpec(dst_target_name)
 
-        src_target = self._target_manager.get_target(src_target_spec, self.src_node_population) \
+        src_target = self._target_manager.get_target(src_target_spec) \
             if src_target_spec.name is not None else None
         assert dst_target_spec.name, "No target specified for `get_target_connections`"
-        dst_target = self._target_manager.get_target(dst_target_spec, self.dst_node_population)
+        dst_target = self._target_manager.get_target(dst_target_spec)
         if src_target and src_target.is_void() or dst_target.is_void():
             return
 
