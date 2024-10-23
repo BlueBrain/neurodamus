@@ -610,12 +610,6 @@ class ConnectionManagerBase(object):
             cur_conn.add_synapses(self._target_manager, syns_params, base_id)
 
     # -
-    def get_population_offsets(self):
-        sgid_offset = self._src_cell_manager.local_nodes.offset
-        tgid_offset = self._cell_manager.local_nodes.offset
-        return sgid_offset, tgid_offset
-
-    # -
     class ConnDebugger:
         __slots__ = ['yielded_src_gids']
 
@@ -661,7 +655,8 @@ class ConnectionManagerBase(object):
 
         gids = target_gids(gids)
         created_conns_0 = self._cur_population.count()
-        sgid_offset, tgid_offset = self.get_population_offsets()
+        sgid_offset = self.src_pop_offset
+        tgid_offset = self.target_pop_offset
 
         self._synapse_reader.configure_override(mod_override)
         self._synapse_reader.preload_data(gids, minimal_mode=SimConfig.cli_options.crash_test)
@@ -752,13 +747,13 @@ class ConnectionManagerBase(object):
             return 0
 
         total_estimate = 0
-        dst_pop_name = self._cell_manager.population_name
+        gids_per_metype = self._dry_run_stats.pop_metype_gids[self.dst_node_population]
 
         # NOTE:
         #  - Estimation (and extrapolation) is performed per metype since properties can vary
         #  - Consider only the cells for the current target
 
-        for metype, all_me_gids in self._dry_run_stats.pop_metype_gids[dst_pop_name].items():
+        for metype, all_me_gids in gids_per_metype.items():
             me_gids = set(all_me_gids).intersection(local_gids)
             me_gids_count = len(me_gids)
             if not me_gids_count:

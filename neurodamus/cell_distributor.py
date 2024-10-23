@@ -436,7 +436,7 @@ class CellManagerBase(_CellManager):
         return spikevec, idvec
 
     def register_connection_manager(self, conn_manager: ConnectionManagerBase):
-        src_population = conn_manager.src_cell_manager.population_name
+        src_population = conn_manager.src_node_population
         if src_population in self._conn_managers_per_src_pop:
             logging.warning("Skip registering %s as a second pop source", conn_manager)
         else:
