@@ -52,7 +52,7 @@ def redistribute_files_dat(files_dat_file, n_buckets, max_entries=None):
         dat_entries = file.readlines()
 
     if (n_files := int(metadata["n_files"])) < len(dat_entries):
-        logging.warning("files.dat line 2 sets a small numer of entries: %d", n_files)
+        logging.warning("files.dat: processing reduced number of entries: %d", n_files)
         dat_entries = dat_entries[:n_files]
 
     logging.info("Distributing files into %d buckets...", n_buckets)
@@ -115,7 +115,7 @@ def main():
     parser.add_argument(
         'input_file',
         type=str,
-        help="Path to the file containing directory paths (one per line)."
+        help="Path to the CoreNeuron input file, typically files.dat"
     )
     parser.add_argument(
         'n_ranks',
@@ -146,7 +146,7 @@ def main():
     args = parser.parse_args()
 
     logging_level = logging.DEBUG if args.verbose else logging.INFO
-    logging.basicConfig(level=logging_level, format="%(levelname)s :: %(message)s'")
+    logging.basicConfig(level=logging_level, format="%(levelname)s :: %(message)s")
 
     if not os.path.isfile(args.input_file):
         logging.error("Input file could not be found!")
