@@ -77,16 +77,16 @@ def redistribute_files_dat(files_dat_file, n_buckets, max_entries=None):
     return buckets, metadata
 
 
-def write_dat_file(buckets, infos: dict):
+def write_dat_file(buckets, infos: dict, output_file="rebalanced-files.dat"):
     """
     Output the result after processing all directories
     """
-    logging.info("Writing out data from %d buckets", len(buckets))
+    logging.info("Writing out data from %d buckets to file: %s", len(buckets), output_file)
 
     # CoreNeuron does RoundRobin - we need to transpose the entries
     zipped_entries = itertools.zip_longest(*buckets)
 
-    with open("rebalanced-files.dat", "w") as out:
+    with open(output_file, "w") as out:
         print(infos["version"], file=out)
         print(infos["n_files"], file=out)
 
@@ -129,6 +129,13 @@ def main():
         required=False,
         help="Consider only the first N entries of the input file"
     )
+    parser.add_argument(
+        '--output-file',
+        type=str,
+        default="rebalanced-files.dat",
+        required=False,
+        help="The rebalanced output file path"
+    )
     # Optional argument for verbose output
     parser.add_argument(
         '-v', '--verbose',
@@ -151,7 +158,7 @@ def main():
     buckets, infos = redistribute_files_dat(args.input_file, args.n_ranks, args.max_entries)
 
     # Create a new files.dat according to the new buckets
-    write_dat_file(buckets, infos)
+    write_dat_file(buckets, infos, args.output_file)
 
     logging.info("DONE")
 
