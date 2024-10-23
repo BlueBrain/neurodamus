@@ -1,5 +1,6 @@
 import argparse
 import heapq
+import itertools
 import logging
 import math
 import os
@@ -65,13 +66,18 @@ def write_dat_file(buckets, infos: dict):
     """
     Output the result after processing all directories
     """
+
+    # CoreNeuron does RoundRobin - we need to transpose the entries
+    zipped_entries = itertools.zip_longest(*buckets)
+
     with open("rebalanced-files.dat", "w") as out:
         print(infos["version"], file=out)
         print(infos["n_files"], file=out)
 
-        for bucket_num, entries in enumerate(buckets):
-            logging.info(f"Writing bucket {bucket_num} (Total files: {len(entries)}):")
-            out.writelines(entries)
+        for entries in zipped_entries:
+            for entry in entries:
+                if entry is not None:
+                    out.write(entry)
 
 
 def with_progress(elements):
