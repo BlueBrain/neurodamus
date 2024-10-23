@@ -1,3 +1,13 @@
+#!/bin/env python3
+
+"""
+A post-processing script to redistribute CoreNeuron input files
+more evenly across ranks based on their filesystem size.
+
+Blue Brain Project - EPFL, 2024
+
+"""
+
 import argparse
 import heapq
 import itertools
@@ -100,7 +110,7 @@ def with_progress(elements):
 def main():
     # Step 1: Set up argparse for the CLI
     parser = argparse.ArgumentParser(
-        description="Redistribute the dat files into N buckets based on file sizes."
+        description="Redistribute CoreNeuron dat files, optimizing for a given number of ranks"
     )
     parser.add_argument(
         'input_file',
@@ -110,7 +120,7 @@ def main():
     parser.add_argument(
         'n_ranks',
         type=int,
-        help="Optimize the distribution for given number of ranks"
+        help="Number of target ranks"
     )
     parser.add_argument(
         '--max-entries',
