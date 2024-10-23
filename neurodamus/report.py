@@ -154,6 +154,8 @@ class Report:
             self.handle_point_processes(section, x, alu_helper, point_processes, variable)
         elif area_at_x:
             self.handle_intrinsic_current(section, x, alu_helper, mechanism, area_at_x)
+        else:
+            logging.warning(f"Skipping intrinsic current '{mechanism}' at a location with area = 0")
 
     def handle_point_processes(self, section, x, alu_helper, point_processes, variable):
         """Handle point processes for a given mechanism."""
