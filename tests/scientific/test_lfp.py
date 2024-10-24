@@ -14,7 +14,7 @@ def test_file(tmpdir):
     """
     # Define populations and their GIDs
     populations = {
-        "default": [42, 62797, 63698],
+        "default": [42, 0, 4],
         "other_pop": [77777, 88888]
     }
 
@@ -103,7 +103,7 @@ def test_read_lfp_factors(test_file):
     assert result == expected_result, f'Expected {expected_result}, but got {result}'
 
     # Test the function with invalid input (non-existent gid)
-    gid = 2
+    gid = 420
     result = lfp.read_lfp_factors(gid).to_python()
     expected_result = []
     assert result == expected_result, f'Expected {expected_result}, but got {result}'
@@ -119,34 +119,16 @@ def test_number_electrodes(test_file):
     lfp = LFPManager()
     lfp._lfp_file = test_file
     # Test the function with valid input
-    gid = 62798
+    gid = 1
     result = lfp.get_number_electrodes(gid)
     expected_result = 2
     assert result == expected_result, f'Expected {expected_result}, but got {result}'
 
     # Test the function with invalid input (non-existent gid)
-    gid = 2
+    gid = 420
     result = lfp.get_number_electrodes(gid)
     expected_result = 0
     assert result == expected_result, f'Expected {expected_result}, but got {result}'
-
-
-def _create_tmpconfig_lfp(config_file, lfp_file):
-    import fileinput
-    import shutil
-    from tempfile import NamedTemporaryFile
-
-    lfp_replace = "\"electrodes_file\": \"" + str(lfp_file) + "\""
-    suffix = ".json" if config_file.endswith(".json") else ".BC"
-    tmp_file = NamedTemporaryFile(suffix=suffix, dir=os.path.dirname(config_file), delete=True)
-    shutil.copy2(config_file, tmp_file.name)
-
-    with fileinput.FileInput(tmp_file.name, inplace=True) as file:
-        for line in file:
-            if config_file.endswith(".json"):
-                print(line.replace("\"electrodes_file\": \"electrodes_file.h5\"",
-                                   lfp_replace), end='')
-    return tmp_file
 
 
 def _read_sonata_lfp_file(lfp_file):
@@ -158,23 +140,57 @@ def _read_sonata_lfp_file(lfp_file):
     return node_ids, data
 
 
-def test_v5_sonata_lfp(tmpdir, test_file):
+def _create_lfp_config(original_config_path, lfp_file, tmp_path):
+    """
+    Create a modified lfp configuration file in a temporary directory.
+    """
+    import json
+    # Read the original config file
+    with open(original_config_path, 'r') as f:
+        config = json.load(f)
+
+    # Update the network path in the config
+    config["network"] = str(SIM_DIR / "v5_sonata" / "sub_mini5" / "circuit_config.json")
+
+    # Modify the necessary fields
+    config["target_simulator"] = "CORENEURON"
+    config["run"]["electrodes_file"] = str(lfp_file)
+    config["reports"] = config.get("reports", {})
+    config["reports"]["lfp"] = {
+        "type": "lfp",
+        "cells": "Mosaic",
+        "variable_name": "v",
+        "dt": 0.1,
+        "start_time": 0.0,
+        "end_time": 1.0
+    }
+
+    # Write the modified configuration to a temporary file
+    temp_config_path = tmp_path / "lfp_config.json"
+    with open(temp_config_path, "w") as f:
+        json.dump(config, f, indent=4)
+
+    # Create output directory
+    output_dir = tmp_path / config["output"]["output_dir"]
+
+    return str(temp_config_path), str(output_dir)
+
+
+def test_v5_sonata_lfp(tmpdir, test_file, tmp_path):
     import numpy.testing as npt
     from neurodamus import Neurodamus
 
-    config_file = str(SIM_DIR / "v5_sonata" / "simulation_config_lfp.json")
-    output_dir = str(SIM_DIR / "v5_sonata" / "output_coreneuron")
-
+    config_file = SIM_DIR / "v5_sonata" / "simulation_config_mini.json"
     lfp_weights_file = tmpdir.join("test_file.h5")
-    tmp_file = _create_tmpconfig_lfp(config_file, lfp_weights_file)
+    temp_config_path, output_dir = _create_lfp_config(config_file, lfp_weights_file, tmp_path)
 
-    nd = Neurodamus(tmp_file.name, output_path=output_dir)
+    nd = Neurodamus(temp_config_path, output_path=output_dir)
     nd.run()
 
     # compare results with refs
-    t3_data = np.array([0.00029701614, -0.0009504516, 0.0013853279, -0.0044330494])
-    t7_data = np.array([0.000315888, -0.0010108417, 0.0015036742, -0.0048117572])
-    node_ids = np.array([62797, 63698])
+    t3_data = np.array([0.00027065672, -0.00086610153, 0.0014563566, -0.0046603414])
+    t7_data = np.array([0.00029265403, -0.0009364929, 0.001548515, -0.004955248])
+    node_ids = np.array([0, 4])
     result_ids, result_data = _read_sonata_lfp_file(os.path.join(output_dir, "lfp.h5"))
 
     npt.assert_allclose(result_data.data[3], t3_data)

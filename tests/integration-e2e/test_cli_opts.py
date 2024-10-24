@@ -2,13 +2,13 @@ import json
 import os
 from pathlib import Path
 import pytest
-import shutil
 import subprocess
 import tempfile
 
 
 SIM_DIR = Path(__file__).parent.parent.absolute() / "simulations" / "v5_sonata"
 CONFIG_FILE_MINI = "simulation_config_mini.json"
+CIRCUIT_DIR = "sub_mini5"
 
 
 @pytest.mark.slow
@@ -19,14 +19,11 @@ def test_save_restore_cli():
     for simulator in ("NEURON", "CORENEURON"):
         test_folder = tempfile.TemporaryDirectory("cli-test-" + simulator)  # auto removed
         test_folder_path = Path(test_folder.name)
-        # Copy non-modified files
-        for f in ("node_sets.json", "circuit_config.json", "input.h5"):
-            shutil.copy(SIM_DIR / f, test_folder_path)
-
         for action, tstop in (("save", 100), ("restore", 200)):
             sim_config_data["target_simulator"] = simulator
             sim_config_data["run"]["tstop"] = tstop
             sim_config_data["output"]["output_dir"] = str(test_folder_path / ("output-" + action))
+            sim_config_data["network"] = str(SIM_DIR / CIRCUIT_DIR / "circuit_config.json")
 
             with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
                 json.dump(sim_config_data, f, indent=2)
@@ -48,24 +45,27 @@ def test_cli_prcellgid():
     from neurodamus import Neurodamus
     test_folder = tempfile.TemporaryDirectory("cli-test-prcellgid")  # auto removed
     test_folder_path = Path(test_folder.name)
-    for f in ("node_sets.json", "circuit_config.json", "input.h5", "simulation_config_mini.json"):
-        shutil.copy(SIM_DIR / f, test_folder_path)
+    with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
+        sim_config_data = json.load(f)
+        sim_config_data["network"] = str(SIM_DIR / CIRCUIT_DIR / "circuit_config.json")
+        with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
+            json.dump(sim_config_data, f, indent=2)
 
     os.chdir(test_folder_path)
-    nd = Neurodamus(CONFIG_FILE_MINI, dump_cell_state=62797)
+    nd = Neurodamus(CONFIG_FILE_MINI, dump_cell_state=1)
     nd.run()
-    assert (test_folder_path / "62798_py_Neuron_t0.0.nrndat").is_file()
-    assert (test_folder_path / "62798_py_Neuron_t100.0.nrndat").is_file()
+    assert (test_folder_path / "2_py_Neuron_t0.0.nrndat").is_file()
+    assert (test_folder_path / "2_py_Neuron_t100.0.nrndat").is_file()
 
 
 def test_cli_disable_reports():
     test_folder = tempfile.TemporaryDirectory("cli-test-disable-reports")  # auto removed
     test_folder_path = Path(test_folder.name)
-    for f in ("node_sets.json", "circuit_config.json", "input.h5", "simulation_config_mini.json"):
-        shutil.copy(SIM_DIR / f, test_folder_path)
-
     with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
         sim_config_data = json.load(f)
+        sim_config_data["network"] = str(SIM_DIR / CIRCUIT_DIR / "circuit_config.json")
+        with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
+            json.dump(sim_config_data, f, indent=2)
 
     subprocess.run(
         ["neurodamus", CONFIG_FILE_MINI, "--disable-reports"],
@@ -97,11 +97,10 @@ def test_cli_keep_build():
         sim_config_data = json.load(f)
         sim_config_data["target_simulator"] = "CORENEURON"
         sim_config_data["output"]["output_dir"] = "output_keep_build"
+        sim_config_data["network"] = str(SIM_DIR / CIRCUIT_DIR / "circuit_config.json")
 
     test_folder = tempfile.TemporaryDirectory("cli-test-keep-build")  # auto removed
     test_folder_path = Path(test_folder.name)
-    for f in ("node_sets.json", "circuit_config.json", "input.h5"):
-        shutil.copy(SIM_DIR / f, test_folder_path)
     with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
         json.dump(sim_config_data, f, indent=2)
 
@@ -116,11 +115,10 @@ def test_cli_build_model():
     with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
         sim_config_data = json.load(f)
         sim_config_data["target_simulator"] = "CORENEURON"
+        sim_config_data["network"] = str(SIM_DIR / CIRCUIT_DIR / "circuit_config.json")
 
     test_folder = tempfile.TemporaryDirectory("cli-test-build-model")  # auto removed
     test_folder_path = Path(test_folder.name)
-    for f in ("node_sets.json", "circuit_config.json", "input.h5"):
-        shutil.copy(SIM_DIR / f, test_folder_path)
     with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
         json.dump(sim_config_data, f, indent=2)
 
@@ -161,11 +159,10 @@ def test_cli_shm_transfer():
     with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
         sim_config_data = json.load(f)
         sim_config_data["target_simulator"] = "CORENEURON"
+        sim_config_data["network"] = str(SIM_DIR / CIRCUIT_DIR / "circuit_config.json")
 
     test_folder = tempfile.TemporaryDirectory("cli-test-shm-transfer")  # auto removed
     test_folder_path = Path(test_folder.name)
-    for f in ("node_sets.json", "circuit_config.json", "input.h5"):
-        shutil.copy(SIM_DIR / f, test_folder_path)
     with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
         json.dump(sim_config_data, f, indent=2)
 
@@ -194,8 +191,11 @@ def test_cli_shm_transfer():
 def test_cli_lb_mode():
     test_folder = tempfile.TemporaryDirectory("cli-test-lb-mode")  # auto removed
     test_folder_path = Path(test_folder.name)
-    for f in ("node_sets.json", "circuit_config.json", "input.h5", "simulation_config_mini.json"):
-        shutil.copy(SIM_DIR / f, test_folder_path)
+    with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
+        sim_config_data = json.load(f)
+        sim_config_data["network"] = str(SIM_DIR / CIRCUIT_DIR / "circuit_config.json")
+        with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
+            json.dump(sim_config_data, f, indent=2)
 
     for lb_mode in ("WholeCell", "MultiSplit"):
         result = subprocess.run(
@@ -214,11 +214,11 @@ def test_cli_output_path():
     from neurodamus import Neurodamus
     test_folder = tempfile.TemporaryDirectory("cli-test-output-path")  # auto removed
     test_folder_path = Path(test_folder.name)
-    for f in ("node_sets.json", "circuit_config.json", "input.h5", "simulation_config_mini.json"):
-        shutil.copy(SIM_DIR / f, test_folder_path)
-
     with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
         sim_config_data = json.load(f)
+        sim_config_data["network"] = str(SIM_DIR / CIRCUIT_DIR / "circuit_config.json")
+        with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
+            json.dump(sim_config_data, f, indent=2)
 
     simconfig_output_path = sim_config_data["output"]["output_dir"]
     output_path = "new_output"
