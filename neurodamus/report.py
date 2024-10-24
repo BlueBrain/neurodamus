@@ -41,6 +41,7 @@ def get_section_index(cell, section):
 
 class Report:
     INTRINSIC_CURRENTS = {"i_membrane", "i_membrane_", "ina", "ica", "ik", "i_pas", "i_cap"}
+    CURRENT_INJECTING_PROCESSES  = {"SEClamp", "IClamp"}
 
     def __init__(self, report_name, report_type, variable_name, unit, format, dt, start_time,
                  end_time, output_dir, scaling_option=None, use_coreneuron=False):
@@ -97,8 +98,7 @@ class Report:
             if not collapsed:
                 alu_helper = self.setup_alu_for_summation(x, collapsed)
 
-            self.handle_intrinsic_currents(section, x, alu_helper, variable_names)
-            self.handle_point_processes(section, x, alu_helper, variable_names)
+            self.handle_currents_and_point_processes(section, x, alu_helper, variable_names)
 
             if not collapsed:
                 section_index = get_section_index(cell_obj, section)
@@ -141,46 +141,46 @@ class Report:
                 except AttributeError:
                     raise AttributeError(f"Variable '{variable}' not found at '{synapse.hname()}'.")
 
-    def handle_point_processes(self, section, x, alu_helper, variable_names):
-        """Handle point processes for summation report."""
-        scalar = 1
-        for mechanism, variable in variable_names:
-            point_processes = self.get_point_processes(section, mechanism)
-            for point_process in point_processes:
-                if self.is_point_process_at_location(point_process, section, x):
-                    if "SEClamp" in point_process.hname() or "IClamp" in point_process.hname():
-                        scalar = -1
-                    try:
-                        var_ref = getattr(point_process, '_ref_' + variable)
-                        alu_helper.addvar(var_ref, scalar)
-                    except AttributeError:
-                        err = f"Variable '{variable}' not found at '{point_process.hname()}'."
-                        raise AttributeError(err)
-                Nd.pop_section()
-
-    def handle_intrinsic_currents(self, section, x, alu_helper, variable_names):
-        """Handle intrinsic currents for summation report."""
-        # Intrinsic currents processing
+    def handle_currents_and_point_processes(self, section, x, alu_helper, variable_names):
+        """Handle both intrinsic currents and point processes for summation report."""
         area_at_x = section(x).area()
-        scalar = 1
-        for mechanism, _ in variable_names:
-            if self.get_point_processes(section, mechanism):
-                # Ignore point processes, they are handled separately
-                continue
-            if mechanism != "i_membrane" and self.scaling_mode == 1:  # Area scaling
-                # Need to convert distributed current sources units.
-                # NEURON stores/reports them as mA/cm^2; we want nA.
-                scalar = area_at_x / 100.0
-            if area_at_x and mechanism not in {"SEClamp", "IClamp"}:
-                mechanism = self.enable_fast_imem(mechanism)
-                try:
-                    var_ref = getattr(section(x), '_ref_' + mechanism)
-                    alu_helper.addvar(var_ref, scalar)
-                except AttributeError:
-                    if mechanism in Report.INTRINSIC_CURRENTS:
-                        logging.warning(f"Current '{mechanism}' does not exist at {section(x)}")
-                    else:
-                        raise AttributeError(f"Mechanism '{mechanism}' not found.")
+        for mechanism, variable in variable_names:
+            self.process_mechanism(section, x, alu_helper, mechanism, variable, area_at_x)
+
+    def process_mechanism(self, section, x, alu_helper, mechanism, variable, area_at_x):
+        """Process a single mechanism, whether it's an intrinsic current or a point process."""
+        point_processes = self.get_point_processes(section, mechanism)
+        if point_processes:
+            self.handle_point_processes(section, x, alu_helper, point_processes, variable)
+        elif area_at_x:
+            self.handle_intrinsic_current(section, x, alu_helper, mechanism, area_at_x)
+        else:
+            logging.warning(f"Skipping intrinsic current '{mechanism}' at a location with area = 0")
+
+    def handle_point_processes(self, section, x, alu_helper, point_processes, variable):
+        """Handle point processes for a given mechanism."""
+        for point_process in point_processes:
+            if self.is_point_process_at_location(point_process, section, x):
+                is_inverted = any(proc in point_process.hname()
+                                  for proc in self.CURRENT_INJECTING_PROCESSES)
+                scalar = -1 if is_inverted else 1
+                self.add_variable_to_alu(alu_helper, point_process, variable, scalar)
+            Nd.pop_section()
+
+    def handle_intrinsic_current(self, section, x, alu_helper, mechanism, area_at_x):
+        """Handle an intrinsic current mechanism."""
+        scalar = area_at_x / 100.0 if mechanism != "i_membrane" and self.scaling_mode == 1 else 1
+        mechanism = self.enable_fast_imem(mechanism)
+        self.add_variable_to_alu(alu_helper, section(x), mechanism, scalar)
+
+    def add_variable_to_alu(self, alu_helper, obj, variable, scalar):
+        """Add a variable to the ALU helper with error handling."""
+        try:
+            var_ref = getattr(obj, '_ref_' + variable)
+            alu_helper.addvar(var_ref, scalar)
+        except AttributeError:
+            if variable in self.INTRINSIC_CURRENTS:
+                logging.warning(f"Current '{variable}' does not exist at {obj}")
 
     def setup_alu_for_summation(self, alu_x, collapsed):
         """Setup ALU helper for summation."""
