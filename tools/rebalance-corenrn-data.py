@@ -78,6 +78,10 @@ def redistribute_files_dat(files_dat_file, n_buckets, max_entries=None, show_sta
             raise RuntimeError(f"Error processing dat entry {dat_entry}") from e
 
     if show_stats:
+        logging.info("Top 10 rank accumulated sizes")
+        for size, rank_i in heapq.nlargest(10, bucket_heap):
+            print(f"  Rank {rank_i}: {size/(1024*1024):.1f} MiB")
+
         rank_sizes = [bucket[0] for bucket in bucket_heap]
         show_histogram(rank_sizes)
 
@@ -128,7 +132,7 @@ def show_histogram(rank_buckets, n_bins=50):
     bin_start = bins[0]
     for count, bin_end in zip(freq, bins[1:]):
         if count:
-            print(f"[{bin_start/1204/1024:5.0f} - {bin_end/1204/1024:5.0f}]: {count:0d}")
+            print(f"  [{bin_start/(1024*1024):5.0f} - {bin_end/(1024*1024):5.0f}]: {count:0d}")
         bin_start = bin_end
 
 
