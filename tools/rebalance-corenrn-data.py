@@ -95,7 +95,8 @@ def write_dat_file(buckets, infos: dict, output_file="rebalanced-files.dat"):
     logging.info("Writing out data from %d buckets to file: %s", len(buckets), output_file)
 
     # CoreNeuron does RoundRobin - we need to transpose the entries
-    zipped_entries = itertools.zip_longest(*buckets)
+    # When a sequence finishes use "-1" (to keep in sync)
+    zipped_entries = itertools.zip_longest(*buckets, fillvalue="-1\n")
 
     with open(output_file, "w") as out:
         print(infos["version"], file=out)
@@ -103,8 +104,7 @@ def write_dat_file(buckets, infos: dict, output_file="rebalanced-files.dat"):
 
         for entries in zipped_entries:
             for entry in entries:
-                if entry is not None:
-                    out.write(entry)
+                out.write(entry)
 
 
 def get_entry_size(base_dir, dat_entry):
