@@ -111,6 +111,16 @@ def _create_reports_config(original_config_path: Path, tmp_path: Path) -> tuple[
         "start_time": 0.0,
         "end_time": 40.0
     }
+    # Added to verify no exception is raised when point process is not present in a section
+    config["reports"]["summation_ProbGABAAB"] = {
+        "type": "summation",
+        "cells": "Mosaic",
+        "variable_name": "ProbGABAAB_EMS.i",
+        "sections": "all",
+        "dt": 0.1,
+        "start_time": 0.0,
+        "end_time": 40.0
+    }
 
     # Write the modified configuration to a temporary file
     temp_config_path = tmp_path / "reports_config.json"
