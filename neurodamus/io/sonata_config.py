@@ -336,9 +336,10 @@ class SonataConfig:
                         projection["Source"]
                 if projection.get("Type") == ConnectionTypes.GlioVascular:
                     for node_file_info in self._circuit_networks["nodes"]:
-                        for _, pop_info in node_file_info["populations"].items():
+                        for pop_name, pop_info in node_file_info["populations"].items():
                             if pop_info.get("type") == "vasculature":
-                                projection["VasculaturePath"] = node_file_info["nodes_file"]
+                                projection["VasculaturePath"] =\
+                                    self.circuits.node_population_properties(pop_name).elements_path
 
                 proj_name = "{0}__{1.source}-{1.target}".format(edge_pop_name, edge_pop)
                 projections[proj_name] = projection

@@ -1,0 +1,456 @@
+/*
+Created by BluePyOpt(1.9.80) at 2020-12-10 15:12:40.993828
+*/
+{load_file("stdrun.hoc")}
+{load_file("import3d.hoc")}
+
+begintemplate bNAC219
+  public init, morphology, geom_nseg_fixed, geom_nsec, getCell, getCCell, setCCell, gid, getCell
+  public channel_seed, channel_seed_set
+  public connect2target, clear, ASCIIrpt
+  public soma, dend, apic, axon, myelin
+  create soma[1], dend[1], apic[1], axon[1], myelin[1]
+  public nSecAll, nSecSoma, nSecApical, nSecBasal, nSecMyelinated, nSecAxonalOrig, nSecAxonal
+  public CellRef, synHelperList, synlist
+  objref this, CellRef, segCounts, ASCIIrpt, synHelperList, synlist
+
+  public all, somatic, apical, axonal, basal, myelinated, APC
+  objref all, somatic, apical, axonal, basal, myelinated, APC
+
+
+obfunc getCell(){
+        return this
+}
+
+obfunc getCCell(){
+	return CellRef
+}
+proc setCCell(){
+       CellRef = $o1
+}
+
+//-----------------------------------------------------------------------------------------------
+
+/*!
+ * When clearing the model, the circular reference between Cells and CCells must be broken so the
+ * entity watching reference counts can work.
+ */
+proc clear() { localobj nil
+    CellRef = nil
+}
+
+
+
+/*!
+ * @param $o1 NetCon source (can be nil)
+ * @param $o2 Variable where generated NetCon will be placed
+ */
+proc connect2target() { //$o1 target point process, $o2 returned NetCon
+  soma $o2 = new NetCon(&v(1), $o1)
+  $o2.threshold = -30
+}
+
+
+proc init(/* args: morphology_dir, morphology_name */) {
+  all = new SectionList()
+  apical = new SectionList()
+  axonal = new SectionList()
+  basal = new SectionList()
+  somatic = new SectionList()
+  myelinated = new SectionList()
+
+  synHelperList = new List()
+  synlist = new List()
+
+  //For compatibility with BBP CCells
+  CellRef = this
+
+  forall delete_section()
+
+  gid = $1
+
+  if(numarg() >= 3) {
+    load_morphology($s2, $s3)
+  } else {
+    execerror("Template bNAC219 requires morphology name to instantiate")
+  }
+
+  geom_nseg()
+  indexSections()
+  delete_axon()
+  insertChannel()
+  biophys()
+
+  // Initialize channel_seed_set to avoid accidents
+  channel_seed_set = 0
+  // Initialize random number generators
+}
+
+/*!
+ * Assign section indices to the section voltage value.  This will be useful later for serializing
+ * the sections into an array.  Note, that once the simulation begins, the voltage values will revert to actual data again.
+ *
+ * @param $o1 Import3d_GUI object
+ */
+proc indexSections() { local index
+    index = 0
+    forsec all {
+        v(0.0001) = index
+        index = index +1
+    }
+}
+
+proc load_morphology(/* morphology_dir, morphology_name */) {localobj morph, import, sf, extension
+  strdef morph_path
+  sprint(morph_path, "%s/%s", $s1, $s2)
+
+  sf = new StringFunctions()
+  extension = new String()
+
+  sscanf(morph_path, "%s", extension.s)
+  sf.right(extension.s, sf.len(extension.s)-4)
+
+  if(strcmp(extension.s, ".ASC") == 0 ){
+    extension.s = ".asc"
+    sf.left(morph_path, sf.len(morph_path)-3)
+    sprint(morph_path,"%s%s",morph_path,"asc")
+    print "USING LOWERCASE EXTENSION", morph_path
+  }
+
+
+  if( strcmp(extension.s, ".asc") == 0 ) {
+    morph = new Import3d_Neurolucida3()
+  } else if( strcmp(extension.s, ".swc" ) == 0) {
+    morph = new Import3d_SWC_read()
+  } else {
+    printf(extension.s)
+    printf("Unsupported file format: Morphology file has to end with .asc or .swc" )
+    quit()
+  }
+
+  morph.quiet = 1
+  morph.input(morph_path)
+
+  import = new Import3d_GUI(morph, 0)
+  import.instantiate(this)
+}
+
+/*
+ * Assignment of mechanism values based on distance from the soma
+ * Matches the BluePyOpt method
+ */
+proc distribute_distance(){local x localobj sl
+  strdef stmp, distfunc, mech
+
+  sl = $o1
+  mech = $s2
+  distfunc = $s3
+  this.soma[0] distance()
+  sprint(distfunc, "%%s %s(%%f) = %s", mech, distfunc)
+  forsec sl for(x, 0) {
+    sprint(stmp, distfunc, secname(), x, distance(x))
+    execute(stmp)
+  }
+}
+
+/*!
+ * Iterate over the section and compute how many sqgments should be allocate to each.  This number
+ * is influenced by the mechanisms distributed, so this function should be called after assigning biophys
+ * @param $1 nseg length
+ */
+proc geom_nseg_fixed() { local secIndex, chunkSize
+    chunkSize = 40
+    if( numarg() > 0 ) {
+        chunkSize = $1
+    }
+    soma area(.5) // make sure diam reflects 3d points
+    secIndex=0
+    forsec all {
+        nseg = 1 + 2*int(L/chunkSize)
+        segCounts.x[secIndex] = nseg
+        secIndex = secIndex+1
+    }
+}
+
+proc geom_nseg() {
+  this.geom_nsec() //To count all sections
+  this.geom_nseg_fixed(40)
+}
+
+proc insertChannel() {
+  forsec this.all {
+  }
+  forsec this.apical {
+    insert Ih
+    insert Im
+    insert K_Pst
+    insert K_Tst
+    insert NaTs2_t
+    insert Nap_Et2
+    insert SKv3_1
+    insert pas
+  }
+  forsec this.axonal {
+    insert Ca
+    insert CaDynamics_E2
+    insert Ca_LVAst
+    insert Im
+    insert K_Pst
+    insert K_Tst
+    insert NaTa_t
+    insert Nap_Et2
+    insert SK_E2
+    insert SKv3_1
+    insert pas
+  }
+  forsec this.basal {
+    insert Ih
+    insert Im
+    insert K_Pst
+    insert K_Tst
+    insert NaTs2_t
+    insert Nap_Et2
+    insert SKv3_1
+    insert pas
+  }
+  forsec this.somatic {
+    insert Ca
+    insert CaDynamics_E2
+    insert Ca_LVAst
+    insert Im
+    insert K_Pst
+    insert K_Tst
+    insert NaTs2_t
+    insert Nap_Et2
+    insert SK_E2
+    insert SKv3_1
+    insert pas
+  }
+  forsec this.myelinated {
+  }
+}
+
+proc biophys() {
+  
+  forsec CellRef.all {
+  }
+  
+  forsec CellRef.apical {
+    Ra = 100
+    cm = 1
+    e_pas = -60.295915999999998
+    ek = -85
+    ena = 50
+    ettx = 0
+    gImbar_Im = 2.1999999999999999e-05
+    gK_Pstbar_K_Pst = 1.0000000000000001e-05
+    gK_Tstbar_K_Tst = 0.001511
+    gNaTs2_tbar_NaTs2_t = 0.00022900000000000001
+    gNap_Et2bar_Nap_Et2 = 0
+    gSKv3_1bar_SKv3_1 = 8.2999999999999998e-05
+    g_pas = 9.9999999999999995e-07
+  }
+  
+  forsec CellRef.axonal {
+    Ra = 100
+    cm = 1
+    decay_CaDynamics_E2 = 468.069681
+    depth_CaDynamics_E2 = 0.10000000000000001
+    e_pas = -63.854018000000003
+    eca = 132.45793416370091
+    ek = -85
+    ena = 50
+    ettx = 0
+    gCa_LVAstbar_Ca_LVAst = 0.0090170000000000007
+    gCabar_Ca = 0.00040000000000000002
+    gImbar_Im = 0.00055400000000000002
+    gK_Pstbar_K_Pst = 0.0016930000000000001
+    gK_Tstbar_K_Tst = 0.042115
+    gNaTa_tbar_NaTa_t = 3.9998550000000002
+    gNap_Et2bar_Nap_Et2 = 9.9999999999999995e-07
+    gSK_E2bar_SK_E2 = 0.001224
+    gSKv3_1bar_SKv3_1 = 0.38695299999999999
+    g_pas = 7.9999999999999996e-06
+    gamma_CaDynamics_E2 = 0.0017390000000000001
+    minCai_CaDynamics_E2 = 0.0001
+    zTau_SK_E2 = 1
+  }
+  
+  forsec CellRef.basal {
+    Ra = 100
+    cm = 1
+    e_pas = -60.295915999999998
+    ek = -85
+    ena = 50
+    ettx = 0
+    gImbar_Im = 2.1999999999999999e-05
+    gK_Pstbar_K_Pst = 1.0000000000000001e-05
+    gK_Tstbar_K_Tst = 0.001511
+    gNaTs2_tbar_NaTs2_t = 0.00022900000000000001
+    gNap_Et2bar_Nap_Et2 = 0
+    gSKv3_1bar_SKv3_1 = 8.2999999999999998e-05
+    g_pas = 9.9999999999999995e-07
+  }
+  
+  forsec CellRef.somatic {
+    Ra = 100
+    cm = 1
+    decay_CaDynamics_E2 = 645.07974100000001
+    depth_CaDynamics_E2 = 0.10000000000000001
+    e_pas = -67.128896999999995
+    eca = 132.45793416370091
+    ek = -85
+    ena = 50
+    ettx = 0
+    gCa_LVAstbar_Ca_LVAst = 0.0032420000000000001
+    gCabar_Ca = 0.000174
+    gImbar_Im = 0.00047800000000000002
+    gK_Pstbar_K_Pst = 0.0054460000000000003
+    gK_Tstbar_K_Tst = 0.039863000000000003
+    gNaTs2_tbar_NaTs2_t = 0.15074699999999999
+    gNap_Et2bar_Nap_Et2 = 9.9999999999999995e-07
+    gSK_E2bar_SK_E2 = 0.00052300000000000003
+    gSKv3_1bar_SKv3_1 = 0.50389300000000004
+    g_pas = 0.0001
+    gamma_CaDynamics_E2 = 0.00050000000000000001
+    minCai_CaDynamics_E2 = 0.0001
+    zTau_SK_E2 = 1
+  }
+  
+  forsec CellRef.myelinated {
+  }
+  
+  distribute_distance(CellRef.apical, "gIhbar_Ih", "(-0.869600 + 2.087000*exp((%g - 0.000000) * 0.003000)) * 0.000049")
+  distribute_distance(CellRef.basal, "gIhbar_Ih", "(-0.869600 + 2.087000*exp((%g - 0.000000) * 0.003000)) * 0.000049")
+}
+
+func sec_count(/* SectionList */) { local nSec
+  nSec = 0
+  forsec $o1 {
+      nSec += 1
+  }
+  return nSec
+}
+
+/*
+ * Count up the number of sections
+ */
+proc geom_nsec() { local nSec
+  nSecAll = sec_count(all)
+  nSecSoma = sec_count(somatic)
+  nSecApical = sec_count(apical)
+  nSecBasal = sec_count(basal)
+  nSecMyelinated = sec_count(myelinated)
+  nSecAxonalOrig = nSecAxonal = sec_count(axonal)
+
+  segCounts = new Vector()
+  segCounts.resize(nSecAll)
+  nSec = 0
+  forsec all {
+    segCounts.x[nSec] = nseg
+    nSec += 1
+  }
+}
+
+/**
+ * Replace the axon built from the original morphology file with a stub axon.  If no args are given,
+ * The stub axon will attempt to use diam info from original axon and L=30.  If args are present, the
+ * axon diam is tapered according to the values given.  Also, axon[0].L = 20, axon[1].L = 30.
+ * An optional myelin section can be added according to a flag.
+ *
+ * @param $1 Initial diameter for axon[0]
+ * @param $2 diameter at end of axon[0], start of axon[1]
+ * @param $3 diameter at end of axon[1]
+ * @param $4 diameter of myelin section (if set to 0, then not created at all)
+ */
+proc delete_axon(){ local nSec, D1, D2, dist, i1, i2, count
+
+    // preserve the number of original axonal sections
+    nSec  = 0
+    forsec axonal{nSec = nSec + 1}
+
+    // Try to grab info from original axon
+    if(nSec == 0){ //No axon section present
+        //is this actually working?  Seems it would cause problems if we ever did have cells with 0 axon sections
+        D1 = D2 = 1
+    } else {
+        access axon[0]
+        i1 = i2 = v(0.0001) // used when serializing sections prior to sim start
+        D1 = D2 = diam
+        if( nSec > 1 ){ //More than one axon section present
+            access soma distance() //to calculate distance from soma
+            count = 0
+            forsec axonal{   // loop through all axon sections and check for 60um distance
+                if( count == 1 ){
+                    i2 = v(0.0001)
+                }
+                count = count + 1
+                dist = distance(0.5)
+                if( dist > 60 ){ //if section is longer than 60um then store diam and exit from look
+                    D2 = diam
+                    break
+                }
+            }
+        }
+    }
+
+    // get rid of the old axon
+    forsec axonal{delete_section()}
+    execute1("create axon[2]\n", this)
+
+    // new axon dependant on args passed (or lack thereof)
+    access axon[0] {
+        if( numarg() == 0 ) {
+            L = 30
+            diam = D1
+            nseg = 1 + 2*int(L/40)
+        } else {
+            L = 20
+            nseg = 1+2*int(L/10)
+            diam(0:1) = $1:$2
+        }
+        all.append()
+        axonal.append()
+        v(0.0001) = i1
+    }
+    access axon[1] {
+        L = 30
+        if( numarg() == 0 ) {
+            diam = D2
+            nseg = 1 + 2*int(L/40)
+        } else {
+            nseg = 1+2*int(L/10)
+            diam(0:1) = $2:$3
+        }
+        all.append()
+        axonal.append()
+        v(0.0001) = i2
+    }
+    nSecAxonal = 2
+
+    if( numarg() > 0 ) if ( $4 ) {
+        execute1("create myelin[1]\n", this)
+        access myelin{
+            L = 1000
+            nseg = 1+2*int(L/100)
+            diam = $4
+            v(0.0001) = i1
+        }
+        connect myelin(0), axon[1](1)
+    }
+
+    // I am not sure if these connection methods have different consequences.  Maybe someone can reconcile that later?
+    if( numarg() == 0 ) {
+        soma[0] connect axon[0](0), 1
+        axon[0] connect axon[1](0), 1
+    } else {
+        connect axon(0), soma(0.5)
+        connect axon[1](0), axon[0](1)
+        access soma
+    }
+}
+
+proc re_init_rng() {
+}
+
+endtemplate bNAC219

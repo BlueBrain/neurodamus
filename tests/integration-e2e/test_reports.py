@@ -80,30 +80,81 @@ def _read_sonata_report(report_file):
     return node_ids, data
 
 
+def _create_reports_config(original_config_path: Path, tmp_path: Path) -> tuple[Path, Path]:
+    """
+    Create a modified configuration file in a temporary directory.
+    """
+    # Read the original config file
+    with open(original_config_path, 'r') as f:
+        config = json.load(f)
+
+    # Update the network path in the config
+    config["network"] = str(SIM_DIR / "sub_mini5" / "circuit_config.json")
+
+    # Modify the necessary fields
+    config["reports"] = config.get("reports", {})
+    config["reports"]["summation_report"] = {
+        "type": "summation",
+        "cells": "Mosaic",
+        "variable_name": "i_membrane,IClamp",
+        "sections": "all",
+        "dt": 0.1,
+        "start_time": 0.0,
+        "end_time": 40.0
+    }
+    config["reports"]["synapse_report"] = {
+        "type": "synapse",
+        "cells": "Mosaic",
+        "variable_name": "ProbAMPANMDA_EMS.g",
+        "sections": "all",
+        "dt": 0.1,
+        "start_time": 0.0,
+        "end_time": 40.0
+    }
+    # Added to verify no exception is raised when point process is not present in a section
+    config["reports"]["summation_ProbGABAAB"] = {
+        "type": "summation",
+        "cells": "Mosaic",
+        "variable_name": "ProbGABAAB_EMS.i",
+        "sections": "all",
+        "dt": 0.1,
+        "start_time": 0.0,
+        "end_time": 40.0
+    }
+
+    # Write the modified configuration to a temporary file
+    temp_config_path = tmp_path / "reports_config.json"
+    with open(temp_config_path, "w") as f:
+        json.dump(config, f, indent=4)
+
+    # Create output directory
+    output_dir = tmp_path / config["output"]["output_dir"]
+
+    return str(temp_config_path), str(output_dir)
+
+
 @pytest.mark.slow
-def test_v5_sonata_reports():
+def test_v5_sonata_reports(tmp_path):
     import numpy.testing as npt
     from neurodamus import Neurodamus
 
-    config_file = str(SIM_DIR / "simulation_config.json")
-    output_dir = str(SIM_DIR / "output")
+    config_file = SIM_DIR / "simulation_config_mini.json"
+    temp_config_path, output_dir = _create_reports_config(config_file, tmp_path)
 
-    nd = Neurodamus(config_file, output_path=output_dir)
+    nd = Neurodamus(temp_config_path, output_path=output_dir)
     nd.run()
 
     report_refs = {
         "soma_report.h5":
-            [(10, 20, -64.448616), (128, 10, -57.649437), (333, 5, -59.72419)],
+            [(10, 3, -64.92565), (128, 1, -60.309418), (333, 4, -39.864296)],
         "summation_report.h5":
-            [(20, 10, 6.16911e-17), (60, 26, 4.864002e-17), (283, 15, 9.540979e-18)],
-        "synapse_report.h5":
-            [(14, 3114, 0.00015797482), (151, 8297, 7.76133e-05), (392, 49, 6.0961706e-06)]
+            [(20, 153, 1.19864846e-4), (60, 42, 1.1587787e-4), (283, 121, 3.3678625e-5)]
     }
-    node_id_refs = [62797, 62945, 63256, 63622, 63698, 64163, 64233, 64665, 64787, 64861]
+    node_id_refs = [0, 1, 2, 3, 4]
 
     # Go through each report and compare the results
     for report_name, refs in report_refs.items():
         result_ids, result_data = _read_sonata_report(os.path.join(output_dir, report_name))
-        assert result_ids[:10] == node_id_refs
+        assert result_ids == node_id_refs
         for row, col, ref in refs:
             npt.assert_allclose(result_data.data[row][col], ref)
