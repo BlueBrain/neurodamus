@@ -19,15 +19,21 @@ import sys
 # Numpy may be required (histogram)
 numpy = None
 
+DEFAULT_OUTPUT_FILE = "rebalanced-files.dat"
+CORENRN_SKIP_MARK = "-1"
+PROGRESS_STEPS = 50
+DEFAULT_HISTOGRAM_NBINS = 40
+DEFAULT_RANKS_PER_MACHINE = 40
 
-def distribute_dat_to_bucket(dat_entry, size, buckets, bucket_sizes, base_dir="."):
+
+def distribute_dat_to_bucket(dat_entry, size, buckets, bucket_sizes):
     """
     Distribute a single file into the bucket with the least total size.
     """
     # Pop the bucket with the smallest size
     smallest_size, smallest_bucket_index = heapq.heappop(bucket_sizes)
     # Assign the file to this bucket
-    buckets[smallest_bucket_index].append(dat_entry + "\n")  # add newline for speedy write
+    buckets[smallest_bucket_index].append(dat_entry)
     # Update the bucket size in the heap
     new_size = smallest_size + size
     heapq.heappush(bucket_sizes, (new_size, smallest_bucket_index))
@@ -69,42 +75,57 @@ def redistribute_files_dat(files_dat_file, n_buckets, max_entries=None, show_sta
 
     dat_entries = [entry.strip() for entry in dat_entries]
     entry_sizes = [(entry, get_entry_size(base_dir, entry)) for entry in with_progress(dat_entries)]
+    # Knapsack: sort entries from larger to smaller,
     entry_sizes = sorted(entry_sizes, key=lambda e: e[1], reverse=True)
 
     for dat_entry, size in entry_sizes:
         try:
-            distribute_dat_to_bucket(dat_entry, size, buckets, bucket_heap, base_dir)
+            distribute_dat_to_bucket(dat_entry, size, buckets, bucket_heap)
         except Exception as e:
             raise RuntimeError(f"Error processing dat entry {dat_entry}") from e
 
     if show_stats:
-        logging.info("Top 10 rank accumulated sizes")
-        for size, rank_i in heapq.nlargest(10, bucket_heap):
-            print(f"  Rank {rank_i}: {size/(1024*1024):.1f} MiB")
+        logging.info("Top 10 machines accumulated sizes")
+        for size, mach_i in heapq.nlargest(10, bucket_heap):
+            print(f"  Machine {mach_i}: {size/(1024*1024):.1f} MiB")
 
-        rank_sizes = [bucket[0] for bucket in bucket_heap]
-        show_histogram(rank_sizes)
+        mach_sizes = [bucket[0] for bucket in bucket_heap]
+        show_histogram(mach_sizes)
 
     return buckets, metadata
 
 
-def write_dat_file(buckets, infos: dict, output_file="rebalanced-files.dat"):
+def write_dat_file(buckets, infos: dict, ranks_per_machine, output_file="rebalanced-files.dat"):
     """
     Output the result after processing all directories
     """
+    DEFAULT_LINE = f"{CORENRN_SKIP_MARK}\n" * ranks_per_machine
     logging.info("Writing out data from %d buckets to file: %s", len(buckets), output_file)
 
     # CoreNeuron does RoundRobin - we need to transpose the entries
     # When a sequence finishes use "-1" (to keep in sync)
-    zipped_entries = itertools.zip_longest(*buckets, fillvalue="-1\n")
+
+    def batch(iterable, first=0):
+        group = iterable[first: first + ranks_per_machine]
+        while group:
+            if len(group) < ranks_per_machine:
+                yield group + [CORENRN_SKIP_MARK] * (ranks_per_machine - len(group))
+                break
+            yield group
+            first += ranks_per_machine
+            group = iterable[first: first + ranks_per_machine]
 
     with open(output_file, "w") as out:
         print(infos["version"], file=out)
         print(infos["n_files"], file=out)
 
-        for entries in zipped_entries:
-            for entry in entries:
-                out.write(entry)
+        for buckets in itertools.zip_longest(*[batch(m) for m in buckets]):
+            for entries in buckets:
+                if entries is None:
+                    out.write(DEFAULT_LINE)
+                else:
+                    for entry in entries:
+                        out.write(entry + "\n")
 
 
 def get_entry_size(base_dir, dat_entry):
@@ -117,7 +138,7 @@ def get_entry_size(base_dir, dat_entry):
 def with_progress(elements):
     """A quick and easy generator for displaying progress while iterating"""
     total_elems = len(elements)
-    report_every = math.ceil(total_elems / 50)
+    report_every = math.ceil(total_elems / PROGRESS_STEPS)
     logging.info(f"Processing {total_elems} entries", )
     for i, elem in enumerate(elements):
         if i % report_every == 0:
@@ -125,10 +146,10 @@ def with_progress(elements):
         yield elem
 
 
-def show_histogram(rank_buckets, n_bins=50):
+def show_histogram(buckets, n_bins=DEFAULT_HISTOGRAM_NBINS):
     """A simple histogram CLI visualizer"""
-    logging.info("Histogram of the ranks sizes")
-    freq, bins = numpy.histogram(rank_buckets, bins=n_bins)
+    logging.info("Histogram of the Machine accumulated data")
+    freq, bins = numpy.histogram(buckets, bins=n_bins)
     bin_start = bins[0]
     for count, bin_end in zip(freq, bins[1:]):
         if count:
@@ -139,7 +160,7 @@ def show_histogram(rank_buckets, n_bins=50):
 def main():
     # Step 1: Set up argparse for the CLI
     parser = argparse.ArgumentParser(
-        description="Redistribute CoreNeuron dat files, optimizing for a given number of ranks"
+        description="Redistribute CoreNeuron dat files, optimizing for a given number of Machines"
     )
     parser.add_argument(
         'input_file',
@@ -147,8 +168,14 @@ def main():
         help="Path to the CoreNeuron input file, typically files.dat"
     )
     parser.add_argument(
-        'n_ranks',
+        'n_machines',
         type=int,
+        help="Number of target machines"
+    )
+    parser.add_argument(
+        '--ranks_per_machine',
+        type=int,
+        default=DEFAULT_RANKS_PER_MACHINE,
         help="Number of target ranks"
     )
     parser.add_argument(
@@ -161,7 +188,7 @@ def main():
     parser.add_argument(
         '--output-file',
         type=str,
-        default="rebalanced-files.dat",
+        default=DEFAULT_OUTPUT_FILE,
         required=False,
         help="The rebalanced output file path"
     )
@@ -194,11 +221,11 @@ def main():
 
     # Do the redistribution
     buckets, infos = redistribute_files_dat(
-        args.input_file, args.n_ranks, args.max_entries, args.histogram
+        args.input_file, args.n_machines, args.max_entries, args.histogram
     )
 
     # Create a new files.dat according to the new buckets
-    write_dat_file(buckets, infos, args.output_file)
+    write_dat_file(buckets, infos, args.ranks_per_machine, args.output_file)
 
     logging.info("DONE")
 
