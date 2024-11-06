@@ -47,7 +47,7 @@ def redistribute_files_dat(files_dat_file, n_buckets, max_entries=None, show_sta
     metadata = {}
 
     logging.debug("Reading distribution file: %s", files_dat_file)
-    with open(files_dat_file, 'r') as file:
+    with open(files_dat_file, "r") as file:
         # read header
         metadata["version"] = file.readline().strip()
         n_entries = file.readline()
@@ -106,14 +106,15 @@ def write_dat_file(buckets, infos: dict, ranks_per_machine, output_file="rebalan
     # When a sequence finishes use "-1" (to keep in sync)
 
     def batch(iterable, first=0):
-        group = iterable[first: first + ranks_per_machine]
+        last = first + ranks_per_machine
+        group = iterable[first:last]
         while group:
             if len(group) < ranks_per_machine:
                 yield group + [CORENRN_SKIP_MARK] * (ranks_per_machine - len(group))
                 break
             yield group
-            first += ranks_per_machine
-            group = iterable[first: first + ranks_per_machine]
+            first, last = last, last + 40
+            group = iterable[first:last]
 
     with open(output_file, "w") as out:
         print(infos["version"], file=out)
@@ -139,7 +140,7 @@ def with_progress(elements):
     """A quick and easy generator for displaying progress while iterating"""
     total_elems = len(elements)
     report_every = math.ceil(total_elems / PROGRESS_STEPS)
-    logging.info(f"Processing {total_elems} entries", )
+    logging.info(f"Processing {total_elems} entries")
     for i, elem in enumerate(elements):
         if i % report_every == 0:
             print(f"{i:10} [{i*100/total_elems:3.0f}%]", file=sys.stderr)
@@ -158,50 +159,46 @@ def show_histogram(buckets, n_bins=DEFAULT_HISTOGRAM_NBINS):
 
 
 def main():
-    # Step 1: Set up argparse for the CLI
     parser = argparse.ArgumentParser(
-        description="Redistribute CoreNeuron dat files, optimizing for a given number of Machines"
+        usage="%(prog)s  [OPTION]...  <input_file>  <n_machines>",
+        description="Redistribute CoreNeuron dat files, optimizing for a given number of Machines",
     )
     parser.add_argument(
-        'input_file',
+        "input_file",
         type=str,
-        help="Path to the CoreNeuron input file, typically files.dat"
+        help="Path to the CoreNeuron input file, typically files.dat",
     )
     parser.add_argument(
-        'n_machines',
-        type=int,
-        help="Number of target machines"
+        "n_machines", type=int, help="The number of target machines running the simulation"
     )
     parser.add_argument(
-        '--ranks_per_machine',
+        "--ranks-per-machine",
         type=int,
         default=DEFAULT_RANKS_PER_MACHINE,
-        help="Number of target ranks"
+        help=f"Number of ranks per machine (default: {DEFAULT_RANKS_PER_MACHINE})",
     )
     parser.add_argument(
-        '--max-entries',
+        "--max-entries",
         type=int,
         default=None,
-        required=False,
-        help="Consider only the first N entries of the input file"
+        help="Consider only the first N entries of the input file",
     )
     parser.add_argument(
-        '--output-file',
-        type=str,
+        "--output-file",
         default=DEFAULT_OUTPUT_FILE,
-        required=False,
-        help="The rebalanced output file path"
+        help="The rebalanced output file path",
     )
     # Optional argument for verbose output
     parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help="Enable verbose output for debugging."
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output for debugging.",
     )
     parser.add_argument(
-        '--histogram',
-        action='store_true',
-        help="Additionally display the histogram of the ranks accumulated sizes"
+        "--histogram",
+        action="store_true",
+        help="Additionally display the histogram of the machine accumulated sizes",
     )
 
     args = parser.parse_args()
