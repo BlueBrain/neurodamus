@@ -9,18 +9,16 @@ Blue Brain Project - EPFL, 2024
 """
 
 import argparse
-import math
-import numpy
 import os
-import sys
+from toolbox import get_dat_entry_size, show_histogram, with_progress
 
-PROGRESS_STEPS = 50
 CORENRN_SKIP_MARK = "-1"
-DEFAULT_HISTOGRAM_NBINS = 40
 DEFAULT_RANKS_PER_MACHINE = 40
 
 
 def files_dat_load_ranks(input_file, n_machines, ranks_per_machine, base_dir):
+    """From a files.dat compute the total amount of data to load per rank
+    """
     print(f"Reading from input file: {input_file}")
     base_dir = base_dir or os.path.dirname(input_file)
     n_ranks = n_machines * ranks_per_machine
@@ -32,7 +30,7 @@ def files_dat_load_ranks(input_file, n_machines, ranks_per_machine, base_dir):
         for i, line in enumerate(with_progress(file.readlines())):
             if line[:2] == CORENRN_SKIP_MARK:
                 continue
-            size = get_entry_size(base_dir, line.strip())
+            size = get_dat_entry_size(base_dir, line.strip())
             ranks_size[i % n_ranks] += size
 
     return ranks_size
@@ -79,35 +77,6 @@ def main():
 
     print("Rank histogram")
     show_histogram(ranks_size)
-
-
-def show_histogram(buckets, n_bins=DEFAULT_HISTOGRAM_NBINS):
-    """A simple histogram CLI visualizer"""
-    MiB = float(1 << 20)
-    freq, bins = numpy.histogram(buckets, bins=n_bins)
-    bin_start = bins[0]
-    for count, bin_end in zip(freq, bins[1:]):
-        if count:
-            print(f"  [{bin_start/MiB:5.0f} - {bin_end/MiB:5.0f}]: {count:0d}")
-        bin_start = bin_end
-
-
-def get_entry_size(base_dir, dat_entry):
-    """Obtain the file size of a dat entry"""
-    dat_file = f"{dat_entry}_2.dat"
-    file_path = os.path.join(base_dir, dat_file)
-    return os.path.getsize(file_path)
-
-
-def with_progress(elements):
-    """A quick and easy generator for displaying progress while iterating"""
-    total_elems = len(elements)
-    report_every = math.ceil(total_elems / PROGRESS_STEPS)
-    print(f"Processing {total_elems} entries")
-    for i, elem in enumerate(elements):
-        if i % report_every == 0:
-            print(f"{i:10} [{i*100/total_elems:3.0f}%]", file=sys.stderr)
-        yield elem
 
 
 if __name__ == "__main__":

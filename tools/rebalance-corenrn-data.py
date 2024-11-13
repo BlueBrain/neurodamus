@@ -12,17 +12,14 @@ import argparse
 import heapq
 import itertools
 import logging
-import math
 import os
 import sys
 
-# Numpy may be required (histogram)
-numpy = None
+from toolbox import get_dat_entry_size as get_entry_size
+from toolbox import show_histogram, with_progress
 
 DEFAULT_OUTPUT_FILE = "rebalanced-files.dat"
 CORENRN_SKIP_MARK = "-1"
-PROGRESS_STEPS = 50
-DEFAULT_HISTOGRAM_NBINS = 40
 DEFAULT_RANKS_PER_MACHINE = 40
 
 
@@ -129,35 +126,6 @@ def write_dat_file(buckets, infos: dict, ranks_per_machine, output_file="rebalan
                         out.write(entry + "\n")
 
 
-def get_entry_size(base_dir, dat_entry):
-    """Obtain the file size of a dat entry"""
-    dat_file = f"{dat_entry}_2.dat"
-    file_path = os.path.join(base_dir, dat_file)
-    return os.path.getsize(file_path)
-
-
-def with_progress(elements):
-    """A quick and easy generator for displaying progress while iterating"""
-    total_elems = len(elements)
-    report_every = math.ceil(total_elems / PROGRESS_STEPS)
-    logging.info(f"Processing {total_elems} entries")
-    for i, elem in enumerate(elements):
-        if i % report_every == 0:
-            print(f"{i:10} [{i*100/total_elems:3.0f}%]", file=sys.stderr)
-        yield elem
-
-
-def show_histogram(buckets, n_bins=DEFAULT_HISTOGRAM_NBINS):
-    """A simple histogram CLI visualizer"""
-    logging.info("Histogram of the Machine accumulated data")
-    freq, bins = numpy.histogram(buckets, bins=n_bins)
-    bin_start = bins[0]
-    for count, bin_end in zip(freq, bins[1:]):
-        if count:
-            print(f"  [{bin_start/(1024*1024):5.0f} - {bin_end/(1024*1024):5.0f}]: {count:0d}")
-        bin_start = bin_end
-
-
 def main():
     parser = argparse.ArgumentParser(
         usage="%(prog)s  [OPTION]...  <input_file>  <n_machines>",
@@ -207,8 +175,11 @@ def main():
     logging.basicConfig(level=logging_level, format="%(levelname)s :: %(message)s")
 
     if args.histogram:
-        global numpy
-        import numpy
+        try:
+            import numpy as _  # noqa
+        except ImportError:
+            logging.error("Numpy is required to compute histograms")
+            return 1
 
     if not os.path.isfile(args.input_file):
         logging.error("Input file could not be found!")
