@@ -1,0 +1,288 @@
+{
+  "Mosaic": {
+    "population": "default"
+  },
+  "Layer1": {
+    "layer": 1
+  },
+  "Layer2": {
+    "layer": 2
+  },
+  "Layer3": {
+    "layer": 3
+  },
+  "Layer4": {
+    "layer": 4
+  },
+  "Layer5": {
+    "layer": 5
+  },
+  "Layer6": {
+    "layer": 6
+  },
+  "Excitatory": {
+    "synapse_class": "EXC"
+  },
+  "Inhibitory": {
+    "synapse_class": "INH"
+  },
+  "L1_DAC": {
+    "mtype": "L1_DAC"
+  },
+  "L1_NGC-DA": {
+    "mtype": "L1_NGC-DA"
+  },
+  "L1_NGC-SA": {
+    "mtype": "L1_NGC-SA"
+  },
+  "L1_HAC": {
+    "mtype": "L1_HAC"
+  },
+  "L1_DLAC": {
+    "mtype": "L1_DLAC"
+  },
+  "L1_SLAC": {
+    "mtype": "L1_SLAC"
+  },
+  "L23_PC": {
+    "mtype": "L23_PC"
+  },
+  "L23_MC": {
+    "mtype": "L23_MC"
+  },
+  "L23_BTC": {
+    "mtype": "L23_BTC"
+  },
+  "L23_DBC": {
+    "mtype": "L23_DBC"
+  },
+  "L23_BP": {
+    "mtype": "L23_BP"
+  },
+  "L23_NGC": {
+    "mtype": "L23_NGC"
+  },
+  "L23_LBC": {
+    "mtype": "L23_LBC"
+  },
+  "L23_NBC": {
+    "mtype": "L23_NBC"
+  },
+  "L23_SBC": {
+    "mtype": "L23_SBC"
+  },
+  "L23_ChC": {
+    "mtype": "L23_ChC"
+  },
+  "L4_PC": {
+    "mtype": "L4_PC"
+  },
+  "L4_SP": {
+    "mtype": "L4_SP"
+  },
+  "L4_SS": {
+    "mtype": "L4_SS"
+  },
+  "L4_MC": {
+    "mtype": "L4_MC"
+  },
+  "L4_BTC": {
+    "mtype": "L4_BTC"
+  },
+  "L4_DBC": {
+    "mtype": "L4_DBC"
+  },
+  "L4_BP": {
+    "mtype": "L4_BP"
+  },
+  "L4_NGC": {
+    "mtype": "L4_NGC"
+  },
+  "L4_LBC": {
+    "mtype": "L4_LBC"
+  },
+  "L4_NBC": {
+    "mtype": "L4_NBC"
+  },
+  "L4_SBC": {
+    "mtype": "L4_SBC"
+  },
+  "L4_ChC": {
+    "mtype": "L4_ChC"
+  },
+  "L5_TTPC1": {
+    "mtype": "L5_TTPC1"
+  },
+  "L5_TTPC2": {
+    "mtype": "L5_TTPC2"
+  },
+  "L5_UTPC": {
+    "mtype": "L5_UTPC"
+  },
+  "L5_STPC": {
+    "mtype": "L5_STPC"
+  },
+  "L5_MC": {
+    "mtype": "L5_MC"
+  },
+  "L5_BTC": {
+    "mtype": "L5_BTC"
+  },
+  "L5_DBC": {
+    "mtype": "L5_DBC"
+  },
+  "L5_BP": {
+    "mtype": "L5_BP"
+  },
+  "L5_NGC": {
+    "mtype": "L5_NGC"
+  },
+  "L5_LBC": {
+    "mtype": "L5_LBC"
+  },
+  "L5_NBC": {
+    "mtype": "L5_NBC"
+  },
+  "L5_SBC": {
+    "mtype": "L5_SBC"
+  },
+  "L5_ChC": {
+    "mtype": "L5_ChC"
+  },
+  "L6_TPC_L1": {
+    "mtype": "L6_TPC_L1"
+  },
+  "L6_TPC_L4": {
+    "mtype": "L6_TPC_L4"
+  },
+  "L6_UTPC": {
+    "mtype": "L6_UTPC"
+  },
+  "L6_IPC": {
+    "mtype": "L6_IPC"
+  },
+  "L6_BPC": {
+    "mtype": "L6_BPC"
+  },
+  "L6_MC": {
+    "mtype": "L6_MC"
+  },
+  "L6_BTC": {
+    "mtype": "L6_BTC"
+  },
+  "L6_DBC": {
+    "mtype": "L6_DBC"
+  },
+  "L6_BP": {
+    "mtype": "L6_BP"
+  },
+  "L6_NGC": {
+    "mtype": "L6_NGC"
+  },
+  "L6_LBC": {
+    "mtype": "L6_LBC"
+  },
+  "L6_NBC": {
+    "mtype": "L6_NBC"
+  },
+  "L6_SBC": {
+    "mtype": "L6_SBC"
+  },
+  "L6_ChC": {
+    "mtype": "L6_ChC"
+  },
+  "debug": {
+    "population": "default",
+    "node_id": [
+      2
+    ]
+  },
+   "Mini5": {
+    "population": "default",
+    "node_id": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "MiniColumn_703": {
+    "population": "default",
+    "node_id": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "PV_FS": [
+    "BC",
+    "ChC"
+  ],
+  "ChC": [
+    "L23_ChC",
+    "L4_ChC",
+    "L5_ChC",
+    "L6_ChC"
+  ],
+  "BC": [
+    "L6_SBC",
+    "L6_NBC",
+    "L6_LBC",
+    "L5_SBC",
+    "L5_NBC",
+    "L5_LBC",
+    "L4_SBC",
+    "L4_NBC",
+    "L4_LBC",
+    "L23_SBC",
+    "L23_NBC",
+    "L23_LBC"
+  ],
+  "DISTAR_INH": [
+    "DBC",
+    "BTC",
+    "MC",
+    "BP"
+  ],
+  "DBC": [
+    "L23_DBC",
+    "L4_DBC",
+    "L5_DBC",
+    "L6_DBC"
+  ],
+  "BTC": [
+    "L23_BTC",
+    "L4_BTC",
+    "L5_BTC",
+    "L6_BTC"
+  ],
+  "MC": [
+    "L23_MC",
+    "L4_MC",
+    "L5_MC",
+    "L6_MC"
+  ],
+  "BP": [
+    "L23_BP",
+    "L4_BP",
+    "L5_BP",
+    "L6_BP"
+  ],
+  "Other_Inh": [
+    "NGC_not_L1"
+  ],
+  "NGC_not_L1": [
+    "L23_NGC",
+    "L4_NGC",
+    "L5_NGC",
+    "L6_NGC"
+  ],
+  "Layer4Excitatory": [
+    "L4_SS",
+    "L4_SP",
+    "L4_PC"
+  ]
+}

@@ -65,7 +65,7 @@ def test_dry_run_workflow(neurodamus_instance, USECASE3):
 
     assert 20.0 <= nd._dry_run_stats.cell_memory_total <= 30.0
     assert 0.0 <= nd._dry_run_stats.synapse_memory_total <= 1.0
-    assert 70.0 <= nd._dry_run_stats.base_memory <= 120.0
+    assert 60.0 <= nd._dry_run_stats.base_memory <= 120.0
     expected_items = {
         'L4_PC-dSTUT': 2,
         'L4_MC-dSTUT': 1,

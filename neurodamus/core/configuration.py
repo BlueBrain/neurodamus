@@ -1039,7 +1039,7 @@ def _coreneuron_direct_mode(config: _SimConfig, run_conf):
 
 def get_debug_cell_gid(cli_options):
     gid = cli_options.get("dump_cell_state") if cli_options else None
-    if gid:
+    if gid is not None:
         try:
             # Convert to integer and adjust for sonata mode (0-based to 1-based indexing)
             gid = int(gid) + 1

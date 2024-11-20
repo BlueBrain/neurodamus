@@ -20,12 +20,13 @@ on:
       LIBSONATA_BRANCH:
         description: 'libsonata branch to use'
         required: false
+      NEURODAMUS_MODELS_BRANCH:
+        description: 'neurodamus-models branch to use'
+        required: false
 
 env:
-  NEURON_COMMIT_ID: '13654b3'
-  NEURON_BRANCH: ${{ inputs.NEURON_BRANCH || 'master' }}
-  LIBSONATA_REPORT_BRANCH: ${{ inputs.LIBSONATA_REPORT_BRANCH || '1.2.3' }}
-  LIBSONATA_BRANCH: ${{ inputs.LIBSONATA_BRANCH || 'v0.1.27' }}
+  NEURON_COMMIT_ID: 'c48d7d5'
+  RDMAV_FORK_SAFE: '1'
 
 jobs:
   simulation:
@@ -54,6 +55,16 @@ jobs:
         key: ${{ matrix.os }}-pip-${{ matrix.python-version }}-v1
         restore-keys: |
           ${{ matrix.os }}-pip-
+
+    - name: Get latest tags
+      run: |
+        echo "NEURON_BRANCH=${{ inputs.NEURON_BRANCH || github.event.inputs.NEURON_BRANCH || 'master' }}" >> $GITHUB_ENV
+        LIBSONATA_LATEST=$(curl -s https://api.github.com/repos/BlueBrain/libsonata/releases/latest | grep -oP '"tag_name": "\K(.*)(?=")')
+        echo "LIBSONATA_BRANCH=${{ inputs.LIBSONATA_BRANCH || github.event.inputs.LIBSONATA_BRANCH || '$LIBSONATA_LATEST' }}" >> $GITHUB_ENV
+        LIBSONATA_REPORT_LATEST=$(curl -s https://api.github.com/repos/BlueBrain/libsonatareport/releases/latest | grep -oP '"tag_name": "\K(.*)(?=")')
+        echo "LIBSONATA_REPORT_BRANCH=${{ inputs.LIBSONATA_REPORT_BRANCH || github.event.inputs.LIBSONATA_REPORT_BRANCH || '$LIBSONATA_REPORT_LATEST' }}" >> $GITHUB_ENV
+        NEURODAMUS_MODELS_LATEST=$(curl -s https://api.github.com/repos/BlueBrain/neurodamus-models/releases/latest | grep -oP '"tag_name": "\K(.*)(?=")')
+        echo "NEURODAMUS_MODELS_BRANCH=${{ inputs.NEURODAMUS_MODELS_BRANCH || github.event.inputs.NEURODAMUS_MODELS_BRANCH || '$NEURODAMUS_MODELS_LATEST' }}" >> $GITHUB_ENV
 
     - name: Get HEAD commit message and look for branches
       run: |
@@ -88,11 +99,13 @@ jobs:
         python -m pip install --upgrade pip setuptools
         pip install cython numpy wheel pkgconfig
 
+    - name: Add virtual environment to PATH
+      run: echo "${{ github.workspace }}/venv/bin" >> $GITHUB_PATH
+
     - name: Install libsonata
       if: steps.cache-venv.outputs.cache-hit != 'true'
       run: |
-        . ./venv/bin/activate
-        CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata
+        CC=mpicc CXX=mpic++ pip install git+https://github.com/BlueBrain/libsonata@${{ env.LIBSONATA_BRANCH }}
 
     - name: Cache libsonatareport
       id: cache-libsonatareport
@@ -126,7 +139,6 @@ jobs:
       if: steps.cache-neuron.outputs.cache-hit != 'true'
       run: |
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
-        sudo apt-get install flex libfl-dev bison ninja-build
         if [[ ${{ env.NEURON_BRANCH }} == 'master' ]]; then
           git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git
           cd nrn
@@ -135,7 +147,6 @@ jobs:
         else
           git clone --branch=${{ env.NEURON_BRANCH }} https://github.com/neuronsimulator/nrn.git --depth=1
         fi
-        . ./venv/bin/activate
         python -m pip install --upgrade pip -r nrn/nrn_requirements.txt
         cmake -B nrn/build -S nrn -G Ninja \
           -DPYTHON_EXECUTABLE=$(which python) \
@@ -153,44 +164,66 @@ jobs:
     - name: Install mpi4py
       if: steps.cache-venv.outputs.cache-hit != 'true'
       run: |
-        . ./venv/bin/activate
         pip install mpi4py
 
     - name: Build h5py with the local hdf5
       run: |
-        . ./venv/bin/activate
-        pip install cython numpy wheel pkgconfig
         CC="mpicc" HDF5_MPI="ON" HDF5_INCLUDEDIR=/usr/include/hdf5/mpich HDF5_LIBDIR=/usr/lib/x86_64-linux-gnu/hdf5/mpich \
           pip install --no-cache-dir --no-binary=h5py h5py --no-build-isolation
 
     - name: Install neurodamus
       run: |
-        . ./venv/bin/activate
-        pip install .
+        pip install .[full]
 
-    - name: Build models
+    - name: Build neocortex models
       run: |
         export SONATAREPORT_DIR=$(pwd)/libsonatareport/build/install
         export PATH=$(pwd)/nrn/build/install/bin:$PATH
-        # copy mod files from the Zenodo link
-        wget --output-document="O1_mods.xz" --quiet "https://zenodo.org/record/8026353/files/O1_mods.xz?download=1"
-        tar -xf O1_mods.xz
-        cp -r mod tests/share/
-        cp neurodamus/data/mod/*.mod tests/share/mod/
-        ./docker/build_neurodamus.sh tests/share/mod
+        # Clone neurodamus-models repository
+        git clone --branch=${{ env.NEURODAMUS_MODELS_BRANCH }} https://github.com/BlueBrain/neurodamus-models.git
+        # Build neocortex model
+        DATADIR=$(python -c "import neurodamus; from pathlib import Path; print(Path(neurodamus.__file__).parent / 'data')")
+        cmake -B neurodamus-models/build -S neurodamus-models/ \
+          -DCMAKE_INSTALL_PREFIX=$PWD/neurodamus-models/install \
+          -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
+          -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR \
+          -DNEURODAMUS_CORE_DIR=${DATADIR} \
+          -DNEURODAMUS_MECHANISMS=neocortex \
+          -DNEURODAMUS_NCX_V5=ON
+        cmake --build neurodamus-models/build
+        cmake --install neurodamus-models/build
+        echo "NEURODAMUS_NEOCORTEX_ROOT=$(pwd)/neurodamus-models/install" >> $GITHUB_ENV;
 
-    - name: Example run
+        # Build neocortex-multiscale model
+        echo "build neurodamus-neocortex-multiscale model"
+        cmake -B neurodamus-models/build_multiscale -S neurodamus-models/ \
+          -DCMAKE_INSTALL_PREFIX=$PWD/neurodamus-models/install_multiscale \
+          -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
+          -DCMAKE_PREFIX_PATH=$SONATAREPORT_DIR \
+          -DNEURODAMUS_CORE_DIR=${DATADIR} \
+          -DNEURODAMUS_MECHANISMS=neocortex \
+          -DNEURODAMUS_NCX_METABOLISM=ON \
+          -DNEURODAMUS_NCX_NGV=ON \
+          -DNEURODAMUS_ENABLE_CORENEURON=OFF
+        cmake --build neurodamus-models/build_multiscale
+        cmake --install neurodamus-models/build_multiscale
+        echo "NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT=$(pwd)/neurodamus-models/install_multiscale" >> $GITHUB_ENV;
+
+    - name: load neocortex model
       run: |
-        . ./venv/bin/activate
-        if [[ ${{ matrix.python-version }} == 3.9.* ]]; then
-          export RDMAV_FORK_SAFE=1
-        fi;
-        export PYTHONPATH=$(pwd)/nrn/build/lib/python:$PYTHONPATH
-        cp neurodamus/data/hoc/* tests/share/hoc/
-        export HOC_LIBRARY_PATH=$(pwd)/tests/share/hoc
+        export PYTHONPATH=$(pwd)/nrn/build/install/lib/python:$PYTHONPATH
+        export HOC_LIBRARY_PATH=$NEURODAMUS_NEOCORTEX_ROOT/share/neurodamus_neocortex/hoc
         export NEURODAMUS_PYTHON=$(pwd)/neurodamus/data
-        export CORENEURONLIB=$(pwd)/x86_64/libcorenrnmech.so
-        export PATH=$(pwd)/x86_64:$PATH
+        export CORENEURONLIB=$NEURODAMUS_NEOCORTEX_ROOT/lib/libcorenrnmech.so
+        export NRNMECH_LIB_PATH=$NEURODAMUS_NEOCORTEX_ROOT/lib/libnrnmech.so
+        export PATH=$NEURODAMUS_NEOCORTEX_ROOT/bin:$PATH
+
+        echo "PYTHONPATH=$PYTHONPATH" >> $GITHUB_ENV;
+        echo "HOC_LIBRARY_PATH=$HOC_LIBRARY_PATH" >> $GITHUB_ENV;
+        echo "CORENEURONLIB=$CORENEURONLIB" >> $GITHUB_ENV;
+        echo "NRNMECH_LIB_PATH=$NRNMECH_LIB_PATH" >> $GITHUB_ENV;
+        echo "NEURODAMUS_PYTHON=$NEURODAMUS_PYTHON" >> $GITHUB_ENV;
+
         which special
 
         # launch simulation with NEURON
@@ -201,6 +234,35 @@ jobs:
         mpirun -np 2 special -mpi -python $NEURODAMUS_PYTHON/init.py --configFile=simulation_sonata_coreneuron.json
         ls reporting_coreneuron/*.h5
 
-    # - name: live debug session, comment out
-    #   if: failure()
-    #   uses: mxschmitt/action-tmate@v3
+    - name: Install test dependencies
+      run: |
+        pip install -r tests/requirements.txt
+
+    - name: test-unit
+      run: |
+        pytest tests/unit
+
+    - name: test-integration
+      run: |
+        pytest -x --forked tests/integration
+
+    - name: test-integration-e2e
+      run: |
+        pytest -s -x --forked --durations=5 --durations-min=15 tests/integration-e2e
+
+    - name: test-scientific
+      run: |
+        pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific
+
+    - name: test-scientific-ngv
+      run: |
+        export HOC_LIBRARY_PATH=$NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT/share/neurodamus_neocortex/hoc
+        export NRNMECH_LIB_PATH=$NEURODAMUS_NEOCORTEX_MULTISCALE_ROOT/lib/libnrnmech.so
+        unset CORENEURONLIB
+        pytest -s -x --forked --durations=5 --durations-min=15 tests/scientific-ngv
+
+    - name: live debug session, comment out
+      if: failure()
+      uses: mxschmitt/action-tmate@v3
+      with:
+       timeout-minutes: 60  # or any other value you need
