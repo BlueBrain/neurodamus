@@ -28,9 +28,9 @@ def load_user_modifications(gj_manager):
     gjc = settings.get('gjc')
 
     # deterministic_StochKv
-    if settings.get('determanisitc_stoch'):
+    if settings.get('deterministic_stoch'):
         logging.info("Set deterministic = 1 for StochKv")
-        _determanisitc_stoch(node_manager)
+        _deterministic_stoch(node_manager)
 
     # update gap conductance
     if settings.get('procedure_type') in ['validation_sim', 'find_holding_current']:
@@ -42,17 +42,17 @@ def load_user_modifications(gj_manager):
     remove_channels = settings.get('remove_channels')
     if remove_channels:
         if remove_channels == 'all':
-            rm_mechanisims = non_stochastic_mechs + stochastic_mechs
+            rm_mechanisms = non_stochastic_mechs + stochastic_mechs
         elif remove_channels == 'only_stoch':
-            rm_mechanisims = stochastic_mechs
+            rm_mechanisms = stochastic_mechs
         elif remove_channels == 'only_non_stoch':
-            rm_mechanisims = non_stochastic_mechs
+            rm_mechanisms = non_stochastic_mechs
         else:
             logging.warning("Unknown GJ remove_channels setting: %s", remove_channels)
-            rm_mechanisims = []
-        if rm_mechanisims:
+            rm_mechanisms = []
+        if rm_mechanisms:
             logging.info("Removing channels type = " + remove_channels)
-            _perform_remove_channels(node_manager, rm_mechanisims)
+            _perform_remove_channels(node_manager, rm_mechanisms)
 
     if 'special_tag' in settings:
         gjc = 0.1
@@ -98,7 +98,7 @@ def _update_conductance(gjc, gj_manager):
     return n_conn
 
 
-def _determanisitc_stoch(node_manager):
+def _deterministic_stoch(node_manager):
     for cell in node_manager.cells:
         for sec in cell._cellref.all:
             if 'StochKv3' in dir(sec(.5)): sec.deterministic_StochKv3 = 1

@@ -103,8 +103,8 @@ class GapJunctionManager(ConnectionManagerBase):
 
     def finalize(self, *_, **_kw):
         super().finalize(conn_type="Gap-Junctions")
-        gj_target_pop = SimConfig.beta_features.get("gapjunction_target_population")
-        if self.cell_manager.population_name == gj_target_pop:
+        if (gj_target_pop := SimConfig.beta_features.get("gapjunction_target_population")) \
+              and self.cell_manager.population_name == gj_target_pop:
             logging.info("Load user modification on %s", self)
             self.holding_ic_per_gid, self.seclamp_current_per_gid = load_user_modifications(self)
 

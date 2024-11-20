@@ -132,7 +132,7 @@ def test_v5_gap_junction_corrections(capsys):
     sim_config_data["output"]["output_dir"] = "$CURRENT_DIR/output_gj_corrections"
     sim_config_data["beta_features"] = {
         "gapjunction_target_population": "default",
-        "determanisitc_stoch": True,
+        "deterministic_stoch": True,
         "procedure_type": "validation_sim",
         "gjc": 0.2,
         "load_g_pas_file": "$CURRENT_DIR/test_g_pas_passive.hdf5",
@@ -146,7 +146,7 @@ def test_v5_gap_junction_corrections(capsys):
     captured = capsys.readouterr()
     assert SimConfig.beta_features.get("gapjunction_target_population") == "default"
     assert "Load user modification" in captured.out
-    assert SimConfig.beta_features.get("determanisitc_stoch")
+    assert SimConfig.beta_features.get("deterministic_stoch")
     assert "Set deterministic = 1 for StochKv" in captured.out
     assert SimConfig.beta_features.get("gjc") == 0.2
     assert "Set GJc = 0.2 for 2 gap synapses" in captured.out
