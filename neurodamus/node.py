@@ -825,7 +825,7 @@ class Node:
             pop_offsets_alias = self._circuits.get_population_offsets()
         else:
             pop_offsets_alias = CircuitManager.read_population_offsets()
-        if SimConfig.use_coreneuron:
+        if SimConfig.use_coreneuron and not SimConfig.restore_coreneuron:
             CoreConfig.write_report_count(len(reports_conf))
 
         for rep_name, rep_conf in reports_conf.items():
@@ -839,7 +839,7 @@ class Node:
                 continue
 
             if SimConfig.use_coreneuron and MPI.rank == 0:
-                if not self._report_write_coreneuron_config(rep_name, rep_conf, target, rep_params):
+                if not self._report_write_coreneuron_config(rep_conf, target, rep_params):
                     n_errors += 1
                     continue
 
@@ -940,35 +940,38 @@ class Node:
         )
 
     #
-    def _report_write_coreneuron_config(self, rep_name, rep_conf, target, rep_params):
+    def _report_write_coreneuron_config(self, rep_conf, target, rep_params):
         target_spec = TargetSpec(rep_conf["Target"])
 
-        # for sonata config, compute target_type from user inputs
-        if "Sections" in rep_conf and "Compartments" in rep_conf:
-            def _compute_corenrn_target_type(section_type, compartment_type):
-                sections = ["all", "soma", "axon", "dend", "apic"]
-                compartments = ["center", "all"]
-                if section_type not in sections:
-                    raise ConfigurationError(f"Report: invalid section type '{section_type}'")
-                if compartment_type not in compartments:
-                    raise ConfigurationError(f"Report: invalid compartment type {compartment_type}")
-                if section_type == "all":  # for "all sections", support only target_type=0
-                    return 0
-                # 0=Compartment, Section { 2=Soma, 3=Axon, 4=Dendrite, 5=Apical, 6=SomaAll ... }
-                return sections.index(section_type)+1+4*compartments.index(compartment_type)
+        if SimConfig.restore_coreneuron:
+            CoreConfig.update_tstop(rep_params.name, target_spec.name, rep_params.end)
+        else:
+            # for sonata config, compute target_type from user inputs
+            if "Sections" in rep_conf and "Compartments" in rep_conf:
+                def _compute_corenrn_target_type(section_type, compartment_type):
+                    sections = ["all", "soma", "axon", "dend", "apic"]
+                    compartments = ["center", "all"]
+                    if section_type not in sections:
+                        raise ConfigurationError(f"Report: invalid section type '{section_type}'")
+                    if compartment_type not in compartments:
+                        raise ConfigurationError(f"Report: invalid compartment type "
+                                                 f"{compartment_type}")
+                    if section_type == "all":  # for "all sections", support only target_type=0
+                        return 0
+                    # 0=Compartment, Section { 2=Soma, 3=Axon, 4=Dendrite, 5=Apical, 6=SomaAll ... }
+                    return sections.index(section_type)+1+4*compartments.index(compartment_type)
 
-            section_type = rep_conf.get("Sections")
-            compartment_type = rep_conf.get("Compartments")
-            target_type = _compute_corenrn_target_type(section_type, compartment_type)
+                section_type = rep_conf.get("Sections")
+                compartment_type = rep_conf.get("Compartments")
+                target_type = _compute_corenrn_target_type(section_type, compartment_type)
 
-        reporton_comma_separated = ",".join(rep_params.report_on.split())
-        core_report_params = (
-            (os.path.basename(rep_conf.get("FileName", rep_name)),
-                target_spec.name, rep_params.rep_type, reporton_comma_separated)
-            + rep_params[3:5] + (target_type,) + rep_params[5:8]
-            + (target.get_gids(), SimConfig.corenrn_buff_size)
-        )
-        CoreConfig.write_report_config(*core_report_params)
+            reporton_comma_separated = ",".join(rep_params.report_on.split())
+            core_report_params = (
+                (rep_params.name, target_spec.name, rep_params.rep_type, reporton_comma_separated)
+                + rep_params[3:5] + (target_type,) + rep_params[5:8]
+                + (target.get_gids(), SimConfig.corenrn_buff_size)
+            )
+            CoreConfig.write_report_config(*core_report_params)
         return True
 
     def _report_setup(self, report, rep_conf, target, rep_type):
@@ -1008,8 +1011,10 @@ class Node:
                 report.add_synapse_report(cell, point, spgid, pop_name, pop_offset)
 
     def _reports_init(self, pop_offsets_alias):
-        pop_offsets = pop_offsets_alias[0]
+        if SimConfig.restore_coreneuron:
+            return
 
+        pop_offsets = pop_offsets_alias[0]
         if SimConfig.use_coreneuron:
             # write spike populations
             if hasattr(CoreConfig, "write_population_count"):
