@@ -279,6 +279,8 @@ class Node:
                 # Instantiate the CoreNEURON artificial cell object which is used to fill up
                 # the empty ranks. This need to be done before the circuit is finitialized
                 CoreConfig.instantiate_artificial_cell()
+                if SimConfig.restore_coreneuron:
+                    CoreConfig.restore_path = SimConfig.restore
             self._run_conf = SimConfig.run_conf
             self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))

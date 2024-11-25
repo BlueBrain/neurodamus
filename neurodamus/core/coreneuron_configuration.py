@@ -76,6 +76,7 @@ class _CoreNEURONConfig(object):
     """
     sim_config_file = "sim.conf"
     report_config_file = "report.conf"
+    restore_path = None
     output_root = "output"
     datadir = f"{output_root}/coreneuron_input"
     default_cell_permute = 0
@@ -91,8 +92,8 @@ class _CoreNEURONConfig(object):
         # Try current directory first
         report_conf = Path(self.output_root) / self.report_config_file
         if not report_conf.exists():
-            # Try one level up from output_root
-            parent_report_conf = Path(self.output_root) / ".." / self.report_config_file
+            # Try one level up from restore_path
+            parent_report_conf = Path(self.restore_path) / ".." / self.report_config_file
             if parent_report_conf.exists():
                 # Copy the file to current location
                 report_conf.write_bytes(parent_report_conf.read_bytes())
