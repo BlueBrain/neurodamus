@@ -39,6 +39,9 @@ def distribute_dat_to_bucket(dat_entry, size, buckets, bucket_sizes):
 def redistribute_files_dat(files_dat_file, n_buckets, max_entries=None, show_stats=False):
     """
     Read and process each entry from the dat file and distribute them into buckets.
+
+    If max entries is not set (None) respect the number of entries from the header.
+    If user sets to `0` we use all entries form the file (disregard header)
     """
     base_dir = os.path.dirname(files_dat_file)
     metadata = {}
@@ -47,16 +50,16 @@ def redistribute_files_dat(files_dat_file, n_buckets, max_entries=None, show_sta
     with open(files_dat_file, "r") as file:
         # read header
         metadata["version"] = file.readline().strip()
-        n_entries = file.readline().strip()
-
-        metadata["n_files"] = max_entries or n_entries
+        metadata["n_files"] = file.readline().strip()
+        if max_entries is None:
+            max_entries = int(metadata["n_files"])
 
         # read all dat entries
         dat_entries = file.readlines()
 
-    if (n_files := int(metadata["n_files"])) < len(dat_entries):
-        logging.warning("files.dat: processing reduced number of entries: %d", n_files)
-        dat_entries = dat_entries[:n_files]
+    if 0 < max_entries < len(dat_entries):
+        logging.warning("files.dat: processing reduced number of entries: %d", max_entries)
+        dat_entries = dat_entries[:max_entries]
 
     logging.info("Distributing files into %d buckets...", n_buckets)
 
@@ -149,7 +152,8 @@ def main():
         "--max-entries",
         type=int,
         default=None,
-        help="Consider only the first N entries of the input file",
+        help="Consider only the first N entries of the input file."
+             "To force using all data and disregard the header set to 0",
     )
     parser.add_argument(
         "--output-file",
