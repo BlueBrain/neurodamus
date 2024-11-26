@@ -945,6 +945,8 @@ class Node:
     def _report_write_coreneuron_config(self, rep_conf, target, rep_params):
         target_spec = TargetSpec(rep_conf["Target"])
 
+        # For restore case with no change in reporting, we can directly update the end time.
+        # Note: If different reports are needed during restore, this workflow needs to be adapted.
         if SimConfig.restore_coreneuron:
             CoreConfig.update_tstop(rep_params.name, target_spec.name, rep_params.end)
             return True
