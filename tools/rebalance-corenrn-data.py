@@ -42,7 +42,7 @@ def redistribute_files_dat(files_dat_file, n_buckets, max_entries=None, show_sta
     Read and process each entry from the dat file and distribute them into buckets.
 
     If max entries is not set (None) respect the number of entries from the header.
-    If user sets to `0` we use all entries form the file (disregard header)
+    If user sets to `0` we use all entries from the file (disregard header)
     """
     base_dir = os.path.dirname(files_dat_file)
     metadata = {}
