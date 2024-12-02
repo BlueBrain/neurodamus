@@ -879,8 +879,8 @@ def _coreneuron_params(config: _SimConfig, run_conf):
     if config.use_coreneuron and config.restore:
         # Most likely we will need to reuse coreneuron_input from first part
         if not os.path.isdir(coreneuron_datadir):
-            logging.info("RESTORE: Searching for coreneuron_input besides " + config.restore)
-            coreneuron_datadir = os.path.join(config.restore, "..", "coreneuron_input")
+            logging.info("RESTORE: link to coreneuron_input besides " + config.restore)
+            os.symlink(os.path.join(config.restore, "..", "coreneuron_input"), coreneuron_datadir)
         assert os.path.isdir(coreneuron_datadir), "coreneuron_input dir not found"
 
     config.coreneuron_datadir = coreneuron_datadir
