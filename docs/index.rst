@@ -18,6 +18,7 @@ Contents
    Module Reference <api/modules>
    Developer Documentation <architecture>
    Developing a Custom Neurodamus <development>
+   Memory Load Balance Tutorial <memory_load_balance>
 
 
 Indices and tables

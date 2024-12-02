@@ -279,6 +279,8 @@ class Node:
                 # Instantiate the CoreNEURON artificial cell object which is used to fill up
                 # the empty ranks. This need to be done before the circuit is finitialized
                 CoreConfig.instantiate_artificial_cell()
+                if SimConfig.restore_coreneuron:
+                    CoreConfig.restore_path = SimConfig.restore
             self._run_conf = SimConfig.run_conf
             self._target_manager = TargetManager(self._run_conf)
             self._target_spec = TargetSpec(self._run_conf.get("CircuitTarget"))
@@ -825,7 +827,7 @@ class Node:
             pop_offsets_alias = self._circuits.get_population_offsets()
         else:
             pop_offsets_alias = CircuitManager.read_population_offsets()
-        if SimConfig.use_coreneuron:
+        if SimConfig.use_coreneuron and not SimConfig.restore_coreneuron:
             CoreConfig.write_report_count(len(reports_conf))
 
         for rep_name, rep_conf in reports_conf.items():
@@ -839,7 +841,7 @@ class Node:
                 continue
 
             if SimConfig.use_coreneuron and MPI.rank == 0:
-                if not self._report_write_coreneuron_config(rep_name, rep_conf, target, rep_params):
+                if not self._report_write_coreneuron_config(rep_conf, target, rep_params):
                     n_errors += 1
                     continue
 
@@ -940,8 +942,14 @@ class Node:
         )
 
     #
-    def _report_write_coreneuron_config(self, rep_name, rep_conf, target, rep_params):
+    def _report_write_coreneuron_config(self, rep_conf, target, rep_params):
         target_spec = TargetSpec(rep_conf["Target"])
+
+        # For restore case with no change in reporting, we can directly update the end time.
+        # Note: If different reports are needed during restore, this workflow needs to be adapted.
+        if SimConfig.restore_coreneuron:
+            CoreConfig.update_tstop(rep_params.name, target_spec.name, rep_params.end)
+            return True
 
         # for sonata config, compute target_type from user inputs
         if "Sections" in rep_conf and "Compartments" in rep_conf:
@@ -963,8 +971,7 @@ class Node:
 
         reporton_comma_separated = ",".join(rep_params.report_on.split())
         core_report_params = (
-            (os.path.basename(rep_conf.get("FileName", rep_name)),
-                target_spec.name, rep_params.rep_type, reporton_comma_separated)
+            (rep_params.name, target_spec.name, rep_params.rep_type, reporton_comma_separated)
             + rep_params[3:5] + (target_type,) + rep_params[5:8]
             + (target.get_gids(), SimConfig.corenrn_buff_size)
         )
@@ -1008,8 +1015,10 @@ class Node:
                 report.add_synapse_report(cell, point, spgid, pop_name, pop_offset)
 
     def _reports_init(self, pop_offsets_alias):
-        pop_offsets = pop_offsets_alias[0]
+        if SimConfig.restore_coreneuron:
+            return
 
+        pop_offsets = pop_offsets_alias[0]
         if SimConfig.use_coreneuron:
             # write spike populations
             if hasattr(CoreConfig, "write_population_count"):
