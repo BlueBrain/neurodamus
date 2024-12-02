@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from ._utils import run_only_rank0
 from . import NeurodamusCore as Nd
+from .configuration import ConfigurationError
 from ..report import get_section_index
 
 
@@ -75,6 +76,7 @@ class _CoreNEURONConfig(object):
     """
     sim_config_file = "sim.conf"
     report_config_file = "report.conf"
+    restore_path = None
     output_root = "output"
     datadir = f"{output_root}/coreneuron_input"
     default_cell_permute = 0
@@ -84,6 +86,47 @@ class _CoreNEURONConfig(object):
     # This needs to happen only when CoreNEURON simulation is enabled
     def instantiate_artificial_cell(self):
         self.artificial_cell_object = Nd.CoreNEURONArtificialCell()
+
+    @run_only_rank0
+    def update_tstop(self, report_name, nodeset_name, tstop):
+        # Try current directory first
+        report_conf = Path(self.output_root) / self.report_config_file
+        if not report_conf.exists():
+            # Try one level up from restore_path
+            parent_report_conf = Path(self.restore_path) / ".." / self.report_config_file
+            if parent_report_conf.exists():
+                # Copy the file to current location
+                report_conf.write_bytes(parent_report_conf.read_bytes())
+            else:
+                raise ConfigurationError(f"Report config file not found in {report_conf} "
+                                         f"or {parent_report_conf}")
+
+        # Read all content
+        with report_conf.open('rb') as f:
+            lines = f.readlines()
+
+        # Find and update the matching line
+        found = False
+        for i, line in enumerate(lines):
+            try:
+                parts = line.decode().split()
+                # Report name and target name must match in order to update the tstop
+                if parts[0:2] == [report_name, nodeset_name]:
+                    parts[9] = f"{tstop:.6f}"
+                    lines[i] = (' '.join(parts) + '\n').encode()
+                    found = True
+                    break
+            except (UnicodeDecodeError, IndexError):
+                # Ignore lines that cannot be decoded (binary data)
+                continue
+
+        if not found:
+            raise ConfigurationError(f"Report '{report_name}' with target '{nodeset_name}' "
+                                     "not matching any report in the 'save' execution")
+
+        # Write back
+        with report_conf.open('wb') as f:
+            f.writelines(lines)
 
     @run_only_rank0
     def write_report_config(
