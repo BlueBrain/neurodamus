@@ -15,7 +15,7 @@ then a neurodamus model instantiation with no simulation, a rebalance and then f
 
 Dry Run
 -------
-.. code_block:: bash
+.. code-block:: bash
 
     $ neurodamus ... --dry-run
 
@@ -28,14 +28,14 @@ By default, the balance distribution will happen on the amount of nodes/ranks th
 However you can manually specify the amount of ranks you want to distribute on by using the `--num-target-ranks`` option.
 So, for example, let's say you want to distribute over 100 ranks, you can run neurodamus with:
 
-.. code_block:: bash
+.. code-block:: bash
 
     $ neurodamus ... --configFile=simulation_config.json --dry-run --num-target-ranks=100
 
 
 Model Instantiation
 -------------------
-.. code_block:: bash
+.. code-block:: bash
 
     $ neurodamus ... --lb-mode=Memory --simulate-model=OFF
 
@@ -45,7 +45,7 @@ we want to use the memory load balancing for this step, even without simulating.
 This will create the model in the specified output folder and will be used for the rebalance step.
 The model will be saved in the output folder specified using the `--output-path` option.
 
-.. code_block:: bash
+.. code-block:: bash
 
     $ neurodamus ... --lb-mode=Memory --configFile=simulation_config.json --simulate-model=OFF --output-path=/path/to/output
 
@@ -55,7 +55,8 @@ Balancing for CoreNeuron, especially using multi-cycle, can distribute gids unop
 In order to mitigate these issues we have implemented a post processing rebalance step that will redistribute the gids
 evenly across the machines, based on the data collected in the previous phases.
 You will find the `rebalance-corenrn-data.py` script in the `neurodamus/tools` folder and you can run it with:
-.. code_block:: bash
+
+.. code-block:: bash
 
     $ python3 rebalance-corenrn-data.py input_file.dat n_machines --output-file rebalanced_file.dat
 
@@ -72,10 +73,8 @@ Simulation
 
 Finally we can run the simulation with the rebalanced data using coreneuron.
 
-.. code_block:: bash
+.. code-block:: bash
 
     $ special-core -d /path/to/coreneuron_input -f /path/to/rebalanced_file.dat
 
 This will run the simulation using the rebalanced data and should distribute the memory usage more evenly across the machines.
-(Due to a bug in coreneuron, make sure that the `rebalanced_file.dat` is present both in the `coreneuron_input` folder
-and in the cwd where you run the simulation)
