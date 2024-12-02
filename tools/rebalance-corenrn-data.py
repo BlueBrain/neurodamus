@@ -52,6 +52,7 @@ def redistribute_files_dat(files_dat_file, n_buckets, max_entries=None, show_sta
         # read header
         metadata["version"] = file.readline().strip()
         metadata["n_files"] = file.readline().strip()
+
         if max_entries is None:
             max_entries = int(metadata["n_files"])
 
