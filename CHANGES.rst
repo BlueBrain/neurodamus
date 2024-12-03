@@ -8,14 +8,17 @@ Version 3.7.0
 
 *New Features*
   * [BBPBGLIB-1059] Oren's Gap Junction compensation (#195)
-  * CoreNeuron Rebalancer (#206)
+  * CoreNeuron Rebalancer (#206, #212, #213)
   * Crash test mode (#190)
 
 *Bug Fixes*
+  * [BBPBGLIB-1184] Fix CoreNEURON reports restore functionality (#210)
   * [REP-91] Avoid raising exception when point process is missing in a section (#202)
   * [BBPBGLIB-1042] Don't return early from target_gids, enable intersection (#198)
 
 *Improvements*
+  * Improve README (#216)
+  * Documentation on how to run memory-bound simulations (#211)
   * Migrate unit tests to GitHub (#175)
   * ConnManager: Small readability improvements (#200)
   * Fix multiple issues with Memory Load Balance for MMB run (#185)
