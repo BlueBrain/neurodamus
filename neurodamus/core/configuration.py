@@ -880,7 +880,8 @@ def _coreneuron_params(config: _SimConfig, run_conf):
         # Most likely we will need to reuse coreneuron_input from the save part
         # A symlink is created for the scenario of multiple save/restore processes in one simulation
         if not os.path.isdir(coreneuron_datadir):
-            logging.info("RESTORE: link to coreneuron_input besides " + config.restore)
+            logging.info("RESTORE: Create a symlink for coreneuron_input pointing to "
+                         + config.restore)
             os.symlink(os.path.join(config.restore, "..", "coreneuron_input"), coreneuron_datadir)
         assert os.path.isdir(coreneuron_datadir), "coreneuron_input dir not found"
 

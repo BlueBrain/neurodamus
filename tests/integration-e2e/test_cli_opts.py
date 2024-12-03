@@ -16,15 +16,16 @@ def test_save_restore_cli():
     with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
         sim_config_data = json.load(f)
 
+    # params (cli_options, output_dir, tstop) for 3 test scenarios: save, save-restore, restore
+    test1_params = ([("save", "output_p1/checkpoint")], "output_p1", 100)
+    test2_params = (
+        [("save", "output_p2/checkpoint"), ("restore", "output_p1/checkpoint")], "output_p2", 150
+        )
+    test3_params = ([("restore", "output_p2/checkpoint")], "output_p3", 200)
     for simulator in ("NEURON", "CORENEURON"):
         test_folder = tempfile.TemporaryDirectory("cli-test-" + simulator)  # auto removed
         test_folder_path = Path(test_folder.name)
-        for actions, output_dir, tstop in (([("save", "output_p1/checkpoint")], "output_p1", 100),
-                                           ([("save", "output_p2/checkpoint"),
-                                             ("restore", "output_p1/checkpoint")],
-                                            "output_p2", 150),
-                                           ([("restore", "output_p2/checkpoint")],
-                                            "output_p3", 200)):
+        for v_cli_options, output_dir, tstop in (test1_params, test2_params, test3_params):
             sim_config_data["target_simulator"] = simulator
             sim_config_data["run"]["tstop"] = tstop
             sim_config_data["output"]["output_dir"] = str(test_folder_path / output_dir)
@@ -34,7 +35,7 @@ def test_save_restore_cli():
                 json.dump(sim_config_data, f, indent=2)
 
             cli_options = ["--" + action + "=" + str(test_folder_path / action_folder)
-                           for action, action_folder in actions]
+                           for action, action_folder in v_cli_options]
             command = ["neurodamus", test_folder_path / CONFIG_FILE_MINI] + cli_options
             # Save-Restore raises exception when using NEURON
             if simulator == "NEURON":
