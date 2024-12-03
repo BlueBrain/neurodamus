@@ -16,7 +16,7 @@ readme = "README.rst"
 dynamic = ["version"]
 dependencies = [
     "h5py",
-    "docopt",
+    "docopt-ng",
     "libsonata",
     "psutil"
 ]
