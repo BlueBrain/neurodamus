@@ -16,23 +16,27 @@ def test_save_restore_cli():
     with open(SIM_DIR / CONFIG_FILE_MINI, "r") as f:
         sim_config_data = json.load(f)
 
+    # params (cli_options, output_dir, tstop) for 3 test scenarios: save, save-restore, restore
+    test1_params = ([("save", "output_p1/checkpoint")], "output_p1", 100)
+    test2_params = (
+        [("save", "output_p2/checkpoint"), ("restore", "output_p1/checkpoint")], "output_p2", 150
+        )
+    test3_params = ([("restore", "output_p2/checkpoint")], "output_p3", 200)
     for simulator in ("NEURON", "CORENEURON"):
         test_folder = tempfile.TemporaryDirectory("cli-test-" + simulator)  # auto removed
         test_folder_path = Path(test_folder.name)
-        for action, tstop in (("save", 100), ("restore", 200)):
+        for v_cli_options, output_dir, tstop in (test1_params, test2_params, test3_params):
             sim_config_data["target_simulator"] = simulator
             sim_config_data["run"]["tstop"] = tstop
-            sim_config_data["output"]["output_dir"] = str(test_folder_path / ("output-" + action))
+            sim_config_data["output"]["output_dir"] = str(test_folder_path / output_dir)
             sim_config_data["network"] = str(SIM_DIR / CIRCUIT_DIR / "circuit_config.json")
 
             with open(test_folder_path / CONFIG_FILE_MINI, "w") as f:
                 json.dump(sim_config_data, f, indent=2)
 
-            # Checkpoints inside the output good tradition w CoreNeuron
-            checkpoint_dir = test_folder_path / "output-save" / "checkpoint"
-
-            command = ["neurodamus", test_folder_path / CONFIG_FILE_MINI,
-                        "--" + action + "=" + str(checkpoint_dir)]
+            cli_options = ["--" + action + "=" + str(test_folder_path / action_folder)
+                           for action, action_folder in v_cli_options]
+            command = ["neurodamus", test_folder_path / CONFIG_FILE_MINI] + cli_options
             # Save-Restore raises exception when using NEURON
             if simulator == "NEURON":
                 with pytest.raises(subprocess.CalledProcessError):
