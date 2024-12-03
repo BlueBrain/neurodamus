@@ -74,6 +74,8 @@ We hope to bring the same advantages to the launcher script soon.
 
 .. code-block:: sh
 
+ export NEURODAMUS_PYTHON=<neurodamus_folder>/neurodamus/data
+ export HOC_LIBRARY_PATH=<hoc_files_folder>
  srun <srun params> <your_built_special> -mpi -python $NEURODAMUS_PYTHON/init.py <neurodamus params>
 
 An example of a full installation with a simulation run can be found in the workflow test
