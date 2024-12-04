@@ -25,6 +25,7 @@ def neurodamus(args=None):
 
     Usage:
         neurodamus <ConfigFile> [options]
+        neurodamus --version
         neurodamus --help
 
     Options:
@@ -65,7 +66,8 @@ def neurodamus(args=None):
         --coreneuron-direct-mode     Run CoreNeuron in direct memory mode transfered from Neuron,
                                      without writing model data to disk.
     """
-    options = docopt_sanitize(docopt(neurodamus.__doc__, args))
+    from . import __version__
+    options = docopt_sanitize(docopt(neurodamus.__doc__, args, version=__version__))
     config_file = options.pop("ConfigFile")
     log_level = _pop_log_level(options)
 
