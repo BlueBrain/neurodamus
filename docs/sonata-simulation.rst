@@ -10,7 +10,7 @@ https://sonata-extension.readthedocs.io/en/latest/sonata_overview.html.
 The Sonata specification prescribes the file format for all Simulation inputs and outputs, as
 depicted in the following image:
 
-.. image:: img/sonata.png
+.. image:: img/neurodamus.svg
 
 
 The Sonata simulation input files
