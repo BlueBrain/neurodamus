@@ -1,3 +1,5 @@
+.. _development.rst:
+
 How to develop / use a custom Neurodamus-py
 ===========================================
 Neurodamus-py is a Python application. Therefore, all generic procedures on how to manage Python applications generally apply.

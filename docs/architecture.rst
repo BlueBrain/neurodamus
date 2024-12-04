@@ -455,4 +455,4 @@ flags in the CLI of Neurodamus.
 Development
 ------------
 
-You can find more information `here <development.rst>`_.
+You can find more information on the page :ref:`development.rst`.
