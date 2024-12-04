@@ -17,7 +17,8 @@ Version 3.7.0
   * [BBPBGLIB-1042] Don't return early from target_gids, enable intersection (#198)
 
 *Improvements*
-  * Improve README (#216)
+  * CLI provide --version (#218)
+  * Improve README and docs (#216, #217, #219)
   * Documentation on how to run memory-bound simulations (#211)
   * Migrate unit tests to GitHub (#175)
   * ConnManager: Small readability improvements (#200)
