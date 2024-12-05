@@ -2,6 +2,33 @@
 Change Log
 ==========
 
+Version 3.7.0
+=============
+**5 December 2024**
+
+*New Features*
+  * [BBPBGLIB-1059] Oren's Gap Junction compensation (#195)
+  * CoreNeuron Rebalancer (#206, #212, #213)
+  * Crash test mode (#190)
+
+*Bug Fixes*
+  * [BBPBGLIB-1184] Fix CoreNEURON reports restore functionality (#210)
+  * [REP-91] Avoid raising exception when point process is missing in a section (#202)
+  * [BBPBGLIB-1042] Don't return early from target_gids, enable intersection (#198)
+
+*Improvements*
+  * CLI provide --version (#218)
+  * Improve README and docs (#216, #217, #219, #220)
+  * Documentation on how to run memory-bound simulations (#211)
+  * Migrate unit tests to GitHub (#175)
+  * ConnManager: Small readability improvements (#200)
+  * Fix multiple issues with Memory Load Balance for MMB run (#185)
+  * Speedup Synapse Reading (#191, #197)
+  * Switch astrocyte mod file from mcd to cadifus. (#193)
+  * Have a pre-stdinit hook, to be used by replace_axon (#189)
+  * Various CI fixes (#194, #196, #199)
+
+
 Version 3.6.0
 =============
 **13 August 2024**
