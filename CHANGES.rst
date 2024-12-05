@@ -4,7 +4,7 @@ Change Log
 
 Version 3.7.0
 =============
-**22 November 2024**
+**5 December 2024**
 
 *New Features*
   * [BBPBGLIB-1059] Oren's Gap Junction compensation (#195)
