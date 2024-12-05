@@ -18,7 +18,7 @@ Version 3.7.0
 
 *Improvements*
   * CLI provide --version (#218)
-  * Improve README and docs (#216, #217, #219)
+  * Improve README and docs (#216, #217, #219, #220)
   * Documentation on how to run memory-bound simulations (#211)
   * Migrate unit tests to GitHub (#175)
   * ConnManager: Small readability improvements (#200)
