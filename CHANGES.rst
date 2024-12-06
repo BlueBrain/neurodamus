@@ -2,6 +2,14 @@
 Change Log
 ==========
 
+Version 3.7.2
+=============
+**6 December 2024**
+
+*Bug Fixes*
+  *  Make sure sdist is also published (#229)
+
+
 Version 3.7.1
 =============
 **6 December 2024**
