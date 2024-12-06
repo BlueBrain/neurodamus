@@ -2,6 +2,14 @@
 Change Log
 ==========
 
+Version 3.7.1
+=============
+**6 December 2024**
+
+*Bug Fixes*
+  * Fix publishing to PyPI by using trusted publisher (#228)
+
+
 Version 3.7.0
 =============
 **5 December 2024**
