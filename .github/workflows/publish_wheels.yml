@@ -28,17 +28,23 @@ jobs:
           cd $GITHUB_WORKSPACE
           pip3 install tox
           DIST_FILE=`ls dist/*whl` && tox --installpkg=$DIST_FILE -e ${{ matrix.python_version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.python_version }}-${{ strategy.job-index }}
+          path: ./dist/*.whl
   pypi-publish:
     runs-on: ubuntu-22.04
+    needs: [wheel]
     # IMPORTANT: this permission is mandatory for trusted publishing
     permissions:
       id-token: write
     steps:
-      - name: Download artifacts produced by the Build Wheel job
+      - name: Download artifacts produced by the wheel job
         uses: actions/download-artifact@v4
         with:
-          name: dist
+          pattern: wheels*
           path: dist/
+          merge-multiple: true
 
       - name: Display structure of downloaded files
         run: ls -R
