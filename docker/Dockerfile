@@ -76,8 +76,7 @@ RUN source $USR_VENV/bin/activate \
  && cd $WORKDIR \
  && git clone https://github.com/BlueBrain/neurodamus.git \
  && cd neurodamus \
- && pip install . \
- && cp tests/share/hoc/* neurodamus/data/hoc/
+ && pip install .
 
 ENV HOC_LIBRARY_PATH "$WORKDIR/neurodamus/neurodamus/data/hoc"
 ENV NEURODAMUS_PYTHON "$WORKDIR/neurodamus/neurodamus/data"
